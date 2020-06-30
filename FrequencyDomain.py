@@ -27,14 +27,16 @@ class Member:
 		entries = strin.split()
 		
 		self.id = np.int(entries[0])
-		self.d  = np.int(entries[2])
-		self.rA = np.array(entries[3:6], dtype=np.double)
+		self.dA  = np.int(entries[2])                      # diameter of (lower) node
+		self.dB  = np.int(entries[2])
+		self.rA = np.array(entries[3:6], dtype=np.double)  # x y z of lower node
 		self.rB = np.array(entries[6:9], dtype=np.double)
+		self.t  = 0           # shell thickness [m]
 		
-		self.rAB = self.rB-self.rA
-		self.l = np.linalg.norm(self.rAB)  # member length
+		rAB = self.rB-self.rA
+		self.l = np.linalg.norm(rAB)  # member length
 		
-		self.q = self.rAB/self.l           # member axial unit vector
+		self.q = rAB/self.l           # member axial unit vector
 		self.p1 = np.zeros(3)              # member transverse unit vectors (to be filled in later)
 		self.p2 = np.zeros(3)              # member transverse unit vectors
 		
@@ -52,9 +54,11 @@ class Member:
 		
 		self.w = 1    # mass per unit length (kg/m)
 		
-		self.r  = np.zeros([self.n,3])  # undisplaced node positions along member 
+		self.r  = np.zeros([self.n,3])  # undisplaced node positions along member  [m]
+		self.d  = np.zeros([self.n,3])  # local diameter along member [m]
 		for i in range(self.n):
-			self.r[i,:] = self.rA + (i/(self.n-1))*self.rAB  # spread evenly for now
+			self.r[i,:] = self.rA + (i/(self.n-1))*rAB                # spread evenly for now
+			self.d[i]   = self.dA + (i/(self.n-1))*(self.dB-self.dA)  # spread evenly since uniform taper
 		
 		# complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
 		self.dr = np.zeros([self.n,3,nw], dtype=complex)  # displacement
@@ -73,10 +77,62 @@ class Member:
 		
 		return q, p1, p2
 	
-
-## Get node complex velocity spectrum based on platform motion's and relative position from PRP		
-def getVelocity(r, Xi, ws):
+	
+	
+	# >>>>>>>>>>>>> @shousner's method for mass/inertia to go here <<<<<<<<<<<<<<<<<<
+	
+	
+	
+	def getHydrostatics(self):
+		'''Calculates member hydrostatic properties, namely buoyancy and stiffness matrix'''
+		
+			
+		# partially submerged case
+		if self.r[0,2]*self.r[-1,2] < 0:    # if member crosses water plane
 				
+			# eventually should interpolate dwp=np.interp(0, self.r[:,2], self.d)
+			dwp = self.d
+			xwp = np.interp(0, self.r[:,2], self.r[:,0])
+			ywp = np.interp(0, self.r[:,2], self.r[:,1])
+			
+			# ------------- get hydrostatic derivatives ---------------- (eventually make as Member member function) <<<
+			# angles
+			beta = np.arctan(q[1],q[0])  # member incline heading from x axis
+			phi  = np.arctan(np.sqrt(q[0]**2 + q[1]**2), q[2])  # member incline angle from vertical
+			# precalculate trig functions
+			cosPhi=np.cos(phi)
+			sinPhi=np.sin(phi)
+			
+			# force and moment
+			Fz = -rho*g*pi*0.25*self.d**2*self.rA[2]/cosPhi
+			
+			# derivatives aligned with incline heading
+			dFz_dz   =  rho*g*pi*0.25*self.d**2          /cosPhi
+			dFz_dPhi = -rho*g*pi*0.25*self.d**2*self.rA[2]*sinPhi/cosPhi**2
+			dM_dz    =  1.0*dFz_dPhi
+			dM_dPhi  = -rho*g*pi*0.25*self.d**2 * (self.d**2/32*(2*cosPhi + sinPhi**2/CosPhi + 2*sinPhi/cosPhi**2) + 0.5*self.rA[2]**2*(sinPhi**2+1)/cosPhi**3)
+			
+			# derivatives in global coordinates about platform reference point	
+			awp = np.pi/4*dwp**2 /np.cos(self.phi)
+			Iwpx= np.pi/4*dwp**4 * (np.cos(beta)/np.cos(self.phi)**3 + np.sin(beta)/np.cos(self.phi)) # check<<<<
+			Iwpy= np.pi/4*dwp**4 * (np.sin(beta)/np.cos(self.phi)**3 + np.cos(beta)/np.cos(self.phi))
+		
+		# fully submerged case
+		else:
+			Fz = 0
+			print("TBD")
+			
+		# the below need to be filled in above! <<<<<	
+		#F = np.zeros(6)        # buoyancy force (and moment) vector (about end A)
+		F = Fz
+		Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about end A)
+			
+		return F, Cmat
+
+
+def getVelocity(r, Xi, ws):
+	'''Get node complex velocity spectrum based on platform motion's and relative position from PRP'''
+	
 	nw = len(ws)
 		
 	dr = np.zeros([3,nw], dtype=complex) # node displacement complex amplitudes
@@ -320,6 +376,8 @@ depth = 200
 rho = 1025
 g = 9.81
 
+pi = np.pi
+
 # environmental condition(s)
 Hs = [2.4, 3.4, 5];
 Tp = [4.1, 4.6, 6.05];
@@ -369,17 +427,15 @@ for mem in memberList:
 Xi = np.zeros([6,nw], dtype=complex)
 
 # constant coefficient arrays
-W_tot = np.zeros([6])
-M_ss  = np.zeros([6,6]) # structure/static
+W_tot = np.zeros([6])   # weight vector
+M_ss  = np.zeros([6,6]) # structure/static mass/inertia matrix
 
-m = 0.0            # total platform mass
-mr = np.zeros(3)   # product of mass by location
-v = 0.0            # total platform displacement
-vr = np.zeros(3)   # product of volume by location
+C_hydro = np.zeros([6,6]) # hydrostatic stiffness matrix
+
 
 
 # ---------- add in linear hydrodynamic coefficients here if applicable --------------------
-# TODO
+# TODO <<<
 
 
 # --------------- Get general geometry properties including hydrostatics ------------------------
@@ -391,49 +447,35 @@ for mem in memberList:
 	
 	q, p1, p2 = mem.getDirections()                # get unit direction vectors
 	
-	# loop through each node of the member
-	for il in range(mem.n):
-		# mass/inertia, weight, and hydrostatics
-		mass = mem.dl*mem.w  # kg
-		iner = 0               # kg-m^2 
-		Mmat = np.diag([mass, mass, mass, iner, iner, iner])
-		vol = mem.dl*np.pi/4*mem.d**2
-		buoyancy = vol*rho*g - mass*g  # what about partially submerged segments? <<<<<<<<<<<<<<<<<
+	
+	# ---------------------- get member's mass and inertia properties ------------------------------
+	
+	# >>>> call to @shousner's Member method(s) <<<<
+	
+	# the method should compute the mass/inertia matrix, instead of the placeholders below
+	mass = mem.l*mem.w     # kg
+	iner = 0               # kg-m^2 
+	Mmat = np.diag([mass, mass, mass, iner, iner, iner])  # make quick dummy mass/inertia matrix
 		
-		
-		# add to totals
-		m += mass
-		mr += mass*mem.r[il,:]
-		v+= vol
-		vr += vol*mem.r[il,:]
-		
-		# now convert everything to be about PRP and add to matrices
-		W_tot += translateForce3to6DOF( mem.r[il,:], np.array([0,0, -buoyancy]) )  # weight/buoyancy
-		M_ss = translateMatrix6to6DOF(mem.r[il,:], Mmat)  # mass/inertia
+	# now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+	W_tot += translateForce3to6DOF( mem.rA, np.array([0,0, -g*mass]) )  # weight vector
+	M_ss  += translateMatrix6to6DOF(mem.rA, Mmat)                       # mass/inertia matrix
 
 
-	# get each member's waterplane area, moment of inertia, and derivatives w.r.t heave,roll,pitch
-	if mem.r[0,2]*mem.r[-1,2] < 0:    # if member crosses water plane
-			
-		# eventually should interpolate dwp=np.interp(0, mem.r[:,2], mem.d)
-		dwp = mem.d
-		xwp = np.interp(0, mem.r[:,2], mem.r[:,0])
-		ywp = np.interp(0, mem.r[:,2], mem.r[:,1])
+
+	# -------------------- get each member's buoyancy/hydrostatic properties -----------------------
+	
+	Fz, Cmat = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
+	
 		
-		# get derivatives too!!
-		
-		
-		
-		awp = np.pi/4*dwp**2 /np.cos(mem.phi)
-		Iwpx= np.pi/4*dwp**4 * (np.cos(beta)/np.cos(mem.phi)**3 + np.sin(beta)/np.cos(mem.phi)) # check<<<<
-		Iwpy= np.pi/4*dwp**4 * (np.sin(beta)/np.cos(mem.phi)**3 + np.cos(beta)/np.cos(mem.phi))
+	# now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+	W_tot += translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
+	C_hydro += translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
+
 		
 		
-		# sum...
-		
-		
-# calculate hydrostatic stiffness matrix from above
-		...
+
+	# ----------------------------- end of Member-specific preprocessing ---------------------------
 
 
 # solve for mean offsets (operating point)
@@ -481,9 +523,9 @@ for iiter in range(nIter):
 			vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
 			
 			# linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
-			Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*mem.d*mem.dl * mem.Cd_q 
-			Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * mem.d*mem.dl * mem.Cd_p1
-			Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * mem.d*mem.dl * mem.Cd_p2
+			Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*mem.d[il]*mem.dl * mem.Cd_q 
+			Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p1
+			Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p2
 			
 			# convert to global orientation
 			Bmat = Bprime_q*VecVecTrans(q) + Bprime_p1*VecVecTrans(p1) + Bprime_p2*VecVecTrans(p2)
@@ -495,11 +537,11 @@ for iiter in range(nIter):
 			
 			
 			# added mass...
-			Amat = rho*0.25*np.pi*mem.d**2*mem.dl *( mem.Ca_q*VecVecTrans(q) + mem.Ca_p1*VecVecTrans(p1) + mem.Ca_p2*VecVecTrans(p2) )
+			Amat = rho*0.25*np.pi*mem.d[il]**2*mem.dl *( mem.Ca_q*VecVecTrans(q) + mem.Ca_p1*VecVecTrans(p1) + mem.Ca_p2*VecVecTrans(p2) )
 			
 			
 			# inertial excitation...
-			Imat = rho*0.25*np.pi*mem.d**2*mem.dl * ( (1+mem.Ca_q)*VecVecTrans(q) + (1+mem.Ca_p1)*VecVecTrans(p1) + (1+mem.Ca_p2)*VecVecTrans(p2) )
+			Imat = rho*0.25*np.pi*mem.d[il]**2*mem.dl * ( (1+mem.Ca_q)*VecVecTrans(q) + (1+mem.Ca_p1)*VecVecTrans(p1) + (1+mem.Ca_p2)*VecVecTrans(p2) )
 			
 			F_exc_inert = np.zeros([3, nw], dtype=complex)  # <<< should set elsewhere <<<
 			for i in range(nw):

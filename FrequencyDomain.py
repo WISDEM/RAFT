@@ -471,14 +471,14 @@ for iiter in range(nIter):
 			vrel = mem.u[il,:] - vnode
 			
 			# break out velocity components in each direction relative to member orientation [nw]
-			vrel_q  = vrel* q[:,None]   # <<<<<<<<<<<<<< what to do about complex values here????
+			vrel_q  = vrel* q[:,None]
 			vrel_p1 = vrel*p1[:,None]
 			vrel_p2 = vrel*p2[:,None]
 			
-			# RMS relative velocity components				
-			vRMS_q  = np.sqrt( np.sum( vrel_q **2) /nw)
-			vRMS_p1 = np.sqrt( np.sum( vrel_p1**2) /nw)
-			vRMS_p2 = np.sqrt( np.sum( vrel_p2**2) /nw)
+			# get RMS of relative velocity component magnitudes (real-valued)
+			vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )  # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
+			vRMS_p1 = np.linalg.norm( np.abs(vrel_p1) )
+			vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
 			
 			# linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
 			Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*mem.d*mem.dl * mem.Cd_q 
@@ -510,8 +510,8 @@ for iiter in range(nIter):
 			
 				# non-frequency-dependent matrices
 				#translateMatrix3to6DOF(mem.r[il,:], )
-				B_tot[:,:,i] = translateMatrix3to6DOF(mem.r[il,:], Bmat)
-				M_tot[:,:,i] = translateMatrix3to6DOF(mem.r[il,:], Amat)
+				B_tot[:,:,i] += translateMatrix3to6DOF(mem.r[il,:], Bmat)
+				M_tot[:,:,i] += translateMatrix3to6DOF(mem.r[il,:], Amat)
 				
 				# frequency-dependent excitation vector
 				F_tot[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag[:,i])

@@ -90,44 +90,89 @@ class Member:
 		# partially submerged case
 		if self.r[0,2]*self.r[-1,2] < 0:    # if member crosses water plane
 				
-			# eventually should interpolate dwp=np.interp(0, self.r[:,2], self.d)
-			dwp = self.d
-			xwp = np.interp(0, self.r[:,2], self.r[:,0])
-			ywp = np.interp(0, self.r[:,2], self.r[:,1])
+		#	# eventually should interpolate dwp=np.interp(0, self.r[:,2], self.d)
+		#	dwp = self.d
+		#	xwp = np.interp(0, self.r[:,2], self.r[:,0])
+		#	ywp = np.interp(0, self.r[:,2], self.r[:,1])
 			
-			# ------------- get hydrostatic derivatives ---------------- (eventually make as Member member function) <<<
+			# ------------- get hydrostatic derivatives ---------------- 
+			
 			# angles
 			beta = np.arctan(q[1],q[0])  # member incline heading from x axis
 			phi  = np.arctan(np.sqrt(q[0]**2 + q[1]**2), q[2])  # member incline angle from vertical
+			
 			# precalculate trig functions
 			cosPhi=np.cos(phi)
 			sinPhi=np.sin(phi)
+			tanPhi=np.tan(phi)
+			cosBeta=np.cos(beta)
+			sinBeta=np.sin(beta)
+			tanBeta=sinBeta/cosBeta
 			
-			# force and moment
+			# derivatives from global to local 
+			dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
+			dPhi_dThy  =  cosBeta
+			dBeta_dThx = -cosBeta/tanBeta**2
+			dBeta_dThy = -sinBeta/tanBeta**2
+			
+			# >>>>>>>>>>> warning, these are untapered-only so far >>>>>>>
+			
+			
+			# buoyancy force and moment about end A
 			Fz = -rho*g*pi*0.25*self.d**2*self.rA[2]/cosPhi
+			M  = -rho*g*pi*( self.d*2/32*(2.0 + tanPhi**2) + 0.5*(self.rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+			Mx = M*dPhi_dThx
+			My = M*dPhi_dThy
+			
+			Fvec = np.zeros(6)                         # buoyancy force (and moment) vector (about PRP)
+			Fvec[2] = Fz                               # vertical buoyancy force [N]
+			Fvec[3] = Mx + Fz*self.r[1]                # moment about x axis [N-m]
+			Fvec[4] = My - Fz*self.r[0]                # moment about y axis [N-m]
 			
 			# derivatives aligned with incline heading
-			dFz_dz   =  rho*g*pi*0.25*self.d**2          /cosPhi
-			dFz_dPhi = -rho*g*pi*0.25*self.d**2*self.rA[2]*sinPhi/cosPhi**2
+			dFz_dz   = -rho*g*pi*0.25*self.d**2                  /cosPhi
+			dFz_dPhi =  rho*g*pi*0.25*self.d**2*self.rA[2]*sinPhi/cosPhi**2
 			dM_dz    =  1.0*dFz_dPhi
 			dM_dPhi  = -rho*g*pi*0.25*self.d**2 * (self.d**2/32*(2*cosPhi + sinPhi**2/CosPhi + 2*sinPhi/cosPhi**2) + 0.5*self.rA[2]**2*(sinPhi**2+1)/cosPhi**3)
 			
-			# derivatives in global coordinates about platform reference point	
-			awp = np.pi/4*dwp**2 /np.cos(self.phi)
-			Iwpx= np.pi/4*dwp**4 * (np.cos(beta)/np.cos(self.phi)**3 + np.sin(beta)/np.cos(self.phi)) # check<<<<
-			Iwpy= np.pi/4*dwp**4 * (np.sin(beta)/np.cos(self.phi)**3 + np.cos(beta)/np.cos(self.phi))
+			# <<<<<<<<<<<< (end warning) <<<<<<<<<
+			
+			
+			# derivatives in global coordinates about platform reference point
+			#dFz_dz is already taken care of
+			dFz_dThx = -dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThx
+			dFz_dThy =  dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy
+
+			dMx_dz   = -dFz_dz*self.rA[1] + dM_dz*dPhi_dThy  #  = dFz_dThx
+			dMy_dz   =  dFz_dz*self.rA[0] + dM_dz*dPhi_dThx  #  = dFz_dThy
+			
+			dMx_dThx = ( dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThx)*self.rA[1] + dM_dPhi*dPhi_dThx*dPhi_dThx   
+			dMx_dThy = (-dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy)*self.rA[1] + dM_dPhi*dPhi_dThx*dPhi_dThy  
+			dMy_dThx =-( dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThx  
+			dMy_dThy =-(-dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThy  
+			
+			# <<< the above contains some parallel axis stuff. I should remove it and use translateMatrix instead <<<<<
+
+			# fill in stiffness matrix
+			Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about PRP)
+			Cmat[2,2] = dFz_dz
+			Cmat[2,3] = dFz_dThx
+			Cmat[2,4] = dFz_dThy
+			Cmat[3,2] = dMx_dz
+			Cmat[4,2] = dMy_dz   # ignoring symmetries for now, as a way to check equations
+			Cmat[3,3] = dMx_dThx
+			Cmat[3,4] = dMx_dThy
+			Cmat[4,3] = dMy_dThx
+			Cmat[4,4] = dMy_dThy
+			
+			
 		
-		# fully submerged case
+		# fully submerged case <<<< not done yet <<<<
 		else:
-			Fz = 0
-			print("TBD")
+			Fvec = np.zeros(6)        # buoyancy force (and moment) vector (about end A)
+			Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about end A)
 			
-		# the below need to be filled in above! <<<<<	
-		#F = np.zeros(6)        # buoyancy force (and moment) vector (about end A)
-		F = Fz
-		Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about end A)
-			
-		return F, Cmat
+		return Fvec, Cmat
 
 
 def getVelocity(r, Xi, ws):
@@ -465,12 +510,11 @@ for mem in memberList:
 
 	# -------------------- get each member's buoyancy/hydrostatic properties -----------------------
 	
-	Fz, Cmat = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
+	Fvec, Cmat = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
 	
-		
-	# now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-	W_tot += translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
-	C_hydro += translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
+	# now convert everything to be about PRP (platform reference point) and add to global vectors/matrices <<<<< needs updating (already about PRP)
+	W_tot   += Fvec # translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
+	C_hydro += Cmat # translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
 
 		
 		

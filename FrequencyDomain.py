@@ -80,7 +80,66 @@ class Member:
 	
 	
 	# >>>>>>>>>>>>> @shousner's method for mass/inertia to go here <<<<<<<<<<<<<<<<<<
-	
+	def getInertia(self):
+        # Total underwater volume of each section (node-to-node) of the member ---------UPPERCASE V = UNDERWATER VOLUME----------
+        V_node = np.zeros([self.n-1])
+        for i in range(self.n-1)
+            V_node[i] = (np.pi/4)*(1/3)*(self.d[i]**2+self.d[i+1]**2+self.d[i]*self.d[i+1])*self.dl # can use radii also, just multiply by 4
+        V = np.sum(V_node)
+        
+        # Volume of steel of the member, assuming each is tapered ---------lowercase v = steel volume----------
+        # Calculated by taking the difference between the total outer volume (above) and the hollowed out volume. Simplified equation shown below
+        v_node = np.zeros([self.n-1])
+        for i in range(self.n-1):
+            v_node[i] = ((self.t/2)*(self.d[i]+self.d[i+1])-self.t**2)*np.pi*self.dl
+        v = np.sum(v_node)
+        
+        # Find the center of buoyancy (which also happens to be the center of gravity) of each section of the member
+        # I use a method by finding how much of a frustum the node-to-node section is. A cylinder section (D_bot = D_top)
+        # has a zB of 0.5*dL while a cone section (D_top = 0) has a zB of 0.25*dL. These are frustum sections in a sense,
+        # so how much of a cone is the frustum? zB_calc outputs a value between 0.25 and 0.5 depending on the diameters.
+        zB_node = np.zeros([self.n-1])
+        for i in range(self.n-1)
+            if self.d[i] >= self.d[i+1]:
+                zB_calc = ((self.d[i+1]/(4*self.d[i]))+(1/4))*self.dl
+                zB_node[i] = self.r[i,2]+zB_calc # Find the CoB in terms of the general coordinates
+            else: # This is the case for when the upper diameter is larger than the lower diameter. Same thing, just backwards
+                zB_calc = ((self.d[i]/(4*self.d[i+1]))+(1/4))*self.dl
+                zB_node[i] = self.r[i,2]+self.dl-zB_calc
+                
+            # From the HydroDyn doc that Matt sent me 6/30/20...should do the same thing
+            # zB_node[i] = (self.dl/4)*((self.d[i]**2 + 2*self.d[i]*self.d[i+1] + 3*self.d[i+1]**2)/(4*(self.d[i]**2 + self.d[i]*self.d[i+1] + self.d[i+1]**2)))
+            
+            # Calculate the total CoB and CoG of the entire member. Stay in the same for loop
+            zB_section[i] = (zB_node[i]*V_node[i])/V
+            zB = np.sum(zB_section)             # DOUBLE CHECK THE SYNTAX AND VARIABLE NAMES
+                                                # ALL THESE RESULTS LIKE zB or V ARE THE FINAL RETURN VALUES OF THE MEMBER. DO I NEED TO MAKE THEM SELF.V?
+            
+            zG_section[i] = (zB_node[i]*v_node[i])/v
+            zG = np.sum(zG_section)
+            
+        # Calculate the moment of inertia of each node-to-node section [kg-m^2]
+        # Easy/simplistic method of taking the average of the upper and lower diameters and calculating it like a cylinder
+        r_outer = np.zeros([self.n-1])
+        r_inner = np.zeros([self.n-1])
+        I_node = np.zeros([self.n-1])
+        I_PA = np.zeros([self.n-1])
+        for i in range(self.n-1):
+            r_outer[i] = ((self.d[i]+self.d[i+1])/2)/2
+            r_inner[i] = (((self.d[i]-(2*self.t))+(self.d[i+1]-(2*self.t)))/2)/2
+            I_node[i] = (1/12)*(rho_steel*v_node[i])*(3*(r_outer[i]**2 + r_inner[i]**2) + 4*self.dl**2) # About node i (aka about the end of the cylinder)
+            I_PA[i] = I_node[i] + ((rho_steel*v_node[i])*(self.r[i,2]-self.rA)**2)      # DOUBLE CHECK THIS H^2 TERM LATER
+            I_total = np.sum(I_PA) # Total radial moment of inertia of the simplified cylinder member about its end [kg-m^2]
+            
+        # Calculate the MOI of each section based on the HydroDyn doc Matt sent me, adjusted for a frustum (aka not assuming a cylinder)
+# =============================================================================
+#         r1[i] = self.d[i]/2
+#         r2[i] = self.d[i+1]/2
+#         m[i] = (self.d[i+1]-self.d[i])/self.dl
+#         Ir_tip[i] = abs((np.pi/20)*(rho_steel/m[i])*(1+(4/m[i]**2))*(r2[i]**5 - r1[i]**5))
+#         Ir_end[i] = abs(Ir_tip[i] - (rho_steel*np.pi/(3*m[i]**2))*(r2[i]**3-r1[i]**3)*((r1[i]/m[i])+2*zB_node[i])*r[i])
+#         I_total[i] = Ir_end[i] + ((rho_steel*v_node[i])*(self.r[i,2]-self.rA)**2)
+# =============================================================================
 	
 	
 	def getHydrostatics(self):

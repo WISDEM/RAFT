@@ -82,7 +82,7 @@ class Member:
     def getInertia(self):
         # Total underwater volume of each section (node-to-node) of the member ---------UPPERCASE V = UNDERWATER VOLUME----------
         V_node = np.zeros([self.n-1])
-        for i in range(self.n-1)
+        for i in range(self.n-1):
             V_node[i] = (np.pi/4)*(1/3)*(self.d[i]**2+self.d[i+1]**2+self.d[i]*self.d[i+1])*self.dl # can use radii also, just multiply by 4
         V = np.sum(V_node)
         
@@ -98,7 +98,7 @@ class Member:
         # has a zB of 0.5*dL while a cone section (D_top = 0) has a zB of 0.25*dL. These are frustum sections in a sense,
         # so how much of a cone is the frustum? zB_calc outputs a value between 0.25 and 0.5 depending on the diameters.
         zB_node = np.zeros([self.n-1])
-        for i in range(self.n-1)
+        for i in range(self.n-1):
             if self.d[i] >= self.d[i+1]:
                 zB_calc = ((self.d[i+1]/(4*self.d[i]))+(1/4))*self.dl
                 zB_node[i] = self.r[i,2]+zB_calc # Find the CoB in terms of the general coordinates

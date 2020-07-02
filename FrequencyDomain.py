@@ -15,72 +15,71 @@ import matplotlib.pyplot as plt
 #  used during the model's operation.
 class Member:
 
-	
-	def __init__(self, strin, nw):
-		'''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
-		
-		
-		'''
-	
-		# note: haven't decided yet how to lump masses and handle segments <<<<
-	
-		entries = strin.split()
-		
-		self.id = np.int(entries[0])
-		self.dA  = np.int(entries[2])                      # diameter of (lower) node
-		self.dB  = np.int(entries[2])
-		self.rA = np.array(entries[3:6], dtype=np.double)  # x y z of lower node
-		self.rB = np.array(entries[6:9], dtype=np.double)
-		self.t  = 0           # shell thickness [m]
-		
-		rAB = self.rB-self.rA
-		self.l = np.linalg.norm(rAB)  # member length
-		
-		self.q = rAB/self.l           # member axial unit vector
-		self.p1 = np.zeros(3)              # member transverse unit vectors (to be filled in later)
-		self.p2 = np.zeros(3)              # member transverse unit vectors
-		
-		
-		self.Cd_q  = 0.1  # drag coefficients
-		self.Cd_p1 = 1.0
-		self.Cd_p2 = 1.0
-		self.Ca_q  = 0.0  # added mass coefficients
-		self.Ca_p1 = 1.0
-		self.Ca_p2 = 1.0
-		
-		
-		self.n = 5 # number of nodes per member
-		self.dl = self.l/self.n   #lumped node lenght (I guess, for now) <<<
-		
-		self.w = 1    # mass per unit length (kg/m)
-		
-		self.r  = np.zeros([self.n,3])  # undisplaced node positions along member  [m]
-		self.d  = np.zeros([self.n,3])  # local diameter along member [m]
-		for i in range(self.n):
-			self.r[i,:] = self.rA + (i/(self.n-1))*rAB                # spread evenly for now
-			self.d[i]   = self.dA + (i/(self.n-1))*(self.dB-self.dA)  # spread evenly since uniform taper
-		
-		# complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
-		self.dr = np.zeros([self.n,3,nw], dtype=complex)  # displacement
-		self.v  = np.zeros([self.n,3,nw], dtype=complex)  # velocity
-		self.a  = np.zeros([self.n,3,nw], dtype=complex)  # acceleration
-		self.u  = np.zeros([self.n,3,nw], dtype=complex)  # wave velocity
-		self.ud = np.zeros([self.n,3,nw], dtype=complex)  # wave acceleration
-		
-		
-	def getDirections(self):
-		'''Returns the direction unit vector for the member based on its end positions'''
-		
-		q  =  self.q
-		p1 = np.zeros(3) # <<<< ???
-		p2 = np.zeros(3) # <<<< ???
-		
-		return q, p1, p2
-	
-	
-	
-	# >>>>>>>>>>>>> @shousner's method for mass/inertia to go here <<<<<<<<<<<<<<<<<<
-	def getInertia(self):
+    def __init__(self, strin, nw):
+        '''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
+        
+        
+        '''
+    
+        # note: haven't decided yet how to lump masses and handle segments <<<<
+    
+        entries = strin.split()
+        
+        self.id = np.int(entries[0])
+        self.dA  = np.int(entries[2])                      # diameter of (lower) node
+        self.dB  = np.int(entries[2])
+        self.rA = np.array(entries[3:6], dtype=np.double)  # x y z of lower node
+        self.rB = np.array(entries[6:9], dtype=np.double)
+        self.t  = 0           # shell thickness [m]
+        
+        rAB = self.rB-self.rA
+        self.l = np.linalg.norm(rAB)  # member length
+        
+        self.q = rAB/self.l           # member axial unit vector
+        self.p1 = np.zeros(3)              # member transverse unit vectors (to be filled in later)
+        self.p2 = np.zeros(3)              # member transverse unit vectors
+        
+        
+        self.Cd_q  = 0.1  # drag coefficients
+        self.Cd_p1 = 1.0
+        self.Cd_p2 = 1.0
+        self.Ca_q  = 0.0  # added mass coefficients
+        self.Ca_p1 = 1.0
+        self.Ca_p2 = 1.0
+        
+        
+        self.n = 5 # number of nodes per member
+        self.dl = self.l/self.n   #lumped node lenght (I guess, for now) <<<
+        
+        self.w = 1    # mass per unit length (kg/m)
+        
+        self.r  = np.zeros([self.n,3])  # undisplaced node positions along member  [m]
+        self.d  = np.zeros([self.n,3])  # local diameter along member [m]
+        for i in range(self.n):
+            self.r[i,:] = self.rA + (i/(self.n-1))*rAB                # spread evenly for now
+            self.d[i]   = self.dA + (i/(self.n-1))*(self.dB-self.dA)  # spread evenly since uniform taper
+        
+        # complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
+        self.dr = np.zeros([self.n,3,nw], dtype=complex)  # displacement
+        self.v  = np.zeros([self.n,3,nw], dtype=complex)  # velocity
+        self.a  = np.zeros([self.n,3,nw], dtype=complex)  # acceleration
+        self.u  = np.zeros([self.n,3,nw], dtype=complex)  # wave velocity
+        self.ud = np.zeros([self.n,3,nw], dtype=complex)  # wave acceleration
+        
+        
+    def getDirections(self):
+        '''Returns the direction unit vector for the member based on its end positions'''
+        
+        q  =  self.q
+        p1 = np.zeros(3) # <<<< ???
+        p2 = np.zeros(3) # <<<< ???
+        
+        return q, p1, p2
+    
+    
+    
+    # >>>>>>>>>>>>> @shousner's method for mass/inertia to go here <<<<<<<<<<<<<<<<<<
+    def getInertia(self):
         # Total underwater volume of each section (node-to-node) of the member ---------UPPERCASE V = UNDERWATER VOLUME----------
         V_node = np.zeros([self.n-1])
         for i in range(self.n-1)
@@ -140,278 +139,279 @@ class Member:
 #         Ir_end[i] = abs(Ir_tip[i] - (rho_steel*np.pi/(3*m[i]**2))*(r2[i]**3-r1[i]**3)*((r1[i]/m[i])+2*zB_node[i])*r[i])
 #         I_total[i] = Ir_end[i] + ((rho_steel*v_node[i])*(self.r[i,2]-self.rA)**2)
 # =============================================================================
-	
-	
-	
-	def getHydrostatics(self):
-		'''Calculates member hydrostatic properties, namely buoyancy and stiffness matrix'''
-		
-			
-		# partially submerged case
-		if self.r[0,2]*self.r[-1,2] < 0:    # if member crosses water plane
-				
-		#	# eventually should interpolate dwp=np.interp(0, self.r[:,2], self.d)
-		#	dwp = self.d
-		#	xwp = np.interp(0, self.r[:,2], self.r[:,0])
-		#	ywp = np.interp(0, self.r[:,2], self.r[:,1])
-			
-			# ------------- get hydrostatic derivatives ---------------- 
-			
-			# angles
-			beta = np.arctan(q[1],q[0])  # member incline heading from x axis
-			phi  = np.arctan(np.sqrt(q[0]**2 + q[1]**2), q[2])  # member incline angle from vertical
-			
-			# precalculate trig functions
-			cosPhi=np.cos(phi)
-			sinPhi=np.sin(phi)
-			tanPhi=np.tan(phi)
-			cosBeta=np.cos(beta)
-			sinBeta=np.sin(beta)
-			tanBeta=sinBeta/cosBeta
-			
-			# derivatives from global to local 
-			dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
-			dPhi_dThy  =  cosBeta
-			dBeta_dThx = -cosBeta/tanBeta**2
-			dBeta_dThy = -sinBeta/tanBeta**2
-			
-			# >>>>>>>>>>> warning, these are untapered-only so far >>>>>>>
-			
-			
-			# buoyancy force and moment about end A
-			Fz = -rho*g*pi*0.25*self.d**2*self.rA[2]/cosPhi
-			M  = -rho*g*pi*( self.d*2/32*(2.0 + tanPhi**2) + 0.5*(self.rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
-			Mx = M*dPhi_dThx
-			My = M*dPhi_dThy
-			
-			Fvec = np.zeros(6)                         # buoyancy force (and moment) vector (about PRP)
-			Fvec[2] = Fz                               # vertical buoyancy force [N]
-			Fvec[3] = Mx + Fz*self.r[1]                # moment about x axis [N-m]
-			Fvec[4] = My - Fz*self.r[0]                # moment about y axis [N-m]
-			
-			# derivatives aligned with incline heading
-			dFz_dz   = -rho*g*pi*0.25*self.d**2                  /cosPhi
-			dFz_dPhi =  rho*g*pi*0.25*self.d**2*self.rA[2]*sinPhi/cosPhi**2
-			dM_dz    =  1.0*dFz_dPhi
-			dM_dPhi  = -rho*g*pi*0.25*self.d**2 * (self.d**2/32*(2*cosPhi + sinPhi**2/CosPhi + 2*sinPhi/cosPhi**2) + 0.5*self.rA[2]**2*(sinPhi**2+1)/cosPhi**3)
-			
-			# <<<<<<<<<<<< (end warning) <<<<<<<<<
-			
-			
-			# derivatives in global coordinates about platform reference point
-			#dFz_dz is already taken care of
-			dFz_dThx = -dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThx
-			dFz_dThy =  dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy
 
-			dMx_dz   = -dFz_dz*self.rA[1] + dM_dz*dPhi_dThy  #  = dFz_dThx
-			dMy_dz   =  dFz_dz*self.rA[0] + dM_dz*dPhi_dThx  #  = dFz_dThy
-			
-			dMx_dThx = ( dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThx)*self.rA[1] + dM_dPhi*dPhi_dThx*dPhi_dThx   
-			dMx_dThy = (-dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy)*self.rA[1] + dM_dPhi*dPhi_dThx*dPhi_dThy  
-			dMy_dThx =-( dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThx  
-			dMy_dThy =-(-dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThy  
-			
-			# <<< the above contains some parallel axis stuff. I should remove it and use translateMatrix instead <<<<<
+    
+    
+    def getHydrostatics(self):
+        '''Calculates member hydrostatic properties, namely buoyancy and stiffness matrix'''
+        
+            
+        # partially submerged case
+        if self.r[0,2]*self.r[-1,2] < 0:    # if member crosses water plane
+                
+        #   # eventually should interpolate dwp=np.interp(0, self.r[:,2], self.d)
+        #   dwp = self.d
+        #   xwp = np.interp(0, self.r[:,2], self.r[:,0])
+        #   ywp = np.interp(0, self.r[:,2], self.r[:,1])
+            
+            # ------------- get hydrostatic derivatives ---------------- 
+            
+            # angles
+            beta = np.arctan(q[1],q[0])  # member incline heading from x axis
+            phi  = np.arctan(np.sqrt(q[0]**2 + q[1]**2), q[2])  # member incline angle from vertical
+            
+            # precalculate trig functions
+            cosPhi=np.cos(phi)
+            sinPhi=np.sin(phi)
+            tanPhi=np.tan(phi)
+            cosBeta=np.cos(beta)
+            sinBeta=np.sin(beta)
+            tanBeta=sinBeta/cosBeta
+            
+            # derivatives from global to local 
+            dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
+            dPhi_dThy  =  cosBeta
+            dBeta_dThx = -cosBeta/tanBeta**2
+            dBeta_dThy = -sinBeta/tanBeta**2
+            
+            # >>>>>>>>>>> warning, these are untapered-only so far >>>>>>>
+            
+            
+            # buoyancy force and moment about end A
+            Fz = -rho*g*pi*0.25*self.d**2*self.rA[2]/cosPhi
+            M  = -rho*g*pi*( self.d*2/32*(2.0 + tanPhi**2) + 0.5*(self.rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+            Mx = M*dPhi_dThx
+            My = M*dPhi_dThy
+            
+            Fvec = np.zeros(6)                         # buoyancy force (and moment) vector (about PRP)
+            Fvec[2] = Fz                               # vertical buoyancy force [N]
+            Fvec[3] = Mx + Fz*self.r[1]                # moment about x axis [N-m]
+            Fvec[4] = My - Fz*self.r[0]                # moment about y axis [N-m]
+            
+            # derivatives aligned with incline heading
+            dFz_dz   = -rho*g*pi*0.25*self.d**2                  /cosPhi
+            dFz_dPhi =  rho*g*pi*0.25*self.d**2*self.rA[2]*sinPhi/cosPhi**2
+            dM_dz    =  1.0*dFz_dPhi
+            dM_dPhi  = -rho*g*pi*0.25*self.d**2 * (self.d**2/32*(2*cosPhi + sinPhi**2/CosPhi + 2*sinPhi/cosPhi**2) + 0.5*self.rA[2]**2*(sinPhi**2+1)/cosPhi**3)
+            
+            # <<<<<<<<<<<< (end warning) <<<<<<<<<
+            
+            
+            # derivatives in global coordinates about platform reference point
+            #dFz_dz is already taken care of
+            dFz_dThx = -dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThx
+            dFz_dThy =  dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy
 
-			# fill in stiffness matrix
-			Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about PRP)
-			Cmat[2,2] = dFz_dz
-			Cmat[2,3] = dFz_dThx
-			Cmat[2,4] = dFz_dThy
-			Cmat[3,2] = dMx_dz
-			Cmat[4,2] = dMy_dz   # ignoring symmetries for now, as a way to check equations
-			Cmat[3,3] = dMx_dThx
-			Cmat[3,4] = dMx_dThy
-			Cmat[4,3] = dMy_dThx
-			Cmat[4,4] = dMy_dThy
-			
-			
-		
-		# fully submerged case <<<< not done yet <<<<
-		else:
-			Fvec = np.zeros(6)        # buoyancy force (and moment) vector (about end A)
-			Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about end A)
-			
-		return Fvec, Cmat
+            dMx_dz   = -dFz_dz*self.rA[1] + dM_dz*dPhi_dThy  #  = dFz_dThx
+            dMy_dz   =  dFz_dz*self.rA[0] + dM_dz*dPhi_dThx  #  = dFz_dThy
+            
+            dMx_dThx = ( dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThx)*self.rA[1] + dM_dPhi*dPhi_dThx*dPhi_dThx   
+            dMx_dThy = (-dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy)*self.rA[1] + dM_dPhi*dPhi_dThx*dPhi_dThy  
+            dMy_dThx =-( dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThx  
+            dMy_dThy =-(-dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThy  
+            
+            # <<< the above contains some parallel axis stuff. I should remove it and use translateMatrix instead <<<<<
+
+            # fill in stiffness matrix
+            Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about PRP)
+            Cmat[2,2] = dFz_dz
+            Cmat[2,3] = dFz_dThx
+            Cmat[2,4] = dFz_dThy
+            Cmat[3,2] = dMx_dz
+            Cmat[4,2] = dMy_dz   # ignoring symmetries for now, as a way to check equations
+            Cmat[3,3] = dMx_dThx
+            Cmat[3,4] = dMx_dThy
+            Cmat[4,3] = dMy_dThx
+            Cmat[4,4] = dMy_dThy
+            
+            
+        
+        # fully submerged case <<<< not done yet <<<<
+        else:
+            Fvec = np.zeros(6)        # buoyancy force (and moment) vector (about end A)
+            Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about end A)
+            
+        return Fvec, Cmat
+
 
 
 def getVelocity(r, Xi, ws):
-	'''Get node complex velocity spectrum based on platform motion's and relative position from PRP'''
-	
-	nw = len(ws)
-		
-	dr = np.zeros([3,nw], dtype=complex) # node displacement complex amplitudes
-	v  = np.zeros([3,nw], dtype=complex) # velocity
-	a  = np.zeros([3,nw], dtype=complex) # acceleration
-		
-	
-	for i in range(nw):
-		dr[:,i] = Xi[:3,i] + SmallRotate(r, Xi[3:,i])
-		v[ :,i] = 1j*ws[i]*dr[:,i]
-		a[ :,i] = 1j*ws[i]*v[ :,i]
-	
+    '''Get node complex velocity spectrum based on platform motion's and relative position from PRP'''
+    
+    nw = len(ws)
+        
+    dr = np.zeros([3,nw], dtype=complex) # node displacement complex amplitudes
+    v  = np.zeros([3,nw], dtype=complex) # velocity
+    a  = np.zeros([3,nw], dtype=complex) # acceleration
+        
+    
+    for i in range(nw):
+        dr[:,i] = Xi[:3,i] + SmallRotate(r, Xi[3:,i])
+        v[ :,i] = 1j*ws[i]*dr[:,i]
+        a[ :,i] = 1j*ws[i]*v[ :,i]
+    
 
-	return dr, v, a # node dispalcement, velocity, acceleration (Each  [3 x nw])
-		
-	
+    return dr, v, a # node dispalcement, velocity, acceleration (Each  [3 x nw])
+        
+    
 ## Get wave velocity and acceleration complex amplitudes based on wave spectrum at a given location
 def getWaveKin(zeta0, w, k, h, r):
 
-	# inputs: wave elevation fft, wave freqs, wave numbers, depth, point position
+    # inputs: wave elevation fft, wave freqs, wave numbers, depth, point position
 
-	beta = 0  # no wave heading for now
+    beta = 0  # no wave heading for now
 
-	zeta = np.zeros(nw , dtype=complex ) # local wave elevation
-	u  = np.zeros([3,nw], dtype=complex) # local wave kinematics velocity
-	ud = np.zeros([3,nw], dtype=complex) # local wave kinematics acceleration
-	
-	for i in range(nw):
-	
-		# .............................. wave elevation ...............................
-		zeta[i] = zeta0[i]* np.exp( -1j*(k[i]*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))  # shift each zetaC to account for location
-		
-		
-		# ...................... wave velocities and accelerations ............................
-		
-		z = r[2]
-		
-		# Calculate SINH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/SINH( k*h )
-		# given the wave number, k, water depth, h, and elevation z, as inputs.
-		if (    k[i]   == 0.0  ):  					# When .TRUE., the shallow water formulation is ill-conditioned; thus, the known value of unity is returned.
-			SINHNumOvrSIHNDen = 1.0
-			COSHNumOvrSIHNDen = 99999
-		elif ( k[i]*h >  89.4 ):  				# When .TRUE., the shallow water formulation will trigger a floating point overflow error; however, with h > 14.23*wavelength (since k = 2*Pi/wavelength) we can use the numerically-stable deep water formulation instead.
-			SINHNumOvrSIHNDen = np.exp(  k[i]*z );
-			COSHNumOvrSIHNDen = np.exp(  k[i]*z );
-		else:                                    # 0 < k*h <= 89.4; use the shallow water formulation.
-			SINHNumOvrSIHNDen = np.sinh( k[i]*( z + h ) )/np.sinh( k[i]*h );
-			COSHNumOvrSIHNDen = np.cosh( k[i]*( z + h ) )/np.sinh( k[i]*h );
-		
-		# Fourier transform of wave velocities 
-		u[0,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.cos(beta) 
-		u[1,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.sin(beta)
-		u[2,i] = 1j*w[i]* zeta[i]*SINHNumOvrSIHNDen
+    zeta = np.zeros(nw , dtype=complex ) # local wave elevation
+    u  = np.zeros([3,nw], dtype=complex) # local wave kinematics velocity
+    ud = np.zeros([3,nw], dtype=complex) # local wave kinematics acceleration
+    
+    for i in range(nw):
+    
+        # .............................. wave elevation ...............................
+        zeta[i] = zeta0[i]* np.exp( -1j*(k[i]*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))  # shift each zetaC to account for location
+        
+        
+        # ...................... wave velocities and accelerations ............................
+        
+        z = r[2]
+        
+        # Calculate SINH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/SINH( k*h )
+        # given the wave number, k, water depth, h, and elevation z, as inputs.
+        if (    k[i]   == 0.0  ):                   # When .TRUE., the shallow water formulation is ill-conditioned; thus, the known value of unity is returned.
+            SINHNumOvrSIHNDen = 1.0
+            COSHNumOvrSIHNDen = 99999
+        elif ( k[i]*h >  89.4 ):                # When .TRUE., the shallow water formulation will trigger a floating point overflow error; however, with h > 14.23*wavelength (since k = 2*Pi/wavelength) we can use the numerically-stable deep water formulation instead.
+            SINHNumOvrSIHNDen = np.exp(  k[i]*z );
+            COSHNumOvrSIHNDen = np.exp(  k[i]*z );
+        else:                                    # 0 < k*h <= 89.4; use the shallow water formulation.
+            SINHNumOvrSIHNDen = np.sinh( k[i]*( z + h ) )/np.sinh( k[i]*h );
+            COSHNumOvrSIHNDen = np.cosh( k[i]*( z + h ) )/np.sinh( k[i]*h );
+        
+        # Fourier transform of wave velocities 
+        u[0,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.cos(beta) 
+        u[1,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.sin(beta)
+        u[2,i] = 1j*w[i]* zeta[i]*SINHNumOvrSIHNDen
 
-		# Fourier transform of wave accelerations					
-		ud[:,i] = 1j*w[i]*u[:,i]
-		
-	return u, ud
+        # Fourier transform of wave accelerations                   
+        ud[:,i] = 1j*w[i]*u[:,i]
+        
+    return u, ud
 
 
 # calculate wave number based on wave frequency in rad/s and depth
 def waveNumber(omega, h, e=0.001):
-	
-	g = 9.81
-	# omega - angular frequency of waves
-	
-	k = 0                          	#initialize  k outside of loop
-									#error tolerance
-	k1 = omega*omega/g                 	#deep water approx of wave number
-	k2 = omega*omega/(np.tanh(k1*h)*g)    	#general formula for wave number
-	while np.abs(k2 - k1)/k1 > e:          	#repeate until converges
-		k1 = k2
-		k2 = omega*omega/(np.tanh(k1*h)*g)
-	
-	k = k2
-	
-	return k
-	
+    
+    g = 9.81
+    # omega - angular frequency of waves
+    
+    k = 0                           #initialize  k outside of loop
+                                    #error tolerance
+    k1 = omega*omega/g                  #deep water approx of wave number
+    k2 = omega*omega/(np.tanh(k1*h)*g)      #general formula for wave number
+    while np.abs(k2 - k1)/k1 > e:           #repeate until converges
+        k1 = k2
+        k2 = omega*omega/(np.tanh(k1*h)*g)
+    
+    k = k2
+    
+    return k
+    
 
 # translate point at location r based on three small angles in th
 def SmallRotate(r, th):
-	
-	rt = np.zeros(3, dtype=complex)    # translated point
-	
-	rt[0] =              th[2]*r[1] - th[1]*r[2]
-	rt[0] = th[2]*r[0]              - th[0]*r[2]
-	rt[0] = th[1]*r[0] - th[0]*r[1]
-	
-	return rt
-	
-	
+    
+    rt = np.zeros(3, dtype=complex)    # translated point
+    
+    rt[0] =              th[2]*r[1] - th[1]*r[2]
+    rt[0] = th[2]*r[0]              - th[0]*r[2]
+    rt[0] = th[1]*r[0] - th[0]*r[1]
+    
+    return rt
+    
+    
 # given a size-3 vector, vec, return the matrix from the multiplication vec * vec.transpose
 def VecVecTrans(vec):
 
-	vvt = np.zeros([3,3])
-	
-	for i in range(3):
-		for j in range(3):
-			vvt[i,j]= vec[i]*vec[j]
-			
-	return vvt
-	
+    vvt = np.zeros([3,3])
+    
+    for i in range(3):
+        for j in range(3):
+            vvt[i,j]= vec[i]*vec[j]
+            
+    return vvt
+    
 
 # produce alternator matrix
 def getH(r):
 
-	H = np.zeros([3,3])
-	H[0,1] =  r[2];
-	H[1,0] = -r[2];
-	H[0,2] = -r[1];
-	H[2,0] =  r[1];
-	H[1,2] =  r[0];
-	H[2,1] = -r[0];
-	
-	return H
+    H = np.zeros([3,3])
+    H[0,1] =  r[2];
+    H[1,0] = -r[2];
+    H[0,2] = -r[1];
+    H[2,0] =  r[1];
+    H[1,2] =  r[0];
+    H[2,1] = -r[0];
+    
+    return H
 
 
 
 def translateForce3to6DOF(r, Fin):
-	'''Takes in a position vector and a force vector (applied at the positon), and calculates 
-	the resulting 6-DOF force and moment vector.
-	
-	'''
-	Fout = np.zeros(6, dtype=Fin.dtype) # initialize output vector as same dtype as input vector (to support both real and complex inputs)
-	
-	Fout[:3] = Fin
-	
-	Fout[3:] = np.cross(r, Fin)
-	
-	return Fout
+    '''Takes in a position vector and a force vector (applied at the positon), and calculates 
+    the resulting 6-DOF force and moment vector.
+    
+    '''
+    Fout = np.zeros(6, dtype=Fin.dtype) # initialize output vector as same dtype as input vector (to support both real and complex inputs)
+    
+    Fout[:3] = Fin
+    
+    Fout[3:] = np.cross(r, Fin)
+    
+    return Fout
 
-	
-	
+    
+    
 # translate mass matrix to make 6DOF mass-inertia matrix
 def translateMatrix3to6DOF(r, Min):
 
-	# note that the J term and I terms are zero in this case because the input is just a mass matrix (assumed to be about CG)
+    # note that the J term and I terms are zero in this case because the input is just a mass matrix (assumed to be about CG)
 
-	H = getH(r)     # "anti-symmetric tensor components" from Sadeghi and Incecik
-	
-	Mout = np.zeros([6,6]) #, dtype=complex)
-	
-	# mass matrix  [m'] = [m]
-	Mout[:3,:3] = Min
-		
-	# product of inertia matrix  [J'] = [m][H] + [J]  
-	Mout[3:,:3] = np.matmul(Min, H)
-	Mout[:3,3:] = Mout[3:,:3].T
-	
-	# moment of inertia matrix  [I'] = [H][m][H]^T + [J]^T [H] + [H]^T [J] + [I]
-	
-	Mout[3:,3:] = np.matmul(np.matmul(H,Min), H.T) 
-	
-	return Mout
+    H = getH(r)     # "anti-symmetric tensor components" from Sadeghi and Incecik
+    
+    Mout = np.zeros([6,6]) #, dtype=complex)
+    
+    # mass matrix  [m'] = [m]
+    Mout[:3,:3] = Min
+        
+    # product of inertia matrix  [J'] = [m][H] + [J]  
+    Mout[3:,:3] = np.matmul(Min, H)
+    Mout[:3,3:] = Mout[3:,:3].T
+    
+    # moment of inertia matrix  [I'] = [H][m][H]^T + [J]^T [H] + [H]^T [J] + [I]
+    
+    Mout[3:,3:] = np.matmul(np.matmul(H,Min), H.T) 
+    
+    return Mout
 
 
 def translateMatrix6to6DOF(r, Min):
 
-	H = getH(r)     # "anti-symmetric tensor components" from Sadeghi and Incecik
-	
-	Mout = np.zeros([6,6]) #, dtype=complex)
-	
-	# mass matrix  [m'] = [m]
-	Mout[:3,:3] = Min[:3,:3]
-		
-	# product of inertia matrix  [J'] = [m][H] + [J]
-	Mout[3:,:3] = np.matmul(Min[:3,:3], H) + Min[3:,:3]
-	Mout[:3,3:] = Mout[3:,:3].T
-	
-	# moment of inertia matrix  [I'] = [H][m][H]^T + [J]^T [H] + [H]^T [J] + [I]	
-	Mout[3:,3:] = np.matmul(np.matmul(H,Min[:3,:3]), H.T) + np.matmul(Min[:3,3:], H) + np.matmul(H.T, Min[3:,:3]) + Min[3:,3:]
-	
-	return Mout
-	
+    H = getH(r)     # "anti-symmetric tensor components" from Sadeghi and Incecik
+    
+    Mout = np.zeros([6,6]) #, dtype=complex)
+    
+    # mass matrix  [m'] = [m]
+    Mout[:3,:3] = Min[:3,:3]
+        
+    # product of inertia matrix  [J'] = [m][H] + [J]
+    Mout[3:,:3] = np.matmul(Min[:3,:3], H) + Min[3:,:3]
+    Mout[:3,3:] = Mout[3:,:3].T
+    
+    # moment of inertia matrix  [I'] = [H][m][H]^T + [J]^T [H] + [H]^T [J] + [I]    
+    Mout[3:,3:] = np.matmul(np.matmul(H,Min[:3,:3]), H.T) + np.matmul(Min[:3,3:], H) + np.matmul(H.T, Min[3:,:3]) + Min[3:,3:]
+    
+    return Mout
+    
 
 
 # ------------------------------- basic setup -----------------------------------------
@@ -497,16 +497,16 @@ T = 2*np.pi/w # periods
 
 for imeto in range(len(Hs)):       # loop through each environmental condition
 
-	# make wave spectrum (could replace with function call)
-	S[imeto,:] = 1/2/np.pi *5/16 * Hs[imeto]**2*T *(w*Tp[imeto]/2/np.pi)**(-5) *np.exp( -5/4* (w*Tp[imeto]/2/np.pi)**(-4) )
+    # make wave spectrum (could replace with function call)
+    S[imeto,:] = 1/2/np.pi *5/16 * Hs[imeto]**2*T *(w*Tp[imeto]/2/np.pi)**(-5) *np.exp( -5/4* (w*Tp[imeto]/2/np.pi)**(-4) )
 
-	# wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
-	zeta[imeto,:] = np.sqrt(S[imeto,:])
-	
+    # wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
+    zeta[imeto,:] = np.sqrt(S[imeto,:])
+    
 
 # get wave number
 for i in range(nw):
-	k[i] = waveNumber(w[i], depth)
+    k[i] = waveNumber(w[i], depth)
 
 
 
@@ -514,78 +514,95 @@ for i in range(nw):
 #for imeto = 1:length(windspeeds)
 imeto = 0
 
-# ------------------ get wave kinematics along each member ---------------------
-
-# loop through each member
-for mem in memberList:
-	
-	# loop through each node of the member
-	for il in range(mem.n):
-		
-		# function to get wave kinematics spectra given a certain spectrum and location
-		mem.u[il,:,:], mem.ud[il,:,:] = getWaveKin(zeta[imeto,:], w, k, depth, mem.r[il,:])    
 
 
 # ---------------------- set up key arrays -----------------------------
 
-# response 
-Xi = np.zeros([6,nw], dtype=complex)
+# structure-related arrays
+M_struc = np.zeros([6,6])    # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
+C_struc = np.zeros([6,6])    # structure effective stiffness matrix [N/m, N, N-m]
+W_struc = np.zeros([6])      # static weight vector [N, N-m]
 
-# constant coefficient arrays
-W_tot = np.zeros([6])   # weight vector
-M_ss  = np.zeros([6,6]) # structure/static mass/inertia matrix
+# hydrodynamics-related arrays
+A_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
+B_hydro = np.zeros([6,6,nw])             # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
+C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N, N-m]
+W_hydro = np.zeros(6)                    # buoyancy force/moment vector [N, N-m]
+F_hydro = np.zeros([6,nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
 
-C_hydro = np.zeros([6,6]) # hydrostatic stiffness matrix
+# final coefficient arrays
+M_tot = np.zeros([6,6,nw])              # total mass and added mass matrix [kg, kg-m, kg-m^2]
+B_tot = np.zeros([6,6,nw])              # total damping matrix [N-s/m, N-s, N-s-m]
+C_tot = np.zeros([6,6,nw])              # total stiffness matrix [N/m, N, N-m]
+F_tot = np.zeros([6,nw], dtype=complex) # total excitation force/moment complex amplitudes vector [N, N-m]
+
+# system response 
+Xi = np.zeros([6,nw], dtype=complex)    # displacement and rotation complex amplitudes [m, rad]
 
 
+# --------------- add in linear hydrodynamic coefficients here if applicable --------------------
 
-# ---------- add in linear hydrodynamic coefficients here if applicable --------------------
 # TODO <<<
 
 
 # --------------- Get general geometry properties including hydrostatics ------------------------
 
-# TODO: find a smart way to get GM by linearizing hydrostatic response to pitch/roll! <<<
-
 # loop through each member
 for mem in memberList:
-	
-	q, p1, p2 = mem.getDirections()                # get unit direction vectors
-	
-	
-	# ---------------------- get member's mass and inertia properties ------------------------------
-	
-	# >>>> call to @shousner's Member method(s) <<<<
-	
-	# the method should compute the mass/inertia matrix, instead of the placeholders below
-	mass = mem.l*mem.w     # kg
-	iner = 0               # kg-m^2 
-	Mmat = np.diag([mass, mass, mass, iner, iner, iner])  # make quick dummy mass/inertia matrix
-		
-	# now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-	W_tot += translateForce3to6DOF( mem.rA, np.array([0,0, -g*mass]) )  # weight vector
-	M_ss  += translateMatrix6to6DOF(mem.rA, Mmat)                       # mass/inertia matrix
+    
+    q, p1, p2 = mem.getDirections()                # get unit direction vectors
+    
+    
+    # ---------------------- get member's mass and inertia properties ------------------------------
+    
+    # >>>> call to @shousner's Member method(s) <<<<
+    
+    # the method should compute the mass/inertia matrix, instead of the placeholders below
+    mass = mem.l*mem.w     # kg
+    iner = 0               # kg-m^2 
+    Mmat = np.diag([mass, mass, mass, iner, iner, iner])  # make quick dummy mass/inertia matrix
+        
+    # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+    W_tot += translateForce3to6DOF( mem.rA, np.array([0,0, -g*mass]) )  # weight vector
+    M_ss  += translateMatrix6to6DOF(mem.rA, Mmat)                       # mass/inertia matrix
+
+    # @shousner, fill in _struc arrays above
 
 
+    # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
+    
+    Fvec, Cmat = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
+    
+    # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices <<<<< needs updating (already about PRP)
+    W_hydro += Fvec # translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
+    C_hydro += Cmat # translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
 
-	# -------------------- get each member's buoyancy/hydrostatic properties -----------------------
-	
-	Fvec, Cmat = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
-	
-	# now convert everything to be about PRP (platform reference point) and add to global vectors/matrices <<<<< needs updating (already about PRP)
-	W_tot   += Fvec # translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
-	C_hydro += Cmat # translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
+        
+        
 
-		
-		
-
-	# ----------------------------- end of Member-specific preprocessing ---------------------------
-
+# ----------------------------- any solving for operatiting point goes here ----------------------
 
 # solve for mean offsets (operating point)
 Fthrust = 800e3       # N
 Mthust = 100*Fthrust  # N-m
 
+# >>> W and K for struc and hydro will come into play here to find mean pitch angle <<<
+
+
+# ------------------------- get wave kinematics along each member ---------------------------------
+
+# loop through each member
+for mem in memberList:
+    
+    # loop through each node of the member
+    for il in range(mem.n):
+        
+        # function to get wave kinematics spectra given a certain spectrum and location
+        mem.u[il,:,:], mem.ud[il,:,:] = getWaveKin(zeta[imeto,:], w, k, depth, mem.r[il,:])    
+
+
+
+# ------------------- solve for platform dynamics, iterating until convergence --------------------
 
 
 nIter = 2  # maximum number of iterations to allow
@@ -593,186 +610,181 @@ nIter = 2  # maximum number of iterations to allow
 # start fixed point iteration loop for dynamics
 for iiter in range(nIter):
 
-	# ------ calculate linearized coefficients within iteration ------- <<< some of this could likely only be done once...>>>
-
-	# varying coefficient arrays
-	M_tot = np.zeros([6,6,nw])
-	B_tot = np.zeros([6,6,nw])
-	C_tot = np.zeros([6,6,nw])
-	F_tot = np.zeros([6,nw], dtype=complex)
+    # ------ calculate linearized coefficients within iteration ------- <<< some of this could likely only be done once...>>>
 
 
-	# loop through each member
-	for mem in memberList:
-		
-		q, p1, p2 = mem.getDirections()                # get unit direction vectors
-		
-		# loop through each node of the member
-		for il in range(mem.n):
-			
-			# node displacement, velocity, and acceleration (each [3 x nw])
-			drnode, vnode, anode = getVelocity(mem.r[il,:], Xi, w)      # get node complex velocity spectrum based on platform motion's and relative position from PRP
-			
-			# water relative velocity over node (complex amplitude spectrum)  [3 x nw]
-			vrel = mem.u[il,:] - vnode
-			
-			# break out velocity components in each direction relative to member orientation [nw]
-			vrel_q  = vrel* q[:,None]
-			vrel_p1 = vrel*p1[:,None]
-			vrel_p2 = vrel*p2[:,None]
-			
-			# get RMS of relative velocity component magnitudes (real-valued)
-			vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )  # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
-			vRMS_p1 = np.linalg.norm( np.abs(vrel_p1) )
-			vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
-			
-			# linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
-			Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*mem.d[il]*mem.dl * mem.Cd_q 
-			Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p1
-			Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p2
-			
-			# convert to global orientation
-			Bmat = Bprime_q*VecVecTrans(q) + Bprime_p1*VecVecTrans(p1) + Bprime_p2*VecVecTrans(p2)
-			
-			# excitation force based on linearized damping coefficients [3 x nw]
-			F_exc_drag = np.zeros([3, nw], dtype=complex)  # <<< should set elsewhere <<<
-			for i in range(nw):
-				F_exc_drag[:,i] = np.matmul(Bmat, mem.u[il,:,i])  # get local 3d drag excitation force complex amplitude for each frequency
-			
-			
-			# added mass...
-			Amat = rho*0.25*np.pi*mem.d[il]**2*mem.dl *( mem.Ca_q*VecVecTrans(q) + mem.Ca_p1*VecVecTrans(p1) + mem.Ca_p2*VecVecTrans(p2) )
-			
-			
-			# inertial excitation...
-			Imat = rho*0.25*np.pi*mem.d[il]**2*mem.dl * ( (1+mem.Ca_q)*VecVecTrans(q) + (1+mem.Ca_p1)*VecVecTrans(p1) + (1+mem.Ca_p2)*VecVecTrans(p2) )
-			
-			F_exc_inert = np.zeros([3, nw], dtype=complex)  # <<< should set elsewhere <<<
-			for i in range(nw):
-				F_exc_inert[:,i] = np.matmul(Imat, mem.ud[il,:,i])  # get local 3d inertia excitation force complex amplitude for each frequency
-			
-			
-			for i in range(nw):
-			
-				# non-frequency-dependent matrices
-				#translateMatrix3to6DOF(mem.r[il,:], )
-				B_tot[:,:,i] += translateMatrix3to6DOF(mem.r[il,:], Bmat)
-				M_tot[:,:,i] += translateMatrix3to6DOF(mem.r[il,:], Amat)
-				
-				# frequency-dependent excitation vector
-				F_tot[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag[:,i])
-				F_tot[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert[:,i])
+    # loop through each member
+    for mem in memberList:
+        
+        q, p1, p2 = mem.getDirections()                # get unit direction vectors
+        
+        # loop through each node of the member
+        for il in range(mem.n):
+            
+            # node displacement, velocity, and acceleration (each [3 x nw])
+            drnode, vnode, anode = getVelocity(mem.r[il,:], Xi, w)      # get node complex velocity spectrum based on platform motion's and relative position from PRP
+            
+            # water relative velocity over node (complex amplitude spectrum)  [3 x nw]
+            vrel = mem.u[il,:] - vnode
+            
+            # break out velocity components in each direction relative to member orientation [nw]
+            vrel_q  = vrel* q[:,None]
+            vrel_p1 = vrel*p1[:,None]
+            vrel_p2 = vrel*p2[:,None]
+            
+            # get RMS of relative velocity component magnitudes (real-valued)
+            vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )  # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
+            vRMS_p1 = np.linalg.norm( np.abs(vrel_p1) )
+            vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
+            
+            # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
+            Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*mem.d[il]*mem.dl * mem.Cd_q 
+            Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p1
+            Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p2
+            
+            # convert to global orientation
+            Bmat = Bprime_q*VecVecTrans(q) + Bprime_p1*VecVecTrans(p1) + Bprime_p2*VecVecTrans(p2)
+            
+            # excitation force based on linearized damping coefficients [3 x nw]
+            F_exc_drag = np.zeros([3, nw], dtype=complex)  # <<< should set elsewhere <<<
+            for i in range(nw):
+                F_exc_drag[:,i] = np.matmul(Bmat, mem.u[il,:,i])  # get local 3d drag excitation force complex amplitude for each frequency
+            
+            
+            # added mass...
+            Amat = rho*0.25*np.pi*mem.d[il]**2*mem.dl *( mem.Ca_q*VecVecTrans(q) + mem.Ca_p1*VecVecTrans(p1) + mem.Ca_p2*VecVecTrans(p2) )
+            
+            
+            # inertial excitation...
+            Imat = rho*0.25*np.pi*mem.d[il]**2*mem.dl * ( (1+mem.Ca_q)*VecVecTrans(q) + (1+mem.Ca_p1)*VecVecTrans(p1) + (1+mem.Ca_p2)*VecVecTrans(p2) )
+            
+            F_exc_inert = np.zeros([3, nw], dtype=complex)  # <<< should set elsewhere <<<
+            for i in range(nw):
+                F_exc_inert[:,i] = np.matmul(Imat, mem.ud[il,:,i])  # get local 3d inertia excitation force complex amplitude for each frequency
+            
+            
+            for i in range(nw):
+            
+                # non-frequency-dependent matrices
+                #translateMatrix3to6DOF(mem.r[il,:], )
+                B_hydro[:,:,i] += translateMatrix3to6DOF(mem.r[il,:], Bmat)
+                A_hydro[:,:,i] += translateMatrix3to6DOF(mem.r[il,:], Amat)
+                
+                # frequency-dependent excitation vector
+                F_hydro[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag[:,i])
+                F_hydro[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert[:,i])
 
 
 
+    # ----------------------------- solve matrix equation of motion ------------------------------
+    
+    for ii in range(nw):
+        
+        
+        # sum contributions for each term
+        
+        M_tot[:,:,ii] = M_wt{imeto} + M_p + permute(A_h(ii,:,:), [2 3 1]) + A_mor[:,:,ii]; # note reordering of hydro dimensions
+        
+        B_tot[:,:,ii] = B_wt{imeto} + permute(B_h(ii,:,:), [2 3 1]) + Bvisc[:,:,ii];
+        
+        C_tot[:,:,ii] = C_wt{imeto} + C_p + C_h + C_l(:,:,imeto);
+            
+        F_tot[:,ii] = F_h(ii,1,:)*sqrt(S(imeto,ii))
+        
+        # form impedance matrix
+        
+        Z[:,:,ii] = -w[ii]**2 * M_tot[:,:,ii] + 1i*w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii];
+        
+        
+        
+        Xi[:,ii] = np.linalg.matmul(np.linalg.invert(Z[:,:,ii]),  F_tot[:,ii] )  # response # reordering dimensions back to (freq, dof)
+    
+    
+    '''
 
-	# ---------------- solve matrix equation of motion -----------------
-	'''
-	for ii in range(nw):
-		
-		
-		# sum contributions for each term
-		
-		M_tot[:,:,ii] = M_wt{imeto} + M_p + permute(A_h(ii,:,:), [2 3 1]) + A_mor[:,:,ii]; # note reordering of hydro dimensions
-		
-		B_tot[:,:,ii] = B_wt{imeto} + permute(B_h(ii,:,:), [2 3 1]) + Bvisc[:,:,ii];
-		
-		C_tot[:,:,ii] = C_wt{imeto} + C_p + C_h + C_l(:,:,imeto);
-			
-		F_tot[:,ii] = F_h(ii,1,:)*sqrt(S(imeto,ii))
-		
-		# form impedance matrix
-		
-		Z[:,:,ii] = -w[ii]**2 * M_tot[:,:,ii] + 1i*w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii];
-		
-		
-		
-		Xi[:,ii] = np.linalg.matmul(np.linalg.invert(Z[:,:,ii]),  F_tot[:,ii] )  # response # reordering dimensions back to (freq, dof)
-	
+    #Xi{imeto} = rao{imeto}.*repmat(sqrt(S(:,imeto)),1,6); # complex response!
+    
+    #aNacRAO{imeto} = -(w').^2 .* (rao{imeto}(:,1) + hNac*rao{imeto}(:,5));      # Nacelle Accel RAO
+    #aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));     # RMS Nacelle Accel
 
-	#Xi{imeto} = rao{imeto}.*repmat(sqrt(S(:,imeto)),1,6); # complex response!
-	
-	#aNacRAO{imeto} = -(w').^2 .* (rao{imeto}(:,1) + hNac*rao{imeto}(:,5));      # Nacelle Accel RAO
-	#aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));   	# RMS Nacelle Accel
+    
+    # ----------------- convergence check --------------------
+    conv = abs(aNac2(imeto)/aNac2last - 1);
+    #disp(['at ' num2str(iiter) ' iterations - convergence is ' num2str(conv)])
+    if conv < 0.0001
 
-	
-	# ----------------- convergence check --------------------
-	conv = abs(aNac2(imeto)/aNac2last - 1);
-	#disp(['at ' num2str(iiter) ' iterations - convergence is ' num2str(conv)])
-	if conv < 0.0001
+         
+         break
+    else
+         aNac2last = aNac2(imeto);
+    end
 
-		 
-		 break
-	else
-		 aNac2last = aNac2(imeto);
-	end
+            
+            >>>> this part still old Matlab code >>>
 
-			
-			>>>> this part still old Matlab code >>>
+            # damping in each DOF for each cylinder's member
+            Bbvisc11 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF) ));
+            Bbvisc22 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF) ));
+            Bbvisc33 = sum( Bbprime(icyl,:)); 
+            Bbvisc15 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF) )) * z1;
+            Bbvisc24 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF) )) * z1;
+            # neglecting B16 and B26 damping coupling due to axial symmetry
+            Bbvisc44 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF)) .* (ybar.^2 + z1^2));
+            Bbvisc55 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF)) .* (xbar.^2 + z1^2)); # note I'm not including moment of inertia, just x^2+y^2
+            Bbvisc66 = sum( Bbprime(icyl,:) .* (xbar.^2 + ybar.^2) );  # this is wrong!!!
 
-			# damping in each DOF for each cylinder's member
-			Bbvisc11 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF) ));
-			Bbvisc22 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF) ));
-			Bbvisc33 = sum( Bbprime(icyl,:)); 
-			Bbvisc15 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF) )) * z1;
-			Bbvisc24 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF) )) * z1;
-			# neglecting B16 and B26 damping coupling due to axial symmetry
-			Bbvisc44 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF)) .* (ybar.^2 + z1^2));
-			Bbvisc55 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF)) .* (xbar.^2 + z1^2)); # note I'm not including moment of inertia, just x^2+y^2
-			Bbvisc66 = sum( Bbprime(icyl,:) .* (xbar.^2 + ybar.^2) );  # this is wrong!!!
-
-			# added mass in each DOF for each tendon
-			C_a = 0.97; # added mass coefficient [from Jonkman OCC phase IV]
-			A_mor11 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF) ))* C_a;
-			A_mor22 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF)  ))* C_a;
-			A_mor33 =      pi/4*db^2*lb * C_a;
-			A_mor15 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF) )) * z1 * C_a;
-			A_mor24 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF) )) * z1 * C_a;
-			A_mor44 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF)) .* (ybar.^2 + z1^2)) * C_a;
-			A_mor55 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF)) .* (xbar.^2 + z1^2)) * C_a;
-			A_mor66 = sum( pi/4*db^2*lb/ns .* (xbar.^2 + ybar.^2) ) * C_a;  # this is wrong!!!
-		
-		
-		
-		# bottoms / heave plates	
-		
-		# A3(:,icyl) = Xi{imeto}(:,3) + yfloat*Xi{imeto}(:,4) - xfloat*Xi{imeto}(:,5); # heave motion
-		# Arms(icyl) = sqrt( sum( (abs(A3(:,icyl))).^2 ) /length(w));
-		
-		# Bvisc33 = 2/3*rho*dc^3*w*(0.2 + 0.5*(2*pi*Arms(icyl)/dc)); #  Consider getting rid of w dependency with a simpler model? (also in B44, B55)
-		
-		
-			
-	'''
+            # added mass in each DOF for each tendon
+            C_a = 0.97; # added mass coefficient [from Jonkman OCC phase IV]
+            A_mor11 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF) ))* C_a;
+            A_mor22 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF)  ))* C_a;
+            A_mor33 =      pi/4*db^2*lb * C_a;
+            A_mor15 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF) )) * z1 * C_a;
+            A_mor24 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF) )) * z1 * C_a;
+            A_mor44 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF)) .* (ybar.^2 + z1^2)) * C_a;
+            A_mor55 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF)) .* (xbar.^2 + z1^2)) * C_a;
+            A_mor66 = sum( pi/4*db^2*lb/ns .* (xbar.^2 + ybar.^2) ) * C_a;  # this is wrong!!!
+        
+        
+        
+        # bottoms / heave plates    
+        
+        # A3(:,icyl) = Xi{imeto}(:,3) + yfloat*Xi{imeto}(:,4) - xfloat*Xi{imeto}(:,5); # heave motion
+        # Arms(icyl) = sqrt( sum( (abs(A3(:,icyl))).^2 ) /length(w));
+        
+        # Bvisc33 = 2/3*rho*dc^3*w*(0.2 + 0.5*(2*pi*Arms(icyl)/dc)); #  Consider getting rid of w dependency with a simpler model? (also in B44, B55)
+        
+        
+            
+    '''
 
  
  # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
 '''
  
  for il=1:Platf.Nlines
-	  
-	  #aNacRAO{imeto} = -(w').^2 .* (X{imeto}(:,1) + hNac*X{imeto}(:,5));      # Nacelle Accel RAO
-		#aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));   	# RMS Nacelle Accel
+      
+      #aNacRAO{imeto} = -(w').^2 .* (X{imeto}(:,1) + hNac*X{imeto}(:,5));      # Nacelle Accel RAO
+        #aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));     # RMS Nacelle Accel
 
-	TfairRAO{imeto}(il,:) = C_lf(il,:,imeto)*rao{imeto}(:,:)';  # get fairlead tension RAO for each line (multiply by dofs)
-	  #RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:))).^2) / length(w) );
-	  #figure
-	#plot(w,abs(TfairRAO{imeto}(il,:)))
-	  #d=TfairRAO{imeto}(il,:)
-	  RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)') *(w(2)-w(1)) );
-	  #RMSTfair
-	  #sumpart = sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)')
-	  #dw=(w(2)-w(1))
- end	    
+    TfairRAO{imeto}(il,:) = C_lf(il,:,imeto)*rao{imeto}(:,:)';  # get fairlead tension RAO for each line (multiply by dofs)
+      #RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:))).^2) / length(w) );
+      #figure
+    #plot(w,abs(TfairRAO{imeto}(il,:)))
+      #d=TfairRAO{imeto}(il,:)
+      RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)') *(w(2)-w(1)) );
+      #RMSTfair
+      #sumpart = sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)')
+      #dw=(w(2)-w(1))
+ end        
  
  [Tfair, il] = min( T_lf(:,imeto) );
  if Tfair - 3*RMSTfair{imeto}(il) < 0 && Xm < 1  # taut lines only
-	  disp([' REJECTING (mooring line goes slack)'])
-	  fitness = -1;
-	  return;  # constraint for slack line!!!
+      disp([' REJECTING (mooring line goes slack)'])
+      fitness = -1;
+      return;  # constraint for slack line!!!
  end
  if grads
-	  disp(['mooring slackness: ' num2str(Tfair - 3*RMSTfair{imeto}(il))])
+      disp(['mooring slackness: ' num2str(Tfair - 3*RMSTfair{imeto}(il))])
  end
  
  # ----------- dynamic pitch constraint ----------------------
@@ -780,12 +792,12 @@ for iiter in range(nIter):
  RMSpitch(imeto) = sqrt( sum( ((abs(rao{imeto}(:,5))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); # fixed April 9th :(
  RMSpitchdeg = RMSpitch(imeto)*60/pi;
  if (Platf.spitch + RMSpitch(imeto))*180/pi > 10
-	  disp([' REJECTING (static + RMS dynamic pitch > 10)'])
-	  fitness = -1;
-	  return;  
+      disp([' REJECTING (static + RMS dynamic pitch > 10)'])
+      fitness = -1;
+      return;  
  end    
  if grads
-	  disp(['dynamic pitch: ' num2str((Platf.spitch + RMSpitch(imeto))*180/pi)])
+      disp(['dynamic pitch: ' num2str((Platf.spitch + RMSpitch(imeto))*180/pi)])
  end
  
  #figure(1)

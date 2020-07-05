@@ -139,7 +139,7 @@ class Member:
 #         Ir_end[i] = abs(Ir_tip[i] - (rho_steel*np.pi/(3*m[i]**2))*(r2[i]**3-r1[i]**3)*((r1[i]/m[i])+2*zB_node[i])*r[i])
 #         I_total[i] = Ir_end[i] + ((rho_steel*v_node[i])*(self.r[i,2]-self.rA)**2)
 # =============================================================================
-
+        
     
     
     def getHydrostatics(self):
@@ -519,9 +519,10 @@ imeto = 0
 # ---------------------- set up key arrays -----------------------------
 
 # structure-related arrays
-M_struc = np.zeros([6,6])    # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
-C_struc = np.zeros([6,6])    # structure effective stiffness matrix [N/m, N, N-m]
-W_struc = np.zeros([6])      # static weight vector [N, N-m]
+M_struc = np.zeros([6,6])                # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
+B_struc = np.zeros([6,6])                # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
+C_struc = np.zeros([6,6])                # structure effective stiffness matrix [N/m, N, N-m]
+W_struc = np.zeros([6])                  # static weight vector [N, N-m]
 
 # hydrodynamics-related arrays
 A_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
@@ -530,11 +531,17 @@ C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N,
 W_hydro = np.zeros(6)                    # buoyancy force/moment vector [N, N-m]
 F_hydro = np.zeros([6,nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
 
+# moorings-related arrays
+A_moor = np.zeros([6,6,nw])              # mooring added mass matrix [kg, kg-m, kg-m^2] (may not be used)
+B_moor = np.zeros([6,6,nw])              # mooring damping matrix [N-s/m, N-s, N-s-m] (may not be used)
+C_moor = np.zeros([6,6])                 # mooring stiffness matrix (linearized about platform offset) [N/m, N, N-m]
+W_moor = np.zeros(6)                     # mean net mooring force/moment vector [N, N-m]
+
 # final coefficient arrays
-M_tot = np.zeros([6,6,nw])              # total mass and added mass matrix [kg, kg-m, kg-m^2]
-B_tot = np.zeros([6,6,nw])              # total damping matrix [N-s/m, N-s, N-s-m]
-C_tot = np.zeros([6,6,nw])              # total stiffness matrix [N/m, N, N-m]
-F_tot = np.zeros([6,nw], dtype=complex) # total excitation force/moment complex amplitudes vector [N, N-m]
+M_tot = np.zeros([6,6,nw])               # total mass and added mass matrix [kg, kg-m, kg-m^2]
+B_tot = np.zeros([6,6,nw])               # total damping matrix [N-s/m, N-s, N-s-m]
+C_tot = np.zeros([6,6,nw])               # total stiffness matrix [N/m, N, N-m]
+F_tot = np.zeros([6,nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
 
 # system response 
 Xi = np.zeros([6,nw], dtype=complex)    # displacement and rotation complex amplitudes [m, rad]
@@ -678,26 +685,21 @@ for iiter in range(nIter):
 
     # ----------------------------- solve matrix equation of motion ------------------------------
     
-    for ii in range(nw):
+    for ii in range(nw):          # loop through each frequency
         
         
-        # sum contributions for each term
+        # sum contributions for each term        
+        M_tot[:,:,ii] = M_struc + A_hydro[:,:,ii] + A_moor[:,:,ii]        # mass
+        B_tot[:,:,ii] = B_struc + B_hydro[:,:,ii] + B_moor[:,:,ii]        # damping
+        C_tot[:,:,ii] = C_struc + C_hydro + C_moor                        # stiffness
+        F_tot[:,  ii] = F_hydro[:,ii]                                     # excitation force (complex amplitude)
         
-        M_tot[:,:,ii] = M_wt{imeto} + M_p + permute(A_h(ii,:,:), [2 3 1]) + A_mor[:,:,ii]; # note reordering of hydro dimensions
-        
-        B_tot[:,:,ii] = B_wt{imeto} + permute(B_h(ii,:,:), [2 3 1]) + Bvisc[:,:,ii];
-        
-        C_tot[:,:,ii] = C_wt{imeto} + C_p + C_h + C_l(:,:,imeto);
-            
-        F_tot[:,ii] = F_h(ii,1,:)*sqrt(S(imeto,ii))
         
         # form impedance matrix
-        
         Z[:,:,ii] = -w[ii]**2 * M_tot[:,:,ii] + 1i*w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii];
         
-        
-        
-        Xi[:,ii] = np.linalg.matmul(np.linalg.invert(Z[:,:,ii]),  F_tot[:,ii] )  # response # reordering dimensions back to (freq, dof)
+        # solve response (complex amplitude)
+        Xi[:,ii] = np.linalg.matmul(np.linalg.invert(Z[:,:,ii]),  F_tot[:,ii] )
     
     
     '''
@@ -718,44 +720,21 @@ for iiter in range(nIter):
     else
          aNac2last = aNac2(imeto);
     end
-
-            
-            >>>> this part still old Matlab code >>>
-
-            # damping in each DOF for each cylinder's member
-            Bbvisc11 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF) ));
-            Bbvisc22 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF) ));
-            Bbvisc33 = sum( Bbprime(icyl,:)); 
-            Bbvisc15 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF) )) * z1;
-            Bbvisc24 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF) )) * z1;
-            # neglecting B16 and B26 damping coupling due to axial symmetry
-            Bbvisc44 = sum( Bbprime(icyl,:) .* abs(sin((icyl-0.5)*2*pi/NF)) .* (ybar.^2 + z1^2));
-            Bbvisc55 = sum( Bbprime(icyl,:) .* abs(cos((icyl-0.5)*2*pi/NF)) .* (xbar.^2 + z1^2)); # note I'm not including moment of inertia, just x^2+y^2
-            Bbvisc66 = sum( Bbprime(icyl,:) .* (xbar.^2 + ybar.^2) );  # this is wrong!!!
-
-            # added mass in each DOF for each tendon
-            C_a = 0.97; # added mass coefficient [from Jonkman OCC phase IV]
-            A_mor11 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF) ))* C_a;
-            A_mor22 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF)  ))* C_a;
-            A_mor33 =      pi/4*db^2*lb * C_a;
-            A_mor15 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF) )) * z1 * C_a;
-            A_mor24 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF) )) * z1 * C_a;
-            A_mor44 = sum( pi/4*db^2*lb/ns .* abs(sin((icyl-1)*2*pi/NF)) .* (ybar.^2 + z1^2)) * C_a;
-            A_mor55 = sum( pi/4*db^2*lb/ns .* abs(cos((icyl-1)*2*pi/NF)) .* (xbar.^2 + z1^2)) * C_a;
-            A_mor66 = sum( pi/4*db^2*lb/ns .* (xbar.^2 + ybar.^2) ) * C_a;  # this is wrong!!!
-        
-        
-        
-        # bottoms / heave plates    
-        
-        # A3(:,icyl) = Xi{imeto}(:,3) + yfloat*Xi{imeto}(:,4) - xfloat*Xi{imeto}(:,5); # heave motion
-        # Arms(icyl) = sqrt( sum( (abs(A3(:,icyl))).^2 ) /length(w));
-        
-        # Bvisc33 = 2/3*rho*dc^3*w*(0.2 + 0.5*(2*pi*Arms(icyl)/dc)); #  Consider getting rid of w dependency with a simpler model? (also in B44, B55)
-        
-        
-            
+    
     '''
+
+# ------------------------------ preliminary plotting of response ---------------------------------
+
+fig, ax = plt.subplots(2,1, sharex=True)
+
+ax[0].plot(ws, np.abs(Xi[:,0]), 'k', label="surge")
+ax[0].plot(ws, np.abs(Xi[:,1]), 'g', label="sway")
+ax[0].plot(ws, np.abs(Xi[:,2]), 'r', label="heave")
+ax[1].plot(ws, np.abs(Xi[:,3]), 'k', label="roll")
+ax[1].plot(ws, np.abs(Xi[:,4]), 'g', label="pitch")
+ax[1].plot(ws, np.abs(Xi[:,5]), 'r', label="yaw")
+
+plt.show()
 
  
  # ---------- mooring line fairlead tension RAOs and constraint implementation ----------

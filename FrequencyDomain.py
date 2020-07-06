@@ -30,7 +30,7 @@ class Member:
         self.dB  = np.int(entries[2])
         self.rA = np.array(entries[3:6], dtype=np.double)  # x y z of lower node
         self.rB = np.array(entries[6:9], dtype=np.double)
-        self.t  = 0           # shell thickness [m]
+        self.t  = 0.06           # shell thickness [m]
         
         rAB = self.rB-self.rA
         self.l = np.linalg.norm(rAB)  # member length

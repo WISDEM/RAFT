@@ -101,8 +101,8 @@ class Member:
 
         ro = ((self.dA+self.dB)/2)/2
         ri = (((self.dA-(2*self.t))+(self.dB-(2*self.t)))/2)/2
-        I_rad = (1/12)*(rho_steel*self.v_steel)*(3*(self.ro**2 + self.ri**2) + 4*self.l**2) # About the end (node) of the member
-        I_ax = (1/2)*(rho_steel*self.v_steel)*(self.ro**2 + self.ri**2)
+        I_rad = (1/12)*(rho_steel*v_steel)*(3*(ro**2 + ri**2) + 4*self.l**2) # About the end (node) of the member
+        I_ax = (1/2)*(rho_steel*v_steel)*(ro**2 + ri**2)
         # (future work) Can expand these calcs for an actual frustum and not just a cylinder with the average of the top and bottom diameters
         # (future work) To find the total moment of inertia of all members for any possible future calcs, bring each member's MOI to the origin
 

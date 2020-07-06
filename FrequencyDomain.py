@@ -380,7 +380,7 @@ def translateMatrix6to6DOF(r, Min):
     Mout[:3,3:] = Mout[3:,:3].T
     
     # moment of inertia matrix  [I'] = [H][m][H]^T + [J]^T [H] + [H]^T [J] + [I]    
-    Mout[3:,3:] = np.matmul(np.matmul(H,Min[:3,:3]), H.T) + np.matmul(Min[:3,3:], H) + np.matmul(H.T, Min[3:,:3]) + Min[3:,3:]
+    Mout[3:,3:] = np.matmul(np.matmul(H,Min[:3,:3]), H.T) + np.matmul(Min[3:,:3], H) + np.matmul(H.T, Min[:3,3:]) + Min[3:,3:]
     
     return Mout
     

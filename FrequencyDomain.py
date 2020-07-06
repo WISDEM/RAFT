@@ -358,8 +358,12 @@ def getH(r):
 
 def translateForce3to6DOF(r, Fin):
     '''Takes in a position vector and a force vector (applied at the positon), and calculates 
-    the resulting 6-DOF force and moment vector.
+    the resulting 6-DOF force and moment vector.    
     
+    :param array r: x,y,z coordinates at which force is acting [m]
+    :param array Fin: x,y,z components of force [N]
+    :return: the resulting force and moment vector
+    :rtype: array
     '''
     Fout = np.zeros(6, dtype=Fin.dtype) # initialize output vector as same dtype as input vector (to support both real and complex inputs)
     
@@ -413,20 +417,70 @@ def translateMatrix6to6DOF(r, Min):
     return Mout
     
 
+def JONSWAP(ws, Hs, Tp, Gamma=1.0):
+    '''Returns the JONSWAP wave spectrum for the given frequencies and parameters.
+    
+    Parameters
+    ----------    
+    ws : float | array
+        wave frequencies to compute spectrum at (scalar or 1-D list/array) [rad/s]
+    Hs : float
+        significant wave height of spectrum [m]
+    Tp : float
+        peak spectral period [s]
+    Gamma : float
+        wave peak shape parameter []. The default value of 1.0 gives the Pierson-Moskowitz spectrum.
+        
+    Returns
+    -------
+    S : array
+        wave power spectral density array corresponding to frequencies in ws [m^2/Hz]
+        
+    
+    This function calculates and returns the one-sided power spectral density spectrum 
+    at the frequency/frequencies (ws) based on the provided significant wave height,
+    peak period, and (optionally) shape parameter gamma.
+    
+    This formulate for the JONSWAP spectrum is taken from FAST v7 and based
+    on what's documented in IEC 61400-3.
+    '''
+    
+    # handle both scalar and array inputs
+    if isinstance(ws, (list, tuple, np.ndarray)):
+        ws = np.array(ws)
+    else:
+        ws = np.array([ws])
+
+    # initialize output array
+    S = np.zeros(len(ws))    
+ 
+            
+    # the calculations
+    f        = 0.5/np.pi * ws                         # wave frequencies in Hz
+    fpOvrf4  = pow((Tp*f), -4.0)                      # a common term, (fp/f)^4 = (Tp*f)^(-4)
+    C        = 1.0 - ( 0.287*np.log(Gamma) )          # normalizing factor
+    Sigma = 0.07*(f <= 1.0/Tp) + 0.09*(f > 1.0/Tp)    # scaling factor
+    
+    Alpha = np.exp( -0.5*((f*Tp - 1.0)/Sigma)**2 )
+
+    return  0.5/np.pi *C* 0.3125*Hs*Hs*fpOvrf4/f *np.exp( -1.25*fpOvrf4 )* Gamma**Alpha
+    
+	
+
 
 # ------------------------------- basic setup -----------------------------------------
 
-
 nDOF = 6
 
-
-w = np.arange(.05, 5, 0.25)  # angular frequencies tp analyze (rad/s)
+w = np.arange(.01, 2, 0.01)  # angular frequencies tp analyze (rad/s)
 nw = len(w)  # number of frequencies
 
 k= np.zeros(nw)  # wave number
 
 
 # ----------------------- member-based platform description --------------------------
+
+# (hard-coded for now - eventually these will be provided as inputs instead)
 
 # list of member objects
 memberList = []
@@ -439,39 +493,7 @@ memberList.append(Member("4     x      8      0    0   -20   30    0  -20  ", nw
 memberList.append(Member("5     x      8      0    0   -20    0   30  -20  ", nw))
 
 
-
-
-
-
-
-
-# --------------------------- basic platform properties ------------------------------
-'''
-As  =  
-CM  =  
-Ixa = 
-Iya = 
-Iza = 
-Awp = 
-Iwp = 
-V   =   
-CB  =  
-'''
-
-
-# ---------------- create Morison-based platform coefficient matrices -----------------
-
-
-
-
 # ---------------- (future work) import hydrodynamic coefficient files ----------------
-
-
-
-
-
-
-
 
 
 
@@ -484,11 +506,12 @@ g = 9.81
 pi = np.pi
 
 # environmental condition(s)
-Hs = [2.4, 3.4, 5];
-Tp = [4.1, 4.6, 6.05];
+Hs = [3.4, 5   , 6 ];
+Tp = [4.6, 6.05, 10];
 windspeed = [8, 12, 18];
 
 S   = np.zeros([len(Hs), nw])   # wave spectrum
+S2  = np.zeros([len(Hs), nw])   # wave spectrum
 zeta= np.zeros([len(Hs), nw])  # wave elevation
 
 T = 2*np.pi/w # periods
@@ -498,7 +521,9 @@ T = 2*np.pi/w # periods
 for imeto in range(len(Hs)):       # loop through each environmental condition
 
     # make wave spectrum (could replace with function call)
-    S[imeto,:] = 1/2/np.pi *5/16 * Hs[imeto]**2*T *(w*Tp[imeto]/2/np.pi)**(-5) *np.exp( -5/4* (w*Tp[imeto]/2/np.pi)**(-4) )
+    S[imeto,:]  = JONSWAP(w, Hs[imeto], Tp[imeto])
+    
+    S2[imeto,:] = 1/2/np.pi *5/16 * Hs[imeto]**2*T *(w*Tp[imeto]/2/np.pi)**(-5) *np.exp( -5/4* (w*Tp[imeto]/2/np.pi)**(-4) )
 
     # wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
     zeta[imeto,:] = np.sqrt(S[imeto,:])
@@ -508,6 +533,10 @@ for imeto in range(len(Hs)):       # loop through each environmental condition
 for i in range(nw):
     k[i] = waveNumber(w[i], depth)
 
+
+plt.plot(w/np.pi/2,  S[2,:], "r")
+plt.plot(w/np.pi/2, S2[2,:], "b")
+plt.xlabel("Hz")
 
 
 # ignoring multiple DLCs for now <<<<<
@@ -543,6 +572,8 @@ B_tot = np.zeros([6,6,nw])               # total damping matrix [N-s/m, N-s, N-s
 C_tot = np.zeros([6,6,nw])               # total stiffness matrix [N/m, N, N-m]
 F_tot = np.zeros([6,nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
 
+Z     = np.zeros([6,6,nw], dtype=complex)               # total system impedance matrix
+
 # system response 
 Xi = np.zeros([6,nw], dtype=complex)    # displacement and rotation complex amplitudes [m, rad]
 
@@ -570,8 +601,8 @@ for mem in memberList:
     Mmat = np.diag([mass, mass, mass, iner, iner, iner])  # make quick dummy mass/inertia matrix
         
     # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-    W_tot += translateForce3to6DOF( mem.rA, np.array([0,0, -g*mass]) )  # weight vector
-    M_ss  += translateMatrix6to6DOF(mem.rA, Mmat)                       # mass/inertia matrix
+    W_struc += translateForce3to6DOF( mem.rA, np.array([0,0, -g*mass]) )  # weight vector
+    M_struc += translateMatrix6to6DOF(mem.rA, Mmat)                       # mass/inertia matrix
 
     # @shousner, fill in _struc arrays above
 
@@ -696,10 +727,10 @@ for iiter in range(nIter):
         
         
         # form impedance matrix
-        Z[:,:,ii] = -w[ii]**2 * M_tot[:,:,ii] + 1i*w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii];
+        Z[:,:,ii] = -w[ii]**2 * M_tot[:,:,ii] + 1j*w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii];
         
         # solve response (complex amplitude)
-        Xi[:,ii] = np.linalg.matmul(np.linalg.invert(Z[:,:,ii]),  F_tot[:,ii] )
+        Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
     
     
     '''
@@ -727,12 +758,19 @@ for iiter in range(nIter):
 
 fig, ax = plt.subplots(2,1, sharex=True)
 
-ax[0].plot(ws, np.abs(Xi[:,0]), 'k', label="surge")
-ax[0].plot(ws, np.abs(Xi[:,1]), 'g', label="sway")
-ax[0].plot(ws, np.abs(Xi[:,2]), 'r', label="heave")
-ax[1].plot(ws, np.abs(Xi[:,3]), 'k', label="roll")
-ax[1].plot(ws, np.abs(Xi[:,4]), 'g', label="pitch")
-ax[1].plot(ws, np.abs(Xi[:,5]), 'r', label="yaw")
+ax[0].plot(w/2/np.pi, np.abs(Xi[0,:]), 'b', label="surge")
+ax[0].plot(w/2/np.pi, np.abs(Xi[1,:]), 'g', label="sway")
+ax[0].plot(w/2/np.pi, np.abs(Xi[2,:]), 'r', label="heave")
+ax[1].plot(w/2/np.pi, np.abs(Xi[3,:]), 'b', label="roll")
+ax[1].plot(w/2/np.pi, np.abs(Xi[4,:]), 'g', label="pitch")
+ax[1].plot(w/2/np.pi, np.abs(Xi[5,:]), 'r', label="yaw")
+
+ax[0].legend()
+ax[1].legend()
+
+ax[0].set_ylabel("response magnitude (m)")
+ax[1].set_ylabel("response magnitude (rad)")
+ax[1].set_xlabel("frequency (Hz)")
 
 plt.show()
 

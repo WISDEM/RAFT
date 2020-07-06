@@ -80,65 +80,33 @@ class Member:
     
     # >>>>>>>>>>>>> @shousner's method for mass/inertia to go here <<<<<<<<<<<<<<<<<<
     def getInertia(self):
-        # Total underwater volume of each section (node-to-node) of the member ---------UPPERCASE V = UNDERWATER VOLUME----------
-        V_node = np.zeros([self.n-1])
-        for i in range(self.n-1):
-            V_node[i] = (np.pi/4)*(1/3)*(self.d[i]**2+self.d[i+1]**2+self.d[i]*self.d[i+1])*self.dl # can use radii also, just multiply by 4
-        V = np.sum(V_node)
+        rho_steel = 7850 #[kg/m^3] Density of steel
+
+        V_UW = (np.pi/4)*(1/3)*(self.dA**2+self.dB**2+self.dA*self.dB)*self.l		#[m^3] Total enclosed underwater volume of member
+
+        v_steel = ((self.t/2)*(self.dA+self.dB)-self.t**2)*np.pi*self.l			#[m^3] Volume of steel of the member
         
-        # Volume of steel of the member, assuming each is tapered ---------lowercase v = steel volume----------
-        # Calculated by taking the difference between the total outer volume (above) and the hollowed out volume. Simplified equation shown below
-        v_node = np.zeros([self.n-1])
-        for i in range(self.n-1):
-            v_node[i] = ((self.t/2)*(self.d[i]+self.d[i+1])-self.t**2)*np.pi*self.dl
-        v = np.sum(v_node)
-        
-        # Find the center of buoyancy (which also happens to be the center of gravity) of each section of the member
-        # I use a method by finding how much of a frustum the node-to-node section is. A cylinder section (D_bot = D_top)
-        # has a zB of 0.5*dL while a cone section (D_top = 0) has a zB of 0.25*dL. These are frustum sections in a sense,
-        # so how much of a cone is the frustum? zB_calc outputs a value between 0.25 and 0.5 depending on the diameters.
-        zB_node = np.zeros([self.n-1])
-        for i in range(self.n-1):
-            if self.d[i] >= self.d[i+1]:
-                zB_calc = ((self.d[i+1]/(4*self.d[i]))+(1/4))*self.dl
-                zB_node[i] = self.r[i,2]+zB_calc # Find the CoB in terms of the general coordinates
-            else: # This is the case for when the upper diameter is larger than the lower diameter. Same thing, just backwards
-                zB_calc = ((self.d[i]/(4*self.d[i+1]))+(1/4))*self.dl
-                zB_node[i] = self.r[i,2]+self.dl-zB_calc
-                
-            # From the HydroDyn doc that Matt sent me 6/30/20...should do the same thing
-            # zB_node[i] = (self.dl/4)*((self.d[i]**2 + 2*self.d[i]*self.d[i+1] + 3*self.d[i+1]**2)/(4*(self.d[i]**2 + self.d[i]*self.d[i+1] + self.d[i+1]**2)))
-            
-            # Calculate the total CoB and CoG of the entire member. Stay in the same for loop
-            zB_section[i] = (zB_node[i]*V_node[i])/V
-            zB = np.sum(zB_section)             # DOUBLE CHECK THE SYNTAX AND VARIABLE NAMES
-                                                # ALL THESE RESULTS LIKE zB or V ARE THE FINAL RETURN VALUES OF THE MEMBER. DO I NEED TO MAKE THEM SELF.V?
-            
-            zG_section[i] = (zB_node[i]*v_node[i])/v
-            zG = np.sum(zG_section)
-            
-        # Calculate the moment of inertia of each node-to-node section [kg-m^2]
-        # Easy/simplistic method of taking the average of the upper and lower diameters and calculating it like a cylinder
-        r_outer = np.zeros([self.n-1])
-        r_inner = np.zeros([self.n-1])
-        I_node = np.zeros([self.n-1])
-        I_PA = np.zeros([self.n-1])
-        for i in range(self.n-1):
-            r_outer[i] = ((self.d[i]+self.d[i+1])/2)/2
-            r_inner[i] = (((self.d[i]-(2*self.t))+(self.d[i+1]-(2*self.t)))/2)/2
-            I_node[i] = (1/12)*(rho_steel*v_node[i])*(3*(r_outer[i]**2 + r_inner[i]**2) + 4*self.dl**2) # About node i (aka about the end of the cylinder)
-            I_PA[i] = I_node[i] + ((rho_steel*v_node[i])*(self.r[i,2]-self.rA)**2)      # DOUBLE CHECK THIS H^2 TERM LATER
-            I_total = np.sum(I_PA) # Total radial moment of inertia of the simplified cylinder member about its end [kg-m^2]
-            
-        # Calculate the MOI of each section based on the HydroDyn doc Matt sent me, adjusted for a frustum (aka not assuming a cylinder)
-# =============================================================================
-#         r1[i] = self.d[i]/2
-#         r2[i] = self.d[i+1]/2
-#         m[i] = (self.d[i+1]-self.d[i])/self.dl
-#         Ir_tip[i] = abs((np.pi/20)*(rho_steel/m[i])*(1+(4/m[i]**2))*(r2[i]**5 - r1[i]**5))
-#         Ir_end[i] = abs(Ir_tip[i] - (rho_steel*np.pi/(3*m[i]**2))*(r2[i]**3-r1[i]**3)*((r1[i]/m[i])+2*zB_node[i])*r[i])
-#         I_total[i] = Ir_end[i] + ((rho_steel*v_node[i])*(self.r[i,2]-self.rA)**2)
-# =============================================================================
+        if self.dA >= self.dB:
+            center_calc = ((self.dB/(4*self.dA))+(1/4))*self.l
+            center = self.rA + (self.q*center_calc)
+        else:
+            center_calc = ((self.dA/(4*self.dB))+(1/4))*self.l
+            center = self.rB - (self.q*center_calc)
+
+        # Method done in HydroDyn paper from Matt
+        # center_calc = (self.l/4)*((self.dA**2 + 2*self.dA*self.dB + 3*self.dB**2)/(4*(self.dA**2 + self.dA*self.dB + self.dB**2)))
+        # center = self.rA + (self.q+center_calc)
+
+        # Moment of Inertia
+
+        ro = ((self.dA+self.dB)/2)/2
+        ri = (((self.dA-(2*self.t))+(self.dB-(2*self.t)))/2)/2
+        I_rad = (1/12)*(rho_steel*self.v_steel)*(3*(self.ro**2 + self.ri**2) + 4*self.l**2) # About the end (node) of the member
+        I_ax = (1/2)*(rho_steel*self.v_steel)*(self.ro**2 + self.ri**2)
+        # (future work) Can expand these calcs for an actual frustum and not just a cylinder with the average of the top and bottom diameters
+        # (future work) To find the total moment of inertia of all members for any possible future calcs, bring each member's MOI to the origin
+
+        return V_UW, v_steel, center, I_rad, I_ax
         
     
     
@@ -596,9 +564,25 @@ for mem in memberList:
     # >>>> call to @shousner's Member method(s) <<<<
     
     # the method should compute the mass/inertia matrix, instead of the placeholders below
-    mass = mem.l*mem.w     # kg
-    iner = 0               # kg-m^2 
-    Mmat = np.diag([mass, mass, mass, iner, iner, iner])  # make quick dummy mass/inertia matrix
+    # mass = mem.l*mem.w     # kg
+    # iner = 0               # kg-m^2 
+    V_UW, v_steel, center, I_rad, I_ax = mem.getInertia()
+    rho_steel = 7850 #[kg/m^3]
+    mass = v_steel*rho_steel #[kg]
+    Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax])  # make quick dummy mass/inertia matrix
+    Mmat[0,4] = mass*center[2]
+    Mmat[4,0] = mass*center[2]
+    Mmat[1,3] = -mass*center[2]
+    Mmat[3,1] = -mass*center[2]
+    Mmat[0,5] = -mass*center[1]
+    Mmat[5,0] = -mass*center[1]
+    Mmat[2,3] = mass*center[1]
+    Mmat[3,2] = mass*center[1]
+    Mmat[1,5] = mass*center[0]
+    Mmat[5,1] = mass*center[0]
+    Mmat[4,2] = -mass*center[0]
+    Mmat[2,4] = -mass*center[0]
+    # The off diagonals of the moment of inertia section are assumed to be zero for right now, since we're initially assuming cylinders
         
     # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
     W_struc += translateForce3to6DOF( mem.rA, np.array([0,0, -g*mass]) )  # weight vector

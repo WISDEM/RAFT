@@ -54,7 +54,7 @@ class Member:
         self.w = 1    # mass per unit length (kg/m)
         
         self.r  = np.zeros([self.n,3])  # undisplaced node positions along member  [m]
-        self.d  = np.zeros([self.n,3])  # local diameter along member [m]
+        self.d  = np.zeros( self.n   )  # local diameter along member [m]
         for i in range(self.n):
             self.r[i,:] = self.rA + (i/(self.n-1))*rAB                # spread evenly for now
             self.d[i]   = self.dA + (i/(self.n-1))*(self.dB-self.dA)  # spread evenly since uniform taper
@@ -117,18 +117,19 @@ class Member:
         
             
         # partially submerged case
-        if self.r[0,2]*self.r[-1,2] < 0:    # if member crosses water plane
+        if self.r[0,2]*self.r[-1,2] <= 0:    # if member crosses (or touches) water plane
                 
-        #   # eventually should interpolate dwp=np.interp(0, self.r[:,2], self.d)
-        #   dwp = self.d
-        #   xwp = np.interp(0, self.r[:,2], self.r[:,0])
+            dWP = np.interp(0, self.r[:,2], self.d)       # get diameter of member where its axis crosses the waterplane 
+        #    xwp = np.interp(0, self.r[:,2], self.r[:,0])
         #   ywp = np.interp(0, self.r[:,2], self.r[:,1])
+        
+            # >>>> question: should this function be able to use displaced/rotated values? <<<<
             
             # ------------- get hydrostatic derivatives ---------------- 
             
             # angles
-            beta = np.arctan(q[1],q[0])  # member incline heading from x axis
-            phi  = np.arctan(np.sqrt(q[0]**2 + q[1]**2), q[2])  # member incline angle from vertical
+            beta = np.arctan2(q[1],q[0])  # member incline heading from x axis
+            phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])  # member incline angle from vertical
             
             # precalculate trig functions
             cosPhi=np.cos(phi)
@@ -144,25 +145,25 @@ class Member:
             dBeta_dThx = -cosBeta/tanBeta**2
             dBeta_dThy = -sinBeta/tanBeta**2
             
-            # >>>>>>>>>>> warning, these are untapered-only so far >>>>>>>
-            
+            # note: below calculations are based on untapered case, but 
+            # temporarily approximated for taper by using dWP (diameter at water plane crossing) <<< this is rough
             
             # buoyancy force and moment about end A
-            Fz = -rho*g*pi*0.25*self.d**2*self.rA[2]/cosPhi
-            M  = -rho*g*pi*( self.d*2/32*(2.0 + tanPhi**2) + 0.5*(self.rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+            Fz = -rho*g*pi*0.25*dWP**2*self.rA[2]/cosPhi
+            M  = -rho*g*pi*( dWP*2/32*(2.0 + tanPhi**2) + 0.5*(self.rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
             Mx = M*dPhi_dThx
             My = M*dPhi_dThy
             
             Fvec = np.zeros(6)                         # buoyancy force (and moment) vector (about PRP)
             Fvec[2] = Fz                               # vertical buoyancy force [N]
-            Fvec[3] = Mx + Fz*self.r[1]                # moment about x axis [N-m]
-            Fvec[4] = My - Fz*self.r[0]                # moment about y axis [N-m]
+            Fvec[3] = Mx + Fz*self.rA[1]                # moment about x axis [N-m]
+            Fvec[4] = My - Fz*self.rA[0]                # moment about y axis [N-m]
             
             # derivatives aligned with incline heading
-            dFz_dz   = -rho*g*pi*0.25*self.d**2                  /cosPhi
-            dFz_dPhi =  rho*g*pi*0.25*self.d**2*self.rA[2]*sinPhi/cosPhi**2
+            dFz_dz   = -rho*g*pi*0.25*dWP**2                  /cosPhi
+            dFz_dPhi =  rho*g*pi*0.25*dWP**2*self.rA[2]*sinPhi/cosPhi**2
             dM_dz    =  1.0*dFz_dPhi
-            dM_dPhi  = -rho*g*pi*0.25*self.d**2 * (self.d**2/32*(2*cosPhi + sinPhi**2/CosPhi + 2*sinPhi/cosPhi**2) + 0.5*self.rA[2]**2*(sinPhi**2+1)/cosPhi**3)
+            dM_dPhi  = -rho*g*pi*0.25*dWP**2 * (dWP**2/32*(2*cosPhi + sinPhi**2/cosPhi + 2*sinPhi/cosPhi**2) + 0.5*self.rA[2]**2*(sinPhi**2+1)/cosPhi**3)
             
             # <<<<<<<<<<<< (end warning) <<<<<<<<<
             
@@ -200,6 +201,7 @@ class Member:
         else:
             Fvec = np.zeros(6)        # buoyancy force (and moment) vector (about end A)
             Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about end A)
+            
             
         return Fvec, Cmat
 
@@ -411,7 +413,7 @@ def JONSWAP(ws, Hs, Tp, Gamma=1.0):
     at the frequency/frequencies (ws) based on the provided significant wave height,
     peak period, and (optionally) shape parameter gamma.
     
-    This formulate for the JONSWAP spectrum is taken from FAST v7 and based
+    This formula for the JONSWAP spectrum is adapted from FAST v7 and based
     on what's documented in IEC 61400-3.
     '''
     
@@ -572,6 +574,8 @@ for mem in memberList:
     rho_steel = 7850 #[kg/m^3]
     mass = v_steel*rho_steel #[kg]
     Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax])
+    # @mhall: Mmat as written above is the mass and inertia matrix about the member CG
+    '''
     Mmat[0,4] = mass*center[2]
     Mmat[4,0] = mass*center[2]
     Mmat[1,3] = -mass*center[2]
@@ -584,15 +588,17 @@ for mem in memberList:
     Mmat[5,1] = mass*center[0]
     Mmat[4,2] = -mass*center[0]
     Mmat[2,4] = -mass*center[0]
+    '''
+    # @mhall: the above section, which I've commented out, provides the off-diagonal 3x3 blocks 
+    # but doesn't handle parallel axis theorem for inertia terms.
     # The off diagonals of the moment of inertia section are assumed to be zero for right now, since we're initially assuming cylinders
     
     #>>>>>>>>>>>>>>>>>>>>>>>> double check this is the way to do this since "center" is the CoG about the global coordinates<<<<<<<<<<<<<<<<<<<<<<
         
     # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-    W_struc += translateForce3to6DOF( mem.rA, np.array([0,0, -g*mass]) )  # weight vector
-    M_struc += translateMatrix6to6DOF(mem.rA, Mmat)                       # mass/inertia matrix
-
-    # @shousner, fill in _struc arrays above
+    W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mass]) )  # weight vector
+    M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
+    # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
 
 
     # -------------------- get each member's buoyancy/hydrostatic properties -----------------------

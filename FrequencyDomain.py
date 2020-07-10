@@ -622,82 +622,64 @@ Mthrust = 100*Fthrust  # N-m
 from MoorPy import *
 # >>>>>>>>>>>>>>>>>>>>> MoorPy was copied over into FD repo so it's not the most updated MoorPy (idk how else to import it) <<<<<<<<<<<<<<<<<<
 
-# Create list variables of points and lines to describe the layout of the mooring system
-# ANCHOR/BODY POINTS
-PointList=[] # Makes a list variable to hold a list of all the points
-
-# Before the depth was 40, radius was 30. Now, depth is 200, so radius is 150
-anchorR = 150
-angle1 = np.pi      # angle of mooring line wrt positive x positive y
-angle2 = np.pi/3
-angle3 = -np.pi/3
+# Create the Mooring System for the structure
+PointList=[] # Makes a list variable to hold a list of all the attachment points of the mooring system
 
 #                 number, type,      location,              external force
-# =============================================================================
-# PointList.append(Point(1, 1, np.array([anchorR*np.cos(angle1), anchorR*np.sin(angle1), -depth]), np.array([0, 0, 0],dtype=float)))
-# PointList.append(Point(2, 1, np.array([anchorR*np.cos(angle2), anchorR*np.sin(angle2), -depth]), np.array([0, 0, 0],dtype=float)))
-# PointList.append(Point(3, 1, np.array([anchorR*np.cos(angle3), anchorR*np.sin(angle3), -depth]), np.array([0, 0, 0],dtype=float)))
-# =============================================================================
-PointList.append(Point(1, 1, np.array([-30, 0, -40]), np.array([0, 0, 0],dtype=float)))
-PointList.append(Point(2, 1, np.array([15, 25, -40]), np.array([0, 0, 0],dtype=float)))
-PointList.append(Point(3, 1, np.array([15, -25, -40]), np.array([0, 0, 0],dtype=float)))
-PointList.append(Point(4, 0, np.array([0, 0, 0]), np.array([0, 0, 50276.2],dtype=float)))
+PointList.append(Point(1, 1, np.array([-30, 0, -40], dtype=float), np.array([0, 0, 0], dtype=float)))
+PointList.append(Point(2, 1, np.array([15, 25, -40], dtype=float), np.array([0, 0, 0], dtype=float)))
+PointList.append(Point(3, 1, np.array([15, -25, -40], dtype=float), np.array([0, 0, 0], dtype=float)))
+PointList.append(Point(4, 0, np.array([0, 0, 0], dtype=float), np.array([0, 0, 50276.25], dtype=float)))
 # Calls the Point class to create a Point object to append to the Point list with the given inputs
 
-# MOORING LINES
 LineTypes = {}  # create empty dictionary for line types
 LineList=[] # Makes a list variable to hold a list of all the mooring lines
-#                           LineType, diameter [m], mass density in air [kg/m], extensional stiffness EA [N]
-LineTypes['main'] = LineType('main', 0.02, 40, 100e6) # Describes the parameters of the mooring lines used. 40 = mlin = used to calculate w = [N/m]
-# Calls the LineType class to create a LineType object to put into the LineTypes dictionary
+
+#                   LineType name, diameter [m], mass density in air [kg/m], extensional stiffness EA [N]
+LineTypes['main'] = LineType('main', 0.02, 40, 100e6) # Mooring Line characteristics. massden used to calculate w = [N/m]
+# Calls the LineType class in MoorPy to create a LineType object to put into the LineTypes dictionary
 
 #  number, unstretched length, it's LineType, number of segments in the line
-# =============================================================================
-# LineList.append(Line(1, 100, LineTypes['main'], nSegs=6))
-# LineList.append(Line(2, 100, LineTypes['main'], nSegs=6))
-# LineList.append(Line(3, 100, LineTypes['main'], nSegs=6)) # Goes through the init function of the Line class to initialize more variables
-# =============================================================================
-LineList.append(Line(1, 50, LineTypes['main'], nSegs=6))
-LineList.append(Line(2, 50, LineTypes['main'], nSegs=6))
-LineList.append(Line(3, 50, LineTypes['main'], nSegs=6)) # Goes through the init function of the Line class to initialize more variables
+LineList.append(Line(np.int(1), np.float(50), LineTypes['main'], nSegs=np.int(6)))
+LineList.append(Line(np.int(2), np.float(50), LineTypes['main'], nSegs=np.int(6)))
+LineList.append(Line(np.int(3), np.float(50), LineTypes['main'], nSegs=np.int(6))) # Goes through the init function of the Line class to initialize more variables that show up in LineList
 # Calls the Line class to create a Line object to append to the Line list with the given inputs
 
-# attach ends -- calls the addLine function of the Point class with inputs of (the line number that is attached to it, and which one is endB)
+# attach ends of the lines to points 
+# calls the addLine function in the Point class i.e. PointList[point ref].addLine(sets a LineID#, sets a variable endB (to be used later))
 # addLine also prints out to which point that line was attached to
-PointList[0].addLine(1, 0)
-PointList[3].addLine(1, 1)
+PointList[0].addLine(1, 0) # attached Line 1 (1) to Point 1 (0); 
+PointList[3].addLine(1, 1) # attached Line 1 (1) to Point 4 (3)
 
-PointList[1].addLine(2, 0)
-PointList[3].addLine(2, 1)
+PointList[1].addLine(2, 0) # attached Line 2 (2) to Point 2 (1)
+PointList[3].addLine(2, 1) # attached Line 2 (2) to Point 4 (3)
 
-PointList[2].addLine(3, 0)
-PointList[3].addLine(3, 1)
-
-
-# save room for new Body class
+PointList[2].addLine(3, 0) # attached Line 3 (3) to Point 3 (2)
+PointList[3].addLine(3, 1) # attached Line 3 (3) to Point 4 (3)
 
 
+depth = 40.
 
 # initialize mooring system with provided positions	
 for Point in PointList:
 	Point.setPosition(Point.r, LineList)
 # For each point in the Point List, call the setPosition function in the Point class that takes the point's position and the list of Lines as input
-# That function loops through each Line in the Line list to set the Line's end position in setEndPosition which takes the point's location, and endB as input
-# If endB is 0, which it is for the bottom seafloor points, setEndPosition sets self.rA = r = position of the point.
+# setPosition loops through each Line in the Line list to set the Line's end position in setEndPosition which uses the point's location, and endB 
+# If endB is 0, which it is for the bottom seafloor points, setEndPosition sets self.rA of the line = r = position of the point.
 # If endB is 1, which it is for the top floating point, setEndPosition sets self.rB = r = position of the point.
-# So it essentially creates the rA or rB value of the Line as the point position
+# So it essentially creates the rA or rB value of the Line = the points positions. rA is the bottom point of the line. rB is the top floating point
 
 # Run the staticSolve function for each mooring line
 for Line in LineList:
 	Line.staticSolve(depth)
-# solves for the forces in the x, y, and z directions for each end of the line A and B, fA and fB
+# solves for the forces in the x, y, and z directions for each end of the line (A and B) = fA and fB
     
 # For each point, call the getForces function
 for Point in PointList:
 	f = Point.getForces(LineList)
 	print(f)
 # getForces creates a variable f to start off with the given external forces on the point. THIS IS WHERE YOU SHOULD ADD THE WEIGHT/OTHER FORCES!!!!!
-# It then adds on to f, either fA or fB, depending on the endB variable of the point. Pretty nifty whoever wrote this
+# It then adds on to f, either fA or fB, depending on the endB variable of the point.
     
 # draw initial mooring system <<<<<<< turn this into a single function at some point
 fig = plt.figure(figsize=(20/2.54,12/2.54))
@@ -712,7 +694,7 @@ ax.set_title("Mooring system at initialization")
 
 
 
-# MooringEq is an error function used in solving static equilibrium
+# MooringEq is an error function used to solve for the static equilibrium
 def MooringEq(X):
 
 	i = 0 # index used to split off input positions X for each free object	
@@ -723,8 +705,7 @@ def MooringEq(X):
 	for Point in PointList:
 		if Point.type==0:
 			Point.setPosition(X[i:i+3], LineList)  # update position of free Point
-            # move the position of the point to the input of point X aka move the free point to location X
-            # this also adjusts the ends of the lines accordingly
+            # set the position of the free point to location X, which also adjusts the ends of the lines accordingly
 			i += 3 #use this for when you have more than one free point
 			
 	# solve profile and forces of all lines
@@ -737,14 +718,10 @@ def MooringEq(X):
 			i -= 3
 			f[i:i+3] = Point.getForces(LineList) # get residual forces on free point
 	
-	#Fthrust = 800e3       # N
-	#Mthrust = 100*Fthrust  # N-m
-	#Thrust = np.array([Fthrust, 0, 0])#, 0, Mthrust, 0])
-	#Fvec = np.zeros(3)
-	#W_struc = np.array([0, 0, -1.73143989e7])#, -1.03990907e8, 1.03990907, 0])
-	#F = f+Thrust+Fvec+W_struc
 	return f
 # This returns the forces in x, y, and z that act on the free point due to the mooring system
+
+
 
 # Now, we want to find the location that the free point will want to go to so that the net forces = 0 -> use the fsolve function
 
@@ -773,6 +750,20 @@ print(X1)  # output the final coordinates of the free Point objects in the moori
 # # LINEAR, SO ONLY FOR SMALL PERTURBATIONS
 # =============================================================================
 
+# redraw mooring configuration in equilibirum
+
+MooringEq(X1) # first set things with converged value (in case last call by solver was something else)
+
+fig = plt.figure(figsize=(20/2.54,12/2.54))
+ax = Axes3D(fig)
+
+for Line in LineList:
+	Line.DrawLine(0, ax)
+	
+ax.set_title("Mooring system at equilibrium")
+	
+	
+plt.show()
 
 
 

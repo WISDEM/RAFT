@@ -652,8 +652,9 @@ for mem in memberList:
     W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mass]) )  # weight vector
     M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
     # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
-
-
+    v = 0.
+    v += V_UW # Total volume of all members combined. Assumes all members are always fully underwater
+    
     # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
     
     Fvec, Cmat = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
@@ -683,12 +684,13 @@ from scipy.optimize import fsolve
 # >>>>>>>>>>>>>>>>>>>>> MoorPy was copied over into FD repo so it's not the most updated MoorPy (idk how else to import it) <<<<<<<<<<<<<<<<<<
 
 # This is initially hardcoded in but will eventually be able to read through an input file of mooring parameters
-
+# Include weight, buoyancy, and thrust forces.
+m = M_struc[0,0]
 
 # ----------Initialization of the Mooring System Lines, Points, Bodies
 BodyList=[] # Makes a list variable to hold a list of all the bodies in the system
 #               number, type, xyz-roll-pitch-yaw position vector,   mass [kg] volume [m^3]    center of gravity position vector
-BodyList.append(mp.Body(1, 0, np.array([0, 0, 0, 0, 0, 0], dtype=float), m=0., v=5., rCG=np.array([0, 0, 0], dtype=float)))
+BodyList.append(mp.Body(1, 0, np.array([0, 0, 0, 0, 0, 0], dtype=float), m=0., v=v, rCG=np.array([0, 0, 0], dtype=float)))
 
 anchorR = 150
 angle = np.array([np.pi, np.pi/3, -np.pi/3]) # angle of mooring line wrt positive x positive y
@@ -698,6 +700,11 @@ PointList=[] # Makes a list variable to hold a list of all the attachment points
 PointList.append(mp.Point(1, 1, np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -depth], dtype=float), np.array([0, 0, 0], dtype=float)))
 PointList.append(mp.Point(2, 1, np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -depth], dtype=float), np.array([0, 0, 0], dtype=float)))
 PointList.append(mp.Point(3, 1, np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -depth], dtype=float), np.array([0, 0, 0], dtype=float)))
+# =============================================================================
+# PointList.append(mp.Point(1, 1, np.array([-30, 0, -40], dtype=float), np.array([0, 0, 0], dtype=float)))
+# PointList.append(mp.Point(2, 1, np.array([15, 25, -40], dtype=float), np.array([0, 0, 0], dtype=float)))
+# PointList.append(mp.Point(3, 1, np.array([15, -25, -40], dtype=float), np.array([0, 0, 0], dtype=float)))
+# =============================================================================
 # Calls the Point class to create a Point object to append to the Point list with the given inputs
 
 BodyID = 1
@@ -722,9 +729,9 @@ LineTypes['main'] = mp.LineType('main', 0.02, 40, 100e6) # Mooring Line characte
 # Calls the LineType class in MoorPy to create a LineType object to put into the LineTypes dictionary
 
 #  number, unstretched length, it's LineType, number of segments in the line
-LineList.append(mp.Line(np.int(1), np.float(50), LineTypes['main'], nSegs=np.int(6)))
-LineList.append(mp.Line(np.int(2), np.float(50), LineTypes['main'], nSegs=np.int(6)))
-LineList.append(mp.Line(np.int(3), np.float(50), LineTypes['main'], nSegs=np.int(6))) # Goes through the init function of the Line class to initialize more variables that show up in LineList
+LineList.append(mp.Line(np.int(1), np.float(180), LineTypes['main'], nSegs=np.int(6)))
+LineList.append(mp.Line(np.int(2), np.float(180), LineTypes['main'], nSegs=np.int(6)))
+LineList.append(mp.Line(np.int(3), np.float(180), LineTypes['main'], nSegs=np.int(6))) # Goes through the init function of the Line class to initialize more variables that show up in LineList
 # Calls the Line class to create a Line object to append to the Line list with the given inputs
 
 
@@ -842,7 +849,7 @@ for i in range(len(K)):
 # Assume just one body = sum of all masses and volumes of the total number of members that were done previously.
 # Use the mass for a weight vector and the volume for a buoyancy vector. Weight through COG, FB through COB. Somehow account for the thrust (force in surge) and thrust moment (moment in pitch). New point?
 
-
+MooringEq(X1)
 
 
 

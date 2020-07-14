@@ -26,8 +26,8 @@ class Member:
         entries = strin.split()
         
         self.id = np.int(entries[0])
-        self.dA  = np.int(entries[2])                      # diameter of (lower) node
-        self.dB  = np.int(entries[2])
+        self.dA  = np.float(entries[2])                      # diameter of (lower) node
+        self.dB  = np.float(entries[2])
         self.rA = np.array(entries[3:6], dtype=np.double)  # x y z of lower node
         self.rB = np.array(entries[6:9], dtype=np.double)
         self.t  = 0.06           # shell thickness [m]
@@ -82,9 +82,9 @@ class Member:
     def getInertia(self):
         rho_steel = 7850 #[kg/m^3] Density of steel
 
-        V_UW = (np.pi/4)*(1/3)*(self.dA**2+self.dB**2+self.dA*self.dB)*self.l		#[m^3] Total enclosed underwater volume of member
+        V_UW = (np.pi/4)*(1/3)*(self.dA**2+self.dB**2+self.dA*self.dB)*self.l       #[m^3] Total enclosed underwater volume of member
 
-        v_steel = ((self.t/2)*(self.dA+self.dB)-self.t**2)*np.pi*self.l			#[m^3] Volume of steel of the member
+        v_steel = ((self.t/2)*(self.dA+self.dB)-self.t**2)*np.pi*self.l         #[m^3] Volume of steel of the member
         
         if self.dA >= self.dB:
             center_calc = ((self.dB/(4*self.dA))+(1/4))*self.l
@@ -181,31 +181,79 @@ class Member:
             dMy_dThx =-( dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThx  
             dMy_dThy =-(-dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThy  
             
-            # <<< the above contains some parallel axis stuff. I should remove it and use translateMatrix instead <<<<<
-
             # fill in stiffness matrix
             Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about PRP)
-            Cmat[2,2] = dFz_dz
-            Cmat[2,3] = dFz_dThx
-            Cmat[2,4] = dFz_dThy
-            Cmat[3,2] = dMx_dz
-            Cmat[4,2] = dMy_dz   # ignoring symmetries for now, as a way to check equations
-            Cmat[3,3] = dMx_dThx
-            Cmat[3,4] = dMx_dThy
-            Cmat[4,3] = dMy_dThx
-            Cmat[4,4] = dMy_dThy
+            '''
+            Cmat[2,2] = -dFz_dz
+            Cmat[2,3] = -dFz_dThx
+            Cmat[2,4] = -dFz_dThy
+            Cmat[3,2] = -dMx_dz
+            Cmat[4,2] = -dMy_dz   # ignoring symmetries for now, as a way to check equations
+            Cmat[3,3] = -dMx_dThx
+            Cmat[3,4] = -dMx_dThy
+            Cmat[4,3] = -dMy_dThx
+            Cmat[4,4] = -dMy_dThy
+            '''
+            # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
+            Iwp = np.pi*D_WL**4/64 # [m^4] Moment of Inertia of the waterplane
+            Iwp = np.pi*D_WL**4/64 # [m^4] Moment of Inertia of the waterplane
+            Cmat[2,2] = -dFz_dz
+            Cmat[2,3] = -dFz_dThx
+            Cmat[2,4] = -dFz_dThy
+            Cmat[3,2] = -dMx_dz
+            Cmat[4,2] = -dMy_dz   # ignoring symmetries for now, as a way to check equations
+            Cmat[3,3] = -dMx_dThx
+            Cmat[3,4] = -dMx_dThy
+            Cmat[4,3] = -dMy_dThx
+            Cmat[4,4] = -dMy_dThy
             
             
         
-        # fully submerged case <<<< not done yet <<<<
+        # fully submerged case 
         else:
-            Fvec = np.zeros(6)        # buoyancy force (and moment) vector (about end A)
-            Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about end A)
+        
+            V  = TaperV( 0.5*self.dA, 0.5*self.dB, self.l)  # displaced volume of member [m^3]
             
+            alpha = TaperCV(0.5*self.dA, 0.5*self.dB, 1.0)  # relative location of center of volume from end A (0) to B (1)
+            
+            r_center = self.rA*(1.0-alpha) + self.rB*alpha  # absolute coordinates of center of volume [m]
+        
+            # buoyancy force (and moment) vector
+            Fvec = translateForce3to6DOF( r_center, np.array([0, 0, rho*g*V]) ) 
+  
+            # hydrostatic stiffness matrix (about end A)
+            Cmat = np.zeros([6,6])  
+            Cmat[3,3] = rho*g*V * r_center[2]
+            Cmat[4,4] = rho*g*V * r_center[2]
             
         return Fvec, Cmat
 
 
+def TaperV(R1, R2, H):
+    '''returns the volume of a cylindrical section, possibly with taper'''
+    
+    if R1 == R2:             # if just a cylinder
+        return np.pi*R1*R1*H
+        #taperCV = H/2.0
+
+    elif R1 == 0:             # seperate this case out because it gives a divide by zero in general formula
+        return 1./3.*np.pi*R2*R2*H;                                            # cone volume
+        #taperCV = 3./4.*H                                                     # from base
+    
+    else:
+        coneH = H/(1.-R2/R1);                                                  # conical height
+        coneV = 1./3.*np.pi*R1*R1*coneH;                                       # cone volume
+        coneVtip = 1./3.*np.pi*R2*R2*(coneH-H);                                # height from end of taper to cone tip
+        return coneV-coneVtip;                                                 # taper volume
+        #taperCV = ( coneV*1./4.*coneH - coneVtip*(1./4.*(coneH-H) + H) )/ taperV # from base
+    
+    return taperV, taperCV
+    
+    
+def TaperCV(R1, R2, H):
+    '''returns the height of the center of buoyancy from the lower node'''
+    return H*(R1**2 + 2*R1*R2 + 3*R2**2)*0.25/(R1**2 + R1*R2 + R2**2)
+    
 
 def getVelocity(r, Xi, ws):
     '''Get node complex velocity spectrum based on platform motion's and relative position from PRP'''
@@ -437,7 +485,7 @@ def JONSWAP(ws, Hs, Tp, Gamma=1.0):
 
     return  0.5/np.pi *C* 0.3125*Hs*Hs*fpOvrf4/f *np.exp( -1.25*fpOvrf4 )* Gamma**Alpha
     
-	
+    
 
 
 # ------------------------------- basic setup -----------------------------------------
@@ -452,17 +500,22 @@ k= np.zeros(nw)  # wave number
 
 # ----------------------- member-based platform description --------------------------
 
-# (hard-coded for now - eventually these will be provided as inputs instead)
+# (hard-coded for now - set to DeepCwind Semi geometry - eventually these will be provided as inputs instead)
 
 # list of member objects
 memberList = []
 
-#                    number  type  diameter  xa   ya    za   xb   yb   zb
-memberList.append(Member("1     x      12     0    0   -20    0    0    0  ", nw))
-memberList.append(Member("2     x      12    30    0   -20   30    0    0  ", nw))
-memberList.append(Member("3     x      12     0   30   -20    0   30    0  ", nw))
-memberList.append(Member("4     x      8      0    0   -20   30    0  -20  ", nw))
-memberList.append(Member("5     x      8      0    0   -20    0   30  -20  ", nw))
+#                    number  type  diameter  xa        ya      za     xb        yb     zb
+memberList.append(Member("1     x    12.0   14.43376  25.0   -14.0   14.43376  25.0   0.0  ", nw))
+memberList.append(Member("2     x    12.0  -28.86751   0.0   -14.0  -28.86751   0.0   0.0  ", nw))
+memberList.append(Member("3     x    12.0   14.43376 -25.0   -14.0   14.43376 -25.0   0.0  ", nw))
+memberList.append(Member("4     x    24.0   14.43376  25.0   -20.0   14.43376  25.0  -14.0  ", nw))
+memberList.append(Member("5     x    24.0  -28.86751   0.0   -20.0  -28.86751   0.0  -14.0  ", nw))
+memberList.append(Member("6     x    24.0   14.43376 -25.0   -20.0   14.43376 -25.0  -14.0  ", nw))
+memberList.append(Member("7     x     6.5    0.0       0.0   -20.0    0.0       0.0   0.0  ", nw))
+
+
+
 
 
 # ---------------- (future work) import hydrodynamic coefficient files ----------------
@@ -505,11 +558,11 @@ for imeto in range(len(Hs)):       # loop through each environmental condition
 for i in range(nw):
     k[i] = waveNumber(w[i], depth)
 
-
+'''
 plt.plot(w/np.pi/2,  S[2,:], "r")
 plt.plot(w/np.pi/2, S2[2,:], "b")
 plt.xlabel("Hz")
-
+'''
 
 # ignoring multiple DLCs for now <<<<<
 #for imeto = 1:length(windspeeds)
@@ -701,8 +754,8 @@ for Line in LineList:
 	Line.staticSolve(depth)
 
 for Point in PointList:
-	f = Point.getForces(LineList)
-	print(f)
+    f = Point.getForces(LineList)
+    print(f)
 # getForces creates a variable f to start off with the given external forces on the point. THIS IS WHERE YOU SHOULD ADD THE WEIGHT/OTHER FORCES!!!!!
 # It then adds on to f, either fA or fB, depending on the endB variable of the point.
     
@@ -788,12 +841,6 @@ for i in range(len(K)):
    
 # Assume just one body = sum of all masses and volumes of the total number of members that were done previously.
 # Use the mass for a weight vector and the volume for a buoyancy vector. Weight through COG, FB through COB. Somehow account for the thrust (force in surge) and thrust moment (moment in pitch). New point?
-
-
-
-
-
-
 
 
 

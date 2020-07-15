@@ -78,35 +78,57 @@ class Member:
     
     
     
-    # >>>>>>>>>>>>> @shousner's method for mass/inertia to go here <<<<<<<<<<<<<<<<<<
     def getInertia(self):
-        rho_steel = 7850 #[kg/m^3] Density of steel
-
-        V_UW = (np.pi/4)*(1/3)*(self.dA**2+self.dB**2+self.dA*self.dB)*self.l       #[m^3] Total enclosed underwater volume of member
-
-        v_steel = ((self.t/2)*(self.dA+self.dB)-self.t**2)*np.pi*self.l         #[m^3] Volume of steel of the member
-        
-        if self.dA >= self.dB:
-            center_calc = ((self.dB/(4*self.dA))+(1/4))*self.l
-            center = self.rA + (self.q*center_calc)
+        if self.r[0,2]*self.r[-1,2] <= 0:    # if member crosses (or touches) water plane
+            dB = np.interp(0, self.r[:,2], self.d)       # get diameter of member where its axis crosses the waterplane
+            L = abs(self.r[0,2])       # get length of member that is still underwater. Assumes self.r is about global coords -> z=0 @ SWL
         else:
-            center_calc = ((self.dA/(4*self.dB))+(1/4))*self.l
-            center = self.rB - (self.q*center_calc)
+            dB = self.dB
+            L = self.l
+        # Total enclosed underwater volume
+        V_UW = (np.pi/4)*(1/3)*(self.dA**2+dB**2+self.dA*dB)*L       #[m^3] 
+        
+        # Volume of steel based on the shell thickness [m^3]
+        dAi = self.dA - 2*self.t
+        dBi = self.dB - 2*self.t
+        V_outer = (np.pi/4)*(1/3)*(self.dA**2+self.dB**2+self.dA*self.dB)*self.l
+        V_inner = (np.pi/4)*(1/3)*(dAi**2+dBi**2+dAi*dBi)*self.l
+        v_steel = V_outer - V_inner         #[m^3] Volume of steel of the member  ((self.t/2)*(self.dA+self.dB)-self.t**2)*np.pi*self.l
+        
+        # Center of mass = center of buoyancy (assumption)
+        hco = self.l*((self.dA**2 + 2*self.dA*self.dB + 3*self.dB**2)/(4*(self.dA**2 + self.dA*self.dB + self.dB**2)))  
+        hci = self.l*((dAi**2 + 2*dAi*dBi + 3*dBi**2)/(4*(dAi**2 + dAi*dBi + dBi**2)))
+        hc = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # [m] CoB/CoG of member in relation to bottom node @ self.rA
+        center = self.rA + (self.q*hc)
 
-        # Method done in HydroDyn paper from Matt
-        # center_calc = (self.l/4)*((self.dA**2 + 2*self.dA*self.dB + 3*self.dB**2)/(4*(self.dA**2 + self.dA*self.dB + self.dB**2)))
-        # center = self.rA + (self.q+center_calc)
-
-        # Moment of Inertia
-
-        ro = ((self.dA+self.dB)/2)/2
-        ri = (((self.dA-(2*self.t))+(self.dB-(2*self.t)))/2)/2
-        #I_rad = (1/12)*(rho_steel*v_steel)*(3*(ro**2 + ri**2) + 4*self.l**2) # About the end (node) of the member
-        #I_ax = (1/2)*(rho_steel*v_steel)*(ro**2 + ri**2)
-        I_rad = (1/12)*(rho_steel*self.l*np.pi)*(3*(ro**4 - ri**4) + 4*self.l**2*(ro**2 - ri**2))
-        I_ax = (1/2)*(rho_steel*np.pi*self.l)*(ro**4 - ri**4)
-        # (future work) Can expand these calcs for an actual frustum and not just a cylinder with the average of the top and bottom diameters
-        # (future work) To find the total moment of inertia of all members for any possible future calcs, bring each member's MOI to the origin
+        # Moment of Inertia (equations from HydroDyn paper)
+        # Calc I@end - PA theorem to calc I@CoG - rinse and repeat for the invisible "inner" portion - I_outer-I_inner = I_shell
+        r1 = self.dA/2
+        r2 = self.dB/2
+        m = (r2-r1)/self.l
+        r1i = (self.dA/2)-self.t
+        r2i = (self.dB/2)-self.t
+        mi = (r2i-r1i)/self.l
+        if m==0:
+            Ir_end_outer = (1/12)*(rho_steel*self.l*np.pi*r1**2)*(3*r1**2 + 4*self.l**2) #[kg-m^2]    about end node
+            Ir_end_inner = (1/12)*(rho_steel*self.l*np.pi*r1i**2)*(3*r1i**2 + 4*self.l**2) #[kg-m^2]  about end node
+            Ir_end = Ir_end_outer - Ir_end_inner                     # I_outer - I_inner = I_shell -- about end node
+            I_rad = Ir_end - (rho_steel*v_steel)*hc**2   # about CoG
+            
+            I_ax_outer = (1/2)*rho_steel*np.pi*self.l*(r1**4)
+            I_ax_inner = (1/2)*rho_steel*np.pi*self.l*(r1i**4)
+            I_ax = I_ax_outer - I_ax_inner
+        else:
+            Ir_tip_outer = abs((np.pi/20)*(rho_steel/m)*(1+(4/m**2))*(r2**5-r1**5))                                 # outer, about tip
+            Ir_end_outer = abs(Ir_tip_outer - ((rho_steel/(3*m**2))*np.pi*(r2**3-r1**3)*((r1/m)+2*hc)*r1))          # outer, about node
+            Ir_tip_inner = abs((np.pi/20)*(rho_steel/mi)*(1+(4/mi**2))*(r2i**5-r1i**5))                             # inner, about tip
+            Ir_end_inner = abs(Ir_tip_inner - ((rho_steel/(3*mi**2))*np.pi*(r2i**3-r1i**3)*((r1i/mi)+2*hc)*r1i))    # inner, about node
+            Ir_end = Ir_end_outer - Ir_end_inner                                                                    # shell, about node
+            I_rad = Ir_end - (rho_steel*v_steel)*hc**2                                                              # shell, about CoG by PAT
+            
+            I_ax_outer = (rho_steel*np.pi/(10*m))*(r2**5-r1**5)
+            I_ax_inner = (rho_steel*np.pi/(10*mi))*(r2i**5-r1i**5)
+            I_ax = I_ax_outer - I_ax_inner
 
         return V_UW, v_steel, center, I_rad, I_ax
         
@@ -195,8 +217,8 @@ class Member:
             Cmat[4,4] = -dMy_dThy
             '''
             # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
-            Iwp = np.pi*D_WL**4/64 # [m^4] Moment of Inertia of the waterplane
-            Iwp = np.pi*D_WL**4/64 # [m^4] Moment of Inertia of the waterplane
+            #Iwp = np.pi*D_WL**4/64 # [m^4] Moment of Inertia of the waterplane
+            #Iwp = np.pi*D_WL**4/64 # [m^4] Moment of Inertia of the waterplane
             Cmat[2,2] = -dFz_dz
             Cmat[2,3] = -dFz_dThx
             Cmat[2,4] = -dFz_dThy
@@ -617,43 +639,24 @@ for mem in memberList:
     
     
     # ---------------------- get member's mass and inertia properties ------------------------------
-    
-    # >>>> call to @shousner's Member method(s) <<<<
-    
-    # the method should compute the mass/inertia matrix, instead of the placeholders below
-    # mass = mem.l*mem.w     # kg
-    # iner = 0               # kg-m^2 
-    V_UW, v_steel, center, I_rad, I_ax = mem.getInertia()
     rho_steel = 7850 #[kg/m^3]
-    mass = v_steel*rho_steel #[kg]
-    Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax])
-    # @mhall: Mmat as written above is the mass and inertia matrix about the member CG
-    '''
-    Mmat[0,4] = mass*center[2]
-    Mmat[4,0] = mass*center[2]
-    Mmat[1,3] = -mass*center[2]
-    Mmat[3,1] = -mass*center[2]
-    Mmat[0,5] = -mass*center[1]
-    Mmat[5,0] = -mass*center[1]
-    Mmat[2,3] = mass*center[1]
-    Mmat[3,2] = mass*center[1]
-    Mmat[1,5] = mass*center[0]
-    Mmat[5,1] = mass*center[0]
-    Mmat[4,2] = -mass*center[0]
-    Mmat[2,4] = -mass*center[0]
-    '''
-    # @mhall: the above section, which I've commented out, provides the off-diagonal 3x3 blocks 
-    # but doesn't handle parallel axis theorem for inertia terms.
-    # The off diagonals of the moment of inertia section are assumed to be zero for right now, since we're initially assuming cylinders
+
+    V_UW, v_steel, center, I_rad, I_ax = mem.getInertia() # calls the getInertia method to calcaulte values
     
-    #>>>>>>>>>>>>>>>>>>>>>>>> double check this is the way to do this since "center" is the CoG about the global coordinates<<<<<<<<<<<<<<<<<<<<<<
-        
+    mass = v_steel*rho_steel #[kg]
+    Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
+    # @mhall: Mmat as written above is the mass and inertia matrix about the member CG...@shousner: you betcha
+  
     # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
     W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mass]) )  # weight vector
     M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
     # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
-    v = 0.
-    v += V_UW # Total volume of all members combined. Assumes all members are always fully underwater
+    # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
+    
+    mTOT = M_struc[0,0]
+    VTOT = 0.
+    VTOT += V_UW # Total underwater volume of all members combined
+    
     
     # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
     
@@ -685,12 +688,11 @@ from scipy.optimize import fsolve
 
 # This is initially hardcoded in but will eventually be able to read through an input file of mooring parameters
 # Include weight, buoyancy, and thrust forces.
-m = M_struc[0,0]
 
 # ----------Initialization of the Mooring System Lines, Points, Bodies
 BodyList=[] # Makes a list variable to hold a list of all the bodies in the system
 #               number, type, xyz-roll-pitch-yaw position vector,   mass [kg] volume [m^3]    center of gravity position vector
-BodyList.append(mp.Body(1, 0, np.array([0, 0, 0, 0, 0, 0], dtype=float), m=0., v=v, rCG=np.array([0, 0, 0], dtype=float)))
+BodyList.append(mp.Body(1, 0, np.array([0, 0, 0, 0, 0, 0], dtype=float), m=0., v=11.99, rCG=np.array([0, 0, 0], dtype=float)))
 
 anchorR = 150
 angle = np.array([np.pi, np.pi/3, -np.pi/3]) # angle of mooring line wrt positive x positive y
@@ -728,10 +730,12 @@ LineList=[] # Makes a list variable to hold a list of all the mooring lines
 LineTypes['main'] = mp.LineType('main', 0.02, 40, 100e6) # Mooring Line characteristics. massden used to calculate w = [N/m]
 # Calls the LineType class in MoorPy to create a LineType object to put into the LineTypes dictionary
 
+LineLength = 250.
+
 #  number, unstretched length, it's LineType, number of segments in the line
-LineList.append(mp.Line(np.int(1), np.float(180), LineTypes['main'], nSegs=np.int(6)))
-LineList.append(mp.Line(np.int(2), np.float(180), LineTypes['main'], nSegs=np.int(6)))
-LineList.append(mp.Line(np.int(3), np.float(180), LineTypes['main'], nSegs=np.int(6))) # Goes through the init function of the Line class to initialize more variables that show up in LineList
+LineList.append(mp.Line(np.int(1), LineLength, LineTypes['main'], nSegs=np.int(6)))
+LineList.append(mp.Line(np.int(2), LineLength, LineTypes['main'], nSegs=np.int(6)))
+LineList.append(mp.Line(np.int(3), LineLength, LineTypes['main'], nSegs=np.int(6))) # Goes through the init function of the Line class to initialize more variables that show up in LineList
 # Calls the Line class to create a Line object to append to the Line list with the given inputs
 
 

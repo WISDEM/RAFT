@@ -85,6 +85,8 @@ class Member:
         else:
             dB = self.dB
             L = self.l
+            AWP = 0
+            IWP = 0
         # Total enclosed underwater volume
         V_UW = (np.pi/4)*(1/3)*(self.dA**2+dB**2+self.dA*dB)*L       #[m^3] 
         
@@ -95,7 +97,7 @@ class Member:
         V_inner = (np.pi/4)*(1/3)*(dAi**2+dBi**2+dAi*dBi)*self.l
         v_steel = V_outer - V_inner         #[m^3] Volume of steel of the member  ((self.t/2)*(self.dA+self.dB)-self.t**2)*np.pi*self.l
         
-        # Center of mass = center of buoyancy (assumption)
+        # Center of mass
         hco = self.l*((self.dA**2 + 2*self.dA*self.dB + 3*self.dB**2)/(4*(self.dA**2 + self.dA*self.dB + self.dB**2)))  
         hci = self.l*((dAi**2 + 2*dAi*dBi + 3*dBi**2)/(4*(dAi**2 + dAi*dBi + dBi**2)))
         hc = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # [m] CoB/CoG of member in relation to bottom node @ self.rA
@@ -144,6 +146,8 @@ class Member:
             dWP = np.interp(0, self.r[:,2], self.d)       # get diameter of member where its axis crosses the waterplane 
         #    xwp = np.interp(0, self.r[:,2], self.r[:,0])
         #   ywp = np.interp(0, self.r[:,2], self.r[:,1])
+            AWP = (np.pi/4)*dWP**2
+            IWP = (np.pi/64)*dWP**4   # Assumes the waterplane area is in the shape of a circle
         
             # >>>> question: should this function be able to use displaced/rotated values? <<<<
             
@@ -635,6 +639,7 @@ Xi = np.zeros([6,nw], dtype=complex)    # displacement and rotation complex ampl
 # --------------- Get general geometry properties including hydrostatics ------------------------
 
 # loop through each member
+VTOT = 0.
 for mem in memberList:
     
     q, p1, p2 = mem.getDirections()                # get unit direction vectors
@@ -656,7 +661,6 @@ for mem in memberList:
     # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
     
     mTOT = M_struc[0,0]
-    VTOT = 0.
     VTOT += V_UW # Total underwater volume of all members combined
     
     
@@ -707,6 +711,7 @@ BodyList=[] # Makes a list variable to hold a list of all the bodies in the syst
 #               number, type, xyz-roll-pitch-yaw position vector,   mass [kg], volume [m^3], center of gravity position vector, waterplane area, metacenter position vector
 BodyList.append(mp.Body(1, 0, np.zeros(6), m=m, v=v, rCG=np.array([0, 0, zCG]), aWP=aWP, rM=np.array([0,0,zMeta])))
 Body[0].f6Ext = np.array([Fthrust,0,0,0,Mthrust,0])  # apply wind thrust force and moment on Body
+
 
 
 anchorR = 150
@@ -767,7 +772,7 @@ PointList[2].addLine(3, 0) # attached Line 3 (3) to Point 3 (2)
 PointList[5].addLine(3, 1) # attached Line 3 (3) to Point 6 (5)
 # ------------------------
 
-
+#depth = 40.
 
 # ---------------------Initialization of mooring system with provided positions	in space
 for Body in BodyList:

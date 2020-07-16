@@ -32,9 +32,12 @@ class Member:
         self.rB = np.array(entries[6:9], dtype=np.double)
         self.t  = 0.06           # shell thickness [m]
         
+        self.l_fill = 0                    # length of member (from end A to B) filled with ballast [m]
+        self.rho_fill = 1025               # density of ballast in member [kg/m^2]
+        
         rAB = self.rB-self.rA
         self.l = np.linalg.norm(rAB)  # member length
-        
+                
         self.q = rAB/self.l           # member axial unit vector
         self.p1 = np.zeros(3)              # member transverse unit vectors (to be filled in later)
         self.p2 = np.zeros(3)              # member transverse unit vectors
@@ -79,16 +82,6 @@ class Member:
     
     
     def getInertia(self):
-        if self.r[0,2]*self.r[-1,2] <= 0:    # if member crosses (or touches) water plane
-            dB = np.interp(0, self.r[:,2], self.d)       # get diameter of member where its axis crosses the waterplane
-            L = abs(self.r[0,2])       # get length of member that is still underwater. Assumes self.r is about global coords -> z=0 @ SWL
-        else:
-            dB = self.dB
-            L = self.l
-            AWP = 0
-            IWP = 0
-        # Total enclosed underwater volume
-        V_UW = (np.pi/4)*(1/3)*(self.dA**2+dB**2+self.dA*dB)*L       #[m^3] 
         
         # Volume of steel based on the shell thickness [m^3]
         dAi = self.dA - 2*self.t
@@ -132,7 +125,7 @@ class Member:
             I_ax_inner = (rho_steel*np.pi/(10*mi))*(r2i**5-r1i**5)
             I_ax = I_ax_outer - I_ax_inner
 
-        return V_UW, v_steel, center, I_rad, I_ax
+        return v_steel, center, I_rad, I_ax
         
     
     
@@ -143,16 +136,6 @@ class Member:
         # partially submerged case
         if self.r[0,2]*self.r[-1,2] <= 0:    # if member crosses (or touches) water plane
                 
-            dWP = np.interp(0, self.r[:,2], self.d)       # get diameter of member where its axis crosses the waterplane 
-        #    xwp = np.interp(0, self.r[:,2], self.r[:,0])
-        #   ywp = np.interp(0, self.r[:,2], self.r[:,1])
-            AWP = (np.pi/4)*dWP**2
-            IWP = (np.pi/64)*dWP**4   # Assumes the waterplane area is in the shape of a circle
-        
-            # >>>> question: should this function be able to use displaced/rotated values? <<<<
-            
-            # ------------- get hydrostatic derivatives ---------------- 
-            
             # angles
             beta = np.arctan2(q[1],q[0])  # member incline heading from x axis
             phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])  # member incline angle from vertical
@@ -164,6 +147,30 @@ class Member:
             cosBeta=np.cos(beta)
             sinBeta=np.sin(beta)
             tanBeta=sinBeta/cosBeta
+                
+            # -------------------- buoyancy and waterplane area properties ------------------------
+                
+            dWP = np.interp(0, self.r[:,2], self.d)       # diameter of member where its axis crosses the waterplane 
+            xWP = np.interp(0, self.r[:,2], self.r[:,0])  # x coordinate where member axis cross the waterplane [m]
+            yWP = np.interp(0, self.r[:,2], self.r[:,1])  # y coordinate where member axis cross the waterplane [m]
+            AWP = (np.pi/4)*dWP**2                        # waterplane area of member [m^2]
+            IWP = (np.pi/64)*dWP**4                       # waterplane moment of inertia [m^4] approximates the waterplane area as the shape of a circle
+            
+            LWP = abs(self.r[0,2])/cosPhi                 # get length of member that is still underwater. Assumes self.r is about global coords -> z=0 @ SWL
+            
+            # Total enclosed underwater volume
+            V_UW = (np.pi/4)*(1/3)*(self.dA**2+dWP**2+self.dA*dWP)*LWP       #[m^3] 
+            
+            L_center = TaperCV(0.5*self.dA, 0.5*dWP, LWP) # distance from end A to center of buoyancy of member [m]
+            
+            r_center = self.rA + self.q*L_center          # absolute coordinates of center of volume [m]
+        
+            
+            
+        
+            # >>>> question: should this function be able to use displaced/rotated values? <<<<
+            
+            # ------------- get hydrostatic derivatives ---------------- 
             
             # derivatives from global to local 
             dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
@@ -175,8 +182,8 @@ class Member:
             # temporarily approximated for taper by using dWP (diameter at water plane crossing) <<< this is rough
             
             # buoyancy force and moment about end A
-            Fz = -rho*g*pi*0.25*dWP**2*self.rA[2]/cosPhi
-            M  = -rho*g*pi*( dWP*2/32*(2.0 + tanPhi**2) + 0.5*(self.rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+            Fz = rho*g* V_UW
+            M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(self.rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
             Mx = M*dPhi_dThx
             My = M*dPhi_dThy
             
@@ -240,21 +247,26 @@ class Member:
         # fully submerged case 
         else:
         
-            V  = TaperV( 0.5*self.dA, 0.5*self.dB, self.l)  # displaced volume of member [m^3]
+            AWP = 0
+            IWP = 0
+            xWP = 0
+            yWP = 0
+        
+            V_UW  = TaperV( 0.5*self.dA, 0.5*self.dB, self.l)  # displaced volume of member [m^3]
             
             alpha = TaperCV(0.5*self.dA, 0.5*self.dB, 1.0)  # relative location of center of volume from end A (0) to B (1)
             
             r_center = self.rA*(1.0-alpha) + self.rB*alpha  # absolute coordinates of center of volume [m]
         
             # buoyancy force (and moment) vector
-            Fvec = translateForce3to6DOF( r_center, np.array([0, 0, rho*g*V]) ) 
+            Fvec = translateForce3to6DOF( r_center, np.array([0, 0, rho*g*V_UW]) ) 
   
             # hydrostatic stiffness matrix (about end A)
             Cmat = np.zeros([6,6])  
-            Cmat[3,3] = rho*g*V * r_center[2]
-            Cmat[4,4] = rho*g*V * r_center[2]
+            Cmat[3,3] = rho*g*V_UW * r_center[2]
+            Cmat[4,4] = rho*g*V_UW * r_center[2]
             
-        return Fvec, Cmat
+        return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 
 def TaperV(R1, R2, H):
@@ -638,8 +650,16 @@ Xi = np.zeros([6,nw], dtype=complex)    # displacement and rotation complex ampl
 
 # --------------- Get general geometry properties including hydrostatics ------------------------
 
+# initialize some variables for running totals
+VTOT = 0.                   # Total underwater volume of all members combined
+mTOT = 0.                   # Total mass of all members [kg]
+AWP_TOT = 0.                # Total waterplane area of all members [m^2]
+IWPx_TOT = 0                # Total waterplane moment of inertia of all members about x axis [m^4]  
+IWPy_TOT = 0                # Total waterplane moment of inertia of all members about y axis [m^4]  
+Sum_V_rCB = np.zeros(3)     # product of each member's buoyancy multiplied by center of buoyancy [m^4]
+Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
+
 # loop through each member
-VTOT = 0.
 for mem in memberList:
     
     q, p1, p2 = mem.getDirections()                # get unit direction vectors
@@ -648,7 +668,7 @@ for mem in memberList:
     # ---------------------- get member's mass and inertia properties ------------------------------
     rho_steel = 7850 #[kg/m^3]
 
-    V_UW, v_steel, center, I_rad, I_ax = mem.getInertia() # calls the getInertia method to calcaulte values
+    v_steel, center, I_rad, I_ax = mem.getInertia() # calls the getInertia method to calcaulte values
     
     mass = v_steel*rho_steel #[kg]
     Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
@@ -661,26 +681,29 @@ for mem in memberList:
     # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
     
     mTOT = M_struc[0,0]
-    VTOT += V_UW # Total underwater volume of all members combined
     
     
     # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
     
-    Fvec, Cmat = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
+    Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
     
     # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices <<<<< needs updating (already about PRP)
     W_hydro += Fvec # translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
     C_hydro += Cmat # translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
+    VTOT    += V_UW    # add to total underwater volume of all members combined
+    AWP_TOT += AWP
+    IWPx_TOT += IWP + AWP*yWP**2
+    IWPy_TOT += IWP + AWP*xWP**2
+    Sum_V_rCB   += r_CB*V_UW
+    Sum_AWP_rWP += np.array([xWP, yWP])*AWP
 
+# ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
 
+zCG_TOT = 0  #@shousner please fill me in <<<<<<<<<<<<
 
-# process key hydrostatic-related properties of the platform for use in static equilibrium solution
+rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
 
-# m (or total mass) should already be ready to go
-# v   should already be ready to go
-# zCG should already be ready to go
-# aWP should already be ready to go
-zMeta = zCB + I_WP/v   # add center of buoyancy and BM=I/v to get z elevation of metecenter [m]
+zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
         
         
 
@@ -709,8 +732,9 @@ BodyList=[] # Makes a list variable to hold a list of all the bodies in the syst
 
 # Create Body represent FOWT in MoorPy
 #               number, type, xyz-roll-pitch-yaw position vector,   mass [kg], volume [m^3], center of gravity position vector, waterplane area, metacenter position vector
-BodyList.append(mp.Body(1, 0, np.zeros(6), m=m, v=v, rCG=np.array([0, 0, zCG]), aWP=aWP, rM=np.array([0,0,zMeta])))
-Body[0].f6Ext = np.array([Fthrust,0,0,0,Mthrust,0])  # apply wind thrust force and moment on Body
+BodyList.append(mp.Body(1, 0, np.zeros(6), m=mTOT, v=VTOT, rCG=np.array([0, 0, zCG_TOT]), AWP=AWP_TOT, rM=np.array([0,0,zMeta])))
+
+BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])  # apply wind thrust force and moment on Body
 
 
 

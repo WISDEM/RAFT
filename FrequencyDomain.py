@@ -164,8 +164,8 @@ class Member:
             # derivatives from global to local 
             dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
             dPhi_dThy  =  cosBeta
-            dBeta_dThx = -cosBeta/tanBeta**2
-            dBeta_dThy = -sinBeta/tanBeta**2
+            #dBeta_dThx = -cosBeta/tanBeta**2
+            #dBeta_dThy = -sinBeta/tanBeta**2
             
             # note: below calculations are based on untapered case, but 
             # temporarily approximated for taper by using dWP (diameter at water plane crossing) <<< this is rough
@@ -203,6 +203,8 @@ class Member:
             dMy_dThx =-( dFz_dz*self.rA[1] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThx  
             dMy_dThy =-(-dFz_dz*self.rA[0] + dFz_dPhi*dPhi_dThy)*self.rA[0] + dM_dPhi*dPhi_dThy*dPhi_dThy  
             
+            
+            
             # fill in stiffness matrix
             Cmat = np.zeros([6,6]) # hydrostatic stiffness matrix (about PRP)
             '''
@@ -217,8 +219,8 @@ class Member:
             Cmat[4,4] = -dMy_dThy
             '''
             # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
-            #Iwp = np.pi*D_WL**4/64 # [m^4] Moment of Inertia of the waterplane
-            #Iwp = np.pi*D_WL**4/64 # [m^4] Moment of Inertia of the waterplane
+            Iwp = np.pi*dWP**4/64 # [m^4] Moment of Inertia of the waterplane
+            Iwp = np.pi*dWP**4/64 # [m^4] Moment of Inertia of the waterplane
             Cmat[2,2] = -dFz_dz
             Cmat[2,3] = -dFz_dThx
             Cmat[2,4] = -dFz_dThy
@@ -666,6 +668,15 @@ for mem in memberList:
     W_hydro += Fvec # translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
     C_hydro += Cmat # translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
 
+
+
+# process key hydrostatic-related properties of the platform for use in static equilibrium solution
+
+# m (or total mass) should already be ready to go
+# v   should already be ready to go
+# zCG should already be ready to go
+# aWP should already be ready to go
+zMeta = zCB + I_WP/v   # add center of buoyancy and BM=I/v to get z elevation of metecenter [m]
         
         
 
@@ -691,8 +702,12 @@ from scipy.optimize import fsolve
 
 # ----------Initialization of the Mooring System Lines, Points, Bodies
 BodyList=[] # Makes a list variable to hold a list of all the bodies in the system
-#               number, type, xyz-roll-pitch-yaw position vector,   mass [kg] volume [m^3]    center of gravity position vector
-BodyList.append(mp.Body(1, 0, np.array([0, 0, 0, 0, 0, 0], dtype=float), m=0., v=11.99, rCG=np.array([0, 0, 0], dtype=float)))
+
+# Create Body represent FOWT in MoorPy
+#               number, type, xyz-roll-pitch-yaw position vector,   mass [kg], volume [m^3], center of gravity position vector, waterplane area, metacenter position vector
+BodyList.append(mp.Body(1, 0, np.zeros(6), m=m, v=v, rCG=np.array([0, 0, zCG]), aWP=aWP, rM=np.array([0,0,zMeta])))
+Body[0].f6Ext = np.array([Fthrust,0,0,0,Mthrust,0])  # apply wind thrust force and moment on Body
+
 
 anchorR = 150
 angle = np.array([np.pi, np.pi/3, -np.pi/3]) # angle of mooring line wrt positive x positive y

@@ -93,7 +93,7 @@ class Member:
         # Center of mass
         hco = self.l*((self.dA**2 + 2*self.dA*self.dB + 3*self.dB**2)/(4*(self.dA**2 + self.dA*self.dB + self.dB**2)))  
         hci = self.l*((dAi**2 + 2*dAi*dBi + 3*dBi**2)/(4*(dAi**2 + dAi*dBi + dBi**2)))
-        hc = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # [m] CoB/CoG of member in relation to bottom node @ self.rA
+        hc = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # [m] CoG of member in relation to bottom node @ self.rA
         center = self.rA + (self.q*hc)
 
         # Moment of Inertia (equations from HydroDyn paper)
@@ -287,7 +287,7 @@ def TaperV(R1, R2, H):
         return coneV-coneVtip;                                                 # taper volume
         #taperCV = ( coneV*1./4.*coneH - coneVtip*(1./4.*(coneH-H) + H) )/ taperV # from base
     
-    return taperV, taperCV
+    return taperV
     
     
 def TaperCV(R1, R2, H):
@@ -658,6 +658,7 @@ IWPx_TOT = 0                # Total waterplane moment of inertia of all members 
 IWPy_TOT = 0                # Total waterplane moment of inertia of all members about y axis [m^4]  
 Sum_V_rCB = np.zeros(3)     # product of each member's buoyancy multiplied by center of buoyancy [m^4]
 Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
+Sum_M_center = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
 
 # loop through each member
 for mem in memberList:
@@ -680,8 +681,6 @@ for mem in memberList:
     # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
     # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
     
-    mTOT = M_struc[0,0]
-    
     
     # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
     
@@ -696,10 +695,12 @@ for mem in memberList:
     IWPy_TOT += IWP + AWP*xWP**2
     Sum_V_rCB   += r_CB*V_UW
     Sum_AWP_rWP += np.array([xWP, yWP])*AWP
+    Sum_M_center += center*mass
 
 # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
 
-zCG_TOT = 0  #@shousner please fill me in <<<<<<<<<<<<
+mTOT = M_struc[0,0]
+rCG_TOT = Sum_M_center/mTOT 
 
 rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
 
@@ -732,7 +733,7 @@ BodyList=[] # Makes a list variable to hold a list of all the bodies in the syst
 
 # Create Body represent FOWT in MoorPy
 #               number, type, xyz-roll-pitch-yaw position vector,   mass [kg], volume [m^3], center of gravity position vector, waterplane area, metacenter position vector
-BodyList.append(mp.Body(1, 0, np.zeros(6), m=mTOT, v=VTOT, rCG=np.array([0, 0, zCG_TOT]), AWP=AWP_TOT, rM=np.array([0,0,zMeta])))
+BodyList.append(mp.Body(1, 0, np.zeros(6), m=mTOT, v=VTOT, rCG=rCG_TOT, AWP=AWP_TOT, rM=np.array([0,0,zMeta])))
 
 BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])  # apply wind thrust force and moment on Body
 
@@ -743,9 +744,9 @@ angle = np.array([np.pi, np.pi/3, -np.pi/3]) # angle of mooring line wrt positiv
 
 PointList=[] # Makes a list variable to hold a list of all the attachment points of the mooring system
 #                 number, type,      location,              external force
-PointList.append(mp.Point(1, 1, np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -depth], dtype=float), np.array([0, 0, 0], dtype=float)))
-PointList.append(mp.Point(2, 1, np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -depth], dtype=float), np.array([0, 0, 0], dtype=float)))
-PointList.append(mp.Point(3, 1, np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -depth], dtype=float), np.array([0, 0, 0], dtype=float)))
+PointList.append(mp.Point(1, 1, np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -depth], dtype=float), np.zeros(3)))
+PointList.append(mp.Point(2, 1, np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -depth], dtype=float), np.zeros(3)))
+PointList.append(mp.Point(3, 1, np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -depth], dtype=float), np.zeros(3)))
 # =============================================================================
 # PointList.append(mp.Point(1, 1, np.array([-30, 0, -40], dtype=float), np.array([0, 0, 0], dtype=float)))
 # PointList.append(mp.Point(2, 1, np.array([15, 25, -40], dtype=float), np.array([0, 0, 0], dtype=float)))

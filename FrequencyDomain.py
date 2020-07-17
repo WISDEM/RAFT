@@ -33,7 +33,7 @@ class Member:
         self.t  = 0.06           # shell thickness [m]
         
         self.l_fill = 0                    # length of member (from end A to B) filled with ballast [m]
-        self.rho_fill = 1025               # density of ballast in member [kg/m^2]
+        self.rho_fill = 1025               # density of ballast in member [kg/m^3]
         
         rAB = self.rB-self.rA
         self.l = np.linalg.norm(rAB)  # member length
@@ -90,14 +90,24 @@ class Member:
         V_inner = (np.pi/4)*(1/3)*(dAi**2+dBi**2+dAi*dBi)*self.l
         v_steel = V_outer - V_inner         #[m^3] Volume of steel of the member  ((self.t/2)*(self.dA+self.dB)-self.t**2)*np.pi*self.l
         
+        # Ballast (future work - this doesn't account for any angle in the member. If the member is horizontal, the ballast doesn't follow gravity)
+        dB_fill = (dBi-dAi)*(self.l_fill/self.l) + dAi       # interpolated diameter of member where the ballast is filled to
+        v_fill = (np.pi/4)*(1/3)*(dAi**2+dB_fill**2+dAi*dB_fill)*self.l_fill    #[m^3]
+        m_fill = self.rho_fill*v_fill                                           #[kg]
+        
         # Center of mass
         hco = self.l*((self.dA**2 + 2*self.dA*self.dB + 3*self.dB**2)/(4*(self.dA**2 + self.dA*self.dB + self.dB**2)))  
         hci = self.l*((dAi**2 + 2*dAi*dBi + 3*dBi**2)/(4*(dAi**2 + dAi*dBi + dBi**2)))
-        hc = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # [m] CoG of member in relation to bottom node @ self.rA
+        hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # [m] CoG of member shell in relation to bottom node @ self.rA
+        
+        hc_fill = self.l_fill*((dAi**2 + 2*dAi*dB_fill + 3*dB_fill**2)/(4*(dAi**2 + dAi*dB_fill + dB_fill**2)))
+        
+        hc = ((hc_fill*self.rho_fill*v_fill)+(hc_shell*rho_steel*v_steel))/((self.rho_fill*v_fill)+(rho_steel*v_steel))
+        
         center = self.rA + (self.q*hc)
 
         # Moment of Inertia (equations from HydroDyn paper)
-        # Calc I@end - PA theorem to calc I@CoG - rinse and repeat for the invisible "inner" portion - I_outer-I_inner = I_shell
+        # Calc I@end for outer solid - Calc I@end for "inner" solid - I_outer-I_inner = I_shell @end - PA theorem to calc I@CoG
         r1 = self.dA/2
         r2 = self.dB/2
         m = (r2-r1)/self.l
@@ -125,7 +135,7 @@ class Member:
             I_ax_inner = (rho_steel*np.pi/(10*mi))*(r2i**5-r1i**5)
             I_ax = I_ax_outer - I_ax_inner
 
-        return v_steel, center, I_rad, I_ax
+        return v_steel, center, I_rad, I_ax, m_fill
         
     
     
@@ -669,9 +679,9 @@ for mem in memberList:
     # ---------------------- get member's mass and inertia properties ------------------------------
     rho_steel = 7850 #[kg/m^3]
 
-    v_steel, center, I_rad, I_ax = mem.getInertia() # calls the getInertia method to calcaulte values
+    v_steel, center, I_rad, I_ax, m_fill = mem.getInertia() # calls the getInertia method to calcaulte values
     
-    mass = v_steel*rho_steel #[kg]
+    mass = v_steel*rho_steel + m_fill #[kg]
     Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
     # @mhall: Mmat as written above is the mass and inertia matrix about the member CG...@shousner: you betcha
   
@@ -895,10 +905,17 @@ for i in range(len(K)):
 # the mooring stiffness force is the matrix K times the deltaX or the new r vector away from point X1; K@X2 is incorrect. K@(X2-X1) is correct.
 # ----------------
    
-# Assume just one body = sum of all masses and volumes of the total number of members that were done previously.
-# Use the mass for a weight vector and the volume for a buoyancy vector. Weight through COG, FB through COB. Somehow account for the thrust (force in surge) and thrust moment (moment in pitch). New point?
 
 MooringEq(X1)
+
+
+
+# C_moor = Body.getStiffness(PointList, LineList, X1, depth)
+# @shousner: I almost have it. I feel like I have the right idea, I'm just doing something wrong in staticSolve
+
+
+
+
 
 
 

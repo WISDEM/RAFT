@@ -257,14 +257,14 @@ class Member:
             Iwp = np.pi*dWP**4/64 # [m^4] Moment of Inertia of the waterplane
             Iwp = np.pi*dWP**4/64 # [m^4] Moment of Inertia of the waterplane
             Cmat[2,2] = -dFz_dz
-            Cmat[2,3] = -dFz_dThx
-            Cmat[2,4] = -dFz_dThy
-            Cmat[3,2] = -dMx_dz
-            Cmat[4,2] = -dMy_dz   # ignoring symmetries for now, as a way to check equations
-            Cmat[3,3] = -dMx_dThx
-            Cmat[3,4] = -dMx_dThy
-            Cmat[4,3] = -dMy_dThx
-            Cmat[4,4] = -dMy_dThy
+            Cmat[2,3] = rho*g*(     -AWP*yWP    )
+            Cmat[2,4] = rho*g*(      AWP*xWP    )
+            Cmat[3,2] = rho*g*(     -AWP*yWP    )
+            Cmat[3,3] = rho*g*(IWP + AWP*yWP**2 )
+            Cmat[3,4] = rho*g*(      AWP*xWP*yWP)
+            Cmat[4,2] = rho*g*(      AWP*xWP    )
+            Cmat[4,3] = rho*g*(      AWP*xWP*yWP)
+            Cmat[4,4] = rho*g*(IWP + AWP*xWP**2 )
             
             
         

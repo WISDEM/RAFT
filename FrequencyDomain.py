@@ -269,7 +269,7 @@ class Member:
             
         
         # fully submerged case 
-        else:
+        elif self.r[0,2] <= 0 and self.r[-1,2] <= 0:
         
             AWP = 0
             IWP = 0
@@ -773,10 +773,9 @@ MooringSystem.depth = depth         # set depth = the depth in FD, not what is w
 
 
 MooringSystem.initialize()                     # Initializes the complete mooring system based on the given bodies, lines, and points
-MooringSystem.setInitialPosition()             # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
-K, C_moor = MooringSystem.getSystemStiffness() # Calculates the overal total system stiffness matrix, K, as well as just the mooring line stiffness matrix, C_moor
-
-
+MooringSystem.solveEquilibrium()             # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
+K = MooringSystem.getSystemStiffness()       # Calculates the overal total system stiffness matrix, K, which includes hydrostatics handled by MoorPy
+C_moor = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)  # calculate the mooring line stiffness matrix, C_moor
 
 
 

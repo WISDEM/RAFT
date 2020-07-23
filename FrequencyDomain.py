@@ -18,7 +18,6 @@ class Member:
     def __init__(self, strin, nw):
         '''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
         
-        
         '''
     
         # note: haven't decided yet how to lump masses and handle segments <<<<
@@ -26,14 +25,15 @@ class Member:
         entries = strin.split()
         
         self.id = np.int(entries[0])
+        self.type = np.int(entries[1])
         self.dA  = np.float(entries[2])                      # diameter of (lower) node
-        self.dB  = np.float(entries[2])
-        self.rA = np.array(entries[3:6], dtype=np.double)  # x y z of lower node
-        self.rB = np.array(entries[6:9], dtype=np.double)
-        self.t  = 0.06           # shell thickness [m]
+        self.dB  = np.float(entries[3])
+        self.rA = np.array(entries[4:7], dtype=np.double)  # x y z of lower node
+        self.rB = np.array(entries[7:10], dtype=np.double)
+        self.t  = np.float(entries[10])           # shell thickness [m]
         
-        self.l_fill = 0                    # length of member (from end A to B) filled with ballast [m]
-        self.rho_fill = 1025               # density of ballast in member [kg/m^3]
+        self.l_fill = np.float(entries[11])                    # length of member (from end A to B) filled with ballast [m]
+        self.rho_fill = np.float(entries[12])               # density of ballast in member [kg/m^3]
         
         rAB = self.rB-self.rA
         self.l = np.linalg.norm(rAB)  # member length
@@ -136,17 +136,23 @@ class Member:
             Ir_end = Ir_end_outer - Ir_end_inner                                                                    # shell, about node
             I_rad_steel = Ir_end - (rho_steel*v_steel)*hc**2                                                        # shell, about CoG by PAT
             
-            mi_fill = (r2i-r1i)/self.l_fill 
-            Ir_tip_fill = abs((np.pi/20)*(rho_steel/mi_fill)*(1+(4/mi_fill**2))*(r2i**5-r1i**5))
-            Ir_end_fill = abs(Ir_tip_fill - ((self.rho_fill/(3*mi_fill**2))*np.pi*(r2i**3-r1i**3)*((r1i/mi_fill)+2*hc)*r1i))    # inner, about node
-            I_rad_fill = Ir_end_fill - m_fill*hc**2   # about CoG
-            
-            I_rad = I_rad_steel + I_rad_fill # about CoG
-            
             I_ax_outer = (rho_steel*np.pi/(10*m))*(r2**5-r1**5)
             I_ax_inner = (rho_steel*np.pi/(10*mi))*(r2i**5-r1i**5)
             I_ax_steel = I_ax_outer - I_ax_inner
-            I_ax_fill = (self.rho_fill*np.pi/(10*mi_fill))*(r2i**5-r1i**5)
+            
+            if self.l_fill == 0:
+                I_rad_fill = 0
+                I_ax_fill = 0
+            else:    
+                mi_fill = (r2i-r1i)/self.l_fill 
+                Ir_tip_fill = abs((np.pi/20)*(rho_steel/mi_fill)*(1+(4/mi_fill**2))*(r2i**5-r1i**5))
+                Ir_end_fill = abs(Ir_tip_fill - ((self.rho_fill/(3*mi_fill**2))*np.pi*(r2i**3-r1i**3)*((r1i/mi_fill)+2*hc)*r1i))    # inner, about node
+                I_rad_fill = Ir_end_fill - m_fill*hc**2   # about CoG
+
+                I_ax_fill = (self.rho_fill*np.pi/(10*mi_fill))*(r2i**5-r1i**5)
+            
+            I_rad = I_rad_steel + I_rad_fill # about CoG
+            
             I_ax = I_ax_steel + I_ax_fill 
 
         return v_steel, center, I_rad, I_ax, m_fill
@@ -181,6 +187,7 @@ class Member:
             IWP = (np.pi/64)*dWP**4                       # waterplane moment of inertia [m^4] approximates the waterplane area as the shape of a circle
             
             LWP = abs(self.r[0,2])/cosPhi                 # get length of member that is still underwater. Assumes self.r is about global coords -> z=0 @ SWL
+            
             
             # Total enclosed underwater volume
             V_UW = (np.pi/4)*(1/3)*(self.dA**2+dWP**2+self.dA*dWP)*LWP       #[m^3] 
@@ -570,15 +577,35 @@ k= np.zeros(nw)  # wave number
 memberList = []
 
 #                    number  type  diameter  xa        ya      za     xb        yb     zb
-memberList.append(Member("1     x    12.0   14.43376  25.0   -14.0   14.43376  25.0   0.0  ", nw))
-memberList.append(Member("2     x    12.0  -28.86751   0.0   -14.0  -28.86751   0.0   0.0  ", nw))
-memberList.append(Member("3     x    12.0   14.43376 -25.0   -14.0   14.43376 -25.0   0.0  ", nw))
-memberList.append(Member("4     x    24.0   14.43376  25.0   -20.0   14.43376  25.0  -14.0  ", nw))
-memberList.append(Member("5     x    24.0  -28.86751   0.0   -20.0  -28.86751   0.0  -14.0  ", nw))
-memberList.append(Member("6     x    24.0   14.43376 -25.0   -20.0   14.43376 -25.0  -14.0  ", nw))
-memberList.append(Member("7     x     6.5    0.0       0.0   -20.0    0.0       0.0   0.0  ", nw))
+# =============================================================================
+# memberList.append(Member("1     x    12.0   14.43376  25.0   -14.0   14.43376  25.0   0.0  ", nw))
+# memberList.append(Member("2     x    12.0  -28.86751   0.0   -14.0  -28.86751   0.0   0.0  ", nw))
+# memberList.append(Member("3     x    12.0   14.43376 -25.0   -14.0   14.43376 -25.0   0.0  ", nw))
+# memberList.append(Member("4     x    24.0   14.43376  25.0   -20.0   14.43376  25.0  -14.0  ", nw))
+# memberList.append(Member("5     x    24.0  -28.86751   0.0   -20.0  -28.86751   0.0  -14.0  ", nw))
+# memberList.append(Member("6     x    24.0   14.43376 -25.0   -20.0   14.43376 -25.0  -14.0  ", nw))
+# memberList.append(Member("7     x     6.5    0.0       0.0   -20.0    0.0       0.0   0.0  ", nw))
+# =============================================================================
+
+#                      number   type    dA      dB      xa      ya     za     xb     yb      zb      t     l_fill  rho_ballast
+# =============================================================================
+# memberList.append(Member(" 1     1    6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76   0.0270   0.0    1025.0  ", nw))
+# memberList.append(Member(" 2     1    6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52   0.0262   0.0    1025.0  ", nw))
+# memberList.append(Member(" 3     1    5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28   0.0254   0.0    1025.0  ", nw))
+# memberList.append(Member(" 4     1    5.711   5.448    0.0    0.0    33.28   0.0    0.0    41.04   0.0246   0.0    1025.0  ", nw))
+# memberList.append(Member(" 5     1    5.448   5.185    0.0    0.0    41.04   0.0    0.0    48.80   0.0238   0.0    1025.0  ", nw))
+# 
+# memberList.append(Member(" 6     1    5.185   4.922    0.0    0.0    48.80   0.0    0.0    56.56   0.0230   0.0    1025.0  ", nw))
+# memberList.append(Member(" 7     1    4.922   4.659    0.0    0.0    56.56   0.0    0.0    64.32   0.0222   0.0    1025.0  ", nw))
+# memberList.append(Member(" 8     1    4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08   0.0214   0.0    1025.0  ", nw))
+# memberList.append(Member(" 9     1    4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84   0.0206   0.0    1025.0  ", nw))
+# memberList.append(Member("10     1    4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60   0.0198   0.0    1025.0  ", nw))
+# =============================================================================
 
 
+memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.0270   52.    1850.0  ", nw))
+memberList.append(Member("12     2    9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270   0.0    1025.0  ", nw))
+memberList.append(Member("13     2    6.500   6.500    0.0    0.0    -4.00   0.0    0.0    10.00   0.0270   0.0    1025.0  ", nw))
 
 
 
@@ -691,7 +718,7 @@ for mem in memberList:
     
     
     # ---------------------- get member's mass and inertia properties ------------------------------
-    rho_steel = 7850 #[kg/m^3]
+    rho_steel = 8500 #[kg/m^3]
 
     v_steel, center, I_rad, I_ax, m_fill = mem.getInertia() # calls the getInertia method to calcaulte values
     
@@ -729,8 +756,9 @@ rCG_TOT = Sum_M_center/mTOT
 rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
 
 zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
-        
-        
+
+
+      
 
 # ----------------------------- any solving for operating point goes here ----------------------
 

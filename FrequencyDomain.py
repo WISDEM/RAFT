@@ -117,11 +117,18 @@ class Member:
         if m==0:
             Ir_end_outer = (1/12)*(rho_steel*self.l*np.pi*r1**2)*(3*r1**2 + 4*self.l**2) #[kg-m^2]    about end node
             Ir_end_inner = (1/12)*(rho_steel*self.l*np.pi*r1i**2)*(3*r1i**2 + 4*self.l**2) #[kg-m^2]  about end node
-            Ir_end = Ir_end_outer - Ir_end_inner                     # I_outer - I_inner = I_shell -- about end node
-            I_rad_steel = Ir_end - (rho_steel*v_steel)*hc**2   # about CoG
+            Ir_end_steel = Ir_end_outer - Ir_end_inner                     # I_outer - I_inner = I_shell -- about end node
+            
             Ir_end_fill = (1/12)*(self.rho_fill*self.l_fill*np.pi*r1i**2)*(2*r1i**2 + 4*self.l_fill**2) #[kg-m^2]  about end node
-            I_rad_fill = Ir_end_fill - m_fill*hc**2  # about CoG
-            I_rad = I_rad_steel + I_rad_fill   # sum of all masses about the CoG
+            
+            Ir_end = Ir_end_steel + Ir_end_fill
+            
+            I_rad = Ir_end - ((rho_steel*v_steel)+m_fill)*hc**2
+            
+            #I_rad_steel = Ir_end - (rho_steel*v_steel)*hc**2   # about CoG
+            
+            #I_rad_fill = Ir_end_fill - m_fill*hc**2  # about CoG
+            #I_rad = I_rad_steel + I_rad_fill   # sum of all masses about the CoG
             
             I_ax_outer = (1/2)*rho_steel*np.pi*self.l*(r1**4)
             I_ax_inner = (1/2)*rho_steel*np.pi*self.l*(r1i**4)
@@ -143,13 +150,14 @@ class Member:
             if self.l_fill == 0:
                 I_rad_fill = 0
                 I_ax_fill = 0
-            else:    
-                mi_fill = (r2i-r1i)/self.l_fill 
-                Ir_tip_fill = abs((np.pi/20)*(rho_steel/mi_fill)*(1+(4/mi_fill**2))*(r2i**5-r1i**5))
-                Ir_end_fill = abs(Ir_tip_fill - ((self.rho_fill/(3*mi_fill**2))*np.pi*(r2i**3-r1i**3)*((r1i/mi_fill)+2*hc)*r1i))    # inner, about node
+            else:
+                r2_fill = dB_fill/2
+                mi_fill = (r2_fill-r1i)/self.l_fill 
+                Ir_tip_fill = abs((np.pi/20)*(rho_steel/mi_fill)*(1+(4/mi_fill**2))*(r2_fill**5-r1i**5))
+                Ir_end_fill = abs(Ir_tip_fill - ((self.rho_fill/(3*mi_fill**2))*np.pi*(r2_fill**3-r1i**3)*((r1i/mi_fill)+2*hc)*r1i))    # inner, about node
                 I_rad_fill = Ir_end_fill - m_fill*hc**2   # about CoG
 
-                I_ax_fill = (self.rho_fill*np.pi/(10*mi_fill))*(r2i**5-r1i**5)
+                I_ax_fill = (self.rho_fill*np.pi/(10*mi_fill))*(r2_fill**5-r1i**5)
             
             I_rad = I_rad_steel + I_rad_fill # about CoG
             

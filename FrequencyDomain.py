@@ -305,6 +305,17 @@ class Member:
             Cmat[3,3] = rho*g*V_UW * r_center[2]
             Cmat[4,4] = rho*g*V_UW * r_center[2]
             
+        else: # if the members are fully above the surface
+            
+            AWP = 0
+            IWP = 0
+            xWP = 0
+            yWP = 0
+            V_UW = 0
+            r_center = np.zeros(3)
+            Fvec = np.zeros(6)
+            Cmat = np.zeros([6,6])
+            
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 
@@ -611,10 +622,10 @@ memberList = []
 # =============================================================================
 
 
-memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.0270   52.    1850.0  ", nw))
 memberList.append(Member("12     2    9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270   0.0    1025.0  ", nw))
 memberList.append(Member("13     2    6.500   6.500    0.0    0.0    -4.00   0.0    0.0    10.00   0.0270   0.0    1025.0  ", nw))
-
+memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.0270   52.    1850.0  ", nw))
+#memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.066   41.4    2000.0  ", nw))
 
 
 # ---------------- (future work) import hydrodynamic coefficient files ----------------
@@ -763,9 +774,14 @@ rCG_TOT = Sum_M_center/mTOT
 
 rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
 
-zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
+if VTOT==0: # if you're only working with members above the platform, like modeling the wind turbine
+    zMeta = 0
+else:
+    zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
 
 
+C_struc[3,3] = mTOT*g*rCG_TOT[2]
+C_struc[4,4] = mTOT*g*rCG_TOT[2]
       
 
 # ----------------------------- any solving for operating point goes here ----------------------
@@ -780,8 +796,8 @@ Mthrust = 100*Fthrust  # N-m
 
 # ---------------------------- quasi-static mooring analysis ---------------------------------------
 
-import sys
-sys.path.insert(1, '/code/MoorPy')
+#import sys
+#sys.path.insert(1, '/code/MoorPy')
 import MoorPy as mp
 
 

@@ -2,7 +2,7 @@ Sample MoorDyn or MoorPy input file! This one using a body object
 ---------------------- LINE DICTIONARY -----------------------------------------------------
 LineType  Diam    MassDenInAir   EA        cIntDamp     EI    cBendDamp     Can     Cat    Cdn     Cdt 
 (-)       (m)       (kg/m)       (N)        (Pa-s)    (N-m^2)     (?)       (-)     (-)    (-)     (-)  
-main      0.02       40         100e6       -0.8        0          0        1.0     0.0    1.6     0.05 
+main      0.09       77.7066      384243000       -0.8        0          0        1.0     0.0    1.6     0.05 
 ---------------------- ROD DICTIONARY -----------------------------------------------------
 RodType  Diam    MassDenInAir   Can     Cat    Cdn     Cdt 
 (-)       (m)       (kg/m)       (-)     (-)    (-)     (-)  
@@ -16,12 +16,12 @@ RodID  Type/BodyID  RodType   Xa   Ya   Za   Xb   Yb   Zb  NumSegs  Flags/Output
 ---------------------- POINT PROPERTIES -----------------------------------------------------
 Node      Type      X        Y         Z        M       V        FX       FY      FZ   CdA   Ca 
 (-)       (-)      (m)      (m)       (m)      (kg)    (m^3)    (kN)     (kN)    (kN)  (m2)  () 
-1        Fix     -30.0      0.0       -40       0        0        0       0        0    0     0  
-2        Fix      15.0     25.0       -40       0        0        0       0        0    0     0  
-3        Fix      15.0    -25.0       -40       0        0        0       0        0    0     0  
-4       Body1     -2.0      0.0         0       0        0        0       0        0    0     0  
-5       Body1      1.0      1.0         0       0        0        0       0        0    0     0  
-6       Body1      1.0     -1.0         0       0        0        0       0        0    0     0  
+1        Fix     853.87     0.0       -320       0        0        0       0        0    0     0  
+2        Fix    -426.935   -739.473     -320       0        0        0       0        0    0     0  
+3        Fix    -426.935    739.473     -320       0        0        0       0        0    0     0  
+4       Body1      5.2      0.0         -70       0        0        0       0        0    0     0  
+5       Body1      -2.6      -4.503        -70       0        0        0       0        0    0     0  
+6       Body1      -2.6     4.503        -70       0        0        0       0        0    0     0  
 ---------------------- LINE PROPERTIES -----------------------------------------------------
 Line     LineType  UnstrLen  NumSegs   NodeAnch  NodeFair  Flags/Outputs
 (-)       (-)       (m)        (-)       (-)       (-)       (-)

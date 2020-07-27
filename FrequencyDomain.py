@@ -627,6 +627,15 @@ memberList.append(Member("13     2    6.500   6.500    0.0    0.0    -4.00   0.0
 memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.0270   52.    1850.0  ", nw))
 #memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.066   41.4    2000.0  ", nw))
 
+# -------------------------- turbine RNA description ----------------------------------
+# below are rough properties for NREL 5 MW reference turbine
+mRNA    = 110000              + 240000  # RNA mass [kg]
+IxRNA   = 11.78e6*(1 + 1 + 1) + 115e3   # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+IrRNA   = 11.78e6*(1 +.5 +.5) + 2.6e6   # RNA moment of inertia about local y or z axes [kg-m^2]
+xCG_RNA = 0                             # x location of RNA center of mass [m]
+hHub    = 90.0                          # hub height above water line [m]
+
+Fthrust = 800e3  # peak thrust force, [N]
 
 # ---------------- (future work) import hydrodynamic coefficient files ----------------
 
@@ -750,6 +759,7 @@ for mem in memberList:
     M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
     # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
     # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
+    Sum_M_center += center*mass
     
     
     # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
@@ -765,7 +775,19 @@ for mem in memberList:
     IWPy_TOT += IWP + AWP*xWP**2
     Sum_V_rCB   += r_CB*V_UW
     Sum_AWP_rWP += np.array([xWP, yWP])*AWP
-    Sum_M_center += center*mass
+
+
+# ------------------------- include RNA properties -----------------------------
+
+# for now, turbine RNA is specified by some simple lumped properties
+Mmat = np.diag([mRNA, mRNA, mRNA, IxRNA, IrRNA, IrRNA])            # create mass/inertia matrix
+center = np.array([xCG_RNA, 0, hHub])                                 # RNA center of mass location
+
+# now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mRNA]) )  # weight vector
+M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
+Sum_M_center += center*mRNA
+
 
 # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
 
@@ -784,17 +806,11 @@ C_struc[3,3] = mTOT*g*rCG_TOT[2]
 C_struc[4,4] = mTOT*g*rCG_TOT[2]
       
 
-# ----------------------------- any solving for operating point goes here ----------------------
 
-# solve for mean offsets (operating point)
-Fthrust = 800e3       # N
-Mthrust = 100*Fthrust  # N-m
+# --------------- set up quasi-static mooring analysis and solve for mean offsets -------------------
 
-# >>> W and K for struc and hydro will come into play here to find mean pitch angle <<<
+Mthrust = hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
 
-
-
-# ---------------------------- quasi-static mooring analysis ---------------------------------------
 
 #import sys
 #sys.path.insert(1, '/code/MoorPy')

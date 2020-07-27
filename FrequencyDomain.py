@@ -796,8 +796,8 @@ Mthrust = 100*Fthrust  # N-m
 
 # ---------------------------- quasi-static mooring analysis ---------------------------------------
 
-#import sys
-#sys.path.insert(1, '/code/MoorPy')
+import sys
+sys.path.insert(1, '/code/MoorPy')
 import MoorPy as mp
 
 
@@ -810,18 +810,25 @@ MooringSystem.BodyList[0].AWP = AWP_TOT
 MooringSystem.BodyList[0].rM = np.array([0,0,zMeta])
 MooringSystem.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])  # see Line 1140 of MoorPy so you don't double count weight/buoyancy forces
 
-anchorR = 150.
+anchorR = 853.87
+fairR = 5.2
+fair_depth = 70.
 angle = np.array([np.pi, np.pi/3, -np.pi/3]) # angle of mooring line wrt positive x positive y
+angle += np.pi # first line starts along the positive x-axis = angle of zero
 MooringSystem.PointList[0].r = np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -depth], dtype=float)
 MooringSystem.PointList[1].r = np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -depth], dtype=float)
 MooringSystem.PointList[2].r = np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -depth], dtype=float)
+MooringSystem.PointList[3].r = np.array([fairR*np.cos(angle[0]), fairR*np.sin(angle[0]), -fair_depth], dtype=float)
+MooringSystem.PointList[4].r = np.array([fairR*np.cos(angle[1]), fairR*np.sin(angle[1]), -fair_depth], dtype=float)
+MooringSystem.PointList[5].r = np.array([fairR*np.cos(angle[2]), fairR*np.sin(angle[2]), -fair_depth], dtype=float)
 
-LineLength = 250.
+LineLength = 902.2
 MooringSystem.LineList[0].L = LineLength
 MooringSystem.LineList[1].L = LineLength
 MooringSystem.LineList[2].L = LineLength
 
-MooringSystem.depth = depth         # set depth = the depth in FD, not what is written in the text file
+MooringSystem.depth = 320.
+# Yaw Spring Stiffness not included
 
 
 MooringSystem.initialize()                     # Initializes the complete mooring system based on the given bodies, lines, and points

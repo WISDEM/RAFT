@@ -590,52 +590,46 @@ k= np.zeros(nw)  # wave number
 
 # ----------------------- member-based platform description --------------------------
 
-# (hard-coded for now - set to DeepCwind Semi geometry - eventually these will be provided as inputs instead)
+# (hard-coded for now - set to OC3 Hywind Spar geometry - eventually these will be provided as inputs instead)
 
 # list of member objects
 memberList = []
 
-#                    number  type  diameter  xa        ya      za     xb        yb     zb
-# =============================================================================
-# memberList.append(Member("1     x    12.0   14.43376  25.0   -14.0   14.43376  25.0   0.0  ", nw))
-# memberList.append(Member("2     x    12.0  -28.86751   0.0   -14.0  -28.86751   0.0   0.0  ", nw))
-# memberList.append(Member("3     x    12.0   14.43376 -25.0   -14.0   14.43376 -25.0   0.0  ", nw))
-# memberList.append(Member("4     x    24.0   14.43376  25.0   -20.0   14.43376  25.0  -14.0  ", nw))
-# memberList.append(Member("5     x    24.0  -28.86751   0.0   -20.0  -28.86751   0.0  -14.0  ", nw))
-# memberList.append(Member("6     x    24.0   14.43376 -25.0   -20.0   14.43376 -25.0  -14.0  ", nw))
-# memberList.append(Member("7     x     6.5    0.0       0.0   -20.0    0.0       0.0   0.0  ", nw))
-# =============================================================================
-
+# ------------------ turbine Tower description ------------------
+# diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
 #                      number   type    dA      dB      xa      ya     za     xb     yb      zb      t     l_fill  rho_ballast
-# =============================================================================
-# memberList.append(Member(" 1     1    6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76   0.0270   0.0    1025.0  ", nw))
-# memberList.append(Member(" 2     1    6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52   0.0262   0.0    1025.0  ", nw))
-# memberList.append(Member(" 3     1    5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28   0.0254   0.0    1025.0  ", nw))
-# memberList.append(Member(" 4     1    5.711   5.448    0.0    0.0    33.28   0.0    0.0    41.04   0.0246   0.0    1025.0  ", nw))
-# memberList.append(Member(" 5     1    5.448   5.185    0.0    0.0    41.04   0.0    0.0    48.80   0.0238   0.0    1025.0  ", nw))
-# 
-# memberList.append(Member(" 6     1    5.185   4.922    0.0    0.0    48.80   0.0    0.0    56.56   0.0230   0.0    1025.0  ", nw))
-# memberList.append(Member(" 7     1    4.922   4.659    0.0    0.0    56.56   0.0    0.0    64.32   0.0222   0.0    1025.0  ", nw))
-# memberList.append(Member(" 8     1    4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08   0.0214   0.0    1025.0  ", nw))
-# memberList.append(Member(" 9     1    4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84   0.0206   0.0    1025.0  ", nw))
-# memberList.append(Member("10     1    4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60   0.0198   0.0    1025.0  ", nw))
-# =============================================================================
+memberList.append(Member(" 1     1    6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76   0.0270   0.0    1025.0  ", nw))
+memberList.append(Member(" 2     1    6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52   0.0262   0.0    1025.0  ", nw))
+memberList.append(Member(" 3     1    5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28   0.0254   0.0    1025.0  ", nw))
+memberList.append(Member(" 4     1    5.711   5.448    0.0    0.0    33.28   0.0    0.0    41.04   0.0246   0.0    1025.0  ", nw))
+memberList.append(Member(" 5     1    5.448   5.185    0.0    0.0    41.04   0.0    0.0    48.80   0.0238   0.0    1025.0  ", nw))
 
+memberList.append(Member(" 6     1    5.185   4.922    0.0    0.0    48.80   0.0    0.0    56.56   0.0230   0.0    1025.0  ", nw))
+memberList.append(Member(" 7     1    4.922   4.659    0.0    0.0    56.56   0.0    0.0    64.32   0.0222   0.0    1025.0  ", nw))
+memberList.append(Member(" 8     1    4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08   0.0214   0.0    1025.0  ", nw))
+memberList.append(Member(" 9     1    4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84   0.0206   0.0    1025.0  ", nw))
+memberList.append(Member("10     1    4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60   0.0198   0.0    1025.0  ", nw))
 
-memberList.append(Member("12     2    9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270   0.0    1025.0  ", nw))
-memberList.append(Member("13     2    6.500   6.500    0.0    0.0    -4.00   0.0    0.0    10.00   0.0270   0.0    1025.0  ", nw))
+# ---------- spar platform substructure description --------------
 memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.0270   52.    1850.0  ", nw))
 #memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.066   41.4    2000.0  ", nw))
+memberList.append(Member("12     2    9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270   0.0    1025.0  ", nw))
+memberList.append(Member("13     2    6.500   6.500    0.0    0.0    -4.00   0.0    0.0    10.00   0.0270   0.0    1025.0  ", nw))
 
-# -------------------------- turbine RNA description ----------------------------------
+
+# -------------------------- turbine RNA description ------------------------
 # below are rough properties for NREL 5 MW reference turbine
 mRNA    = 110000              + 240000  # RNA mass [kg]
-IxRNA   = 11.78e6*(1 + 1 + 1) + 115e3   # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
-IrRNA   = 11.78e6*(1 +.5 +.5) + 2.6e6   # RNA moment of inertia about local y or z axes [kg-m^2]
-xCG_RNA = 0                             # x location of RNA center of mass [m]
+IxRNA   = 11776047*(1 + 1 + 1) + 115926   # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+IrRNA   = 11776047*(1 +.5 +.5) + 2607890   # RNA moment of inertia about local y or z axes [kg-m^2]
+xCG_RNA = 0                             # x location of RNA center of mass [m] (Close enough to -0.27 m)
 hHub    = 90.0                          # hub height above water line [m]
 
 Fthrust = 800e3  # peak thrust force, [N]
+
+
+
+
 
 # ---------------- (future work) import hydrodynamic coefficient files ----------------
 
@@ -826,14 +820,16 @@ MooringSystem.BodyList[0].AWP = AWP_TOT
 MooringSystem.BodyList[0].rM = np.array([0,0,zMeta])
 MooringSystem.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])  # see Line 1140 of MoorPy so you don't double count weight/buoyancy forces
 
+MooringSystem.depth = 320.
+
 anchorR = 853.87
 fairR = 5.2
 fair_depth = 70.
 angle = np.array([np.pi, np.pi/3, -np.pi/3]) # angle of mooring line wrt positive x positive y
 angle += np.pi # first line starts along the positive x-axis = angle of zero
-MooringSystem.PointList[0].r = np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -depth], dtype=float)
-MooringSystem.PointList[1].r = np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -depth], dtype=float)
-MooringSystem.PointList[2].r = np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -depth], dtype=float)
+MooringSystem.PointList[0].r = np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -MooringSystem.depth], dtype=float)
+MooringSystem.PointList[1].r = np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -MooringSystem.depth], dtype=float)
+MooringSystem.PointList[2].r = np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -MooringSystem.depth], dtype=float)
 MooringSystem.PointList[3].r = np.array([fairR*np.cos(angle[0]), fairR*np.sin(angle[0]), -fair_depth], dtype=float)
 MooringSystem.PointList[4].r = np.array([fairR*np.cos(angle[1]), fairR*np.sin(angle[1]), -fair_depth], dtype=float)
 MooringSystem.PointList[5].r = np.array([fairR*np.cos(angle[2]), fairR*np.sin(angle[2]), -fair_depth], dtype=float)
@@ -843,8 +839,8 @@ MooringSystem.LineList[0].L = LineLength
 MooringSystem.LineList[1].L = LineLength
 MooringSystem.LineList[2].L = LineLength
 
-MooringSystem.depth = 320.
-# Yaw Spring Stiffness not included
+
+# Yaw Spring Stiffness not included??? 
 
 
 MooringSystem.initialize()                     # Initializes the complete mooring system based on the given bodies, lines, and points

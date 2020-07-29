@@ -630,7 +630,6 @@ Fthrust = 800e3  # peak thrust force, [N]
 
 
 
-
 # ---------------- (future work) import hydrodynamic coefficient files ----------------
 
 
@@ -806,8 +805,8 @@ C_struc[4,4] = mTOT*g*rCG_TOT[2]
 Mthrust = hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
 
 
-import sys
-sys.path.insert(1, '/code/MoorPy')
+#import sys
+#sys.path.insert(1, '/code/MoorPy')
 import MoorPy as mp
 
 
@@ -844,6 +843,7 @@ MooringSystem.LineList[2].L = LineLength
 
 
 MooringSystem.initialize()                     # Initializes the complete mooring system based on the given bodies, lines, and points
+#C_lines = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)
 MooringSystem.solveEquilibrium()             # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
 K = MooringSystem.getSystemStiffness()       # Calculates the overal total system stiffness matrix, K, which includes hydrostatics handled by MoorPy
 C_moor = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)  # calculate the mooring line stiffness matrix, C_moor

@@ -7,6 +7,14 @@
 import numpy as np
 import matplotlib.pyplot as plt
 
+import sys
+sys.path.insert(1, '/code/MoorPy')
+import MoorPy as mp
+
+# reload the libraries each time in case we make any changes
+import importlib
+mp = importlib.reload(mp)
+
 
 
 ## This class represents linear (for now cylinderical) components in the substructure. 
@@ -576,6 +584,15 @@ def JONSWAP(ws, Hs, Tp, Gamma=1.0):
     return  0.5/np.pi *C* 0.3125*Hs*Hs*fpOvrf4/f *np.exp( -1.25*fpOvrf4 )* Gamma**Alpha
     
     
+def printMat(mat):
+    '''Print a matrix'''
+    for i in range(mat.shape[0]):
+        print( "\t".join(["{:+8.3e}"]*mat.shape[1]).format( *mat[i,:] ))
+        
+def printVec(vec):
+    '''Print a vector'''
+    print( "\t".join(["{:+8.3e}"]*len(vec)).format( *vec ))
+    
 
 
 # ------------------------------- basic setup -----------------------------------------
@@ -795,8 +812,8 @@ else:
     zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
 
 
-C_struc[3,3] = mTOT*g*rCG_TOT[2]
-C_struc[4,4] = mTOT*g*rCG_TOT[2]
+C_struc[3,3] = -mTOT*g*rCG_TOT[2]
+C_struc[4,4] = -mTOT*g*rCG_TOT[2]
       
 
 
@@ -805,9 +822,6 @@ C_struc[4,4] = mTOT*g*rCG_TOT[2]
 Mthrust = hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
 
 
-#import sys
-#sys.path.insert(1, '/code/MoorPy')
-import MoorPy as mp
 
 
 MooringSystem = mp.System('lines3.txt')         # create the mooring system
@@ -843,16 +857,51 @@ MooringSystem.LineList[2].L = LineLength
 
 
 MooringSystem.initialize()                     # Initializes the complete mooring system based on the given bodies, lines, and points
+
 #C_lines = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)
-MooringSystem.solveEquilibrium()             # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
-K = MooringSystem.getSystemStiffness()       # Calculates the overal total system stiffness matrix, K, which includes hydrostatics handled by MoorPy
-C_moor = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)  # calculate the mooring line stiffness matrix, C_moor
+
+C_moor = MooringSystem.BodyList[0].getStiffness(np.zeros(6), dx= 0.01)  # calculate the mooring line stiffness matrix for the body about the undiscplaced position
+
+
+#MooringSystem.solveEquilibrium()             # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
+#K = MooringSystem.getSystemStiffness(dx=0.01)       # Calculates the overal total system stiffness matrix, K, which includes hydrostatics handled by MoorPy
+#C_moor = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)  # calculate the mooring line stiffness matrix, C_moor
+
+
+# manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
+C_moor[5,5] += 98340000.0
+
+
+# ------------------------------- sum all static matrices -----------------------------------------
+# this is to check totals from static calculations before hydrodynamic terms are added
+
+M_tot_stat = M_struc             
+C_tot_stat = C_struc + C_hydro + C_moor
+W_tot_stat = W_struc + W_hydro + W_moor
 
 
 
+print("hydrostatic stiffness matrix")
+printMat(C_hydro)    
+    
+print("structural stiffness matrix")
+printMat(C_struc)
+    
+print("mooring stiffness matrix")
+printMat(C_moor)
+    
+
+print("total static mass matrix")
+printMat(M_tot_stat)
+    
+print("total static stiffness matrix")
+printMat(C_tot_stat)
+    
+print("total static forces and moments")
+printVec(W_tot_stat)
 
 
-
+print(stopme)
 
 # ------------------------- get wave kinematics along each member ---------------------------------
 

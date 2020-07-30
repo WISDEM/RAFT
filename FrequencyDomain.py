@@ -623,6 +623,8 @@ k= np.zeros(nw)  # wave number
 # list of member objects
 memberList = []
 
+# -------------------- OC3 Hywind Spar ----------------------
+'''
 # ------------------ turbine Tower description ------------------
 # diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
 #                      number   type    dA      dB      xa      ya     za     xb     yb      zb      t     l_fill  rho_ballast
@@ -656,6 +658,67 @@ xCG_RNA = 0                             # x location of RNA center of mass [m] (
 hHub    = 90.0                          # hub height above water line [m]
 
 Fthrust = 800e3  # peak thrust force, [N]
+'''
+
+
+
+# ------------------- DTU 10 MW Spar --------------------------
+
+# ------------------ turbine Tower description ------------------
+#                      number   type    dA      dB      xa      ya     za     xb     yb      zb      t     l_fill  rho_ballast
+
+memberList.append(Member(" 1     1    8.00    7.75    0.0    0.0    13.000    0.0    0.0    23.363   0.038   0.0    1025.0  ", nw))
+memberList.append(Member(" 2     1    7.75    7.50    0.0    0.0    23.363    0.0    0.0    33.726   0.036   0.0    1025.0  ", nw))
+memberList.append(Member(" 3     1    7.50    7.25    0.0    0.0    33.726    0.0    0.0    44.089   0.034   0.0    1025.0  ", nw))
+memberList.append(Member(" 4     1    7.25    7.00    0.0    0.0    44.089    0.0    0.0    54.452   0.032   0.0    1025.0  ", nw))
+memberList.append(Member(" 5     1    7.00    6.75    0.0    0.0    54.452    0.0    0.0    64.815   0.030   0.0    1025.0  ", nw))
+
+memberList.append(Member(" 6     1    6.75    6.50    0.0    0.0    64.815    0.0    0.0    75.178   0.028   0.0    1025.0  ", nw))
+memberList.append(Member(" 7     1    6.50    6.25    0.0    0.0    75.178    0.0    0.0    85.541   0.026   0.0    1025.0  ", nw))
+memberList.append(Member(" 8     1    6.25    6.00    0.0    0.0    85.541    0.0    0.0    95.904   0.024   0.0    1025.0  ", nw))
+memberList.append(Member(" 9     1    6.00    5.75    0.0    0.0    95.904    0.0    0.0   106.267   0.022   0.0    1025.0  ", nw))
+memberList.append(Member("10     1    5.75    5.50    0.0    0.0   106.267    0.0    0.0   116.630   0.020   0.0    1025.0  ", nw))
+
+# ---------- spar platform substructure description --------------
+
+memberList.append(Member("11     2    14.75   14.75    0.0    0.0    -90.   0.0    0.0    -85.2   0.046   4.8    3743.42  ", nw))
+memberList.append(Member("12     2    14.75   14.75    0.0    0.0    -85.2   0.0    0.0    -75.708   0.046   9.492    3792.35  ", nw))
+memberList.append(Member("13     2    14.75   14.75    0.0    0.0    -75.708   0.0    0.0    -72.734   0.046   2.974    1883.78  ", nw))
+memberList.append(Member("14     2    14.75   14.75    0.0    0.0    -72.734   0.0    0.0    -20.   0.046   0.0    1025.  ", nw))
+memberList.append(Member("15     2    14.75    8.00    0.0    0.0    -20.   0.0    0.0    -5.   0.063   0.0    1025.0  ", nw))
+memberList.append(Member("16     2     8.00    8.00    0.0    0.0    -5.   0.0    0.0    7.   0.068   0.0    1025.0  ", nw))
+memberList.append(Member("17     2     8.00    7.00    0.0    0.0    7.   0.0    0.0    13.   0.055   0.0    1025.0  ", nw))
+
+
+
+
+# -------------------------- turbine RNA description ------------------------
+mRotor = 227962 #[kg]
+mNacelle = 446036 #[kg]
+IxHub = 325671 #[kg-m^2]
+IzNacelle = 7326346 #[kg-m^2]
+IxBlades = 11776047*2 # >>>>>>>>> THIS IS A GUESS, I COULDN'T FIND A MOI FOR THE BLADES <<<<<<<<<
+
+
+mRNA = mRotor + mNacelle #[kg]
+IxRNA = IxBlades*(1 + 1 + 1) + IxHub
+IrRNA = IxBlades*(1 + .5 + .5) + IzNacelle
+
+
+xCG_RNA = ((mRotor*-7.07)+(mNacelle*2.687))/(mRotor+mNacelle)          # x location of RNA center of mass [m]
+hHub    = 119.0                          # hub height above water line [m]
+
+
+#IxRNA   = 11776047*(1 + 1 + 1) + 115926   # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+#IrRNA   = 11776047*(1 +.5 +.5) + 2607890   # RNA moment of inertia about local y or z axes [kg-m^2]
+
+# ------- Wind conditions
+Fthrust = 800e3  # peak thrust force, [N]
+hHub    = 119.0 
+
+# ------- Mooring system properties
+# Linelength = 868.5, diameter = 0.15 (fiber), anchorR, fairR, fair_depth = 21
+
 
 
 
@@ -982,7 +1045,26 @@ MooringSystem = Bridle
 
 # ----------------------------- Calculate mooring system characteristics ---------------------
 
+
 # First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
+'''
+bridle = 0
+if bridle:
+    Bridle.solveEquilibrium()
+    K = Bridle.getSystemStiffness(dx=0.01)
+    C_moor = Bridle.BodyList[0].getStiffness(Bridle.Bodylist[0].r6)
+    #C_moor = Bridle.BodyList[0].getStiffness(np.zeros(6), dx= 0.01)
+else:
+    MooringSystem.solveEquilibrium()        # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
+    K = MooringSystem.getSystemStiffness(dx=0.01)         # Calculates the overal total system stiffness matrix, K, which includes hydrostatics handled by MoorPy
+    #C_moor = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)   # calculate the mooring line stiffness matrix, C_moor
+
+    C_moor = MooringSystem.BodyList[0].getStiffness(np.zeros(6), dx= 0.01)  # calculate the mooring line stiffness matrix for the body about the undiscplaced position
+
+    MooringSystem.BodyList[0].setPosition(np.zeros(6))
+    W_moor = MooringSystem.BodyList[0].getForces(lines_only=True)
+'''
+
 
 C_moor0 = MooringSystem.BodyList[0].getStiffness2(np.zeros(6), dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
 W_moor0 = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
@@ -1001,6 +1083,38 @@ W_moor = MooringSystem.BodyList[0].getForces(lines_only=True)           # get ne
 
 # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
 #C_moor[5,5] += 98340000.0
+
+
+
+#print(stopt)
+# ------------------------------- sum all static matrices -----------------------------------------
+# this is to check totals from static calculations before hydrodynamic terms are added
+
+M_tot_stat = M_struc             
+C_tot_stat = C_struc + C_hydro + C_moor
+W_tot_stat = W_struc + W_hydro + W_moor
+
+
+
+
+print("hydrostatic stiffness matrix")
+printMat(C_hydro)    
+    
+print("structural stiffness matrix")
+printMat(C_struc)
+    
+print("mooring stiffness matrix")
+printMat(C_moor)
+    
+
+print("total static mass matrix")
+printMat(M_tot_stat)
+    
+print("total static stiffness matrix")
+printMat(C_tot_stat)
+    
+print("total static forces and moments")
+printVec(W_tot_stat)
 
 
 

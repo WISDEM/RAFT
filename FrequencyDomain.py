@@ -1137,9 +1137,11 @@ fn[1] = np.sqrt( C_tot_stat[1,1] / M[1,1] )/ 2.0/np.pi
 fn[2] = np.sqrt( C_tot_stat[2,2] / M[2,2] )/ 2.0/np.pi
 fn[5] = np.sqrt( C_tot_stat[5,5] / M[5,5] )/ 2.0/np.pi
 zg = rCG_TOT[2]
-fn[3] = np.sqrt( (C_tot_stat[3,3] + C_tot_stat[1,3]*zg ) / (M[3,3] - M[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-fn[4] = np.sqrt( (C_tot_stat[4,4] - C_tot_stat[0,4]*zg ) / (M[4,4] - M[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[3] = np.sqrt( (C_tot_stat[3,3] - C_tot_stat[1,3]*C_tot_stat[1,3]/C_tot_stat[1,1] ) / (M[3,3] - M[1,3]*M[1,3]/M[1,1] ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[4] = np.sqrt( (C_tot_stat[4,4] - C_tot_stat[0,4]*C_tot_stat[0,4]/C_tot_stat[0,0] ) / (M[4,4] - M[0,4]*M[0,4]/M[0,0] ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+# note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
 printVec(fn)
+
 
 
 

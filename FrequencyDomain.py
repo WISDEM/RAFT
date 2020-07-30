@@ -870,8 +870,6 @@ MooringSystem.initialize()
 
 
 
-
-
 # ------------ Bridle connection ---------------
 
 Bridle = mp.System('lines2.txt')
@@ -978,76 +976,31 @@ Bridle.PointList[8].addLine(9,1)
 
 Bridle.initialize()
 
-# ----------------------------------
+# If using the bridle mooring system rather than the original, do a rename so we can refer to it as MooringSystem going forward (otherwise comment the line out)
+MooringSystem = Bridle
 
 
+# ----------------------------- Calculate mooring system characteristics ---------------------
 
-C_lines = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)
+# First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
 
-C_lines2 = Bridle.BodyList[0].getStiffness(Bridle.BodyList[0].r6)
-
-
-
-
-bridle = 1
-if bridle:
-    Bridle.solveEquilibrium()
-    K = Bridle.getSystemStiffness(dx=0.01)
-    C_moor = Bridle.BodyList[0].getStiffness(Bridle.Bodylist[0].r6)
-    #C_moor = Bridle.BodyList[0].getStiffness(np.zeros(6), dx= 0.01)
-else:
-    MooringSystem.solveEquilibrium()        # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
-    K = MooringSystem.getSystemStiffness(dx=0.01)         # Calculates the overal total system stiffness matrix, K, which includes hydrostatics handled by MoorPy
-    #C_moor = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)   # calculate the mooring line stiffness matrix, C_moor
-
-    C_moor = MooringSystem.BodyList[0].getStiffness(np.zeros(6), dx= 0.01)  # calculate the mooring line stiffness matrix for the body about the undiscplaced position
-
-    MooringSystem.BodyList[0].setPosition(np.zeros(6))
-    W_moor = MooringSystem.BodyList[0].getForces(lines_only=True)
+C_moor0 = MooringSystem.BodyList[0].getStiffness2(np.zeros(6), dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
+W_moor0 = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
 
 
-# @shousner: Questions for Matt:
-    # Is C_moor the stiffness matrix about the undisplaced or equilibrium position of the platform?
-    # What's the point of having the total stiffness matrix K? To compare to C_total calculated below?
-    # 4th section in MooringEq. for Point in PointList counting up, i counting down
-
-
-
+# Now find static equilibrium offsets of platform and get mooring properties about that point
+MooringSystem.solveEquilibrium()                                        # get the system to its equilibrium
+MooringSystem.plot()
+r6eq = MooringSystem.BodyList[0].r6
+print("Equilibirum platform positions/rotations:")
+printVec(r6eq)
+print("Surge: {:.2f}".format(r6eq[0]))
+print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
+C_moor = MooringSystem.BodyList[0].getStiffness2(r6eq, dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
+W_moor = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
 
 # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
 #C_moor[5,5] += 98340000.0
-
-
-
-
-# ------------------------------- sum all static matrices -----------------------------------------
-# this is to check totals from static calculations before hydrodynamic terms are added
-
-M_tot_stat = M_struc             
-C_tot_stat = C_struc + C_hydro + C_moor
-W_tot_stat = W_struc + W_hydro + W_moor
-
-
-
-
-print("hydrostatic stiffness matrix")
-printMat(C_hydro)    
-    
-print("structural stiffness matrix")
-printMat(C_struc)
-    
-print("mooring stiffness matrix")
-printMat(C_moor)
-    
-
-print("total static mass matrix")
-printMat(M_tot_stat)
-    
-print("total static stiffness matrix")
-printMat(C_tot_stat)
-    
-print("total static forces and moments")
-printVec(W_tot_stat)
 
 
 
@@ -1102,42 +1055,78 @@ for mem in memberList:
 
 
 
+
+# --------------------------------- get system properties in undisplaced position ----------------------------
+# these are useful for verification, etc.
+
+
+# sum matrices to check totals from static calculations before hydrodynamic terms are added
+
+C_tot0 = C_struc + C_hydro + C_moor0   # total system stiffness matrix about equilibrium point
+W_tot0 = W_struc + W_hydro + W_moor0   # system mean forces and moments at equilibrium point
+
+M = M_struc + A_hydro_morison          # total mass plus added mass matrix
+
+# do we want to relinearize structural properties about displaced position/orientation?  (Probably not)
+
+'''
+print("hydrostatic stiffness matrix")
+printMat(C_hydro)    
+    
+print("structural stiffness matrix")
+printMat(C_struc)
+    
+print("mooring stiffness matrix about undisplaced position")
+printMat(C_moor0)
+    
+print("total static stiffness matrix about undisplaced position")
+printMat(C_tot0)
+    
+    
+
+print("total static mass matrix")
+printMat(M_struc)
+    
 print("total added mass matrix")
 printMat(A_hydro_morison)
 
-
-
 print("total mass plus added mass matrix")
-printMat(M_tot_stat + A_hydro_morison)
+printMat(M)
+    
+    
+print("total static forces and moments about undisplaced position")
+printVec(W_tot0)
+'''
+
 
 
 # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
-M = M_tot_stat + A_hydro_morison
-eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M), C_tot_stat))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+
+eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M), C_tot0))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
 
 
 # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
 
 print("natural frequencies without added mass")
 fn = np.zeros(6)
-fn[0] = np.sqrt( C_tot_stat[0,0] / M_tot_stat[0,0] )/ 2.0/np.pi
-fn[1] = np.sqrt( C_tot_stat[1,1] / M_tot_stat[1,1] )/ 2.0/np.pi
-fn[2] = np.sqrt( C_tot_stat[2,2] / M_tot_stat[2,2] )/ 2.0/np.pi
-fn[5] = np.sqrt( C_tot_stat[5,5] / M_tot_stat[5,5] )/ 2.0/np.pi
+fn[0] = np.sqrt( C_tot0[0,0] / M_struc[0,0] )/ 2.0/np.pi
+fn[1] = np.sqrt( C_tot0[1,1] / M_struc[1,1] )/ 2.0/np.pi
+fn[2] = np.sqrt( C_tot0[2,2] / M_struc[2,2] )/ 2.0/np.pi
+fn[5] = np.sqrt( C_tot0[5,5] / M_struc[5,5] )/ 2.0/np.pi
 zg = rCG_TOT[2]
-fn[3] = np.sqrt( (C_tot_stat[3,3] + C_tot_stat[1,3]*zg ) / (M_tot_stat[3,3] - M_tot_stat[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-fn[4] = np.sqrt( (C_tot_stat[4,4] - C_tot_stat[0,4]*zg ) / (M_tot_stat[4,4] - M_tot_stat[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,3]*zg ) / (M_struc[3,3] - M_struc[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[4] = np.sqrt( (C_tot0[4,4] - C_tot0[0,4]*zg ) / (M_struc[4,4] - M_struc[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
 printVec(fn)
 
 
 print("natural frequencies with added mass")
 fn = np.zeros(6)
-fn[0] = np.sqrt( C_tot_stat[0,0] / M[0,0] )/ 2.0/np.pi
-fn[1] = np.sqrt( C_tot_stat[1,1] / M[1,1] )/ 2.0/np.pi
-fn[2] = np.sqrt( C_tot_stat[2,2] / M[2,2] )/ 2.0/np.pi
-fn[5] = np.sqrt( C_tot_stat[5,5] / M[5,5] )/ 2.0/np.pi
-fn[3] = np.sqrt( (C_tot_stat[3,3] - C_tot_stat[1,3]*M[1,3]/M[1,1] ) / (M[3,3] - M[1,3]*M[1,3]/M[1,1] ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-fn[4] = np.sqrt( (C_tot_stat[4,4] - C_tot_stat[0,4]*M[0,4]/M[0,0] ) / (M[4,4] - M[0,4]*M[0,4]/M[0,0] ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[0] = np.sqrt( C_tot0[0,0] / M[0,0] )/ 2.0/np.pi
+fn[1] = np.sqrt( C_tot0[1,1] / M[1,1] )/ 2.0/np.pi
+fn[2] = np.sqrt( C_tot0[2,2] / M[2,2] )/ 2.0/np.pi
+fn[5] = np.sqrt( C_tot0[5,5] / M[5,5] )/ 2.0/np.pi
+fn[3] = np.sqrt( (C_tot0[3,3] - C_tot0[1,3]*M[1,3]/M[1,1] ) / (M[3,3] - M[1,3]*M[1,3]/M[1,1] ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[4] = np.sqrt( (C_tot0[4,4] - C_tot0[0,4]*M[0,4]/M[0,0] ) / (M[4,4] - M[0,4]*M[0,4]/M[0,0] ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
 # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
 printVec(fn)
 

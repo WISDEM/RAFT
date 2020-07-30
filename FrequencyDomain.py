@@ -817,14 +817,14 @@ C_struc[4,4] = -mTOT*g*rCG_TOT[2]
       
 
 
-# --------------- set up quasi-static mooring analysis and solve for mean offsets -------------------
+# --------------- set up quasi-static mooring system and solve for mean offsets -------------------
 
 Mthrust = hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
 
 
 
 
-MooringSystem = mp.System('lines3.txt')         # create the mooring system
+MooringSystem = mp.System('lines2.txt')         # create the mooring system based on text file
 
 MooringSystem.BodyList[0].m = mTOT
 MooringSystem.BodyList[0].v = VTOT
@@ -838,38 +838,176 @@ MooringSystem.depth = 320.
 anchorR = 853.87
 fairR = 5.2
 fair_depth = 70.
-angle = np.array([np.pi, np.pi/3, -np.pi/3]) # angle of mooring line wrt positive x positive y
-angle += np.pi # first line starts along the positive x-axis = angle of zero
+angle = np.array([0, 2*np.pi/3, -2*np.pi/3]) # angle of mooring line wrt positive x positive y
 MooringSystem.PointList[0].r = np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -MooringSystem.depth], dtype=float)
 MooringSystem.PointList[1].r = np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -MooringSystem.depth], dtype=float)
 MooringSystem.PointList[2].r = np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -MooringSystem.depth], dtype=float)
+
 MooringSystem.PointList[3].r = np.array([fairR*np.cos(angle[0]), fairR*np.sin(angle[0]), -fair_depth], dtype=float)
 MooringSystem.PointList[4].r = np.array([fairR*np.cos(angle[1]), fairR*np.sin(angle[1]), -fair_depth], dtype=float)
 MooringSystem.PointList[5].r = np.array([fairR*np.cos(angle[2]), fairR*np.sin(angle[2]), -fair_depth], dtype=float)
 
+MooringSystem.BodyList[0].rPointRel[0] = MooringSystem.PointList[3].r
+MooringSystem.BodyList[0].rPointRel[1] = MooringSystem.PointList[4].r
+MooringSystem.BodyList[0].rPointRel[2] = MooringSystem.PointList[5].r
+
 LineLength = 902.2
-MooringSystem.LineList[0].L = LineLength
-MooringSystem.LineList[1].L = LineLength
-MooringSystem.LineList[2].L = LineLength
+for Line in MooringSystem.LineList: # set Line properties to the LineType properties specified
+    # This essentially replaces the act of writing in the Line properties in the LineType section of the text file
+    Line.L = LineLength
+    Line.d = 0.09 #[m]
+    Line.w = (77.7066 - np.pi/4*Line.d*Line.d*rho)*g  # [kg/m]*[m/s^2] = [N/m] (this should = 698.333; OC3 doc = 698.094 N/m)
+    Line.EA = 384243000 #[N]
 
 
-# Yaw Spring Stiffness not included??? 
+
+MooringSystem.initialize()
 
 
-MooringSystem.initialize()                     # Initializes the complete mooring system based on the given bodies, lines, and points
-
-#C_lines = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)
-
-C_moor = MooringSystem.BodyList[0].getStiffness(np.zeros(6), dx= 0.01)  # calculate the mooring line stiffness matrix for the body about the undiscplaced position
 
 
-#MooringSystem.solveEquilibrium()             # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
-#K = MooringSystem.getSystemStiffness(dx=0.01)       # Calculates the overal total system stiffness matrix, K, which includes hydrostatics handled by MoorPy
-#C_moor = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)  # calculate the mooring line stiffness matrix, C_moor
+
+# ------------ Bridle connection ---------------
+
+Bridle = mp.System('lines2.txt')
+
+Bridle.depth = 320.
+
+# Change the LineTypes dictionary to the line properties given
+Bridle.LineTypes['main'].d = 0.09 #[m]
+Bridle.LineTypes['main'].w = (77.7066 - np.pi/4*Bridle.LineTypes['main'].d**2*rho)*g # [kg/m]*[m/s^2] = [N/m] (this should = 698.333; OC3 doc = 698.094 N/m)
+Bridle.LineTypes['main'].EA = 384243000 #[N]
+
+# Update the Body properties with values from FD
+Bridle.BodyList[0].m = mTOT
+Bridle.BodyList[0].v = VTOT
+Bridle.BodyList[0].rCG = rCG_TOT
+Bridle.BodyList[0].AWP = AWP_TOT
+Bridle.BodyList[0].rM = np.array([0,0,zMeta])
+Bridle.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])
+
+# Update the locations of the bottom anchor points
+Bridle.PointList[0].r = np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -MooringSystem.depth], dtype=float)
+Bridle.PointList[1].r = np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -MooringSystem.depth], dtype=float)
+Bridle.PointList[2].r = np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -MooringSystem.depth], dtype=float)
+
+# Update the locations of the original three body points, shifted by 30 degrees
+angleB = np.concatenate([angle+np.pi/6, angle-np.pi/6])
+Bridle.PointList[3].r = np.array([fairR*np.cos(angleB[0]), fairR*np.sin(angleB[0]), -fair_depth], dtype=float)
+Bridle.PointList[4].r = np.array([fairR*np.cos(angleB[1]), fairR*np.sin(angleB[1]), -fair_depth], dtype=float)
+Bridle.PointList[5].r = np.array([fairR*np.cos(angleB[2]), fairR*np.sin(angleB[2]), -fair_depth], dtype=float)
+# Update the points relative to the body
+Bridle.BodyList[0].rPointRel[0] = Bridle.PointList[3].r
+Bridle.BodyList[0].rPointRel[1] = Bridle.PointList[4].r
+Bridle.BodyList[0].rPointRel[2] = Bridle.PointList[5].r
+
+# Create three new points to go on the body, 60 degrees away from the original body points
+Bridle.addPoint(1, np.array([fairR*np.cos(angleB[3]), fairR*np.sin(angleB[3]), -fair_depth], dtype=float))
+Bridle.addPoint(1, np.array([fairR*np.cos(angleB[4]), fairR*np.sin(angleB[4]), -fair_depth], dtype=float))
+Bridle.addPoint(1, np.array([fairR*np.cos(angleB[5]), fairR*np.sin(angleB[5]), -fair_depth], dtype=float))
+# Update the points relative to the body
+Bridle.BodyList[0].addPoint(Bridle.PointList[6].number, Bridle.PointList[6].r)
+Bridle.BodyList[0].addPoint(Bridle.PointList[7].number, Bridle.PointList[7].r)
+Bridle.BodyList[0].addPoint(Bridle.PointList[8].number, Bridle.PointList[8].r)
+
+# Pick a spot along the original MooringSystem catenary line where you want the line to split to make a bridle connection
+# Pick a number between 1 and 20 where 1 is the anchor point and 20 is the original body point
+split = 18
+# Create three new floating free points along the length of the original catenary line
+Bridle.addPoint(0, MooringSystem.LineList[0].X[:,split-1])
+Bridle.addPoint(0, MooringSystem.LineList[1].X[:,split-1])
+Bridle.addPoint(0, MooringSystem.LineList[2].X[:,split-1])
+
+# LINES
+# Detach the three main mooring lines from the original three points on the body
+Bridle.PointList[3].detachLine(1,1)
+Bridle.PointList[4].detachLine(2,1)
+Bridle.PointList[5].detachLine(3,1)
+
+# Create a new line length that is the distance between a body point and a floating point
+bridleLength = np.linalg.norm(Bridle.PointList[9].r - Bridle.PointList[3].r)  # this is a guess and can be changed... can circle back
+
+for Line in Bridle.LineList:
+    Line.L = LineLength-bridleLength # this is a guess and can be changed >>>>>>>>> NOTE: LineList[i].X will might the same as first setup...circle back
+    Line.d = Bridle.LineTypes['main'].d
+    Line.w = Bridle.LineTypes['main'].w
+    Line.EA = Bridle.LineTypes['main'].EA
+
+# Attach the shortened, original mooring lines to the floating points
+Bridle.PointList[9].addLine(1,1)
+Bridle.PointList[10].addLine(2,1)
+Bridle.PointList[11].addLine(3,1)
+
+
+# Create 6 new mooring lines of length bridleLength to make up the bridle connections
+# The first three lines will start at the floating points and attach to the original, shifted body points
+Bridle.addLine(bridleLength, 'main')
+Bridle.addLine(bridleLength, 'main')
+Bridle.addLine(bridleLength, 'main')
+# The next three lines will start at the floating points and attach to the newly created body points
+Bridle.addLine(bridleLength, 'main')
+Bridle.addLine(bridleLength, 'main')
+Bridle.addLine(bridleLength, 'main')
+
+# Attach the bottom ends of Lines 4-6 to the floating points
+Bridle.PointList[9].addLine(4,0)
+Bridle.PointList[10].addLine(5,0)
+Bridle.PointList[11].addLine(6,0)
+# Attach the bottom ends of Lines 7-9 to the floating points
+Bridle.PointList[9].addLine(7,0)
+Bridle.PointList[10].addLine(8,0)
+Bridle.PointList[11].addLine(9,0)
+
+# Attach the top ends of Lines 4-6 to the original, shifted body points
+Bridle.PointList[3].addLine(4,1)
+Bridle.PointList[4].addLine(5,1)
+Bridle.PointList[5].addLine(6,1)
+# Attach the top ends of Lines 7-9 to the newly created body points
+Bridle.PointList[6].addLine(7,1)
+Bridle.PointList[7].addLine(8,1)
+Bridle.PointList[8].addLine(9,1)
+    
+    
+# >>>>>>>>>> Things to consider later: how to set the unstretched bridleLength
+
+
+Bridle.initialize()
+
+# ----------------------------------
+
+
+
+C_lines = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)
+
+C_lines2 = Bridle.BodyList[0].getStiffness(Bridle.BodyList[0].r6)
+
+
+
+
+bridle = 1
+if bridle:
+    Bridle.solveEquilibrium()
+    K = Bridle.getSystemStiffness(dx=0.01)
+    C_moor = Bridle.BodyList[0].getStiffness(Bridle.Bodylist[0].r6)
+    #C_moor = Bridle.BodyList[0].getStiffness(np.zeros(6), dx= 0.01)
+else:
+    MooringSystem.solveEquilibrium()        # Finds the equilibrium position of the system based on mooring, weight, buoyancy, and thrust forces
+    K = MooringSystem.getSystemStiffness(dx=0.01)         # Calculates the overal total system stiffness matrix, K, which includes hydrostatics handled by MoorPy
+    C_moor = MooringSystem.BodyList[0].getStiffness(MooringSystem.BodyList[0].r6)   # calculate the mooring line stiffness matrix, C_moor
+    #C_moor = MooringSystem.BodyList[0].getStiffness(np.zeros(6), dx= 0.01)
+
+
+# @shousner: Questions for Matt:
+    # Is C_moor the stiffness matrix about the undisplaced or equilibrium position of the platform?
+    # What's the point of having the total stiffness matrix K? To compare to C_total calculated below?
+    # 4th section in MooringEq. for Point in PointList counting up, i counting down
+
 
 
 # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
-C_moor[5,5] += 98340000.0
+#C_moor[5,5] += 98340000.0
+
+
 
 
 # ------------------------------- sum all static matrices -----------------------------------------
@@ -881,27 +1019,29 @@ W_tot_stat = W_struc + W_hydro + W_moor
 
 
 
-print("hydrostatic stiffness matrix")
-printMat(C_hydro)    
-    
-print("structural stiffness matrix")
-printMat(C_struc)
-    
-print("mooring stiffness matrix")
-printMat(C_moor)
-    
+# =============================================================================
+# print("hydrostatic stiffness matrix")
+# printMat(C_hydro)    
+#     
+# print("structural stiffness matrix")
+# printMat(C_struc)
+#     
+# print("mooring stiffness matrix")
+# printMat(C_moor)
+#     
+# 
+# print("total static mass matrix")
+# printMat(M_tot_stat)
+#     
+# print("total static stiffness matrix")
+# printMat(C_tot_stat)
+#     
+# print("total static forces and moments")
+# printVec(W_tot_stat)
+# =============================================================================
 
-print("total static mass matrix")
-printMat(M_tot_stat)
-    
-print("total static stiffness matrix")
-printMat(C_tot_stat)
-    
-print("total static forces and moments")
-printVec(W_tot_stat)
 
-
-print(stopme)
+#print(stopme)
 
 # ------------------------- get wave kinematics along each member ---------------------------------
 

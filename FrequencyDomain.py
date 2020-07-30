@@ -123,11 +123,12 @@ class Member:
         r2i = (self.dB/2)-self.t
         mi = (r2i-r1i)/self.l
         if m==0:
-            Ir_end_outer = (1/3)*(rho_steel*self.l*np.pi*r1**2)*(3*r1**2 + 4*self.l**2) #[kg-m^2]    about end node
-            Ir_end_inner = (1/3)*(rho_steel*self.l*np.pi*r1i**2)*(3*r1i**2 + 4*self.l**2) #[kg-m^2]  about end node
+            Ir_end_outer = (1/12)*(rho_steel*self.l*np.pi*r1**2)*(3*r1**2 + 4*self.l**2) #[kg-m^2]    about end node
+            Ir_end_inner = (1/12)*(rho_steel*self.l*np.pi*r1i**2)*(3*r1i**2 + 4*self.l**2) #[kg-m^2]  about end node
             Ir_end_steel = Ir_end_outer - Ir_end_inner                     # I_outer - I_inner = I_shell -- about end node
+            #Ir_end_steel = (1/12)*v_steel*rho_steel*(3*(r1**2 + r1i**2) + 4*self.l**2)
             
-            Ir_end_fill = (1/3)*(self.rho_fill*self.l_fill*np.pi*r1i**2)*(2*r1i**2 + 4*self.l_fill**2) #[kg-m^2]  about end node
+            Ir_end_fill = (1/12)*(self.rho_fill*self.l_fill*np.pi*r1i**2)*(2*r1i**2 + 4*self.l_fill**2) #[kg-m^2]  about end node
             
             Ir_end = Ir_end_steel + Ir_end_fill
             
@@ -168,7 +169,6 @@ class Member:
                 I_ax_fill = (self.rho_fill*np.pi/(10*mi_fill))*(r2_fill**5-r1i**5)
             
             I_rad = I_rad_steel + I_rad_fill # about CoG
-            
             I_ax = I_ax_steel + I_ax_fill 
 
         return v_steel, center, I_rad, I_ax, m_fill
@@ -777,7 +777,6 @@ for mem in memberList:
     # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
     Sum_M_center += center*mass
     
-    #breakpoint()
     # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
     
     Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
@@ -1020,7 +1019,7 @@ else:
 
 
 
-print(stopt)
+
 # ------------------------------- sum all static matrices -----------------------------------------
 # this is to check totals from static calculations before hydrodynamic terms are added
 

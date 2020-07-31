@@ -681,10 +681,19 @@ memberList.append(Member("10     1    5.75    5.50    0.0    0.0   106.267    0.
 
 # ---------- spar platform substructure description --------------
 
-memberList.append(Member("11     2    14.75   14.75    0.0    0.0    -90.   0.0    0.0    -85.2   0.046   4.8    3743.42  ", nw))
-memberList.append(Member("12     2    14.75   14.75    0.0    0.0    -85.2   0.0    0.0    -75.708   0.046   9.492    3792.35  ", nw))
-memberList.append(Member("13     2    14.75   14.75    0.0    0.0    -75.708   0.0    0.0    -72.734   0.046   2.974    1883.78  ", nw))
-memberList.append(Member("14     2    14.75   14.75    0.0    0.0    -72.734   0.0    0.0    -20.   0.046   0.0    1025.  ", nw))
+# =============================================================================
+# Ballast members from Senu's sizing
+# memberList.append(Member("11     2    14.75   14.75    0.0    0.0    -90.   0.0    0.0    -85.2   0.046   4.8    3743.42  ", nw))
+# memberList.append(Member("12     2    14.75   14.75    0.0    0.0    -85.2   0.0    0.0    -75.708   0.046   9.492    3792.35  ", nw))
+# memberList.append(Member("13     2    14.75   14.75    0.0    0.0    -75.708   0.0    0.0    -72.734   0.046   2.974    1883.78  ", nw))
+# =============================================================================
+
+# Ballast members from Stein getting weight = displ
+memberList.append(Member("11     2    14.75   14.75    0.0    0.0    -90.000   0.0    0.0    -87.711   0.046    4.800    7850.  ", nw))
+memberList.append(Member("12     2    14.75   14.75    0.0    0.0    -87.711   0.0    0.0    -74.127   0.046    9.492    2650.  ", nw))
+memberList.append(Member("13     2    14.75   14.75    0.0    0.0    -74.127   0.0    0.0    -68.662   0.046    2.974    1025.  ", nw))
+
+memberList.append(Member("14     2    14.75   14.75    0.0    0.0    -68.662   0.0    0.0    -20.   0.046   0.0    1025.  ", nw))
 memberList.append(Member("15     2    14.75    8.00    0.0    0.0    -20.   0.0    0.0    -5.   0.063   0.0    1025.0  ", nw))
 memberList.append(Member("16     2     8.00    8.00    0.0    0.0    -5.   0.0    0.0    7.   0.068   0.0    1025.0  ", nw))
 memberList.append(Member("17     2     8.00    7.00    0.0    0.0    7.   0.0    0.0    13.   0.055   0.0    1025.0  ", nw))
@@ -716,8 +725,6 @@ hHub    = 119.0                          # hub height above water line [m]
 Fthrust = 800e3  # peak thrust force, [N]
 hHub    = 119.0 
 
-# ------- Mooring system properties
-# Linelength = 868.5, diameter = 0.15 (fiber), anchorR, fairR, fair_depth = 21
 
 
 
@@ -892,6 +899,40 @@ Mthrust = hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
 
 
 
+# =============================================================================
+# Inputs for DTU 10 MW (working)
+# depth = 600. #[m]
+# fair_depth = 21. #[m]
+# fairR = 7.875 #[m]
+# # Type = Fiber
+# lineD = 0.15 #[m]
+# wetmassperlength = 4.401 #[kg/m]
+# weightperlength = 43.152 #[N/m]
+# #MBL = 6494595 #[N]
+# #PreTension = 324729.75 #[N]
+# LineArea = (np.pi/4)*lineD**2
+# LineLength = 868.5 #[m]
+# anchorR = 656.139 #[m]
+# # Anchor Type = Pile
+# =============================================================================
+
+angle = np.array([0, 2*np.pi/3, -2*np.pi/3]) # angle of mooring line wrt positive x positive y
+
+
+# Inputs for OC3 Hywind
+depth = 320.
+anchorR = 853.87
+fairR = 5.2
+fair_depth = 70.
+LineLength = 902.2
+LineD = 0.09
+LineArea = (np.pi/4)*LineD**2 #[m^2]
+#massDenInAir = 77.7066 #[kg/m]
+#weightinwater = 698.094
+#EA
+
+
+
 MooringSystem = mp.System('lines2.txt')         # create the mooring system based on text file
 
 MooringSystem.BodyList[0].m = mTOT
@@ -901,12 +942,9 @@ MooringSystem.BodyList[0].AWP = AWP_TOT
 MooringSystem.BodyList[0].rM = np.array([0,0,zMeta])
 MooringSystem.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])  # see Line 1140 of MoorPy so you don't double count weight/buoyancy forces
 
-MooringSystem.depth = 320.
+MooringSystem.depth = depth
 
-anchorR = 853.87
-fairR = 5.2
-fair_depth = 70.
-angle = np.array([0, 2*np.pi/3, -2*np.pi/3]) # angle of mooring line wrt positive x positive y
+
 MooringSystem.PointList[0].r = np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -MooringSystem.depth], dtype=float)
 MooringSystem.PointList[1].r = np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -MooringSystem.depth], dtype=float)
 MooringSystem.PointList[2].r = np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -MooringSystem.depth], dtype=float)
@@ -919,10 +957,11 @@ MooringSystem.BodyList[0].rPointRel[0] = MooringSystem.PointList[3].r
 MooringSystem.BodyList[0].rPointRel[1] = MooringSystem.PointList[4].r
 MooringSystem.BodyList[0].rPointRel[2] = MooringSystem.PointList[5].r
 
-LineLength = 902.2
+
 for Line in MooringSystem.LineList: # set Line properties to the LineType properties specified
     # This essentially replaces the act of writing in the Line properties in the LineType section of the text file
     Line.L = LineLength
+    #Line.d = 0.09 #[m]
     Line.d = 0.09 #[m]
     Line.w = (77.7066 - np.pi/4*Line.d*Line.d*rho)*g  # [kg/m]*[m/s^2] = [N/m] (this should = 698.333; OC3 doc = 698.094 N/m)
     Line.EA = 384243000 #[N]
@@ -937,13 +976,13 @@ MooringSystem.initialize()
 
 Bridle = mp.System('lines2.txt')
 
-Bridle.depth = 320.
-
+Bridle.depth = depth
+# -----------------------------------------------------
 # Change the LineTypes dictionary to the line properties given
-Bridle.LineTypes['main'].d = 0.09 #[m]
-Bridle.LineTypes['main'].w = (77.7066 - np.pi/4*Bridle.LineTypes['main'].d**2*rho)*g # [kg/m]*[m/s^2] = [N/m] (this should = 698.333; OC3 doc = 698.094 N/m)
+Bridle.LineTypes['main'].d = 0.15 #[m]
+Bridle.LineTypes['main'].w = (4.401 - np.pi/4*Bridle.LineTypes['main'].d**2*rho)*g # [kg/m]*[m/s^2] = [N/m] (this should = 698.333; OC3 doc = 698.094 N/m)
 Bridle.LineTypes['main'].EA = 384243000 #[N]
-
+# ------------------------------------------------------
 # Update the Body properties with values from FD
 Bridle.BodyList[0].m = mTOT
 Bridle.BodyList[0].v = VTOT
@@ -1040,7 +1079,7 @@ Bridle.PointList[8].addLine(9,1)
 Bridle.initialize()
 
 # If using the bridle mooring system rather than the original, do a rename so we can refer to it as MooringSystem going forward (otherwise comment the line out)
-MooringSystem = Bridle
+#MooringSystem = Bridle
 
 
 # ----------------------------- Calculate mooring system characteristics ---------------------

@@ -914,95 +914,82 @@ C_struc[4,4] = -mTOT*g*rCG_TOT[2]
 # --------------- set up quasi-static mooring system and solve for mean offsets -------------------
 
 
-# Inputs for DTU 10 MW setup
-depth = 600. #[m]
-fair_depth = 21. #[m]
-fairR = 7.875 #[m]
-# Type = Fiber
-LineD = 0.15 #[m]
-LineArea = (np.pi/4)*LineD**2
-# dryMass_L = 
-# wetMass_L = dryMass_L - LineArea*rho
-wetMass_L = 4.401 #[kg/m]
-wetWeight_L = 43.152 #[N/m]
-#MBL = 6494595 #[N]
-#PreTension = 324729.75 #[N]
-LineLength = 20 + 868.5 #[m]
-EA = 384243000 #100e6 #[N]
-anchorR = 656.139 #[m]
-# Anchor Type = Pile
-# Chain properties - To Do
-angle = np.array([0, 2*np.pi/3, -2*np.pi/3]) # angle of mooring line wrt positive x positive y
-
+import MoorDesign as md
 
 # =============================================================================
 # # Inputs for OC3 Hywind
 # depth = 320.
+# type_string = 'main'
 # anchorR = 853.87
 # fairR = 5.2
 # fair_depth = 70.
 # LineLength = 902.2
 # LineD = 0.09
-# LineArea = (np.pi/4)*LineD**2 #[m^2]
 # dryMass_L = 77.7066 #[kg/m]
-# wetMass_L = dryMass_L - LineArea*rho #[kg/m]
-# wetWeight_L = wetMass_L*g # [kg/m]*[m/s^2] = [N/m] (this should = 698.333; OC3 doc = 698.094 N/m)
 # EA = 384243000 #[N]
-# angle = np.array([0, 2*np.pi/3, -2*np.pi/3]) # angle of mooring line wrt positive x positive y
+# angle = np.array([0, 2*np.pi/3, -2*np.pi/3])
 # =============================================================================
 
+# Inputs for DTU 10 MW setup
+depth = 600. #[m]
+type_string = 'main'
+LineD = 0.15 #[m]
+wetMass_L = 4.401 #[kg/m]
+dryMass_L = wetMass_L + (np.pi/4)*LineD**2*rho
+EA = 384243000 #100e6 #[N]
+angle = np.array([0, 2*np.pi/3, -2*np.pi/3])
+anchorR = 656.139 #[m]
+fair_depth = 21. #[m]
+fairR = 7.875 #[m]
+LineLength = 868.5 #[m]
 
 
-MooringSystem = mp.System('lines2.txt')         # create the mooring system based on text file
+
+
+MooringSystem = md.make3LineSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength)
 
 MooringSystem.BodyList[0].m = mTOT
 MooringSystem.BodyList[0].v = VTOT
 MooringSystem.BodyList[0].rCG = rCG_TOT
 MooringSystem.BodyList[0].AWP = AWP_TOT
 MooringSystem.BodyList[0].rM = np.array([0,0,zMeta])
-MooringSystem.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])  # see Line 1140 of MoorPy so you don't double count weight/buoyancy forces
-
-MooringSystem.depth = depth
-
-
-MooringSystem.PointList[0].r = np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -MooringSystem.depth], dtype=float)
-MooringSystem.PointList[1].r = np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -MooringSystem.depth], dtype=float)
-MooringSystem.PointList[2].r = np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -MooringSystem.depth], dtype=float)
-
-MooringSystem.PointList[3].r = np.array([fairR*np.cos(angle[0]), fairR*np.sin(angle[0]), -fair_depth], dtype=float)
-MooringSystem.PointList[4].r = np.array([fairR*np.cos(angle[1]), fairR*np.sin(angle[1]), -fair_depth], dtype=float)
-MooringSystem.PointList[5].r = np.array([fairR*np.cos(angle[2]), fairR*np.sin(angle[2]), -fair_depth], dtype=float)
-
-MooringSystem.BodyList[0].rPointRel[0] = MooringSystem.PointList[3].r
-MooringSystem.BodyList[0].rPointRel[1] = MooringSystem.PointList[4].r
-MooringSystem.BodyList[0].rPointRel[2] = MooringSystem.PointList[5].r
-
-
-for Line in MooringSystem.LineList: # set Line properties to the LineType properties specified
-    # This essentially replaces the act of writing in the Line properties in the LineType section of the text file
-    Line.L = LineLength
-    Line.d = LineD #[m]
-    Line.w = wetWeight_L #[N/m]
-    Line.EA = EA #[N]
-
-
+MooringSystem.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])
 
 MooringSystem.initialize()
 
 
 
-# ------------ Bridle connection ---------------
+# --------------- Bridle Confirguration --------------------------
+# Inputs for DTU 10 MW setup
+depth = 600. #[m]
+type_string = ['chain','synth']
+LineD = [0.17971, 0.15]  #[m]
+#wetMass_L = 4.401 #[kg/m]
+#dryMass_L = wetMass_L + (np.pi/4)*LineD**2*rho
+dryMass_L = [200, 40.18]
+EA = [0, 121415000] #100e6 #[N]
+EA[0] = 0.854e11*(LineD[0]**2)
+angle = np.array([0, 2*np.pi/3, -2*np.pi/3])
+anchorR = 656.139 #[m]
+fair_depth = 21. #[m]
+fairR = 7.875 #[m]
 
-Bridle = mp.System('lines2.txt')
+LineLength = 868.5 #[m]
 
-Bridle.depth = depth
-# -----------------------------------------------------
-# Change the LineTypes dictionary to the line properties given
-Bridle.LineTypes['main'].d = LineD #[m]
-Bridle.LineTypes['main'].w = wetWeight_L # [kg/m]*[m/s^2] = [N/m] 
-Bridle.LineTypes['main'].EA = EA #[N]
-# ------------------------------------------------------
-# Update the Body properties with values from FD
+chainLength = 80
+bridleLength = 30
+synthLength = LineLength-chainLength-bridleLength
+
+synthR = anchorR-0.9*chainLength
+synthZ = 0.95*depth
+bridleR = ((synthR-fairR)/(synthLength+bridleLength))*bridleLength + fairR
+bridleZ = ((synthZ-fair_depth)/(synthLength+bridleLength))*bridleLength + fair_depth
+
+
+
+
+Bridle = md.makeBridleSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength, chainLength, bridleLength, synthLength, synthR, synthZ, bridleR, bridleZ)
+
 Bridle.BodyList[0].m = mTOT
 Bridle.BodyList[0].v = VTOT
 Bridle.BodyList[0].rCG = rCG_TOT
@@ -1010,95 +997,15 @@ Bridle.BodyList[0].AWP = AWP_TOT
 Bridle.BodyList[0].rM = np.array([0,0,zMeta])
 Bridle.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])
 
-# Update the locations of the bottom anchor points
-Bridle.PointList[0].r = np.array([anchorR*np.cos(angle[0]), anchorR*np.sin(angle[0]), -MooringSystem.depth], dtype=float)
-Bridle.PointList[1].r = np.array([anchorR*np.cos(angle[1]), anchorR*np.sin(angle[1]), -MooringSystem.depth], dtype=float)
-Bridle.PointList[2].r = np.array([anchorR*np.cos(angle[2]), anchorR*np.sin(angle[2]), -MooringSystem.depth], dtype=float)
-
-# Update the locations of the original three body points, shifted by 60 degrees
-angleB = np.concatenate([angle+np.pi/3, angle-np.pi/3])
-Bridle.PointList[3].r = np.array([fairR*np.cos(angleB[0]), fairR*np.sin(angleB[0]), -fair_depth], dtype=float)
-Bridle.PointList[4].r = np.array([fairR*np.cos(angleB[1]), fairR*np.sin(angleB[1]), -fair_depth], dtype=float)
-Bridle.PointList[5].r = np.array([fairR*np.cos(angleB[2]), fairR*np.sin(angleB[2]), -fair_depth], dtype=float)
-# Update the points relative to the body
-Bridle.BodyList[0].rPointRel[0] = Bridle.PointList[3].r
-Bridle.BodyList[0].rPointRel[1] = Bridle.PointList[4].r
-Bridle.BodyList[0].rPointRel[2] = Bridle.PointList[5].r
-
-# Create three new points to go on the body, 60 degrees away from the original body points
-Bridle.addPoint(1, np.array([fairR*np.cos(angleB[3]), fairR*np.sin(angleB[3]), -fair_depth], dtype=float))
-Bridle.addPoint(1, np.array([fairR*np.cos(angleB[4]), fairR*np.sin(angleB[4]), -fair_depth], dtype=float))
-Bridle.addPoint(1, np.array([fairR*np.cos(angleB[5]), fairR*np.sin(angleB[5]), -fair_depth], dtype=float))
-# Update the points relative to the body
-Bridle.BodyList[0].addPoint(Bridle.PointList[6].number, Bridle.PointList[6].r)
-Bridle.BodyList[0].addPoint(Bridle.PointList[7].number, Bridle.PointList[7].r)
-Bridle.BodyList[0].addPoint(Bridle.PointList[8].number, Bridle.PointList[8].r)
-
-# Pick a spot along the original MooringSystem catenary line where you want the line to split to make a bridle connection
-# Pick a number between 1 and 20 where 1 is the anchor point and 20 is the original body point
-split = 18
-# Create three new floating free points along the length of the original catenary line
-Bridle.addPoint(0, MooringSystem.LineList[0].X[:,split-1])
-Bridle.addPoint(0, MooringSystem.LineList[1].X[:,split-1])
-Bridle.addPoint(0, MooringSystem.LineList[2].X[:,split-1])
-
-# LINES
-# Detach the three main mooring lines from the original three points on the body
-Bridle.PointList[3].detachLine(1,1)
-Bridle.PointList[4].detachLine(2,1)
-Bridle.PointList[5].detachLine(3,1)
-
-# Create a new line length that is the distance between a body point and a floating point
-bridleLength = np.linalg.norm(Bridle.PointList[9].r - Bridle.PointList[3].r)  # this is a guess and can be changed... can circle back
-
-for Line in Bridle.LineList:
-    Line.L = LineLength-bridleLength # this is a guess and can be changed >>>>>>>>> NOTE: LineList[i].X will might the same as first setup...circle back
-    Line.d = Bridle.LineTypes['main'].d
-    Line.w = Bridle.LineTypes['main'].w
-    Line.EA = Bridle.LineTypes['main'].EA
-
-# Attach the shortened, original mooring lines to the floating points
-Bridle.PointList[9].addLine(1,1)
-Bridle.PointList[10].addLine(2,1)
-Bridle.PointList[11].addLine(3,1)
-
-
-# Create 6 new mooring lines of length bridleLength to make up the bridle connections
-# The first three lines will start at the floating points and attach to the original, shifted body points
-Bridle.addLine(bridleLength, 'main')
-Bridle.addLine(bridleLength, 'main')
-Bridle.addLine(bridleLength, 'main')
-# The next three lines will start at the floating points and attach to the newly created body points
-Bridle.addLine(bridleLength, 'main')
-Bridle.addLine(bridleLength, 'main')
-Bridle.addLine(bridleLength, 'main')
-
-# Attach the bottom ends of Lines 4-6 to the floating points
-Bridle.PointList[9].addLine(4,0)
-Bridle.PointList[10].addLine(5,0)
-Bridle.PointList[11].addLine(6,0)
-# Attach the bottom ends of Lines 7-9 to the floating points
-Bridle.PointList[9].addLine(7,0)
-Bridle.PointList[10].addLine(8,0)
-Bridle.PointList[11].addLine(9,0)
-
-# Attach the top ends of Lines 4-6 to the original, shifted body points
-Bridle.PointList[3].addLine(4,1)
-Bridle.PointList[4].addLine(5,1)
-Bridle.PointList[5].addLine(6,1)
-# Attach the top ends of Lines 7-9 to the newly created body points
-Bridle.PointList[6].addLine(7,1)
-Bridle.PointList[7].addLine(8,1)
-Bridle.PointList[8].addLine(9,1)
-    
-    
-# >>>>>>>>>> Things to consider later: how to set the unstretched bridleLength
-
-
 Bridle.initialize()
 
+
+
+
+
+
 # If using the bridle mooring system rather than the original, do a rename so we can refer to it as MooringSystem going forward (otherwise comment the line out)
-#MooringSystem = Bridle
+MooringSystem = Bridle
 
 
 # ----------------------------- Calculate mooring system characteristics ---------------------

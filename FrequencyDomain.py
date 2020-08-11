@@ -1124,8 +1124,8 @@ for mem in memberList:
 
 # sum matrices to check totals from static calculations before hydrodynamic terms are added
 
-C_tot0 = C_struc + C_hydro + C_moor0   # total system stiffness matrix about equilibrium point >>> @shousner: Matt, do you mean about undisplaced position here?
-W_tot0 = W_struc + W_hydro + W_moor0   # system mean forces and moments at equilibrium point
+C_tot0 = C_struc + C_hydro + C_moor0   # total system stiffness matrix about undisplaced position
+W_tot0 = W_struc + W_hydro + W_moor0   # system mean forces and moments at undisplaced position
 
 M = M_struc + A_hydro_morison          # total mass plus added mass matrix
 
@@ -1169,6 +1169,12 @@ eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M), C_tot0))   #
 
 # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
 
+zMoorx = C_tot0[0,4]/C_tot0[0,0]  # effective z elevation of mooring system reaction forces in x and y directions
+zMoory = C_tot0[1,3]/C_tot0[1,1]
+zCG  = rCG_TOT[2]                    # center of mass in z
+zCMx = M[0,4]/M[0,0]              # effective z elevation of center of mass and added mass in x and y directions
+zCMy = M[1,3]/M[1,1]
+
 print("natural frequencies without added mass")
 fn = np.zeros(6)
 fn[0] = np.sqrt( C_tot0[0,0] / M_struc[0,0] )/ 2.0/np.pi
@@ -1176,8 +1182,8 @@ fn[1] = np.sqrt( C_tot0[1,1] / M_struc[1,1] )/ 2.0/np.pi
 fn[2] = np.sqrt( C_tot0[2,2] / M_struc[2,2] )/ 2.0/np.pi
 fn[5] = np.sqrt( C_tot0[5,5] / M_struc[5,5] )/ 2.0/np.pi
 zg = rCG_TOT[2]
-fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,3]*zg ) / (M_struc[3,3] - M_struc[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-fn[4] = np.sqrt( (C_tot0[4,4] - C_tot0[0,4]*zg ) / (M_struc[4,4] - M_struc[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,1]*((zCG-zMoory)**2 - zMoory**2) ) / (M_struc[3,3] - M_struc[1,1]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[4] = np.sqrt( (C_tot0[4,4] + C_tot0[0,0]*((zCG-zMoorx)**2 - zMoorx**2) ) / (M_struc[4,4] - M_struc[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
 printVec(fn)
 
 
@@ -1187,8 +1193,8 @@ fn[0] = np.sqrt( C_tot0[0,0] / M[0,0] )/ 2.0/np.pi
 fn[1] = np.sqrt( C_tot0[1,1] / M[1,1] )/ 2.0/np.pi
 fn[2] = np.sqrt( C_tot0[2,2] / M[2,2] )/ 2.0/np.pi
 fn[5] = np.sqrt( C_tot0[5,5] / M[5,5] )/ 2.0/np.pi
-fn[3] = np.sqrt( (C_tot0[3,3] - C_tot0[1,3]*M[1,3]/M[1,1] ) / (M[3,3] - M[1,3]*M[1,3]/M[1,1] ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-fn[4] = np.sqrt( (C_tot0[4,4] - C_tot0[0,4]*M[0,4]/M[0,0] ) / (M[4,4] - M[0,4]*M[0,4]/M[0,0] ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,1]*((zCMy-zMoory)**2 - zMoory**2) ) / (M[3,3] - M[1,1]*zCMy**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+fn[4] = np.sqrt( (C_tot0[4,4] + C_tot0[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M[4,4] - M[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
 # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
 printVec(fn)
 

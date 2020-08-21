@@ -6,7 +6,7 @@
 
 import numpy as np
 import xarray as xr
-import scipy as sp
+import scipy.interpolate as spi
 import matplotlib.pyplot as plt
 
 import sys

@@ -5,6 +5,8 @@
 
 
 import numpy as np
+import xarray as xr
+import scipy as sp
 import matplotlib.pyplot as plt
 
 import sys
@@ -14,7 +16,6 @@ import MoorPy as mp
 # reload the libraries each time in case we make any changes
 import importlib
 mp = importlib.reload(mp)
-
 
 
 ## This class represents linear (for now cylinderical) components in the substructure. 
@@ -809,6 +810,7 @@ W_struc = np.zeros([6])                  # static weight vector [N, N-m]
 
 # hydrodynamics-related arrays
 A_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
+B_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
 C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N, N-m]
 W_hydro = np.zeros(6)                    # buoyancy force/moment vector [N, N-m]
 F_hydro = np.zeros([6,nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
@@ -829,7 +831,42 @@ F_tot = np.zeros([6,nw], dtype=complex)  # total excitation force/moment complex
 
 # --------------- add in linear hydrodynamic coefficients here if applicable --------------------
 
-# TODO <<<
+def read_capy_nc(capyFileName, wDes=None, ndof=6):
+    '''
+    read Capytaine .nc file
+
+    inputs
+    ------
+    capyFName : str
+        String containing path to desired capytaine .nc file.
+    wDes: array
+        Array of desired frequency points - can be different resolution to that
+        used by Capytaine. However, must be within the range computed by
+        Capytaine.
+    '''
+    # read the Capytaine NetCDF data into xarray
+    capyDat = xr.open_dataset(capyFileName)
+    wCapy = capyDat['omega'].values
+
+    # create 3d arrays to read Capytaine data into
+    addedMass = np.zeros([ndof, ndof, len(wCapy)])
+    damping = np.zeros([ndof, ndof, len(wCapy)])
+    # (assume number of wave directions = 1):
+    fExcitation = np.zeros([ndof, len(wCapy)], dtype=complex)
+
+    for i, w in enumerate(wCapy):
+        addedMass[:,:,i] = capyDat['added_mass'].values[i,:,:]
+        damping[:,:,i] = capyDat['radiation_damping'].values[i,:,:]
+        fExcitation[:,i] = capyDat['diffraction_force'].values[0,i] + 1j*capyDat['diffraction_force'].values[1,i]
+
+    # if user specifies different w array to what Capytaine used, need to interpolate
+    if wDes is not None:
+        addedMassInterp = spi.interp1d(wCapy, addedMass, axis=2)(wDes)
+        dampingInterp = spi.interp1d(wCapy, damping, axis=2)(wDes)
+        fExcitationInterp = spi.interp1d(wCapy, fExcitation)(wDes)
+        return addedMassInterp, dampingInterp, fExcitationInterp
+    else:
+        return wCapy, addedMass, damping, fExcitation
 
 
 # --------------- Get general geometry properties including hydrostatics ------------------------

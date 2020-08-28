@@ -882,17 +882,10 @@ def read_capy_nc(capyFName, wDes=None, ndof=6):
                              f'Range of computed frequencies = {wCapy[0]:.2f} - {wCapy[-1]:.2f} rad/s \n'
                              f'[out of range]')
 
-    # create 3d arrays to read Capytaine data into
-    addedMass = np.zeros([ndof, ndof, len(wCapy)])
-    damping = np.zeros([ndof, ndof, len(wCapy)])
-    # (assume number of wave directions = 1):
-    fEx = np.zeros([ndof, len(wCapy)], dtype=complex)
-
-    for i, _ in enumerate(wCapy):
-        addedMass[:,:,i] = capyData['added_mass'].values[i,:,:]
-        damping[:,:,i] = capyData['radiation_damping'].values[i,:,:]
-        fEx[:,i] = (capyData['diffraction_force'].values[0,i]
-                    + 1j*capyData['diffraction_force'].values[1,i])
+    addedMass = capyData['added_mass'].values.transpose(1,2,0)
+    damping = capyData['radiation_damping'].values.transpose(1,2,0)
+    fEx = (np.squeeze(capyData['diffraction_force'].values[0,:].T)
+           + 1j*np.squeeze(capyData['diffraction_force'].values[1,:].T))
 
     # interpolate Capytaine results if user requires different w range
     if wDes is not None:
@@ -901,7 +894,7 @@ def read_capy_nc(capyFName, wDes=None, ndof=6):
                                                                 addedMass,
                                                                 damping,
                                                                 fEx)
-        return addedMassIntp, dampingIntp, fExIntp
+        return wDes, addedMassIntp, dampingIntp, fExIntp
     else:
         return wCapy, addedMass, damping, fEx
 
@@ -977,16 +970,9 @@ def call_capy(meshFName, wCapy, CoG=[0,0,0], headings=[0.0], saveNc=False,
     capyData = cpt.assemble_dataset(results)
 
     # convert to FrequencyDomain.py format
-    ndof = 6
-
-    addedMass = np.zeros([ndof, ndof, len(wCapy)])
-    damping = np.zeros([ndof, ndof, len(wCapy)])
-    fEx = np.zeros([ndof, len(wCapy)], dtype=complex)
-
-    for i, _ in enumerate(wCapy):
-        addedMass[:,:,i] = capyData['added_mass'].values[i,:,:]
-        damping[:,:,i] = capyData['radiation_damping'].values[i,:,:]
-        fEx[:,i] = np.squeeze(capyData['diffraction_force'].values[i,:])
+    addedMass = capyData['added_mass'].values.transpose(1,2,0)
+    damping = capyData['radiation_damping'].values.transpose(1,2,0)
+    fEx = np.squeeze(capyData['diffraction_force']).values.T
 
     if saveNc == True:
         cpt.io.xarray.separate_complex_values(capyData).to_netcdf(ncFName)
@@ -997,9 +983,9 @@ def call_capy(meshFName, wCapy, CoG=[0,0,0], headings=[0.0], saveNc=False,
                                                                 addedMass,
                                                                 damping,
                                                                 fEx)
-        return addedMassIntp, dampingIntp, fExIntp
+        return wDes, addedMassIntp, dampingIntp, fExIntp
     else:
-        return addedMass, damping, fEx
+        return wCapy, addedMass, damping, fEx
 
 
 # --------------- Get general geometry properties including hydrostatics ------------------------

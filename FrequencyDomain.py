@@ -8,6 +8,7 @@ import numpy as np
 import xarray as xr
 import scipy.interpolate as spi
 import matplotlib.pyplot as plt
+import capytaine as cpt
 
 import sys
 sys.path.insert(1, '/code/MoorPy')

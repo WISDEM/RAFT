@@ -844,7 +844,7 @@ def read_capy_nc(capyFName, wDes=None, ndof=6):
     format for FrequencyDomain.py
 
     Parameters
-    ------
+    ----------
     capyFName : str
         String containing path to desired capytaine .nc file
     wDes: array
@@ -903,6 +903,102 @@ def read_capy_nc(capyFName, wDes=None, ndof=6):
         return addedMassIntp, dampingIntp, fExIntp
     else:
         return wCapy, addedMass, damping, fEx
+
+
+def call_capy(meshFName, wCapy, CoG=[0,0,0], headings=[0.0], saveNc=False,
+              ncFName=None, wDes=None):
+    '''
+    call Capytaine for a given mesh, frequency range and wave headings
+
+    Parameters
+    ----------
+    meshFName : str
+        string containing path to hydrodynamic mesh.
+        mesh must be cropped at waterline (OXY plane) and have no lid
+    wCapy: array
+        array of frequency points to be computed by Capytaine
+    CoG: list
+        3x1 vector of body's CoG
+    headings: list
+        list of wave headings to compute
+    saveNc: Bool
+        save results to .nc file
+    ncFName: str
+        name of .nc file
+    wDes: array
+        array of desired frequency points
+        (for interpolation of wCapy-based Capytaine data)
+
+    Returns
+    -------
+    hydrodynamic coefficients; as computed or interpolated
+
+    Notes
+    -----
+    TODO:
+    - expand to multibody problems
+    '''
+
+    # create capytaine body object
+    body = cpt.FloatingBody.from_file(meshFName)
+    body.add_all_rigid_body_dofs()
+    body.center_of_mass = CoG
+
+    # Set problem
+    problems = [cpt.RadiationProblem(body=body,
+                                     radiating_dof=dof,
+                                     omega=w,
+                                     sea_bottom=-np.infty,
+                                     g=9.81,
+                                     rho=1025)
+                                     for dof in body.dofs for w in wCapy]
+
+    problems += [cpt.DiffractionProblem(body=body,
+                                        omega=w,
+                                        wave_direction=heading,
+                                        sea_bottom=-np.infty,
+                                        g=9.81,
+                                        rho=1025)
+                                        for w in wCapy for heading in headings]
+
+    print(f'\n-------------------------------\n'
+          f'Calling Capytaine BEM solver...\n'
+          f'-------------------------------\n'
+          f'mesh = {meshFName}\n'
+          f'w range = {wCapy[0]:.3f} - {wCapy[-1]:.3f} rad/s\n'
+          f'dw = {(wCapy[1]-wCapy[0]):.3f} rad/s\n'
+          f'no of headings = {len(headings)}\n'
+          f'no of radiation & diffraction problems = {len(problems)}\n'
+          f'---------------------------\n')
+
+    solver = cpt.BEMSolver()
+    results = [solver.solve(problem) for problem in sorted(problems)]
+    capyData = cpt.assemble_dataset(results)
+
+    # convert to FrequencyDomain.py format
+    ndof = 6
+
+    addedMass = np.zeros([ndof, ndof, len(wCapy)])
+    damping = np.zeros([ndof, ndof, len(wCapy)])
+    fEx = np.zeros([ndof, len(wCapy)], dtype=complex)
+
+    for i, _ in enumerate(wCapy):
+        addedMass[:,:,i] = capyData['added_mass'].values[i,:,:]
+        damping[:,:,i] = capyData['radiation_damping'].values[i,:,:]
+        fEx[:,i] = np.squeeze(capyData['diffraction_force'].values[i,:])
+
+    if saveNc == True:
+        cpt.io.xarray.separate_complex_values(capyData).to_netcdf(ncFName)
+
+    if wDes is not None:
+        addedMassIntp, dampingIntp, fExIntp = interp_hydro_data(wCapy,
+                                                                wDes,
+                                                                addedMass,
+                                                                damping,
+                                                                fEx)
+        return addedMassIntp, dampingIntp, fExIntp
+    else:
+        return addedMass, damping, fEx
 
 
 # --------------- Get general geometry properties including hydrostatics ------------------------

@@ -1183,55 +1183,55 @@ MooringSystem = Bridle
 # First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
 
 
-C_moor0 = MooringSystem.BodyList[0].getStiffness2(np.zeros(6), dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
-W_moor0 = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
+# C_moor0 = MooringSystem.BodyList[0].getStiffness2(np.zeros(6), dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
+# W_moor0 = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
 
 
-# Now find static equilibrium offsets of platform and get mooring properties about that point
-MooringSystem.solveEquilibrium()                                        # get the system to its equilibrium
-MooringSystem.plot()
-r6eq = MooringSystem.BodyList[0].r6
-print("Equilibirum platform positions/rotations:")
-printVec(r6eq)
-print("Surge: {:.2f}".format(r6eq[0]))
-print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
-C_moor = MooringSystem.BodyList[0].getStiffness2(r6eq, dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
-W_moor = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
+# # Now find static equilibrium offsets of platform and get mooring properties about that point
+# MooringSystem.solveEquilibrium()                                        # get the system to its equilibrium
+# MooringSystem.plot()
+# r6eq = MooringSystem.BodyList[0].r6
+# print("Equilibirum platform positions/rotations:")
+# printVec(r6eq)
+# print("Surge: {:.2f}".format(r6eq[0]))
+# print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
+# C_moor = MooringSystem.BodyList[0].getStiffness2(r6eq, dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
+# W_moor = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
 
-# manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
-#C_moor[5,5] += 98340000.0
-
-
-
-#print(stopt)
-# ------------------------------- sum all static matrices -----------------------------------------
-# this is to check totals from static calculations before hydrodynamic terms are added
-
-M_tot_stat = M_struc             
-C_tot_stat = C_struc + C_hydro + C_moor
-W_tot_stat = W_struc + W_hydro + W_moor
+# # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
+# #C_moor[5,5] += 98340000.0
 
 
 
+# #print(stopt)
+# # ------------------------------- sum all static matrices -----------------------------------------
+# # this is to check totals from static calculations before hydrodynamic terms are added
 
-print("hydrostatic stiffness matrix")
-printMat(C_hydro)    
+# M_tot_stat = M_struc             
+# C_tot_stat = C_struc + C_hydro + C_moor
+# W_tot_stat = W_struc + W_hydro + W_moor
+
+
+
+
+# print("hydrostatic stiffness matrix")
+# printMat(C_hydro)    
     
-print("structural stiffness matrix")
-printMat(C_struc)
+# print("structural stiffness matrix")
+# printMat(C_struc)
     
-print("mooring stiffness matrix")
-printMat(C_moor)
+# print("mooring stiffness matrix")
+# printMat(C_moor)
     
 
-print("total static mass matrix")
-printMat(M_tot_stat)
+# print("total static mass matrix")
+# printMat(M_tot_stat)
     
-print("total static stiffness matrix")
-printMat(C_tot_stat)
+# print("total static stiffness matrix")
+# printMat(C_tot_stat)
     
-print("total static forces and moments")
-printVec(W_tot_stat)
+# print("total static forces and moments")
+# printVec(W_tot_stat)
 
 
 
@@ -1293,8 +1293,8 @@ for mem in memberList:
 
 # sum matrices to check totals from static calculations before hydrodynamic terms are added
 
-C_tot0 = C_struc + C_hydro + C_moor0   # total system stiffness matrix about undisplaced position
-W_tot0 = W_struc + W_hydro + W_moor0   # system mean forces and moments at undisplaced position
+C_tot0 = C_struc + C_hydro # + C_moor0   # total system stiffness matrix about undisplaced position
+W_tot0 = W_struc + W_hydro #+ W_moor0   # system mean forces and moments at undisplaced position
 
 M = M_struc + A_hydro_morison          # total mass plus added mass matrix
 
@@ -1459,7 +1459,7 @@ for iiter in range(nIter):
         # sum contributions for each term        
         M_tot[:,:,ii] = M_struc + A_hydro_morison                         # mass
         B_tot[:,:,ii] = B_struc + B_hydro_drag                            # damping
-        C_tot[:,:,ii] = C_struc + C_hydro + C_moor                        # stiffness
+        C_tot[:,:,ii] = C_struc + C_hydro# + C_moor                        # stiffness
         F_tot[:,  ii] = F_hydro_drag[:,ii] + F_hydro_iner[:,ii]           # excitation force (complex amplitude)
         
         

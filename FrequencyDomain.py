@@ -831,42 +831,78 @@ F_tot = np.zeros([6,nw], dtype=complex)  # total excitation force/moment complex
 
 # --------------- add in linear hydrodynamic coefficients here if applicable --------------------
 
-def read_capy_nc(capyFileName, wDes=None, ndof=6):
-    '''
-    read Capytaine .nc file
+def interp_hydro_data(wCapy, wDes, addedMass, damping, fEx):
+    addedMassInterp = spi.interp1d(wCapy, addedMass, axis=2)(wDes)
+    dampingInterp = spi.interp1d(wCapy, damping, axis=2)(wDes)
+    fExcitationInterp = spi.interp1d(wCapy, fEx)(wDes)
+    return addedMassInterp, dampingInterp, fExcitationInterp
 
-    inputs
+
+def read_capy_nc(capyFName, wDes=None, ndof=6):
+    '''
+    Read Capytaine .nc file and return hydrodynamic coefficients in suitable
+    format for FrequencyDomain.py
+
+    Parameters
     ------
     capyFName : str
-        String containing path to desired capytaine .nc file.
+        String containing path to desired capytaine .nc file
     wDes: array
         Array of desired frequency points - can be different resolution to that
-        used by Capytaine. However, must be within the range computed by
-        Capytaine.
+        used by Capytaine (but must be within the range computed by Capytaine)
+    ndof: int
+        number of dofs in the Capytaine database
+
+    Returns
+    -------
+    frequency range & hydrodynamic coefficients. If wDes passed as argument,
+    hydrodynamic coefficients are interpolated for these points (and frequency
+    range is not returned)
+
+    Raises
+    ------
+    ValueError
+        when max/min wDes frequency range is outside wCapy range computed by
+        Capytaine
     '''
+
     # read the Capytaine NetCDF data into xarray
-    capyDat = xr.open_dataset(capyFileName)
-    wCapy = capyDat['omega'].values
+    capyData = xr.open_dataset(capyFName)
+    wCapy = capyData['omega'].values
+
+    # check desired frequency range is within computed range (for interpolation)
+    if wDes is not None:
+        if wDes[0]<wCapy[0]:
+            raise ValueError(f'\nMinimum desired frequency = {wDes[0]:.2f} rad/s \n'
+                             f'Range of computed frequencies = {wCapy[0]:.2f} - {wCapy[-1]:.2f} rad/s \n'
+                             f'[out of range]')
+        if wDes[-1]>wCapy[-1]:
+            raise ValueError(f'\nMaximum desired frequency = {wDes[-1]:.2f} rad/s \n'
+                             f'Range of computed frequencies = {wCapy[0]:.2f} - {wCapy[-1]:.2f} rad/s \n'
+                             f'[out of range]')
 
     # create 3d arrays to read Capytaine data into
     addedMass = np.zeros([ndof, ndof, len(wCapy)])
     damping = np.zeros([ndof, ndof, len(wCapy)])
     # (assume number of wave directions = 1):
-    fExcitation = np.zeros([ndof, len(wCapy)], dtype=complex)
+    fEx = np.zeros([ndof, len(wCapy)], dtype=complex)
 
-    for i, w in enumerate(wCapy):
-        addedMass[:,:,i] = capyDat['added_mass'].values[i,:,:]
-        damping[:,:,i] = capyDat['radiation_damping'].values[i,:,:]
-        fExcitation[:,i] = capyDat['diffraction_force'].values[0,i] + 1j*capyDat['diffraction_force'].values[1,i]
+    for i, _ in enumerate(wCapy):
+        addedMass[:,:,i] = capyData['added_mass'].values[i,:,:]
+        damping[:,:,i] = capyData['radiation_damping'].values[i,:,:]
+        fEx[:,i] = (capyData['diffraction_force'].values[0,i]
+                    + 1j*capyData['diffraction_force'].values[1,i])
 
-    # if user specifies different w array to what Capytaine used, need to interpolate
+    # interpolate Capytaine results if user requires different w range
     if wDes is not None:
-        addedMassInterp = spi.interp1d(wCapy, addedMass, axis=2)(wDes)
-        dampingInterp = spi.interp1d(wCapy, damping, axis=2)(wDes)
-        fExcitationInterp = spi.interp1d(wCapy, fExcitation)(wDes)
-        return addedMassInterp, dampingInterp, fExcitationInterp
+        addedMassIntp, dampingIntp, fExIntp = interp_hydro_data(wCapy,
+                                                                wDes,
+                                                                addedMass,
+                                                                damping,
+                                                                fEx)
+        return addedMassIntp, dampingIntp, fExIntp
     else:
-        return wCapy, addedMass, damping, fExcitation
+        return wCapy, addedMass, damping, fEx
 
 
 # --------------- Get general geometry properties including hydrostatics ------------------------

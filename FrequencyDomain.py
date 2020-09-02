@@ -839,7 +839,7 @@ def interp_hydro_data(wCapy, wDes, addedMass, damping, fEx):
     return addedMassInterp, dampingInterp, fExcitationInterp
 
 
-def read_capy_nc(capyFName, wDes=None, ndof=6):
+def read_capy_nc(capyFName, wDes=None):
     '''
     Read Capytaine .nc file and return hydrodynamic coefficients in suitable
     format for FrequencyDomain.py
@@ -851,8 +851,6 @@ def read_capy_nc(capyFName, wDes=None, ndof=6):
     wDes: array
         Array of desired frequency points - can be different resolution to that
         used by Capytaine (but must be within the range computed by Capytaine)
-    ndof: int
-        number of dofs in the Capytaine database
 
     Returns
     -------
@@ -882,12 +880,14 @@ def read_capy_nc(capyFName, wDes=None, ndof=6):
                              f'Range of computed frequencies = {wCapy[0]:.2f} - {wCapy[-1]:.2f} rad/s \n'
                              f'[out of range]')
 
+    # convert hydrodynamic coefficients to FrequencyDomain.py format
     addedMass = capyData['added_mass'].values.transpose(1,2,0)
     damping = capyData['radiation_damping'].values.transpose(1,2,0)
     fEx = (np.squeeze(capyData['diffraction_force'].values[0,:].T)
            + 1j*np.squeeze(capyData['diffraction_force'].values[1,:].T))
 
-    # interpolate Capytaine results if user requires different w range
+    # (optional) interpolate coefficients; return appropriate hydrodynamic
+    # coefficients 
     if wDes is not None:
         addedMassIntp, dampingIntp, fExIntp = interp_hydro_data(wCapy,
                                                                 wDes,
@@ -938,7 +938,7 @@ def call_capy(meshFName, wCapy, CoG=[0,0,0], headings=[0.0], saveNc=False,
     body.add_all_rigid_body_dofs()
     body.center_of_mass = CoG
 
-    # Set problem
+    # define the hydrodynamic problems
     problems = [cpt.RadiationProblem(body=body,
                                      radiating_dof=dof,
                                      omega=w,
@@ -955,6 +955,7 @@ def call_capy(meshFName, wCapy, CoG=[0,0,0], headings=[0.0], saveNc=False,
                                         rho=1025)
                                         for w in wCapy for heading in headings]
 
+    # call Capytaine solver
     print(f'\n-------------------------------\n'
           f'Calling Capytaine BEM solver...\n'
           f'-------------------------------\n'
@@ -963,17 +964,19 @@ def call_capy(meshFName, wCapy, CoG=[0,0,0], headings=[0.0], saveNc=False,
           f'dw = {(wCapy[1]-wCapy[0]):.3f} rad/s\n'
           f'no of headings = {len(headings)}\n'
           f'no of radiation & diffraction problems = {len(problems)}\n'
-          f'---------------------------\n')
+          f'-------------------------------\n')
 
     solver = cpt.BEMSolver()
     results = [solver.solve(problem) for problem in sorted(problems)]
     capyData = cpt.assemble_dataset(results)
 
-    # convert to FrequencyDomain.py format
+    # convert hydrodynamic coefficients to FrequencyDomain.py format
     addedMass = capyData['added_mass'].values.transpose(1,2,0)
     damping = capyData['radiation_damping'].values.transpose(1,2,0)
     fEx = np.squeeze(capyData['diffraction_force']).values.T
 
+    # (optional) save to .nc file and interpolate coefficients; return
+    # appropriate hydrodynamic coefficients
     if saveNc == True:
         cpt.io.xarray.separate_complex_values(capyData).to_netcdf(ncFName)
 

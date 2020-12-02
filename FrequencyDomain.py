@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import capytaine as cpt
 
 import sys
-sys.path.insert(1, '/code/MoorPy')
+sys.path.insert(1, '../MoorPy')
 import MoorPy as mp
 
 # reload the libraries each time in case we make any changes
@@ -56,9 +56,11 @@ class Member:
         self.Cd_q  = 0.1  # drag coefficients
         self.Cd_p1 = 0.6
         self.Cd_p2 = 0.6
+        self.Ca_End = 0.6
         self.Ca_q  = 0.0  # added mass coefficients
         self.Ca_p1 = 0.97
         self.Ca_p2 = 0.97
+        self.Ca_End = 0.6
                      
         
         self.n = 10 # number of nodes per member
@@ -78,6 +80,7 @@ class Member:
         self.a  = np.zeros([self.n,3,nw], dtype=complex)  # acceleration
         self.u  = np.zeros([self.n,3,nw], dtype=complex)  # wave velocity
         self.ud = np.zeros([self.n,3,nw], dtype=complex)  # wave acceleration
+        self.pDyn=np.zeros([self.n,  nw], dtype=complex)  # dynamic pressure
         
         
     def getDirections(self):
@@ -375,7 +378,7 @@ def getVelocity(r, Xi, ws):
         
     
 ## Get wave velocity and acceleration complex amplitudes based on wave spectrum at a given location
-def getWaveKin(zeta0, w, k, h, r):
+def getWaveKin(zeta0, w, k, h, r, rho=1025.0, g=9.91):
 
     # inputs: wave elevation fft, wave freqs, wave numbers, depth, point position
 
@@ -384,6 +387,7 @@ def getWaveKin(zeta0, w, k, h, r):
     zeta = np.zeros(nw , dtype=complex ) # local wave elevation
     u  = np.zeros([3,nw], dtype=complex) # local wave kinematics velocity
     ud = np.zeros([3,nw], dtype=complex) # local wave kinematics acceleration
+    pDyn = np.zeros(nw , dtype=complex ) # local dynamic pressure
     
     for i in range(nw):
     
@@ -398,17 +402,20 @@ def getWaveKin(zeta0, w, k, h, r):
         # only process wave kinematics if this node is submerged
         if z < 0:
             
-            # Calculate SINH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/SINH( k*h )
+            # Calculate SINH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/COSH( k*h )
             # given the wave number, k, water depth, h, and elevation z, as inputs.
             if (    k[i]   == 0.0  ):                   # When .TRUE., the shallow water formulation is ill-conditioned; thus, the known value of unity is returned.
                 SINHNumOvrSIHNDen = 1.0
-                COSHNumOvrSIHNDen = 99999
+                COSHNumOvrSIHNDen = 99999.0
+                COSHNumOvrCOSHDen = 99999.0   # <<< check
             elif ( k[i]*h >  89.4 ):                # When .TRUE., the shallow water formulation will trigger a floating point overflow error; however, with h > 14.23*wavelength (since k = 2*Pi/wavelength) we can use the numerically-stable deep water formulation instead.
-                SINHNumOvrSIHNDen = np.exp(  k[i]*z );
-                COSHNumOvrSIHNDen = np.exp(  k[i]*z );
+                SINHNumOvrSIHNDen = np.exp( k[i]*z )
+                COSHNumOvrSIHNDen = np.exp( k[i]*z )
+                COSHNumOvrCOSHDen = np.exp( k[i]*z ) + np.exp(-k[i]*(z + 2.0*h))
             else:                                    # 0 < k*h <= 89.4; use the shallow water formulation.
                 SINHNumOvrSIHNDen = np.sinh( k[i]*( z + h ) )/np.sinh( k[i]*h );
                 COSHNumOvrSIHNDen = np.cosh( k[i]*( z + h ) )/np.sinh( k[i]*h );
+                COSHNumOvrCOSHDen = np.real( np.cosh(k[i]*(z+h)) )/np.cosh(k[i]*h)   # <<< check
             
             # Fourier transform of wave velocities 
             u[0,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.cos(beta) 
@@ -417,8 +424,12 @@ def getWaveKin(zeta0, w, k, h, r):
 
             # Fourier transform of wave accelerations                   
             ud[:,i] = 1j*w[i]*u[:,i]
+            
+            # Fourier transform of dynamic pressure
+            pDyn[i] = rho*g* zeta[i] * COSHNumOvrCOSHDen 
         
-    return u, ud
+    return u, ud, pDyn
+
 
 
 # calculate wave number based on wave frequency in rad/s and depth
@@ -1252,12 +1263,11 @@ for mem in memberList:
             
             
             # get wave kinematics spectra given a certain wave spectrum and location
-            mem.u[il,:,:], mem.ud[il,:,:] = getWaveKin(zeta[imeto,:], w, k, depth, mem.r[il,:])    
+            mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(zeta[imeto,:], w, k, depth, mem.r[il,:])    
 
 
             # local added mass matrix
             Amat = rho*0.25*np.pi*mem.d[il]**2*dl *( mem.Ca_q*VecVecTrans(q) + mem.Ca_p1*VecVecTrans(p1) + mem.Ca_p2*VecVecTrans(p2) )
-            
             
             # add to global added mass matrix for Morison members
             A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
@@ -1274,6 +1284,49 @@ for mem in memberList:
                 # add to global excitation vector (frequency dependent)
                 F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
 
+
+            # add end effects for added mass, and excitation including dynamic pressure
+            if il==0:     # end A
+                    
+                # local added mass matrix
+                Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(q)                
+                
+                # add to global added mass matrix for Morison members
+                A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
+                
+                
+                # local inertial excitation matrix
+                Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(q)      
+                
+                for i in range(nw):   # for each wave frequency...
+                
+                    # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
+                    F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) + mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *q  
+                
+                    # add to global excitation vector (frequency dependent)
+                    F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
+                
+                
+            elif il==mem.n-1:  # end B
+           
+                # local added mass matrix
+                Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(q)                
+                
+                # add to global added mass matrix for Morison members
+                A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
+                
+                
+                # local inertial excitation matrix
+                Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(q)      
+                
+                for i in range(nw):   # for each wave frequency...
+                
+                    # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
+                    F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) - mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *q  
+                
+                    # add to global excitation vector (frequency dependent)
+                    F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
+                
 
 
 
@@ -1562,4 +1615,5 @@ plt.show()
  RMSheave(imeto) = sqrt( sum( ((abs(rao{imeto}(:,3))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); 
  
 ''' 
-    
+ 
+ 

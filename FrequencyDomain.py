@@ -5,10 +5,7 @@
 
 
 import numpy as np
-import xarray as xr
-import scipy.interpolate as spi
 import matplotlib.pyplot as plt
-import capytaine as cpt
 
 import sys
 sys.path.insert(1, '../MoorPy')
@@ -16,7 +13,7 @@ import MoorPy as mp
 
 # reload the libraries each time in case we make any changes
 import importlib
-mp = importlib.reload(mp)
+mp   = importlib.reload(mp)
 
 
 ## This class represents linear (for now cylinderical) components in the substructure. 
@@ -619,588 +616,254 @@ def printVec(vec):
     
 
 
-# ------------------------------- basic setup -----------------------------------------
 
-nDOF = 6
+class FOWT():
+    '''This class comprises the frequency domain model of a single floating wind turbine'''
 
-w = np.arange(.01, 3, 0.01)  # angular frequencies tp analyze (rad/s)
-nw = len(w)  # number of frequencies
+    def __init__(self, memberList, mooringSystem, w=[]):
+        '''This initializes the FOWT object which contains everything for a single turbine's frequency-domain dynamics.
+        The initializiation sets up the design description.'''
 
-k= np.zeros(nw)  # wave number
+        # store reference to the already-set-up MoorPy system (currently assuming the FOWT is represented by Body 1)
+        self.ms = mooringSystem
 
-
-# ----------------------- member-based platform description --------------------------
+        # ------------------------------- basic setup -----------------------------------------
 
-# (hard-coded for now - set to OC3 Hywind Spar geometry - eventually these will be provided as inputs instead)
+        self.nDOF = 6
 
-# list of member objects
-memberList = []
+        if len(w)==0:
+            w = np.arange(.01, 3, 0.01)  # angular frequencies tp analyze (rad/s)
+        nw = len(w)  # number of frequencies
 
-# -------------------- OC3 Hywind Spar ----------------------
-'''
-# ------------------ turbine Tower description ------------------
-# diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
-#                      number   type    dA      dB      xa      ya     za     xb     yb      zb      t     l_fill  rho_ballast
+        k= np.zeros(nw)  # wave number
 
-memberList.append(Member(" 1     1    6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76   0.0270   0.0    1025.0  ", nw))
-memberList.append(Member(" 2     1    6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52   0.0262   0.0    1025.0  ", nw))
-memberList.append(Member(" 3     1    5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28   0.0254   0.0    1025.0  ", nw))
-memberList.append(Member(" 4     1    5.711   5.448    0.0    0.0    33.28   0.0    0.0    41.04   0.0246   0.0    1025.0  ", nw))
-memberList.append(Member(" 5     1    5.448   5.185    0.0    0.0    41.04   0.0    0.0    48.80   0.0238   0.0    1025.0  ", nw))
 
-memberList.append(Member(" 6     1    5.185   4.922    0.0    0.0    48.80   0.0    0.0    56.56   0.0230   0.0    1025.0  ", nw))
-memberList.append(Member(" 7     1    4.922   4.659    0.0    0.0    56.56   0.0    0.0    64.32   0.0222   0.0    1025.0  ", nw))
-memberList.append(Member(" 8     1    4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08   0.0214   0.0    1025.0  ", nw))
-memberList.append(Member(" 9     1    4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84   0.0206   0.0    1025.0  ", nw))
-memberList.append(Member("10     1    4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60   0.0198   0.0    1025.0  ", nw))
+        # ----------------------- member-based platform description --------------------------
 
-# ---------- spar platform substructure description --------------
-memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.0270   52.    1850.0  ", nw))
-#memberList.append(Member("11     2    9.400   9.400    0.0    0.0    -120.   0.0    0.0    -12.0   0.066   41.4    2000.0  ", nw))
-memberList.append(Member("12     2    9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270   0.0    1025.0  ", nw))
-memberList.append(Member("13     2    6.500   6.500    0.0    0.0    -4.00   0.0    0.0    10.00   0.0270   0.0    1025.0  ", nw))
+        # (hard-coded for now - set to OC3 Hywind Spar geometry - eventually these will be provided as inputs instead)
 
-#memberList.append(Member("1      2    6.500   6.500    0.0    0.0    -100.00   0.0    0.0    0.00   0.0270   0.0    1025.0  ", nw))
+        # list of member objects
+        memberList = []
 
-# -------------------------- turbine RNA description ------------------------
-# below are rough properties for NREL 5 MW reference turbine
-mRNA    = 110000              + 240000  # RNA mass [kg]
-IxRNA   = 11776047*(1 + 1 + 1) + 115926   # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
-IrRNA   = 11776047*(1 +.5 +.5) + 2607890   # RNA moment of inertia about local y or z axes [kg-m^2]
-xCG_RNA = 0                             # x location of RNA center of mass [m] (Close enough to -0.27 m)
-hHub    = 90.0                          # hub height above water line [m]
+        for memberString in memberStrings:
+            memberList.append(memberString)
 
-Fthrust = 800e3  # peak thrust force, [N]
-'''
 
 
+        # -------------------------- turbine RNA description (eventually these should be inputs) ------------------------
+        mRotor = 227962 #[kg]
+        mNacelle = 446036 #[kg]
+        IxHub = 325671 #[kg-m^2]
+        IzNacelle = 7326346 #[kg-m^2]
+        IxBlades = 45671252 #[kg-m^2] MOI value from FAST file, don't know where MOI is about. Assuming about the hub
+        xCG_Hub = -7.07 #[m] from yaw axis
+        xCG_Nacelle = 2.687 #[m] from yaw axis
 
-# ------------------- DTU 10 MW Spar --------------------------
 
-# ------------------ turbine Tower description ------------------
-#                      number   type    dA      dB      xa      ya     za     xb     yb      zb      t     l_fill  rho_ballast
+        mRNA = mRotor + mNacelle #[kg]
+        IxRNA = IxBlades*(1 + 1 + 1) + IxHub # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+        IrRNA = IxBlades*(1 + .5 + .5) + IzNacelle # RNA moment of inertia about local y or z axes [kg-m^2]
 
-# new version from 11-114.7 (for OpenFAST reasons)
-memberList.append(Member(" 1     1    8.00    7.75    0.0    0.0    11.00    0.0    0.0    21.37    0.038   0.0    1025.0  ", nw))
-memberList.append(Member(" 2     1    7.75    7.50    0.0    0.0    21.37    0.0    0.0    31.74    0.036   0.0    1025.0  ", nw))
-memberList.append(Member(" 3     1    7.50    7.25    0.0    0.0    31.74    0.0    0.0    42.11    0.034   0.0    1025.0  ", nw))
-memberList.append(Member(" 4     1    7.25    7.00    0.0    0.0    42.11    0.0    0.0    52.48    0.032   0.0    1025.0  ", nw))
-memberList.append(Member(" 5     1    7.00    6.75    0.0    0.0    52.48    0.0    0.0    62.85    0.030   0.0    1025.0  ", nw))
 
-memberList.append(Member(" 6     1    6.75    6.50    0.0    0.0    62.85    0.0    0.0    73.22    0.028   0.0    1025.0  ", nw))
-memberList.append(Member(" 7     1    6.50    6.25    0.0    0.0    73.22    0.0    0.0    83.59    0.026   0.0    1025.0  ", nw))
-memberList.append(Member(" 8     1    6.25    6.00    0.0    0.0    83.59    0.0    0.0    93.96    0.024   0.0    1025.0  ", nw))
-memberList.append(Member(" 9     1    6.00    5.75    0.0    0.0    93.96    0.0    0.0   104.33    0.022   0.0    1025.0  ", nw))
-memberList.append(Member("10     1    5.75    5.50    0.0    0.0   104.33    0.0    0.0   114.70    0.020   0.0    1025.0  ", nw))
+        xCG_RNA = ((mRotor*xCG_Hub)+(mNacelle*xCG_Nacelle))/(mRotor+mNacelle)          # x location of RNA center of mass [m]
 
-# =============================================================================
-# # old version from 13-116.63
-# memberList.append(Member(" 1     1    8.00    7.75    0.0    0.0    13.000    0.0    0.0    23.363   0.038   0.0    1025.0  ", nw))
-# memberList.append(Member(" 2     1    7.75    7.50    0.0    0.0    23.363    0.0    0.0    33.726   0.036   0.0    1025.0  ", nw))
-# memberList.append(Member(" 3     1    7.50    7.25    0.0    0.0    33.726    0.0    0.0    44.089   0.034   0.0    1025.0  ", nw))
-# memberList.append(Member(" 4     1    7.25    7.00    0.0    0.0    44.089    0.0    0.0    54.452   0.032   0.0    1025.0  ", nw))
-# memberList.append(Member(" 5     1    7.00    6.75    0.0    0.0    54.452    0.0    0.0    64.815   0.030   0.0    1025.0  ", nw))
-# 
-# memberList.append(Member(" 6     1    6.75    6.50    0.0    0.0    64.815    0.0    0.0    75.178   0.028   0.0    1025.0  ", nw))
-# memberList.append(Member(" 7     1    6.50    6.25    0.0    0.0    75.178    0.0    0.0    85.541   0.026   0.0    1025.0  ", nw))
-# memberList.append(Member(" 8     1    6.25    6.00    0.0    0.0    85.541    0.0    0.0    95.904   0.024   0.0    1025.0  ", nw))
-# memberList.append(Member(" 9     1    6.00    5.75    0.0    0.0    95.904    0.0    0.0   106.267   0.022   0.0    1025.0  ", nw))
-# memberList.append(Member("10     1    5.75    5.50    0.0    0.0   106.267    0.0    0.0   116.630   0.020   0.0    1025.0  ", nw))
-# =============================================================================
+        #hHub    = 119.0                          # hub height above water line [m]
+        hHub    = 118.0 
 
 
+        # ---------------------- set up key arrays -----------------------------
 
-# ---------- spar platform substructure description --------------
+        # structure-related arrays
+        M_struc = np.zeros([6,6])                # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
+        B_struc = np.zeros([6,6])                # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
+        C_struc = np.zeros([6,6])                # structure effective stiffness matrix [N/m, N, N-m]
+        W_struc = np.zeros([6])                  # static weight vector [N, N-m]
 
-# =============================================================================
-# Ballast members from Senu's sizing
-# memberList.append(Member("11     2    14.75   14.75    0.0    0.0    -90.   0.0    0.0    -85.2   0.046   4.8    3743.42  ", nw))
-# memberList.append(Member("12     2    14.75   14.75    0.0    0.0    -85.2   0.0    0.0    -75.708   0.046   9.492    3792.35  ", nw))
-# memberList.append(Member("13     2    14.75   14.75    0.0    0.0    -75.708   0.0    0.0    -72.734   0.046   2.974    1883.78  ", nw))
-# =============================================================================
+        # hydrodynamics-related arrays
+        A_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
+        B_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
+        C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N, N-m]
+        W_hydro = np.zeros(6)                    # buoyancy force/moment vector [N, N-m]
+        F_hydro = np.zeros([6,nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
 
-# Ballast members from Stein getting weight = displ
-memberList.append(Member("11     2    14.75   14.75    0.0    0.0    -90.000   0.0    0.0    -85.200   0.046    4.800    7850.  ", nw))
-memberList.append(Member("12     2    14.75   14.75    0.0    0.0    -85.200   0.0    0.0    -75.708   0.046    9.492    2650.  ", nw))
-memberList.append(Member("13     2    14.75   14.75    0.0    0.0    -75.708   0.0    0.0    -72.734   0.046    2.974    1025.  ", nw))
+        # moorings-related arrays
+        A_moor = np.zeros([6,6,nw])              # mooring added mass matrix [kg, kg-m, kg-m^2] (may not be used)
+        B_moor = np.zeros([6,6,nw])              # mooring damping matrix [N-s/m, N-s, N-s-m] (may not be used)
+        C_moor = np.zeros([6,6])                 # mooring stiffness matrix (linearized about platform offset) [N/m, N, N-m]
+        W_moor = np.zeros(6)                     # mean net mooring force/moment vector [N, N-m]
 
-memberList.append(Member("14     2    14.75   14.75    0.0    0.0    -72.734   0.0    0.0    -20.   0.046   0.0    1025.  ", nw))
-memberList.append(Member("15     2    14.75    8.00    0.0    0.0    -20.   0.0    0.0    -5.   0.063   0.0    1025.0  ", nw))
-memberList.append(Member("16     2     8.00    8.00    0.0    0.0    -5.   0.0    0.0    7.   0.068   0.0    1025.0  ", nw))
-memberList.append(Member("17     2     8.00    7.00    0.0    0.0    7.   0.0    0.0    11.   0.055   0.0    1025.0  ", nw))
+        # final coefficient arrays
+        M_tot = np.zeros([6,6,nw])               # total mass and added mass matrix [kg, kg-m, kg-m^2]
+        B_tot = np.zeros([6,6,nw])               # total damping matrix [N-s/m, N-s, N-s-m]
+        C_tot = np.zeros([6,6,nw])               # total stiffness matrix [N/m, N, N-m]
+        F_tot = np.zeros([6,nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
 
 
 
+    def setEnv or runCase
 
-# -------------------------- turbine RNA description ------------------------
-mRotor = 227962 #[kg]
-mNacelle = 446036 #[kg]
-IxHub = 325671 #[kg-m^2]
-IzNacelle = 7326346 #[kg-m^2]
-IxBlades = 45671252 #[kg-m^2] MOI value from FAST file, don't know where MOI is about. Assuming about the hub
-xCG_Hub = -7.07 #[m] from yaw axis
-xCG_Nacelle = 2.687 #[m] from yaw axis
+        # ------- Wind conditions
+        Fthrust = 800e3  # peak thrust force, [N]
+        Mthrust = hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
 
 
-mRNA = mRotor + mNacelle #[kg]
-IxRNA = IxBlades*(1 + 1 + 1) + IxHub # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
-IrRNA = IxBlades*(1 + .5 + .5) + IzNacelle # RNA moment of inertia about local y or z axes [kg-m^2]
 
+        # ---------------------------- environmental conditions -------------------------------
 
-xCG_RNA = ((mRotor*xCG_Hub)+(mNacelle*xCG_Nacelle))/(mRotor+mNacelle)          # x location of RNA center of mass [m]
+        depth = 200
+        rho = 1025
+        g = 9.81
 
-#hHub    = 119.0                          # hub height above water line [m]
-hHub    = 118.0 
+        pi = np.pi
 
-
-
-# ------- Wind conditions
-Fthrust = 800e3  # peak thrust force, [N]
-Mthrust = hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
-
-
-
-
-
-# ---------------- (future work) import hydrodynamic coefficient files ----------------
-
-
-
-# ---------------------------- environmental conditions -------------------------------
-
-depth = 200
-rho = 1025
-g = 9.81
-
-pi = np.pi
-
-# environmental condition(s)
-Hs = [8 ];
-Tp = [12];
-windspeed = [8 ];
-
-S   = np.zeros([len(Hs), nw])   # wave spectrum
-S2  = np.zeros([len(Hs), nw])   # wave spectrum
-zeta= np.zeros([len(Hs), nw])  # wave elevation
-
-T = 2*np.pi/w # periods
-
-
-
-for imeto in range(len(Hs)):       # loop through each environmental condition
-
-    # make wave spectrum (setting to 1 gives approximate RAOs)
-    S[imeto,:]  =  JONSWAP(w, Hs[imeto], Tp[imeto])
-    
-    # wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
-    zeta[imeto,:] = np.sqrt(S[imeto,:])
-    
-
-# get wave number
-for i in range(nw):
-    k[i] = waveNumber(w[i], depth)
-
-'''
-plt.plot(w/np.pi/2,  S[2,:], "r")
-plt.plot(w/np.pi/2, S2[2,:], "b")
-plt.xlabel("Hz")
-'''
-
-# ignoring multiple DLCs for now <<<<<
-#for imeto = 1:length(windspeeds)
-imeto = 0
-
-
-
-# ---------------------- set up key arrays -----------------------------
-
-# structure-related arrays
-M_struc = np.zeros([6,6])                # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
-B_struc = np.zeros([6,6])                # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
-C_struc = np.zeros([6,6])                # structure effective stiffness matrix [N/m, N, N-m]
-W_struc = np.zeros([6])                  # static weight vector [N, N-m]
-
-# hydrodynamics-related arrays
-A_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
-B_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
-C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N, N-m]
-W_hydro = np.zeros(6)                    # buoyancy force/moment vector [N, N-m]
-F_hydro = np.zeros([6,nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
-
-# moorings-related arrays
-A_moor = np.zeros([6,6,nw])              # mooring added mass matrix [kg, kg-m, kg-m^2] (may not be used)
-B_moor = np.zeros([6,6,nw])              # mooring damping matrix [N-s/m, N-s, N-s-m] (may not be used)
-C_moor = np.zeros([6,6])                 # mooring stiffness matrix (linearized about platform offset) [N/m, N, N-m]
-W_moor = np.zeros(6)                     # mean net mooring force/moment vector [N, N-m]
-
-# final coefficient arrays
-M_tot = np.zeros([6,6,nw])               # total mass and added mass matrix [kg, kg-m, kg-m^2]
-B_tot = np.zeros([6,6,nw])               # total damping matrix [N-s/m, N-s, N-s-m]
-C_tot = np.zeros([6,6,nw])               # total stiffness matrix [N/m, N, N-m]
-F_tot = np.zeros([6,nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
-
-
-
-# --------------- add in linear hydrodynamic coefficients here if applicable --------------------
-
-def interp_hydro_data(wCapy, wDes, addedMass, damping, fEx):
-    addedMassInterp = spi.interp1d(wCapy, addedMass, axis=2)(wDes)
-    dampingInterp = spi.interp1d(wCapy, damping, axis=2)(wDes)
-    fExcitationInterp = spi.interp1d(wCapy, fEx)(wDes)
-    return addedMassInterp, dampingInterp, fExcitationInterp
-
-
-def read_capy_nc(capyFName, wDes=None):
-    '''
-    Read Capytaine .nc file and return hydrodynamic coefficients in suitable
-    format for FrequencyDomain.py
-
-    Parameters
-    ----------
-    capyFName : str
-        String containing path to desired capytaine .nc file
-    wDes: array
-        Array of desired frequency points - can be different resolution to that
-        used by Capytaine (but must be within the range computed by Capytaine)
-
-    Returns
-    -------
-    frequency range & hydrodynamic coefficients. If wDes passed as argument,
-    hydrodynamic coefficients are interpolated for these points (and frequency
-    range is not returned)
-
-    Raises
-    ------
-    ValueError
-        when max/min wDes frequency range is outside wCapy range computed by
-        Capytaine
-    '''
-
-    # read the Capytaine NetCDF data into xarray
-    capyData = xr.open_dataset(capyFName)
-    wCapy = capyData['omega'].values
-
-    # check desired frequency range is within computed range (for interpolation)
-    if wDes is not None:
-        if wDes[0]<wCapy[0]:
-            raise ValueError(f'\nMinimum desired frequency = {wDes[0]:.2f} rad/s \n'
-                             f'Range of computed frequencies = {wCapy[0]:.2f} - {wCapy[-1]:.2f} rad/s \n'
-                             f'[out of range]')
-        if wDes[-1]>wCapy[-1]:
-            raise ValueError(f'\nMaximum desired frequency = {wDes[-1]:.2f} rad/s \n'
-                             f'Range of computed frequencies = {wCapy[0]:.2f} - {wCapy[-1]:.2f} rad/s \n'
-                             f'[out of range]')
-
-    # convert hydrodynamic coefficients to FrequencyDomain.py format
-    addedMass = capyData['added_mass'].values.transpose(1,2,0)
-    damping = capyData['radiation_damping'].values.transpose(1,2,0)
-    fEx = (np.squeeze(capyData['diffraction_force'].values[0,:].T)
-           + 1j*np.squeeze(capyData['diffraction_force'].values[1,:].T))
-
-    # (optional) interpolate coefficients; return appropriate hydrodynamic
-    # coefficients 
-    if wDes is not None:
-        addedMassIntp, dampingIntp, fExIntp = interp_hydro_data(wCapy,
-                                                                wDes,
-                                                                addedMass,
-                                                                damping,
-                                                                fEx)
-        return wDes, addedMassIntp, dampingIntp, fExIntp
-    else:
-        return wCapy, addedMass, damping, fEx
-
-
-def call_capy(meshFName, wCapy, CoG=[0,0,0], headings=[0.0], saveNc=False,
-              ncFName=None, wDes=None):
-    '''
-    call Capytaine for a given mesh, frequency range and wave headings
-
-    Parameters
-    ----------
-    meshFName : str
-        string containing path to hydrodynamic mesh.
-        mesh must be cropped at waterline (OXY plane) and have no lid
-    wCapy: array
-        array of frequency points to be computed by Capytaine
-    CoG: list
-        3x1 vector of body's CoG
-    headings: list
-        list of wave headings to compute
-    saveNc: Bool
-        save results to .nc file
-    ncFName: str
-        name of .nc file
-    wDes: array
-        array of desired frequency points
-        (for interpolation of wCapy-based Capytaine data)
-
-    Returns
-    -------
-    hydrodynamic coefficients; as computed or interpolated
-
-    Notes
-    -----
-    TODO:
-    - expand to multibody problems
-    '''
-
-    # create capytaine body object
-    body = cpt.FloatingBody.from_file(meshFName)
-    body.add_all_rigid_body_dofs()
-    body.center_of_mass = CoG
-
-    # define the hydrodynamic problems
-    problems = [cpt.RadiationProblem(body=body,
-                                     radiating_dof=dof,
-                                     omega=w,
-                                     sea_bottom=-np.infty,
-                                     g=9.81,
-                                     rho=1025)
-                                     for dof in body.dofs for w in wCapy]
-
-    problems += [cpt.DiffractionProblem(body=body,
-                                        omega=w,
-                                        wave_direction=heading,
-                                        sea_bottom=-np.infty,
-                                        g=9.81,
-                                        rho=1025)
-                                        for w in wCapy for heading in headings]
-
-    # call Capytaine solver
-    print(f'\n-------------------------------\n'
-          f'Calling Capytaine BEM solver...\n'
-          f'-------------------------------\n'
-          f'mesh = {meshFName}\n'
-          f'w range = {wCapy[0]:.3f} - {wCapy[-1]:.3f} rad/s\n'
-          f'dw = {(wCapy[1]-wCapy[0]):.3f} rad/s\n'
-          f'no of headings = {len(headings)}\n'
-          f'no of radiation & diffraction problems = {len(problems)}\n'
-          f'-------------------------------\n')
-
-    solver = cpt.BEMSolver()
-    results = [solver.solve(problem) for problem in sorted(problems)]
-    capyData = cpt.assemble_dataset(results)
-
-    # convert hydrodynamic coefficients to FrequencyDomain.py format
-    addedMass = capyData['added_mass'].values.transpose(1,2,0)
-    damping = capyData['radiation_damping'].values.transpose(1,2,0)
-    fEx = np.squeeze(capyData['diffraction_force']).values.T
-
-    # (optional) save to .nc file and interpolate coefficients; return
-    # appropriate hydrodynamic coefficients
-    if saveNc == True:
-        cpt.io.xarray.separate_complex_values(capyData).to_netcdf(ncFName)
-
-    if wDes is not None:
-        addedMassIntp, dampingIntp, fExIntp = interp_hydro_data(wCapy,
-                                                                wDes,
-                                                                addedMass,
-                                                                damping,
-                                                                fEx)
-        return wDes, addedMassIntp, dampingIntp, fExIntp
-    else:
-        return wCapy, addedMass, damping, fEx
-
-
-# --------------- Get general geometry properties including hydrostatics ------------------------
-
-# initialize some variables for running totals
-VTOT = 0.                   # Total underwater volume of all members combined
-mTOT = 0.                   # Total mass of all members [kg]
-AWP_TOT = 0.                # Total waterplane area of all members [m^2]
-IWPx_TOT = 0                # Total waterplane moment of inertia of all members about x axis [m^4]  
-IWPy_TOT = 0                # Total waterplane moment of inertia of all members about y axis [m^4]  
-Sum_V_rCB = np.zeros(3)     # product of each member's buoyancy multiplied by center of buoyancy [m^4]
-Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
-Sum_M_center = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
-
-# loop through each member
-for mem in memberList:
-    
-    q, p1, p2 = mem.getDirections()                # get unit direction vectors
-    
-    
-    # ---------------------- get member's mass and inertia properties ------------------------------
-    rho_steel = 8500 #[kg/m^3]
-
-    v_steel, center, I_rad, I_ax, m_fill = mem.getInertia() # calls the getInertia method to calcaulte values
-    
-    mass = v_steel*rho_steel + m_fill #[kg]
-    Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
-    # @mhall: Mmat as written above is the mass and inertia matrix about the member CG...@shousner: you betcha
-  
-    # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-    W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mass]) )  # weight vector
-    M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
-    # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
-    # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
-    Sum_M_center += center*mass
-    
-    # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
-    
-    Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
-    
-    # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices <<<<< needs updating (already about PRP)
-    W_hydro += Fvec # translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
-    C_hydro += Cmat # translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
-    VTOT    += V_UW    # add to total underwater volume of all members combined
-    AWP_TOT += AWP
-    IWPx_TOT += IWP + AWP*yWP**2
-    IWPy_TOT += IWP + AWP*xWP**2
-    Sum_V_rCB   += r_CB*V_UW
-    Sum_AWP_rWP += np.array([xWP, yWP])*AWP
-
-
-# ------------------------- include RNA properties -----------------------------
-
-# for now, turbine RNA is specified by some simple lumped properties
-Mmat = np.diag([mRNA, mRNA, mRNA, IxRNA, IrRNA, IrRNA])            # create mass/inertia matrix
-center = np.array([xCG_RNA, 0, hHub])                                 # RNA center of mass location
-
-# now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mRNA]) )  # weight vector
-M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
-Sum_M_center += center*mRNA
-
-
-# ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
-
-mTOT = M_struc[0,0]
-rCG_TOT = Sum_M_center/mTOT 
-
-rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
-
-if VTOT==0: # if you're only working with members above the platform, like modeling the wind turbine
-    zMeta = 0
-else:
-    zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
-
-
-C_struc[3,3] = -mTOT*g*rCG_TOT[2]
-C_struc[4,4] = -mTOT*g*rCG_TOT[2]
+        # environmental condition(s)
+        Hs = [8 ];
+        Tp = [12];
+        windspeed = [8 ];
+
+        S   = np.zeros([len(Hs), nw])   # wave spectrum
+        S2  = np.zeros([len(Hs), nw])   # wave spectrum
+        zeta= np.zeros([len(Hs), nw])  # wave elevation
+
+        T = 2*np.pi/w # periods
+
+
+
+        for imeto in range(len(Hs)):       # loop through each environmental condition
+
+            # make wave spectrum (setting to 1 gives approximate RAOs)
+            S[imeto,:]  =  JONSWAP(w, Hs[imeto], Tp[imeto])
+            
+            # wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
+            zeta[imeto,:] = np.sqrt(S[imeto,:])
+            
+
+        # get wave number
+        for i in range(nw):
+            k[i] = waveNumber(w[i], depth)
+
+        '''
+        plt.plot(w/np.pi/2,  S[2,:], "r")
+        plt.plot(w/np.pi/2, S2[2,:], "b")
+        plt.xlabel("Hz")
+        '''
+
+        # ignoring multiple DLCs for now <<<<<
+        #for imeto = 1:length(windspeeds)
+        imeto = 0
+
+
+
+
+    def calcStatics(self):
+        '''Fills in the static quantities of the FOWT and its matrices. 
+        Also adds some dynamic parameters that are constant, e.g. BEM coefficients and steady thrust loads.'''
+
+        # --------------- add in linear hydrodynamic coefficients here if applicable --------------------
+        [as in load them]
+
+        # --------------- Get general geometry properties including hydrostatics ------------------------
+
+        # initialize some variables for running totals
+        VTOT = 0.                   # Total underwater volume of all members combined
+        mTOT = 0.                   # Total mass of all members [kg]
+        AWP_TOT = 0.                # Total waterplane area of all members [m^2]
+        IWPx_TOT = 0                # Total waterplane moment of inertia of all members about x axis [m^4]  
+        IWPy_TOT = 0                # Total waterplane moment of inertia of all members about y axis [m^4]  
+        Sum_V_rCB = np.zeros(3)     # product of each member's buoyancy multiplied by center of buoyancy [m^4]
+        Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
+        Sum_M_center = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
+
+        # loop through each member
+        for mem in memberList:
+            
+            q, p1, p2 = mem.getDirections()                # get unit direction vectors
+            
+            
+            # ---------------------- get member's mass and inertia properties ------------------------------
+            rho_steel = 8500 #[kg/m^3]
+
+            v_steel, center, I_rad, I_ax, m_fill = mem.getInertia() # calls the getInertia method to calcaulte values
+            
+            mass = v_steel*rho_steel + m_fill #[kg]
+            Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
+            # @mhall: Mmat as written above is the mass and inertia matrix about the member CG...@shousner: you betcha
+          
+            # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+            W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mass]) )  # weight vector
+            M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
+            # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
+            # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
+            Sum_M_center += center*mass
+            
+            # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
+            
+            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics()  # call to Member method for hydrostatic calculations
+            
+            # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices <<<<< needs updating (already about PRP)
+            W_hydro += Fvec # translateForce3to6DOF( mem.rA, np.array([0,0, Fz]) )  # weight vector
+            C_hydro += Cmat # translateMatrix6to6DOF(mem.rA, Cmat)                       # hydrostatic stiffness matrix
+            VTOT    += V_UW    # add to total underwater volume of all members combined
+            AWP_TOT += AWP
+            IWPx_TOT += IWP + AWP*yWP**2
+            IWPy_TOT += IWP + AWP*xWP**2
+            Sum_V_rCB   += r_CB*V_UW
+            Sum_AWP_rWP += np.array([xWP, yWP])*AWP
+
+
+        # ------------------------- include RNA properties -----------------------------
+
+        # for now, turbine RNA is specified by some simple lumped properties
+        Mmat = np.diag([mRNA, mRNA, mRNA, IxRNA, IrRNA, IrRNA])            # create mass/inertia matrix
+        center = np.array([xCG_RNA, 0, hHub])                                 # RNA center of mass location
+
+        # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+        W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mRNA]) )  # weight vector
+        M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
+        Sum_M_center += center*mRNA
+
+
+        # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
+
+        mTOT = M_struc[0,0]
+        rCG_TOT = Sum_M_center/mTOT 
+
+        rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
+
+        if VTOT==0: # if you're only working with members above the platform, like modeling the wind turbine
+            zMeta = 0
+        else:
+            zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
+
+        C_struc[3,3] = -mTOT*g*rCG_TOT[2]
+        C_struc[4,4] = -mTOT*g*rCG_TOT[2]
       
 
 
-# --------------- set up quasi-static mooring system and solve for mean offsets -------------------
+    def calcMooringAndOffsets(self):
+        '''Calculates mean offsets and linearized mooring properties for the current load case (setEnv must be called first)'''
+
+        # ----------------------------- Calculate mooring system characteristics ---------------------
+
+        # First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
+
+         C_moor0 = self.ms.BodyList[0].getStiffness2(np.zeros(6), dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
+         W_moor0 = self.ms.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
 
 
-import MoorDesign as md
+        # Now find static equilibrium offsets of platform and get mooring properties about that point
+        self.ms.solveEquilibrium()                                        # get the system to its equilibrium
+        self.ms.plot()
+        r6eq = self.ms.BodyList[0].r6
+        print("Equilibirum platform positions/rotations:")
+        printVec(r6eq)
+        print("Surge: {:.2f}".format(r6eq[0]))
+        print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
+        C_moor = self.ms.BodyList[0].getStiffness2(r6eq, dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
+        W_moor = self.ms.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
 
-# =============================================================================
-# # Inputs for OC3 Hywind
-# depth = 320.
-# type_string = 'main'
-# anchorR = 853.87
-# fairR = 5.2
-# fair_depth = 70.
-# LineLength = 902.2
-# LineD = 0.09
-# dryMass_L = 77.7066 #[kg/m]
-# EA = 384243000 #[N]
-# angle = np.array([0, 2*np.pi/3, -2*np.pi/3])
-# =============================================================================
-
-# Inputs for DTU 10 MW setup
-depth = 600. #[m]
-type_string = 'main'
-LineD = 0.15 #[m]
-wetMass_L = 4.401 #[kg/m]
-dryMass_L = wetMass_L + (np.pi/4)*LineD**2*rho
-EA = 384243000 #100e6 #[N]
-angle = np.array([0, 2*np.pi/3, -2*np.pi/3])
-anchorR = 656.139 #[m]
-fair_depth = 21. #[m]
-fairR = 7.875 #[m]
-LineLength = 868.5 #[m]
-
-
-
-
-MooringSystem = md.make3LineSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength)
-
-MooringSystem.BodyList[0].m = mTOT
-MooringSystem.BodyList[0].v = VTOT
-MooringSystem.BodyList[0].rCG = rCG_TOT
-MooringSystem.BodyList[0].AWP = AWP_TOT
-MooringSystem.BodyList[0].rM = np.array([0,0,zMeta])
-MooringSystem.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])
-
-MooringSystem.initialize()
-
-
-
-# --------------- Bridle Confirguration --------------------------
-# Inputs for DTU 10 MW setup
-depth = 600. #[m]
-type_string = ['chain','synth']
-LineD = [0.17971, 0.15]  #[m]
-#wetMass_L = 4.401 #[kg/m]
-#dryMass_L = wetMass_L + (np.pi/4)*LineD**2*rho
-dryMass_L = [200, 40.18]
-EA = [0, 121415000] #100e6 #[N]
-EA[0] = 0.854e11*(LineD[0]**2)
-angle = np.array([0, 2*np.pi/3, -2*np.pi/3])
-anchorR = 656.139 #[m]
-fair_depth = 21. #[m]
-fairR = 7.875 #[m]
-
-LineLength = 868.5 #[m]
-
-chainLength = 80
-bridleLength = 30
-synthLength = LineLength-chainLength-bridleLength
-
-synthR = anchorR-0.9*chainLength
-synthZ = 0.95*depth
-bridleR = ((synthR-fairR)/(synthLength+bridleLength))*bridleLength + fairR
-bridleZ = ((synthZ-fair_depth)/(synthLength+bridleLength))*bridleLength + fair_depth
-
-
-
-
-Bridle = md.makeBridleSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength, chainLength, bridleLength, synthLength, synthR, synthZ, bridleR, bridleZ)
-
-Bridle.BodyList[0].m = mTOT
-Bridle.BodyList[0].v = VTOT
-Bridle.BodyList[0].rCG = rCG_TOT
-Bridle.BodyList[0].AWP = AWP_TOT
-Bridle.BodyList[0].rM = np.array([0,0,zMeta])
-Bridle.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])
-
-Bridle.initialize()
-
-
-
-
-
-
-# If using the bridle mooring system rather than the original, do a rename so we can refer to it as MooringSystem going forward (otherwise comment the line out)
-MooringSystem = Bridle
-
-
-# ----------------------------- Calculate mooring system characteristics ---------------------
-
-
-# First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
-
-
-# C_moor0 = MooringSystem.BodyList[0].getStiffness2(np.zeros(6), dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
-# W_moor0 = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
-
-
-# # Now find static equilibrium offsets of platform and get mooring properties about that point
-# MooringSystem.solveEquilibrium()                                        # get the system to its equilibrium
-# MooringSystem.plot()
-# r6eq = MooringSystem.BodyList[0].r6
-# print("Equilibirum platform positions/rotations:")
-# printVec(r6eq)
-# print("Surge: {:.2f}".format(r6eq[0]))
-# print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
-# C_moor = MooringSystem.BodyList[0].getStiffness2(r6eq, dx=0.01)  # get mooring stiffness (uses new method that accounts for free Points in mooring system)
-# W_moor = MooringSystem.BodyList[0].getForces(lines_only=True)           # get net forces and moments from mooring lines on Body
-
-# # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
-# #C_moor[5,5] += 98340000.0
+        # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
+        C_moor[5,5] += 98340000.0
 
 
 
@@ -1235,385 +898,386 @@ MooringSystem = Bridle
 # printVec(W_tot_stat)
 
 
+    def calcHydroConstants(self):
+
+        # --------------------- get constant hydrodynamic values along each member -----------------------------
+
+        A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
+        F_hydro_iner    = np.zeros([6,nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
 
-# --------------------- get constant hydrodynamic values along each member -----------------------------
-
-A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
-F_hydro_iner    = np.zeros([6,nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
-
-
-# loop through each member
-for mem in memberList:
-    
-    # loop through each node of the member
-    for il in range(mem.n):
-    
-        # only process hydrodynamics if this node is submerged
-        if mem.r[il,2] < 0:
-        
-            q, p1, p2 = mem.getDirections()                # get unit direction vectors
+        # loop through each member
+        for mem in memberList:
             
+            # loop through each node of the member
+            for il in range(mem.n):
             
-            # set dl to half if at the member end (the end result is similar to trapezoid rule integration)
-            if il==0 or il==mem.n:
-                dl = 0.5*mem.dl
-            else:
-                dl = mem.dl
-            
-            
-            # get wave kinematics spectra given a certain wave spectrum and location
-            mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(zeta[imeto,:], w, k, depth, mem.r[il,:])    
-
-
-            # local added mass matrix
-            Amat = rho*0.25*np.pi*mem.d[il]**2*dl *( mem.Ca_q*VecVecTrans(q) + mem.Ca_p1*VecVecTrans(p1) + mem.Ca_p2*VecVecTrans(p2) )
-            
-            # add to global added mass matrix for Morison members
-            A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
-            
-            
-            # local inertial excitation matrix
-            Imat = rho*0.25*np.pi*mem.d[il]**2*dl *( (1+mem.Ca_q)*VecVecTrans(q) + (1+mem.Ca_p1)*VecVecTrans(p1) + (1+mem.Ca_p2)*VecVecTrans(p2) )
-            
-            for i in range(nw):   # for each wave frequency...
-            
-                # local inertial excitation force complex amplitude in x,y,z
-                F_exc_inert = np.matmul(Imat, mem.ud[il,:,i])  
-            
-                # add to global excitation vector (frequency dependent)
-                F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
-
-
-            # add end effects for added mass, and excitation including dynamic pressure
-            if il==0:     # end A
+                # only process hydrodynamics if this node is submerged
+                if mem.r[il,2] < 0:
+                
+                    q, p1, p2 = mem.getDirections()                # get unit direction vectors
                     
-                # local added mass matrix
-                Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(q)                
-                
-                # add to global added mass matrix for Morison members
-                A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
-                
-                
-                # local inertial excitation matrix
-                Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(q)      
-                
-                for i in range(nw):   # for each wave frequency...
-                
-                    # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
-                    F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) + mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *q  
-                
-                    # add to global excitation vector (frequency dependent)
-                    F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
-                
-                
-            elif il==mem.n-1:  # end B
-           
-                # local added mass matrix
-                Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(q)                
-                
-                # add to global added mass matrix for Morison members
-                A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
-                
-                
-                # local inertial excitation matrix
-                Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(q)      
-                
-                for i in range(nw):   # for each wave frequency...
-                
-                    # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
-                    F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) - mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *q  
-                
-                    # add to global excitation vector (frequency dependent)
-                    F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
-                
+                    
+                    # set dl to half if at the member end (the end result is similar to trapezoid rule integration)
+                    if il==0 or il==mem.n:
+                        dl = 0.5*mem.dl
+                    else:
+                        dl = mem.dl
+                    
+                    
+                    # get wave kinematics spectra given a certain wave spectrum and location
+                    mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(zeta[imeto,:], w, k, depth, mem.r[il,:])    
 
 
-
-# --------------------------------- get system properties in undisplaced position ----------------------------
-# these are useful for verification, etc.
-
-
-# sum matrices to check totals from static calculations before hydrodynamic terms are added
-
-C_tot0 = C_struc + C_hydro # + C_moor0   # total system stiffness matrix about undisplaced position
-W_tot0 = W_struc + W_hydro #+ W_moor0   # system mean forces and moments at undisplaced position
-
-M = M_struc + A_hydro_morison          # total mass plus added mass matrix
-
-# do we want to relinearize structural properties about displaced position/orientation?  (Probably not)
-
-'''
-print("hydrostatic stiffness matrix")
-printMat(C_hydro)    
-    
-print("structural stiffness matrix")
-printMat(C_struc)
-    
-print("mooring stiffness matrix about undisplaced position")
-printMat(C_moor0)
-    
-print("total static stiffness matrix about undisplaced position")
-printMat(C_tot0)
-    
-    
-
-print("total static mass matrix")
-printMat(M_struc)
-    
-print("total added mass matrix")
-printMat(A_hydro_morison)
-
-print("total mass plus added mass matrix")
-printMat(M)
-    
-    
-print("total static forces and moments about undisplaced position")
-printVec(W_tot0)
-'''
+                    # local added mass matrix
+                    Amat = rho*0.25*np.pi*mem.d[il]**2*dl *( mem.Ca_q*VecVecTrans(q) + mem.Ca_p1*VecVecTrans(p1) + mem.Ca_p2*VecVecTrans(p2) )
+                    
+                    # add to global added mass matrix for Morison members
+                    A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
+                    
+                    
+                    # local inertial excitation matrix
+                    Imat = rho*0.25*np.pi*mem.d[il]**2*dl *( (1+mem.Ca_q)*VecVecTrans(q) + (1+mem.Ca_p1)*VecVecTrans(p1) + (1+mem.Ca_p2)*VecVecTrans(p2) )
+                    
+                    for i in range(nw):   # for each wave frequency...
+                    
+                        # local inertial excitation force complex amplitude in x,y,z
+                        F_exc_inert = np.matmul(Imat, mem.ud[il,:,i])  
+                    
+                        # add to global excitation vector (frequency dependent)
+                        F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
 
 
+                    # add end effects for added mass, and excitation including dynamic pressure
+                    if il==0:     # end A
+                            
+                        # local added mass matrix
+                        Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(q)                
+                        
+                        # add to global added mass matrix for Morison members
+                        A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
+                        
+                        
+                        # local inertial excitation matrix
+                        Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(q)      
+                        
+                        for i in range(nw):   # for each wave frequency...
+                        
+                            # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
+                            F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) + mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *q  
+                        
+                            # add to global excitation vector (frequency dependent)
+                            F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
+                        
+                        
+                    elif il==mem.n-1:  # end B
+                   
+                        # local added mass matrix
+                        Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(q)                
+                        
+                        # add to global added mass matrix for Morison members
+                        A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
+                        
+                        
+                        # local inertial excitation matrix
+                        Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(q)      
+                        
+                        for i in range(nw):   # for each wave frequency...
+                        
+                            # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
+                            F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) - mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *q  
+                        
+                            # add to global excitation vector (frequency dependent)
+                            F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
+                        
 
-# calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
+    def calcDynamicConstants(self):
 
-eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M), C_tot0))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
-
-
-# alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
-
-zMoorx = C_tot0[0,4]/C_tot0[0,0]  # effective z elevation of mooring system reaction forces in x and y directions
-zMoory = C_tot0[1,3]/C_tot0[1,1]
-zCG  = rCG_TOT[2]                    # center of mass in z
-zCMx = M[0,4]/M[0,0]              # effective z elevation of center of mass and added mass in x and y directions
-zCMy = M[1,3]/M[1,1]
-
-print("natural frequencies without added mass")
-fn = np.zeros(6)
-fn[0] = np.sqrt( C_tot0[0,0] / M_struc[0,0] )/ 2.0/np.pi
-fn[1] = np.sqrt( C_tot0[1,1] / M_struc[1,1] )/ 2.0/np.pi
-fn[2] = np.sqrt( C_tot0[2,2] / M_struc[2,2] )/ 2.0/np.pi
-fn[5] = np.sqrt( C_tot0[5,5] / M_struc[5,5] )/ 2.0/np.pi
-zg = rCG_TOT[2]
-fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,1]*((zCG-zMoory)**2 - zMoory**2) ) / (M_struc[3,3] - M_struc[1,1]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-fn[4] = np.sqrt( (C_tot0[4,4] + C_tot0[0,0]*((zCG-zMoorx)**2 - zMoorx**2) ) / (M_struc[4,4] - M_struc[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-printVec(fn)
-
-
-print("natural frequencies with added mass")
-fn = np.zeros(6)
-fn[0] = np.sqrt( C_tot0[0,0] / M[0,0] )/ 2.0/np.pi
-fn[1] = np.sqrt( C_tot0[1,1] / M[1,1] )/ 2.0/np.pi
-fn[2] = np.sqrt( C_tot0[2,2] / M[2,2] )/ 2.0/np.pi
-fn[5] = np.sqrt( C_tot0[5,5] / M[5,5] )/ 2.0/np.pi
-fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,1]*((zCMy-zMoory)**2 - zMoory**2) ) / (M[3,3] - M[1,1]*zCMy**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-fn[4] = np.sqrt( (C_tot0[4,4] + C_tot0[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M[4,4] - M[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-# note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
-printVec(fn)
-
-
-
-
-
-# ------------------- solve for platform dynamics, iterating until convergence --------------------
-
-Z  = np.zeros([6,6,nw], dtype=complex)               # total system impedance matrix
-
-# system response 
-Xi = np.zeros([6,nw], dtype=complex) + 0.01    # displacement and rotation complex amplitudes [m, rad]
-
-
-
-nIter = 2  # maximum number of iterations to allow
-
-# start fixed point iteration loop for dynamics
-for iiter in range(nIter):
+        # --------------------------------- get system properties in undisplaced position ----------------------------
+        # these are useful for verification, etc.
 
 
-    # ------ calculate linearized coefficients within iteration ------- 
-    
-    B_hydro_drag = np.zeros([6,6])             # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
+        # sum matrices to check totals from static calculations before hydrodynamic terms are added
 
-    F_hydro_drag = np.zeros([6,nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        C_tot0 = C_struc + C_hydro # + C_moor0   # total system stiffness matrix about undisplaced position
+        W_tot0 = W_struc + W_hydro #+ W_moor0   # system mean forces and moments at undisplaced position
 
+        M = M_struc + A_hydro_morison          # total mass plus added mass matrix
 
-    # loop through each member
-    for mem in memberList:
-        
-        q, p1, p2 = mem.getDirections()                # get unit direction vectors
-        
-        # loop through each node of the member
-        for il in range(mem.n):
+        # do we want to relinearize structural properties about displaced position/orientation?  (Probably not)
+
+        '''
+        print("hydrostatic stiffness matrix")
+        printMat(C_hydro)    
             
-            # node displacement, velocity, and acceleration (each [3 x nw])
-            drnode, vnode, anode = getVelocity(mem.r[il,:], Xi, w)      # get node complex velocity spectrum based on platform motion's and relative position from PRP
+        print("structural stiffness matrix")
+        printMat(C_struc)
+            
+        print("mooring stiffness matrix about undisplaced position")
+        printMat(C_moor0)
+            
+        print("total static stiffness matrix about undisplaced position")
+        printMat(C_tot0)
             
             
-            # only process hydrodynamics if this node is submerged
-            if mem.r[il,2] < 0:
+
+        print("total static mass matrix")
+        printMat(M_struc)
             
-                # water relative velocity over node (complex amplitude spectrum)  [3 x nw]
-                vrel = mem.u[il,:] - vnode
-                
-                # break out velocity components in each direction relative to member orientation [nw]
-                vrel_q  = vrel* q[:,None]
-                vrel_p1 = vrel*p1[:,None]
-                vrel_p2 = vrel*p2[:,None]
-                
-                # get RMS of relative velocity component magnitudes (real-valued)
-                vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )  # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
-                vRMS_p1 = np.linalg.norm( np.abs(vrel_p1) )
-                vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
-                
-                # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
-                Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*mem.d[il]*mem.dl * mem.Cd_q 
-                Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p1
-                Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p2
-                
-                # convert to global orientation
-                Bmat = Bprime_q*VecVecTrans(q) + Bprime_p1*VecVecTrans(p1) + Bprime_p2*VecVecTrans(p2)
-                
-                # add to global damping matrix for Morison members
-                Btemp = translateMatrix3to6DOF(mem.r[il,:], Bmat)
-                
-                #breakpoint()
-                
-                B_hydro_drag += Btemp
-                
-                
-                
-                # excitation force based on linearized damping coefficients [3 x nw]
-                F_exc_drag = np.zeros([3, nw], dtype=complex)  # <<< should set elsewhere <<<
-                for i in range(nw):
+        print("total added mass matrix")
+        printMat(A_hydro_morison)
 
-                    # get local 3d drag excitation force complex amplitude for each frequency
-                    F_exc_drag[:,i] = np.matmul(Bmat, mem.u[il,:,i])  
-                
-                    # add to global excitation vector (frequency dependent)
-                    F_hydro_drag[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag[:,i])
+        print("total mass plus added mass matrix")
+        printMat(M)
+            
+            
+        print("total static forces and moments about undisplaced position")
+        printVec(W_tot0)
+        '''
 
 
 
+        # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
 
-    # ----------------------------- solve matrix equation of motion ------------------------------
-    
-    for ii in range(nw):          # loop through each frequency
-        
-        
-        # sum contributions for each term        
-        M_tot[:,:,ii] = M_struc + A_hydro_morison                         # mass
-        B_tot[:,:,ii] = B_struc + B_hydro_drag                            # damping
-        C_tot[:,:,ii] = C_struc + C_hydro# + C_moor                        # stiffness
-        F_tot[:,  ii] = F_hydro_drag[:,ii] + F_hydro_iner[:,ii]           # excitation force (complex amplitude)
-        
-        
-        # form impedance matrix
-        Z[:,:,ii] = -w[ii]**2 * M_tot[:,:,ii] + 1j*w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii];
-        
-        # solve response (complex amplitude)
-        Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
-    
-    
-    '''
+        eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M), C_tot0))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
 
-    #Xi{imeto} = rao{imeto}.*repmat(sqrt(S(:,imeto)),1,6); # complex response!
-    
-    #aNacRAO{imeto} = -(w').^2 .* (rao{imeto}(:,1) + hNac*rao{imeto}(:,5));      # Nacelle Accel RAO
-    #aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));     # RMS Nacelle Accel
 
-    
-    # ----------------- convergence check --------------------
-    conv = abs(aNac2(imeto)/aNac2last - 1);
-    #disp(['at ' num2str(iiter) ' iterations - convergence is ' num2str(conv)])
-    if conv < 0.0001
+        # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
+
+        zMoorx = C_tot0[0,4]/C_tot0[0,0]  # effective z elevation of mooring system reaction forces in x and y directions
+        zMoory = C_tot0[1,3]/C_tot0[1,1]
+        zCG  = rCG_TOT[2]                    # center of mass in z
+        zCMx = M[0,4]/M[0,0]              # effective z elevation of center of mass and added mass in x and y directions
+        zCMy = M[1,3]/M[1,1]
+
+        print("natural frequencies without added mass")
+        fn = np.zeros(6)
+        fn[0] = np.sqrt( C_tot0[0,0] / M_struc[0,0] )/ 2.0/np.pi
+        fn[1] = np.sqrt( C_tot0[1,1] / M_struc[1,1] )/ 2.0/np.pi
+        fn[2] = np.sqrt( C_tot0[2,2] / M_struc[2,2] )/ 2.0/np.pi
+        fn[5] = np.sqrt( C_tot0[5,5] / M_struc[5,5] )/ 2.0/np.pi
+        zg = rCG_TOT[2]
+        fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,1]*((zCG-zMoory)**2 - zMoory**2) ) / (M_struc[3,3] - M_struc[1,1]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+        fn[4] = np.sqrt( (C_tot0[4,4] + C_tot0[0,0]*((zCG-zMoorx)**2 - zMoorx**2) ) / (M_struc[4,4] - M_struc[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+        printVec(fn)
+
+
+        print("natural frequencies with added mass")
+        fn = np.zeros(6)
+        fn[0] = np.sqrt( C_tot0[0,0] / M[0,0] )/ 2.0/np.pi
+        fn[1] = np.sqrt( C_tot0[1,1] / M[1,1] )/ 2.0/np.pi
+        fn[2] = np.sqrt( C_tot0[2,2] / M[2,2] )/ 2.0/np.pi
+        fn[5] = np.sqrt( C_tot0[5,5] / M[5,5] )/ 2.0/np.pi
+        fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,1]*((zCMy-zMoory)**2 - zMoory**2) ) / (M[3,3] - M[1,1]*zCMy**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+        fn[4] = np.sqrt( (C_tot0[4,4] + C_tot0[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M[4,4] - M[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+        # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
+        printVec(fn)
+
+
+
+    def solveDynamics(self):
+        '''After all constant parts have been computed, call this to iterate through remaining terms until convergence on dynamic response.'''
+
+        # ------------------- solve for platform dynamics, iterating until convergence --------------------
+
+        Z  = np.zeros([6,6,nw], dtype=complex)               # total system impedance matrix
+
+        # system response 
+        Xi = np.zeros([6,nw], dtype=complex) + 0.01    # displacement and rotation complex amplitudes [m, rad]
+
+
+
+        nIter = 2  # maximum number of iterations to allow
+
+        # start fixed point iteration loop for dynamics
+        for iiter in range(nIter):
+
+
+            # ------ calculate linearized coefficients within iteration ------- 
+            
+            B_hydro_drag = np.zeros([6,6])             # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
+
+            F_hydro_drag = np.zeros([6,nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+
+
+            # loop through each member
+            for mem in memberList:
+                
+                q, p1, p2 = mem.getDirections()                # get unit direction vectors
+                
+                # loop through each node of the member
+                for il in range(mem.n):
+                    
+                    # node displacement, velocity, and acceleration (each [3 x nw])
+                    drnode, vnode, anode = getVelocity(mem.r[il,:], Xi, w)      # get node complex velocity spectrum based on platform motion's and relative position from PRP
+                    
+                    
+                    # only process hydrodynamics if this node is submerged
+                    if mem.r[il,2] < 0:
+                    
+                        # water relative velocity over node (complex amplitude spectrum)  [3 x nw]
+                        vrel = mem.u[il,:] - vnode
+                        
+                        # break out velocity components in each direction relative to member orientation [nw]
+                        vrel_q  = vrel* q[:,None]
+                        vrel_p1 = vrel*p1[:,None]
+                        vrel_p2 = vrel*p2[:,None]
+                        
+                        # get RMS of relative velocity component magnitudes (real-valued)
+                        vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )  # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
+                        vRMS_p1 = np.linalg.norm( np.abs(vrel_p1) )
+                        vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
+                        
+                        # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
+                        Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*mem.d[il]*mem.dl * mem.Cd_q 
+                        Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p1
+                        Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p2
+                        
+                        # convert to global orientation
+                        Bmat = Bprime_q*VecVecTrans(q) + Bprime_p1*VecVecTrans(p1) + Bprime_p2*VecVecTrans(p2)
+                        
+                        # add to global damping matrix for Morison members
+                        Btemp = translateMatrix3to6DOF(mem.r[il,:], Bmat)
+                        
+                        #breakpoint()
+                        
+                        B_hydro_drag += Btemp
+                        
+                        
+                        
+                        # excitation force based on linearized damping coefficients [3 x nw]
+                        F_exc_drag = np.zeros([3, nw], dtype=complex)  # <<< should set elsewhere <<<
+                        for i in range(nw):
+
+                            # get local 3d drag excitation force complex amplitude for each frequency
+                            F_exc_drag[:,i] = np.matmul(Bmat, mem.u[il,:,i])  
+                        
+                            # add to global excitation vector (frequency dependent)
+                            F_hydro_drag[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag[:,i])
+
+
+
+
+            # ----------------------------- solve matrix equation of motion ------------------------------
+            
+            for ii in range(nw):          # loop through each frequency
+                
+                
+                # sum contributions for each term        
+                M_tot[:,:,ii] = M_struc + A_hydro_morison                         # mass
+                B_tot[:,:,ii] = B_struc + B_hydro_drag                            # damping
+                C_tot[:,:,ii] = C_struc + C_hydro# + C_moor                        # stiffness
+                F_tot[:,  ii] = F_hydro_drag[:,ii] + F_hydro_iner[:,ii]           # excitation force (complex amplitude)
+                
+                
+                # form impedance matrix
+                Z[:,:,ii] = -w[ii]**2 * M_tot[:,:,ii] + 1j*w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii];
+                
+                # solve response (complex amplitude)
+                Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
+            
+            
+            '''
+
+            #Xi{imeto} = rao{imeto}.*repmat(sqrt(S(:,imeto)),1,6); # complex response!
+            
+            #aNacRAO{imeto} = -(w').^2 .* (rao{imeto}(:,1) + hNac*rao{imeto}(:,5));      # Nacelle Accel RAO
+            #aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));     # RMS Nacelle Accel
+
+            
+            # ----------------- convergence check --------------------
+            conv = abs(aNac2(imeto)/aNac2last - 1);
+            #disp(['at ' num2str(iiter) ' iterations - convergence is ' num2str(conv)])
+            if conv < 0.0001
+
+                 
+                 break
+            else
+                 aNac2last = aNac2(imeto);
+            end
+            
+            '''
+
+        # ------------------------------ preliminary plotting of response ---------------------------------
+
+        fig, ax = plt.subplots(3,1, sharex=True)
+
+        ax[0].plot(w, np.abs(Xi[0,:])          , 'b', label="surge")
+        ax[0].plot(w, np.abs(Xi[1,:])          , 'g', label="sway")
+        ax[0].plot(w, np.abs(Xi[2,:])          , 'r', label="heave")
+        ax[1].plot(w, np.abs(Xi[3,:])*180/np.pi, 'b', label="roll")
+        ax[1].plot(w, np.abs(Xi[4,:])*180/np.pi, 'g', label="pitch")
+        ax[1].plot(w, np.abs(Xi[5,:])*180/np.pi, 'r', label="yaw")
+        ax[2].plot(w, zeta[0,:],                  'k', label="wave amplitude (m)")
+
+        ax[0].legend()
+        ax[1].legend()
+        ax[2].legend()
+
+        #ax[0].set_ylim([0, 1e6])
+        #ax[1].set_ylim([0, 1e9])
+
+        ax[0].set_ylabel("response magnitude (m)")
+        ax[1].set_ylabel("response magnitude (deg)")
+        ax[2].set_ylabel("wave amplitude (m)")
+        ax[2].set_xlabel("frequency (Hz)")
+
+        plt.show()
 
          
-         break
-    else
-         aNac2last = aNac2(imeto);
-    end
-    
-    '''
+         # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
+        '''
+         
+         for il=1:Platf.Nlines
+              
+              #aNacRAO{imeto} = -(w').^2 .* (X{imeto}(:,1) + hNac*X{imeto}(:,5));      # Nacelle Accel RAO
+                #aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));     # RMS Nacelle Accel
 
-# ------------------------------ preliminary plotting of response ---------------------------------
-
-fig, ax = plt.subplots(3,1, sharex=True)
-
-ax[0].plot(w, np.abs(Xi[0,:])          , 'b', label="surge")
-ax[0].plot(w, np.abs(Xi[1,:])          , 'g', label="sway")
-ax[0].plot(w, np.abs(Xi[2,:])          , 'r', label="heave")
-ax[1].plot(w, np.abs(Xi[3,:])*180/np.pi, 'b', label="roll")
-ax[1].plot(w, np.abs(Xi[4,:])*180/np.pi, 'g', label="pitch")
-ax[1].plot(w, np.abs(Xi[5,:])*180/np.pi, 'r', label="yaw")
-ax[2].plot(w, zeta[0,:],                  'k', label="wave amplitude (m)")
-
-ax[0].legend()
-ax[1].legend()
-ax[2].legend()
-
-#ax[0].set_ylim([0, 1e6])
-#ax[1].set_ylim([0, 1e9])
-
-ax[0].set_ylabel("response magnitude (m)")
-ax[1].set_ylabel("response magnitude (deg)")
-ax[2].set_ylabel("wave amplitude (m)")
-ax[2].set_xlabel("frequency (Hz)")
-
-plt.show()
-
- 
- # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
-'''
- 
- for il=1:Platf.Nlines
-      
-      #aNacRAO{imeto} = -(w').^2 .* (X{imeto}(:,1) + hNac*X{imeto}(:,5));      # Nacelle Accel RAO
-        #aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));     # RMS Nacelle Accel
-
-    TfairRAO{imeto}(il,:) = C_lf(il,:,imeto)*rao{imeto}(:,:)';  # get fairlead tension RAO for each line (multiply by dofs)
-      #RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:))).^2) / length(w) );
-      #figure
-    #plot(w,abs(TfairRAO{imeto}(il,:)))
-      #d=TfairRAO{imeto}(il,:)
-      RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)') *(w(2)-w(1)) );
-      #RMSTfair
-      #sumpart = sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)')
-      #dw=(w(2)-w(1))
- end        
- 
- [Tfair, il] = min( T_lf(:,imeto) );
- if Tfair - 3*RMSTfair{imeto}(il) < 0 && Xm < 1  # taut lines only
-      disp([' REJECTING (mooring line goes slack)'])
-      fitness = -1;
-      return;  # constraint for slack line!!!
- end
- if grads
-      disp(['mooring slackness: ' num2str(Tfair - 3*RMSTfair{imeto}(il))])
- end
- 
- # ----------- dynamic pitch constraint ----------------------
- #disp('checking dynamic pitch');
- RMSpitch(imeto) = sqrt( sum( ((abs(rao{imeto}(:,5))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); # fixed April 9th :(
- RMSpitchdeg = RMSpitch(imeto)*60/pi;
- if (Platf.spitch + RMSpitch(imeto))*180/pi > 10
-      disp([' REJECTING (static + RMS dynamic pitch > 10)'])
-      fitness = -1;
-      return;  
- end    
- if grads
-      disp(['dynamic pitch: ' num2str((Platf.spitch + RMSpitch(imeto))*180/pi)])
- end
- 
- #figure(1)
- #plot(w,S(:,imeto))
- #hold on
- 
- #figure()
- #plot(2*pi./w,abs(Xi{imeto}(:,5)))
- #ylabel('pitch response'); xlabel('T (s)')
- 
- RMSsurge(imeto) = sqrt( sum( ((abs(rao{imeto}(:,1))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); 
- RMSheave(imeto) = sqrt( sum( ((abs(rao{imeto}(:,3))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); 
- 
-''' 
- 
+            TfairRAO{imeto}(il,:) = C_lf(il,:,imeto)*rao{imeto}(:,:)';  # get fairlead tension RAO for each line (multiply by dofs)
+              #RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:))).^2) / length(w) );
+              #figure
+            #plot(w,abs(TfairRAO{imeto}(il,:)))
+              #d=TfairRAO{imeto}(il,:)
+              RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)') *(w(2)-w(1)) );
+              #RMSTfair
+              #sumpart = sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)')
+              #dw=(w(2)-w(1))
+         end        
+         
+         [Tfair, il] = min( T_lf(:,imeto) );
+         if Tfair - 3*RMSTfair{imeto}(il) < 0 && Xm < 1  # taut lines only
+              disp([' REJECTING (mooring line goes slack)'])
+              fitness = -1;
+              return;  # constraint for slack line!!!
+         end
+         if grads
+              disp(['mooring slackness: ' num2str(Tfair - 3*RMSTfair{imeto}(il))])
+         end
+         
+         # ----------- dynamic pitch constraint ----------------------
+         #disp('checking dynamic pitch');
+         RMSpitch(imeto) = sqrt( sum( ((abs(rao{imeto}(:,5))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); # fixed April 9th :(
+         RMSpitchdeg = RMSpitch(imeto)*60/pi;
+         if (Platf.spitch + RMSpitch(imeto))*180/pi > 10
+              disp([' REJECTING (static + RMS dynamic pitch > 10)'])
+              fitness = -1;
+              return;  
+         end    
+         if grads
+              disp(['dynamic pitch: ' num2str((Platf.spitch + RMSpitch(imeto))*180/pi)])
+         end
+         
+         #figure(1)
+         #plot(w,S(:,imeto))
+         #hold on
+         
+         #figure()
+         #plot(2*pi./w,abs(Xi{imeto}(:,5)))
+         #ylabel('pitch response'); xlabel('T (s)')
+         
+         RMSsurge(imeto) = sqrt( sum( ((abs(rao{imeto}(:,1))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); 
+         RMSheave(imeto) = sqrt( sum( ((abs(rao{imeto}(:,3))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); 
+         
+        ''' 
+         
  

@@ -223,13 +223,169 @@ def runFDmodel(openMDAO_in = None):
 
     else: #  >>>>>>>>>>>> Otherwise, this is the more realistic case where we have to process wt_opt to produce memberStrings and MooringSystem <<<<<<<
 
+        from gc_WT_InitModel import wt_opt
+        wt = wt_opt
+        
+        
+        # Members
+        floating_init_options = modeling_options['floating']  # I need to include these because this is where we get name_member
+        n_members = floating_init_options['members']['n_members'] 
+        
+        n_joints = len(wt['floating.floating_joints.location'])
+        rA = np.zeros([n_joints, 2])
+        rB = np.zeros([n_joints, 2])
+        for i in range(n_joints):
+            joint_locs[i,:] = wt['floating.floating_joints.location'][i,:]
+        
+        for i in range(n_members):
+            name_member = floating_init_options['members']['name'][i]
+            type = 2 # arbitrary value to designate that the member is part of the floating substructure
+            
+            dA = wt['floating.floating_member_' + name_member + '.outer_diameter'][0]
+            dB = wt['floating.floating_member_' + name_member + '.outer_diameter'][1]
+            # <<<<<<<< the IEA ontology paper says that the outer_diameter parameter describes two diameters at joints 1 and 2
+            
+            t = sum(wt['floating.floating_member_' + name_member + '.layer_thickness'])
+            # took the sum of this because we just want to know the total thickness to get to dB
+            # <<<<<<<<< not sure if I summed it right because the thickness of each layer is [j,:] in gc_WT_InitModel
+            
+            if n_joints != n_members + 1:
+                raise ValueError('There should be n_members+1 number of joints to use the right rA and rB values')
+            rA = joint_locs[i,:]
+            rB = joint_locs[i+1,:]
+            
+            # <<<<<<<<<<< Ballast section: PROBABLY WON'T WORK. JUST USING WHAT I WAS GIVEN
+            v_fill = wt['floating.floating_member_' + name_member + '.ballast_volume'] 
+            rho_fill = wt['floating.floating_member_' + name_member + '.ballast_material.rho']
+    
+            #dB_fill = (dBi-dAi)*(self.l_fill/self.l) + dAi       # interpolated diameter of member where the ballast is filled to
+            #v_fill = (np.pi/4)*(1/3)*(dAi**2+dB_fill**2+dAi*dB_fill)*self.l_fill    #[m^3]
+            # There's a way to solve for l_fill using the above equations given v_fill
+            
+            # Going to simplify and just take it as the proportion of length to volume
+            dAi = dA - 2*t # assming the thickness is constant along the member with respect to the length
+            dBi = dB - 2*t
+            l = np.linalg.norm(rB-rA)
+            v_mem = (np.pi/4)*(1/3)*(dAi**2+dBi**2+dAi*dBi)*l
+            
+            l_fill = l * v_fill/v_mem
+            
+            # plug variables into a Member in FrequencyDomain and append to the memberString list
+                        # change to string in FD v
+            memberStrings.append(fd.Member( str(name_member)+" "+str(type)+" "+str(dA)+" "+str(dB)+" "+str(rA[0])+" "+str(rA[1])+" "+str(rA[2])+\
+                                     " "+str(rB[0])+" "+str(rB[1])+" "+str(rB[2])+" "+str(t)+" "+str(l_fill)+" "+str(rho_fill), nw))
+        
+        
+        
+        
+        
+        # Mooring System
+        # Import modules - just putting them here for organization. Can move to the top whenever
+        import sys
+        sys.path.insert(1, '../MoorPy')
+        import MoorPy as mp
+        # reload the libraries each time in case we make any changes
+        import importlib
+        mp   = importlib.reload(mp)
+        # <<<<<<<<<<<< Do I need to include these in this gluecode script even though they're included in FD?
+        
+        
+        # Create a MoorPy system
+        ms = mp.System()
+        ms.depth = wt['env.water_depth']
+        
+        # Add the line types that are provided in the wt_opt OpenMDAO object
+        n_line_types = len(wt['mooring.line_diameter'])
+        for i in range(n_line_types):
+            name = wt['mooring.line_names'][i]
+            d = wt['mooring.line_diameter'][i]
+            massden = wt['mooring.line_mass_density'][i]
+            EA = wt['mooring.line_stiffness'][i]
+            MBL = wt['mooring.line_breaking_load'][i]
+            cost = wt['mooring.line_cost'][i]
+            
+            ms.LineTypes[name] = mp.LineType( name, d, massden, EA, MBL=MBL, cost=cost, notes="made in FrequencyDomain.py" )
+            
+        # Add the wind turbine platform reference point   <<<<<<<<<<<<<< Get values
+        ms.addBody(0, PRP, m=mTOT, v=VTOT, rCG=rCG_TOT, AWP=AWP_TOT, rM=np.array([0,0,zMeta]), f6Ext=np.array([Fthrust,0,0, 0,Mthrust,0]))
+        
+        # Add points to the sytem
+        for i in range(n_nodes):
+            ID = wt['mooring.node_id'][i]            # <<<<<<<<< not 100% on the syntax of these calls
+            
+            if wt['mooring.node_type'][i] == 'fixed':
+                type = 1
+            elif wt['mooring.node_type'][i] == 'vessel':
+                type = -1
+            elif wt['mooring.node_type'][i] == 'connection':
+                type = 0
+            
+            r = np.array( wt['mooring.nodes_location'][i,:], dtype=float)
+            # TODO - can add in other variables for the point like anchor ID, fairlead_type, node_mass, node_volume, drag area, added mass
+            ms.PointList.append( mp.Point( ID, type, r ) )
 
-        memberStrings = ...
+            # attach body points to the body
+            # the nodes_location array is relative to inertial frame if Fixed or Connect, but relative to platform frame if Vessel
+            if type==-1:
+                ms.BodyList[0].addPoint(ID, r)
+            
+        
+        # Add and attach lines to the nodes of the system
+        n_lines = len(wt['mooring.unstretched_length'])
+        for i in range(n_lines):
+            ID = wt['mooring.line_id'][i]
+            LineLength = wt['mooring.unstretched_length'][i]
+            linetype = wt['mooring.line_type'][i]
+            
+            ms.LineList.append( mp.Line( ID, LineLength, LineTypes[linetype] ) )
+            
+            node1 = wt['mooring.node1_id']
+            node2 = wt['mooring.node2_id']
+            # Run an if statement to make sure that node1 is the deeper point
+            if ms.PointList[node1].r[2] < ms.PointList[node2].r[2]:
+                pass
+            elif ms.PointList[node1].r[2] > ms.PointList[node2].r[2]:
+                node1 = node2
+                node2 = node1
+            else:
+                pass # if the z value of both points is the same, then it doesn't matter
+            
+            ms.PointList[node1].addLine(ID, 0)
+            ms.PointList[node2].addLine(ID, 1)
+        
+        # TODO - anchor types
+        
+        # Turn on the system
+        ms.initialize()
+        MooringSystem = ms
 
-        MooringSystem = ...
 
-    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+
+
+        ''' Other stuff that might be useful later
+        # RNA
+        mRNA = wt['towerse.rna_mass']
+        CG_RNA = wt['towerse.rna_cg']
+        I_RNA = wr['towerse.rna_I']
+        
+        if "loading" in modeling_options:
+            for k in range(modeling_options["tower"]["nLC"]):
+                kstr = "" if modeling_options["tower"]["nLC"] == 0 else str(k + 1)
+                Fthrust = wt["towerse.pre" + kstr + ".rna_F"]
+                Mthrust = wt["towerse.pre" + kstr + ".rna_M"]
+                windspeed = wt["towerse.wind" + kstr + ".Uref"]
+        
+
+        
+        
+        # Environmental Inputs
+        g = 9.81            #[m/s^2]
+        rho = wt['env.rho_water']
+        depth = wt['env.water_depth']
+        Hs = wt['env.hsig_wave']
+        Tp = wt['env.Tsig_wave']
+        '''
 
 
 

@@ -1,14 +1,20 @@
 import pytest
 import sys
 import numpy as np
+import matplotlib.pyplot as plt
 
 # test local code; consider src layout in future to test installed code
 sys.path.append('..')
 import FrequencyDomain as fd
+import MoorPy as mp
+
+import importlib
+mp = importlib.reload(mp)
+fd = importlib.reload(fd)
+'''
 import Capytaine_placeholder as capy
 
 capyTestFile = f'./test_data/mesh_converge_0.750_1.250.nc'
-
 
 def test_read_capy_nc_fExInterpImagVals():
     wDes = np.arange(0.1, 2.8, 0.01)
@@ -21,7 +27,7 @@ def test_call_capy_addedMassShape():
     meshFName = f'./test_data/float.gdf'
     wCapy, addedMass, damping, fEx = capy.call_capy(meshFName, wRange)
     assert addedMass.shape == (6, 6, 28)
-
+'''
 
 
 
@@ -33,7 +39,7 @@ def runFDmodel(openMDAO_in = None):
 
     
     # >>>>>>>>>> the simpler case of nothing passed in, so just using manual model inputs specified below <<<<<<<<
-    if openMDAO_in =- None:
+    if openMDAO_in == None:
 
 
         # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
@@ -136,7 +142,7 @@ def runFDmodel(openMDAO_in = None):
         # --------------- set up quasi-static mooring system and solve for mean offsets -------------------
 
         import MoorDesign as md
-
+    
         # =============================================================================
         # # Inputs for OC3 Hywind
         # depth = 320.
@@ -150,6 +156,7 @@ def runFDmodel(openMDAO_in = None):
         # EA = 384243000 #[N]
         # angle = np.array([0, 2*np.pi/3, -2*np.pi/3])
         # =============================================================================
+        rho = 1025.0
 
         # Inputs for DTU 10 MW setup
         depth = 600. #[m]
@@ -164,17 +171,7 @@ def runFDmodel(openMDAO_in = None):
         fairR = 7.875 #[m]
         LineLength = 868.5 #[m]
 
-
-
-
         MooringSystem = md.make3LineSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength)
-
-        MooringSystem.BodyList[0].m = mTOT
-        MooringSystem.BodyList[0].v = VTOT
-        MooringSystem.BodyList[0].rCG = rCG_TOT
-        MooringSystem.BodyList[0].AWP = AWP_TOT
-        MooringSystem.BodyList[0].rM = np.array([0,0,zMeta])
-        MooringSystem.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])
 
         MooringSystem.initialize()
 
@@ -207,20 +204,13 @@ def runFDmodel(openMDAO_in = None):
 
         Bridle = md.makeBridleSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength, chainLength, bridleLength, synthLength, synthR, synthZ, bridleR, bridleZ)
 
-        Bridle.BodyList[0].m = mTOT
-        Bridle.BodyList[0].v = VTOT
-        Bridle.BodyList[0].rCG = rCG_TOT
-        Bridle.BodyList[0].AWP = AWP_TOT
-        Bridle.BodyList[0].rM = np.array([0,0,zMeta])
-        Bridle.BodyList[0].f6Ext = np.array([Fthrust,0,0, 0,Mthrust,0])
-
         Bridle.initialize()
 
 
         # If using the bridle mooring system rather than the original, do a rename so we can refer to it as MooringSystem going forward (otherwise comment the line out)
         MooringSystem = Bridle
-
-
+    
+    
     else: #  >>>>>>>>>>>> Otherwise, this is the more realistic case where we have to process wt_opt to produce memberStrings and MooringSystem <<<<<<<
 
         from gc_WT_InitModel import wt_opt
@@ -361,8 +351,6 @@ def runFDmodel(openMDAO_in = None):
 
 
 
-
-
         ''' Other stuff that might be useful later
         # RNA
         mRNA = wt['towerse.rna_mass']
@@ -376,8 +364,6 @@ def runFDmodel(openMDAO_in = None):
                 Mthrust = wt["towerse.pre" + kstr + ".rna_M"]
                 windspeed = wt["towerse.wind" + kstr + ".Uref"]
         
-
-        
         
         # Environmental Inputs
         g = 9.81            #[m/s^2]
@@ -388,7 +374,21 @@ def runFDmodel(openMDAO_in = None):
         '''
 
 
+    # now that memberStrings and MooringSystem are made on way or another, call the model 
 
-    # >>>>>>> now that memberStrings and MooringSystem are made on way or another, call the model <<<<<<<<<
-    fowt = fd.FOWT(memberStrings, MooringSystem)
+    model = fd.Model(memberList=memberStrings, ms=MooringSystem, depth=depth)  # set up model
 
+    model.setEnv(Hs=8, Tp=12, V=10)  # set basic wave and wind info
+
+    model.calcSystemProps()          # get all the setup calculations done within the model
+
+    model.calcMooringAndOffsets()    # calculate the offsets for the given loading
+    
+    model.solveDynamics()            # put everything together and iteratively solve the dynamic response
+    
+    plt.show()
+
+
+if __name__ == "__main__":
+    
+    runFDmodel()

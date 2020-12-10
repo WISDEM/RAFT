@@ -34,7 +34,7 @@ class Env:
 #  used during the model's operation.
 class Member:
 
-    def __init__(self, strin, nw):
+    def __init__(self, strin, nw, BEM=[]):
         '''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
         
         '''

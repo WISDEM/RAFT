@@ -41,11 +41,11 @@ class Member:
     
         # note: haven't decided yet how to lump masses and handle segments <<<<
     
-        entries = strin.split()
+        entries = strin.split()                             # split the input string into a list of string inputs
         
-        self.id = np.int(entries[0])
-        self.type = np.int(entries[1])
-        self.dA  = np.float(entries[2])                      # diameter of (lower) node
+        self.id = np.int(entries[0])                        # set the ID value of the member
+        self.type = np.int(entries[1])                      # set the type of the member: <<<<<<<< TODO: Tower, Substructure, Column...
+        self.dA  = np.float(entries[2])                     # diameter of (lower) node
         self.dB  = np.float(entries[3])
         self.rA = np.array(entries[4:7], dtype=np.double)  # x y z of lower node
         self.rB = np.array(entries[7:10], dtype=np.double)

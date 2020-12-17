@@ -40,58 +40,83 @@ class Member:
         '''
     
         # note: haven't decided yet how to lump masses and handle segments <<<<
-    
-        entries = strin.split()                             # split the input string into a list of string inputs
         
-        self.id = np.int(entries[0])                        # set the ID value of the member
-        self.type = np.int(entries[1])                      # set the type of the member: <<<<<<<< TODO: Tower, Substructure, Column...
-        self.dA  = np.float(entries[2])                     # diameter of (lower) node
-        self.dB  = np.float(entries[3])
-        self.rA = np.array(entries[4:7], dtype=np.double)  # x y z of lower node
-        self.rB = np.array(entries[7:10], dtype=np.double)
-        self.t  = np.float(entries[10])           # shell thickness [m]
+        # Example strings that can be used to create a Member object
+        #                       ID  type   shape       dA/slA  dB/slB   lower node position   upper node position   thick   l_fill  rho_fill  phi
+        # memberStrings.append("11   2    circular     9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0      ", nw)
+        # memberStrings.append("12   2    rectangular  20-10   10-5     0.0    0.0   -120.0   0.0    0.0   -12.00   0.0660   41.4    2000.0   0.0". nw)
         
-        self.l_fill = np.float(entries[11])                  # length of member (from end A to B) filled with ballast [m]
-        self.rho_fill = np.float(entries[12])                # density of ballast in member [kg/m^3]
+        # The addition of the shape param should just be a temporary fix, at least until we figure out a better way to input data
         
-        self.rho_steel = 8500 #[kg/m^3]    <<< shell density <<< needs to become a variable
         
-        rAB = self.rB-self.rA
-        self.l = np.linalg.norm(rAB)  # member length
+        entries = strin.split()                                     # split the input string into a list of string inputs
+        
+        self.id = np.int(entries[0])                                # set the ID value of the member
+        self.type = np.int(entries[1])                              # set the type of the member (for now, just arbitrary numbers: 0,1,2, etc.)
+        
+        self.shape = entries[2]                                     # the shape of the cross section of the member as a string
+        if self.shape=='circular':
+            self.dA  = np.float(entries[3])                         # diameter of lower node [m]
+            self.dB  = np.float(entries[4])                         # diameter of upper node [m]
+        elif self.shape=='rectangular' or self.shape=='polygonal':
+            self.slA = np.array(entries[3].split("-"), dtype=float) # array of side lengths of lower node [m]
+            self.slB = np.array(entries[4].split("-"), dtype=float) # array of side lengths of upper node [m]
+            
+            self.gamma = np.float(entries[14])                      # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
+        else:
+            raise ValueError('The only allowable shape strings are cicrular and polygonal')
+        
+        
+        self.rA = np.array(entries[5:8], dtype=np.double)           # [x,y,z] coordinates of lower node [m]
+        self.rB = np.array(entries[8:11], dtype=np.double)          # [x,y,z] coordinates of upper node [m]
+        self.t  = np.float(entries[11])                             # shell thickness [m]
+        
+        self.l_fill = np.float(entries[12])                         # length of member (from end A to B) filled with ballast [m]
+        self.rho_fill = np.float(entries[13])                       # density of ballast in member [kg/m^3]
+        
+        self.rho_shell = 8500                                       # shell mass density [kg/m^3] (could become input later on?)
+        
+        rAB = self.rB-self.rA                                       # The relative coordinates of upper node from lower node [m]
+        self.l = np.linalg.norm(rAB)                                # member length [m]
                 
-        self.q = rAB/self.l           # member axial unit vector
-        self.p1 = np.zeros(3)              # member transverse unit vectors (to be filled in later)
-        self.p2 = np.zeros(3)              # member transverse unit vectors
+        self.q = rAB/self.l                                         # member axial unit vector
+        self.p1 = np.zeros(3)                                       # member transverse unit vectors (to be filled in later)
+        self.p2 = np.zeros(3)                                       # member transverse unit vectors
         
-        
-        self.Cd_q  = 0.1  # drag coefficients
-        self.Cd_p1 = 0.6
-        self.Cd_p2 = 0.6
-        self.Ca_End = 0.6
-        self.Ca_q  = 0.0  # added mass coefficients
-        self.Ca_p1 = 0.97
-        self.Ca_p2 = 0.97
-        self.Ca_End = 0.6
+        # Drag coefficients
+        self.Cd_q  = 0.1                                            # axial drag coefficient
+        self.Cd_p1 = 0.6                                            # transverse1 drag coefficient
+        self.Cd_p2 = 0.6                                            # transverse2 drag coefficient
+        self.Ca_End = 0.6                                           # end drag coefficient <<<<<<<<< should this be Cd_end? 
+        # Added mass coefficients
+        self.Ca_q  = 0.0                                            # axial added mass coefficient
+        self.Ca_p1 = 0.97                                           # transverse1 added mass coefficient
+        self.Ca_p2 = 0.97                                           # transverse2 added mass coefficient
+        self.Ca_End = 0.6                                           # end added mass coefficient
                      
         
-        self.n = 10 # number of nodes per member
-        self.dl = self.l/self.n   #lumped node lenght (I guess, for now) <<<
+        self.n = 10                                                 # number of nodes per member
+        self.dl = self.l/self.n                                     # lumped node length (I guess, for now) <<<
         
-        self.w = 1    # mass per unit length (kg/m)
+        self.w = 1                                                  # mass per unit length (kg/m)
         
-        self.r  = np.zeros([self.n,3])  # undisplaced node positions along member  [m]
-        self.d  = np.zeros( self.n   )  # local diameter along member [m]
+        self.r  = np.zeros([self.n,3])                              # undisplaced node positions along member  [m]
+        self.d  = np.zeros( self.n   )                              # local diameter along member [m]
+        self.sl = np.zeros([self.n,2])                              # local side lengths along member [m] (assuming rectangular=2 side lengths)
         for i in range(self.n):
-            self.r[i,:] = self.rA + (i/(self.n-1))*rAB                # spread evenly for now
-            self.d[i]   = self.dA + (i/(self.n-1))*(self.dB-self.dA)  # spread evenly since uniform taper
+            self.r[i,:] = self.rA + (i/(self.n-1))*rAB              # spread evenly for now
+            if self.shape=='circular':
+                self.d[i]   = self.dA + (i/(self.n-1))*(self.dB-self.dA)# spread evenly since uniform taper
+            elif self.shape=='rectangular':
+                self.sl[i,:] = self.slA + (i/self.n-1)*(self.slB-self.slA)  # spread evenly
         
         # complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
-        self.dr = np.zeros([self.n,3,nw], dtype=complex)  # displacement
-        self.v  = np.zeros([self.n,3,nw], dtype=complex)  # velocity
-        self.a  = np.zeros([self.n,3,nw], dtype=complex)  # acceleration
-        self.u  = np.zeros([self.n,3,nw], dtype=complex)  # wave velocity
-        self.ud = np.zeros([self.n,3,nw], dtype=complex)  # wave acceleration
-        self.pDyn=np.zeros([self.n,  nw], dtype=complex)  # dynamic pressure
+        self.dr = np.zeros([self.n,3,nw], dtype=complex)            # displacement
+        self.v  = np.zeros([self.n,3,nw], dtype=complex)            # velocity
+        self.a  = np.zeros([self.n,3,nw], dtype=complex)            # acceleration
+        self.u  = np.zeros([self.n,3,nw], dtype=complex)            # wave velocity
+        self.ud = np.zeros([self.n,3,nw], dtype=complex)            # wave acceleration
+        self.pDyn=np.zeros([self.n,  nw], dtype=complex)            # dynamic pressure
         
         
     def getDirections(self):
@@ -106,88 +131,198 @@ class Member:
     
     
     def getInertia(self):
+        '''Calculates member inertia properties: mass, center of mass, moments of inertia.
+        Assumes that the members are continuous and symmetrical (i.e. no weird shapes)'''
         
-        # Volume of steel based on the shell thickness [m^3]
-        dAi = self.dA - 2*self.t
-        dBi = self.dB - 2*self.t
-        V_outer = (np.pi/4)*(1/3)*(self.dA**2+self.dB**2+self.dA*self.dB)*self.l
-        V_inner = (np.pi/4)*(1/3)*(dAi**2+dBi**2+dAi*dBi)*self.l
-        v_steel = V_outer - V_inner         #[m^3] Volume of steel of the member  ((self.t/2)*(self.dA+self.dB)-self.t**2)*np.pi*self.l
+        # <<<<<<<<<<<< These might be able to replace the TaperV/TaperCV functions, need to check with Matt
+        def FrustumV(dA, dB, l):
+            '''returns the volume of a frustum, which can be a cylinder, cone, or anything in between'''
+            return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
         
-        # Ballast (future work - this doesn't account for any angle in the member. If the member is horizontal, the ballast doesn't follow gravity)
-        dB_fill = (dBi-dAi)*(self.l_fill/self.l) + dAi       # interpolated diameter of member where the ballast is filled to
-        v_fill = (np.pi/4)*(1/3)*(dAi**2+dB_fill**2+dAi*dB_fill)*self.l_fill    #[m^3]
-        m_fill = self.rho_fill*v_fill                                           #[kg]
+        def FrustumCV(dA, dB, l):
+            '''returns the height of the center of volume from the lower node of a frustum member'''
+            return l*((dA**2 + 2*dA*dB + 3*dB**2)/(4*(dA**2 + dA*dB + dB**2)))
         
-        # Center of mass
-        hco = self.l*((self.dA**2 + 2*self.dA*self.dB + 3*self.dB**2)/(4*(self.dA**2 + self.dA*self.dB + self.dB**2)))  
-        hci = self.l*((dAi**2 + 2*dAi*dBi + 3*dBi**2)/(4*(dAi**2 + dAi*dBi + dBi**2)))
-        hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # [m] CoG of member shell in relation to bottom node @ self.rA
-        
-        hc_fill = self.l_fill*((dAi**2 + 2*dAi*dB_fill + 3*dB_fill**2)/(4*(dAi**2 + dAi*dB_fill + dB_fill**2)))
-        
-        hc = ((hc_fill*self.rho_fill*v_fill)+(hc_shell*self.rho_steel*v_steel))/((self.rho_fill*v_fill)+(self.rho_steel*v_steel))
-        
-        center = self.rA + (self.q*hc)
-
-        # Moment of Inertia (equations from HydroDyn paper)
-        # Calc I@end for outer solid - Calc I@end for "inner" solid - I_outer-I_inner = I_shell @end - PA theorem to calc I@CoG
-        r1 = self.dA/2
-        r2 = self.dB/2
-        m = (r2-r1)/self.l
-        r1i = (self.dA/2)-self.t
-        r2i = (self.dB/2)-self.t
-        mi = (r2i-r1i)/self.l
-        if m==0:
-            Ir_end_outer = (1/12)*(self.rho_steel*self.l*np.pi*r1**2)*(3*r1**2 + 4*self.l**2) #[kg-m^2]    about end node
-            Ir_end_inner = (1/12)*(self.rho_steel*self.l*np.pi*r1i**2)*(3*r1i**2 + 4*self.l**2) #[kg-m^2]  about end node
-            Ir_end_steel = Ir_end_outer - Ir_end_inner                     # I_outer - I_inner = I_shell -- about end node
-            #Ir_end_steel = (1/12)*v_steel*self.rho_steel*(3*(r1**2 + r1i**2) + 4*self.l**2)
+        def FrustumVCV(dA, dB, H):
+            '''returns the volume and center of volume of a frustum, which can be a cylinder (box), cone (pyramid), or anything in between
+            Source: https://mathworld.wolfram.com/PyramidalFrustum.html '''
             
-            Ir_end_fill = (1/12)*(self.rho_fill*self.l_fill*np.pi*r1i**2)*(2*r1i**2 + 4*self.l_fill**2) #[kg-m^2]  about end node
-            
-            Ir_end = Ir_end_steel + Ir_end_fill
-            
-            I_rad = Ir_end - ((self.rho_steel*v_steel)+m_fill)*hc**2
-            
-            #I_rad_steel = Ir_end - (self.rho_steel*v_steel)*hc**2   # about CoG
-            
-            #I_rad_fill = Ir_end_fill - m_fill*hc**2  # about CoG
-            #I_rad = I_rad_steel + I_rad_fill   # sum of all masses about the CoG
-            
-            I_ax_outer = (1/2)*self.rho_steel*np.pi*self.l*(r1**4)
-            I_ax_inner = (1/2)*self.rho_steel*np.pi*self.l*(r1i**4)
-            I_ax_steel = I_ax_outer - I_ax_inner
-            I_ax_fill = (1/2)*self.rho_fill*np.pi*self.l_fill*(r1i**4)
-            I_ax = I_ax_steel + I_ax_fill
-        else:
-            Ir_tip_outer = abs((np.pi/20)*(self.rho_steel/m)*(1+(4/m**2))*(r2**5-r1**5))                                 # outer, about tip
-            Ir_end_outer = abs(Ir_tip_outer - ((self.rho_steel/(3*m**2))*np.pi*(r2**3-r1**3)*((r1/m)+2*hc)*r1))          # outer, about node
-            Ir_tip_inner = abs((np.pi/20)*(self.rho_steel/mi)*(1+(4/mi**2))*(r2i**5-r1i**5))                             # inner, about tip
-            Ir_end_inner = abs(Ir_tip_inner - ((self.rho_steel/(3*mi**2))*np.pi*(r2i**3-r1i**3)*((r1i/mi)+2*hc)*r1i))    # inner, about node
-            Ir_end = Ir_end_outer - Ir_end_inner                                                                    # shell, about node
-            I_rad_steel = Ir_end - (self.rho_steel*v_steel)*hc**2                                                        # shell, about CoG by PAT
-            
-            I_ax_outer = (self.rho_steel*np.pi/(10*m))*(r2**5-r1**5)
-            I_ax_inner = (self.rho_steel*np.pi/(10*mi))*(r2i**5-r1i**5)
-            I_ax_steel = I_ax_outer - I_ax_inner
-            
-            if self.l_fill == 0:
-                I_rad_fill = 0
-                I_ax_fill = 0
+            if np.isscalar(dA) and np.isscalar(dB): # if the inputs are scalar, meaning that it's just a diameter
+                A1 = (np.pi/4)*dA**2
+                A2 = (np.pi/4)*dB**2
+                Amid = (np.pi/4)*dA*dB
+                #return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
+            elif len(dA)==2 and len(dB)==2: # if the inputs are of length 2, meaning if it's two side lengths per node
+                A1 = dA[0]*dA[1]
+                A2 = dB[0]*dB[1]
+                Amid = np.sqrt(A1*A2)
             else:
-                r2_fill = dB_fill/2
-                mi_fill = (r2_fill-r1i)/self.l_fill 
-                Ir_tip_fill = abs((np.pi/20)*(self.rho_steel/mi_fill)*(1+(4/mi_fill**2))*(r2_fill**5-r1i**5))
-                Ir_end_fill = abs(Ir_tip_fill - ((self.rho_fill/(3*mi_fill**2))*np.pi*(r2_fill**3-r1i**3)*((r1i/mi_fill)+2*hc)*r1i))    # inner, about node
-                I_rad_fill = Ir_end_fill - m_fill*hc**2   # about CoG
-
-                I_ax_fill = (self.rho_fill*np.pi/(10*mi_fill))*(r2_fill**5-r1i**5)
+                raise ValueError('Input types not accepted')
             
-            I_rad = I_rad_steel + I_rad_fill # about CoG
-            I_ax = I_ax_steel + I_ax_fill 
+            V = (A1 + A2 + Amid) * H/3
+            hc = ((A1 + 2*Amid + 3*A2)/(A1 + Amid + A2)) * H/4
+            
+            return V, hc
+        
+        if self.shape=='circular':
+            # MASS
+            dAi = self.dA - 2*self.t                                    # inner diameter of lower node [m]
+            dBi = self.dB - 2*self.t                                    # inner diameter of upper node [m]
+            V_outer = FrustumV(self.dA, self.dB, self.l)                # volume of solid frustum with outer diameters [m^3]
+            V_inner = FrustumV(dAi, dBi, self.l)                        # volume of solid frustum with inner diameters [m^3]
+            v_shell = V_outer-V_inner                                   # volume of hollow frustum with shell thickness [m^3]
+            m_shell = v_shell*self.rho_shell                            # mass of hollow frustum [kg]
+            
+            dBi_fill = (dBi-dAi)*(self.l_fill/self.l) + dAi             # interpolated inner diameter of frustum that ballast is filled to [m]
+            v_fill = FrustumV(dAi, dBi_fill, self.l_fill)               # volume of inner frustum that ballast occupies [m^3]
+            m_fill = v_fill*self.rho_fill                               # mass of ballast in the member [kg]
+            
+            mass = m_shell + m_fill                                     # total mass of the member [kg]
+            
+            # CENTER OF GRAVITY - Calculated as the height above the bottom node @ self.rA
+            hco = FrustumCV(self.dA, self.dB, self.l)                   # center of mass/volume of the solid frustum with outer diameters [m]
+            hci = FrustumCV(dAi, dBi, self.l)                           # center of mass/volume of the solid frustum with inner diameters [m]
+            hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of mass/volume of the hollow frustum with shell thickness [m]
+                                                                        # these are subtracted because we want to subtract the imaginary inner frustum contribution
+            hc_fill = FrustumCV(dAi, dBi_fill, self.l)
+            
+            hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
+            
+            center = self.rA + (self.q*hc)                              # total center of mass of the member from the PRP [m]
+        
+        elif self.shape=='rectangular':
+            # MASS AND CENTER OF GRAVITY
+            slAi = self.slA - 2*self.t                                  # inner side lengths of lower node [m]
+            slBi = self.slB - 2*self.t                                  # inner side lengths of upper node [m]
+            V_outer, hco = FrustumVCV(self.slA, self.slB, self.l)      # volume and center of volume of solid frustum with outer side lengths [m^3]
+            V_inner, hci = FrustumV(slAi, slBi, self.l)                 # volume and center of volume of solid frustum with inner side lengths [m^3]
+            v_shell = V_outer-V_inner                                   # volume and center of volume of hollow frustum with shell thickness [m^3]
+            m_shell = v_shell*self.rho_shell                            # mass of hollow frustum [kg]
+            
+            hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of the hollow frustum with shell thickness [m]
+             
+            slBi_fill = (slBi-slAi)*(self.l_fill/self.l) + slAi         # interpolated side lengths of frustum that ballast is filled to [m]
+            v_fill, hc_fill = FrustumVCV(slAi, slBi_fill, self.l_fill) # volume and center of volume of inner frustum that ballast occupies [m^3]
+            m_fill = v_fill*self.rho_fill                               # mass of ballast in the member [kg]
+            
+            mass = m_shell + m_fill                                     # total mass of the member [kg]
+            hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
+            
+            center = self.rA + (self.q*hc)                              # total center of mass of the member from the PRP [m]
+        
+        
+        
+        
+        
+        # MOMENT OF INERTIA
+        
+        def FrustumMOI(dA, dB, H, p):
+            '''returns the radial and axial moments of inertia of a potentially tapered circular member about the end node.
+            Previously used equations found in a HydroDyn paper, now it uses newly derived ones. Ask Stein for reference if needed'''
+            if H==0:            # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
+                I_rad = 0
+                I_ax = 0
+            else:
+                if dA==dB:# if it's a cylinder
+                    r1 = dA/2
+                    r2 = dB/2
+                    I_rad = (1/12)*(p*H*np.pi*r1**2)*(3*r1**2 + 4*H**2)     #[kg-m^2]    about end node
+                    I_ax = (1/2)*p*np.pi*H*r1**4                            #[kg-m^2]    about axial axis
+                else:# if it's a tapered cylinder (frustum)
+                    r1 = dA/2
+                    r2 = dB/2
+                    I_rad = (1/20)*p*np.pi*H*(r2**5 - r1**5)/(r2 - r1) + (1/30)*p*np.pi*H**3*(r1**2 + 3*r1*r2 + 6*r2**2) #[kg-m^2]    about end node
+                    I_ax = (1/10)*p*np.pi*H*(r2**5-r1**5)/(r2-r1)           #[kg-m^2]    about axial axis
+            
+            return I_rad, I_ax
+        
+        
+        def RectangularFrustumMOI(La, Wa, Lb, Wb, H, p):
+            '''returns the moments of inertia about the end node of a cuboid that can be tapered. 
+            - Inputs the lengths and widths at the top and bottom of the cuboid, as well as the height and material density.
+            - Works for cases when it is a perfect cuboid and a truncated pyramid, but not when La=Lb and Wa!=Wb.
+            - Equations derived by hand, ask Stein for reference if needed'''
+            
+            if H==0: # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
+                Ixx = 0
+                Iyy = 0
+                Izz = 0
+            else:
+                if La==Lb and Wa==Wb: # if it's a cuboid
+                    
+                    L = La
+                    W = Wa
+                    M = p*L*W*H
+                    
+                    Ixx = (1/12)*M*(W**2 + 4*H**2)
+                    Iyy = (1/12)*M*(L**2 + 4*H**2)
+                    Izz = (1/12)*M*(L**2 + W**2)
+                    
+                elif La!=Lb and Wa!=Wb: # if it's a tapered pyramid for both side lengths
+                
+                    x2 = (1/12)*p* ( (Lb-La)**3*H*(Wb/5 + Wa/20) + (Lb-La)**2*La*H(3*Wb/4 + Wa/4) + \
+                                     (Lb-La)*La**2*H*(Wb + Wa/2) + La**3*H*(Wb/2 + Wa/2) )
+                        
+                    y2 = (1/12)*p* ( (Wb-Wa)**3*H*(Lb/5 + La/20) + (Wb-Wa)**2*Wa*H(3*Lb/4 + La/4) + \
+                                     (Wb-Wa)*Wa**2*H*(Lb + La/2) + Wa**3*H*(Lb/2 + La/2) )
+                    
+                    z2 = p*( Wb*Lb/5 + Wa*Lb/20 + La*Wb/20 + Wa*La*(8/15) )
+                    
+                    Ixx = y2+z2
+                    Iyy = x2+z2
+                    Izz = x2+y2
+                
+                else: # if the top and bottom lengths are the same but the widths are different, and visa versa
+                    raise ValueError('This function can not handle this type yet, change to a cuboid or a truncated pyramid')
+            
+            return Ixx, Iyy, Izz
+              
+        
+        if self.shape=='circular':
+            I_rad_end_outer, I_ax_outer = FrustumMOI(self.dA, self.dB, self.l, self.rho_shell)  # radial and axial MoI about the end of the solid outer frustum [kg-m^2]
+            I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, self.l, self.rho_shell)          # radial and axial MoI about the end of the imaginary solid inner frustum [kg-m^2]
+            I_rad_end_shell = I_rad_end_outer-I_rad_end_inner                                   # radial MoI about the end of the frustum shell through superposition [kg-m^2]
+            I_ax_shell = I_ax_outer - I_ax_inner                                                # axial MoI of the shell through superposition [kg-m^2]
+            
+            I_rad_end_fill, I_ax_fill = FrustumMOI(dAi, dBi_fill, self.l_fill, self.rho_fill)   # radial and axial MoI about the end of the solid inner ballast frustum [kg-m^2]
+                    
+            I_rad_end = I_rad_end_shell + I_rad_end_fill                                        # radial MoI about the end of the member [kg-m^2]
+            I_rad = I_rad_end - mass*hc**2                                                      # radial MoI about the CoG of the member [kg-m^2]
+            
+            I_ax = I_ax_shell + I_ax_fill                                                       # axial MoI of the member about the total CoG (= about the end bc axial)
+        
+        elif self.shape=='rectangular':
+            
+            # MoI about each axis at the bottom end node of the solid outer truncated pyramid [kg-m^2]
+            Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(self.slA[0], self.slA[1], self.slB[0], self.slB[1], self.l, self.rho_shell)
+            # MoI about each axis at the bottom end node of the solid imaginary inner truncated pyramid [kg-m^2]
+            Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi[0], slAi[1], slBi[0], slBi[1], self.l, self.rho_shell)
+            # MoI about each axis at the bottom end node of the shell using superposition [kg-m^2]
+            Ixx_end_shell = Ixx_end_outer - Ixx_end_inner
+            Iyy_end_shell = Iyy_end_outer - Iyy_end_inner
+            Izz_end_shell = Izz_end_outer - Izz_end_inner
+            
+            # MoI about each axis at the bottom end node of the solid inner ballast truncated pyramid [kg-m^2]
+            Ixx_end_fill, Iyy_end_fill, Izz_end_fill = RectangularFrustumMOI(slAi[0], slAi[1], slBi_fill[0], slBi_fill[1], self.l_fill, self.rho_fill)
+            
+            # total MoI of each axis at the center of gravity of the member using the parallel axis theorem [kg-m^2]
+            Ixx_end = Ixx_end_shell + Ixx_end_fill
+            Ixx = Ixx_end - mass*hc**2
+            Iyy_end = Iyy_end_shell + Iyy_end_fill
+            Iyy = Iyy_end - mass*hc**2
+            
+            Izz_end = Izz_end_shell + Izz_end_fill
+            Izz = Izz_end       # the total MoI of the member about the z-axis is the same at any point along the z-axis
+            
+        
+        if self.shape=='circular':
+            Ixx = I_rad
+            Iyy = I_rad
+            Izz = I_ax
+        
 
-        return v_steel, center, I_rad, I_ax, m_fill
+        #return mass, center, I_rad, I_ax
+        return mass, center, Ixx, Iyy, Izz
         
     
     
@@ -1087,10 +1222,11 @@ class FOWT():
             
             # ---------------------- get member's mass and inertia properties ------------------------------
             
-            v_steel, center, I_rad, I_ax, m_fill = mem.getInertia() # calls the getInertia method to calcaulte values
+            #mass, center, I_rad, I_ax = mem.getInertia() # calls the getInertia method to calcaulte values
+            mass, center, Ixx, Iyy, Izz = mem.getInertia()
             
-            mass = v_steel*mem.rho_steel + m_fill #[kg]
-            Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
+            #Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
+            Mmat = np.diag([mass, mass, mass, Ixx, Iyy, Izz])
             # @mhall: Mmat as written above is the mass and inertia matrix about the member CG...@shousner: you betcha
           
             # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices

@@ -28,7 +28,7 @@ class Env:
         self.beta = 0.0
 
 
-## This class represents linear (for now cylinderical) components in the substructure. 
+## This class represents linear (for now cylindrical and rectangular) components in the substructure. 
 #  It is meant to correspond to Member objects in the WEIS substructure ontology, but containing only 
 #  the properties relevant for the Level 1 frequency-domain model, as well as additional data strucutres
 #  used during the model's operation.
@@ -42,7 +42,7 @@ class Member:
         # note: haven't decided yet how to lump masses and handle segments <<<<
         
         # Example strings that can be used to create a Member object
-        #                       ID  type   shape       dA/slA  dB/slB   lower node position   upper node position   thick   l_fill  rho_fill  phi
+        #                       ID  type   shape       dA/slA  dB/slB   lower node position   upper node position   thick   l_fill  rho_fill  gamma
         # memberStrings.append("11   2    circular     9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0      ", nw)
         # memberStrings.append("12   2    rectangular  20-10   10-5     0.0    0.0   -120.0   0.0    0.0   -12.00   0.0660   41.4    2000.0   0.0". nw)
         
@@ -58,13 +58,15 @@ class Member:
         if self.shape=='circular':
             self.dA  = np.float(entries[3])                         # diameter of lower node [m]
             self.dB  = np.float(entries[4])                         # diameter of upper node [m]
+            
+            self.gamma = 0                                          # twist angle about the member's z-axis [degrees] (don't need this for a circular member)
         elif self.shape=='rectangular' or self.shape=='polygonal':
             self.slA = np.array(entries[3].split("-"), dtype=float) # array of side lengths of lower node [m]
             self.slB = np.array(entries[4].split("-"), dtype=float) # array of side lengths of upper node [m]
             
             self.gamma = np.float(entries[14])                      # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
         else:
-            raise ValueError('The only allowable shape strings are cicrular and polygonal')
+            raise ValueError('The only allowable shape strings are cicrular and rectangular')
         
         
         self.rA = np.array(entries[5:8], dtype=np.double)           # [x,y,z] coordinates of lower node [m]
@@ -74,7 +76,7 @@ class Member:
         self.l_fill = np.float(entries[12])                         # length of member (from end A to B) filled with ballast [m]
         self.rho_fill = np.float(entries[13])                       # density of ballast in member [kg/m^3]
         
-        self.rho_shell = 8500                                       # shell mass density [kg/m^3] (could become input later on?)
+        self.rho_shell = 8500                                       # shell mass density [kg/m^3] (could maybe become input later on?)
         
         rAB = self.rB-self.rA                                       # The relative coordinates of upper node from lower node [m]
         self.l = np.linalg.norm(rAB)                                # member length [m]
@@ -98,7 +100,7 @@ class Member:
         self.n = 10                                                 # number of nodes per member
         self.dl = self.l/self.n                                     # lumped node length (I guess, for now) <<<
         
-        self.w = 1                                                  # mass per unit length (kg/m)
+        self.w = 1                                                  # mass per unit length [kg/m]
         
         self.r  = np.zeros([self.n,3])                              # undisplaced node positions along member  [m]
         self.d  = np.zeros( self.n   )                              # local diameter along member [m]
@@ -123,8 +125,47 @@ class Member:
         '''Returns the direction unit vector for the member based on its end positions'''
         
         q  =  self.q
-        p1 = np.cross( np.array([0,1,0]), q) # transverse unit direction vector in X-Z plane
-        p2 = np.cross( q, p1 )               # the other transverse unit vector
+        
+        # <<<<<<<<<< there's probably a better way to do/write this
+        nz = list(q).count(0)   # the number of zeros in the axial unit vector
+        
+        if nz==2:                       # if the member's axial unit vector is along an axis
+            i = list(q).index(1)            # the index where the 1 is
+            b = np.zeros(len(q))            # initialize an empty unit vector
+            b[i-1] = 1                      # set the value of 1 to the i-1 spot of the vector
+            
+        elif nz==1:                     # if the member's axial unit vector is in a 2D plane
+            b = np.array([q[0], 0, 0])
+
+        elif nz==0:                     # if the member's axial unit vector is in 3D space
+            b = np.array([q[0], q[1], 0])
+            # the resultant p1 should be p1[2]=0
+
+        
+        p1 = np.cross( b, q )               # unit vector that is perpendicular to the 'beta' plane
+        p2 = np.cross( q, p1 )              # unit vector orthogonal to both p1 and q
+        
+        
+        # <<<<<<<< these inner functions might be able to be pulled out of member class
+        def rotateAbout(gamma, q, p1, p2):
+            '''function that rotates a set of two vectors about another vector
+            where gamma is the angle of rotation and q is the vector that vectos p1 and p2 are rotating about'''
+            
+            cos = np.cos(gamma)
+            sin = np.sin(gamma)
+            
+            rot = np.array([ [cos , -sin,    0],
+                             [sin ,  cos,    0],
+                             [q[0], q[1], q[2]] ])
+            
+            p3 = np.matmul(rot, p1)
+            p4 = np.matmul(rot, p2)
+            
+            return p3, p4
+        
+        
+        #p1 = np.cross( np.array([0,1,0]), q)# transverse unit direction vector in X-Z plane
+        #p2 = np.cross( q, p1 )              # the other transverse unit vector
         
         return q, p1, p2
     
@@ -347,17 +388,23 @@ class Member:
             tanBeta=sinBeta/cosBeta
                 
             # -------------------- buoyancy and waterplane area properties ------------------------
-                
-            dWP = np.interp(0, self.r[:,2], self.d)       # diameter of member where its axis crosses the waterplane 
-            xWP = np.interp(0, self.r[:,2], self.r[:,0])  # x coordinate where member axis cross the waterplane [m]
-            yWP = np.interp(0, self.r[:,2], self.r[:,1])  # y coordinate where member axis cross the waterplane [m]
-            AWP = (np.pi/4)*dWP**2                        # waterplane area of member [m^2]
-            IWP = (np.pi/64)*dWP**4                       # waterplane moment of inertia [m^4] approximates the waterplane area as the shape of a circle
             
-            LWP = abs(self.r[0,2])/cosPhi                 # get length of member that is still underwater. Assumes self.r is about global coords -> z=0 @ SWL
+            xWP = np.interp(0, self.r[:,2], self.r[:,0])    # x coordinate where member axis cross the waterplane [m]
+            yWP = np.interp(0, self.r[:,2], self.r[:,1])    # y coordinate where member axis cross the waterplane [m]
+            if self.shape=='circular':
+                dWP = np.interp(0, self.r[:,2], self.d)     # diameter of member where its axis crosses the waterplane [m]
+                AWP = (np.pi/4)*dWP**2                      # waterplane area of member [m^2]
+                IWP = (np.pi/64)*dWP**4                     # waterplane moment of inertia [m^4] approximates the waterplane area as the shape of a circle
+            else:
+                slWP = np.interp(0, self.r[:,2], self.sl)   # side lengths of member where its axis crosses the waterplane [m]
+                AWP = slWP[0]*slWP[1]                       # waterplane area of rectangular member [m^2] (<<<<<<< do we need to account for phi?)
+                IxWP = (1/12)*slWP[0]*slWP[1]**3            # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
+                IyWP = (1/12)*slWP[0]**3*slWP[0]            # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+            
+            LWP = abs(self.r[0,2])/cosPhi                   # get length of member that is still underwater. Assumes self.r is about global coords -> z=0 @ SWL
             
             
-            # Total enclosed underwater volume
+            # Total enclosed underwater volume (see note in getInertia about new volume/CV functions, check with Matt)
             V_UW = (np.pi/4)*(1/3)*(self.dA**2+dWP**2+self.dA*dWP)*LWP       #[m^3] 
             
             L_center = TaperCV(0.5*self.dA, 0.5*dWP, LWP) # distance from end A to center of buoyancy of member [m]
@@ -606,7 +653,7 @@ def SmallRotate(r, th):
     rt[0] =              th[2]*r[1] - th[1]*r[2]
     rt[0] = th[2]*r[0]              - th[0]*r[2]
     rt[0] = th[1]*r[0] - th[0]*r[1]
-    
+    # shousner: @matthall, should these be rt[0], rt[1], rt[2] ?
     return rt
     
     

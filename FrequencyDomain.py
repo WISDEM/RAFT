@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import sys
 sys.path.insert(1, '../MoorPy')
 import MoorPy as mp
+#import F6T1RNA as structural    # import turbine structural model functions
 
 # reload the libraries each time in case we make any changes
 import importlib
@@ -39,12 +40,12 @@ class Member:
         
         '''
     
-        # note: haven't decided yet how to lump masses and handle segments <<<<
+        # note: haven't decided yet how to lump masses and handle segments
         
         # Example strings that can be used to create a Member object
-        #                       ID  type   shape       dA/slA  dB/slB   lower node position   upper node position   thick   l_fill  rho_fill  gamma
-        # memberStrings.append("11   2    circular     9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0      ", nw)
-        # memberStrings.append("12   2    rectangular  20-10   10-5     0.0    0.0   -120.0   0.0    0.0   -12.00   0.0660   41.4    2000.0   0.0". nw)
+        #                       ID  type  shape  dA/slA  dB/slB   lower node position   upper node position   thick   l_fill  rho_fill  gamma
+        # memberStrings.append("11   2    circ    9.400  9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0      ", nw)
+        # memberStrings.append("12   2    rect    20/10  10/5     0.0    0.0   -120.0   0.0    0.0   -12.00   0.0660   41.4    2000.0   0.0". nw)
         
         # The addition of the shape param should just be a temporary fix, at least until we figure out a better way to input data
         
@@ -54,19 +55,24 @@ class Member:
         self.id = np.int(entries[0])                                # set the ID value of the member
         self.type = np.int(entries[1])                              # set the type of the member (for now, just arbitrary numbers: 0,1,2, etc.)
         
-        self.shape = entries[2]                                     # the shape of the cross section of the member as a string
-        if self.shape=='circular':
+        shape = entries[2][0]                                       # the shape of the cross section of the member as a string (the first letter should be c or r)
+        
+        if shape[0].lower() == 'c':
+            self.shape = 'circular'
             self.dA  = np.float(entries[3])                         # diameter of lower node [m]
             self.dB  = np.float(entries[4])                         # diameter of upper node [m]
             
             self.gamma = 0                                          # twist angle about the member's z-axis [degrees] (don't need this for a circular member)
-        elif self.shape=='rectangular' or self.shape=='polygonal':
-            self.slA = np.array(entries[3].split("-"), dtype=float) # array of side lengths of lower node [m]
-            self.slB = np.array(entries[4].split("-"), dtype=float) # array of side lengths of upper node [m]
+        
+        elif shape[0].lower() == 'r':
+            self.shape = 'rectangular'
+            self.slA = np.array(entries[3].split("/"), dtype=float) # array of side lengths of lower node [m]
+            self.slB = np.array(entries[4].split("/"), dtype=float) # array of side lengths of upper node [m]
             
             self.gamma = np.float(entries[14])                      # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
+        
         else:
-            raise ValueError('The only allowable shape strings are cicrular and rectangular')
+            raise ValueError('The only allowable shape strings are circular and rectangular')
         
         
         self.rA = np.array(entries[5:8], dtype=np.double)           # [x,y,z] coordinates of lower node [m]
@@ -153,6 +159,21 @@ class Member:
             
             cos = np.cos(gamma)
             sin = np.sin(gamma)
+            
+            
+            
+            RotAboutZ = np.array([ [cos , -sin,    0],
+                                   [sin ,  cos,    0],
+                                   [   0,    0,    1] ])
+            
+            
+            Rz2q = "rotates from z to q"
+            
+            
+            RotAboutQ = Rz2q * RotAboutZ * Rz2q^T
+            
+            
+            
             
             rot = np.array([ [cos , -sin,    0],
                              [sin ,  cos,    0],
@@ -817,11 +838,14 @@ def printVec(vec):
 class Model():
 
 
-    def __init__(self, memberList=[], nTurbines=1, ms=None, w=[], depth=300):
+    def __init__(self, memberList=[], turbineParams=None, BEM=None, nTurbines=1, ms=None, w=[], depth=300):
         '''
         Empty frequency domain model initialization function
         
-        
+        memberStrings
+            List of strings describing each member
+        turbineParams : dict
+            Dictionary of turbine parameters in the format used by this model.
         nTurbines 
             could in future be used to set up any number of identical turbines
         '''
@@ -852,7 +876,7 @@ class Model():
         
         # if FOWT members were included, set up the FOWT here  <<< only set for 1 FOWT for now <<<
         if len(memberList)>0:
-            self.fowtList.append(FOWT(memberList, w=self.w, mpb=ms.BodyList[0], depth=depth))
+            self.fowtList.append(FOWT(memberList, turbineParams=turbineParams, w=self.w, mpb=ms.BodyList[0], depth=depth))
             self.coords.append([0.0,0.0])
             self.nDOF += 6
             
@@ -1104,7 +1128,7 @@ class Model():
 class FOWT():
     '''This class comprises the frequency domain model of a single floating wind turbine'''
 
-    def __init__(self, memberStrings, w=[], mpb=None, depth=600):
+    def __init__(self, memberStrings, turbineParams=None, w=[], mpb=None, depth=600):
         '''This initializes the FOWT object which contains everything for a single turbine's frequency-domain dynamics.
         The initializiation sets up the design description.
         
@@ -1113,6 +1137,8 @@ class FOWT():
         
         memberStrings
             List of strings describing each member
+        turbineParams : dict
+            Dictionary of turbine parameters in the format used by this model.
         w
             Array of frequencies to be used in analysis
         mpb
@@ -1148,8 +1174,19 @@ class FOWT():
             self.memberList.append(Member(memberString, self.nw))
 
 
+        # ------------------------------ mooring system connection -----------------------------
+        
+        # reference to Body in mooring system corresponding to this turbine
+        self.body = mpb
+
 
         # -------------------------- turbine RNA description (eventually these should be inputs) ------------------------
+        
+        # here we could pass main design parameters to the structural model so that some parts can be precomputed
+        # or just store things internally for now
+        self.turbineParams = turbineParams
+        
+        # below are temporary placeholders
         mRotor = 227962 #[kg]
         mNacelle = 446036 #[kg]
         IxHub = 325671 #[kg-m^2]
@@ -1169,8 +1206,8 @@ class FOWT():
         #hHub    = 119.0                          # hub height above water line [m]
         self.hHub    = 118.0 
 
-        # reference to Body in mooring system corresponding to this turbine
-        self.body = mpb
+        
+
             
 
         # ---------------------- set up key arrays (these are now created just in time)-----------------------------
@@ -1275,6 +1312,7 @@ class FOWT():
             #Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
             Mmat = np.diag([mass, mass, mass, Ixx, Iyy, Izz])
             # @mhall: Mmat as written above is the mass and inertia matrix about the member CG...@shousner: you betcha
+            
           
             # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
             self.W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mass]) )  # weight vector
@@ -1301,6 +1339,15 @@ class FOWT():
 
         # ------------------------- include RNA properties -----------------------------
 
+        # Here we could initialize first versions of the structure matrix components. 
+        # These might be iterated on later to deal with mean- or amplitude-dependent terms.
+        #self.M_struc += structural.M_lin(q0,      self.turbineParams)        # Linear Mass Matrix
+        #self.B_struc += structural.C_lin(q0, qd0, self.turbineParams, u0)    # Linear Damping Matrix
+        #self.C_struc += structural.K_lin(q0, qd0, self.turbineParams, u0)    # Linear Stifness Matrix
+        #self.W_struc += structural.B_lin(q0, qd0, self.turbineParams, u0)    # Linear RHS
+        
+        
+        # below are temporary placeholders
         # for now, turbine RNA is specified by some simple lumped properties
         Mmat = np.diag([self.mRNA, self.mRNA, self.mRNA, self.IxRNA, self.IrRNA, self.IrRNA])            # create mass/inertia matrix
         center = np.array([self.xCG_RNA, 0, self.hHub])                                 # RNA center of mass location

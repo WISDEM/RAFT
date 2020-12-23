@@ -87,9 +87,11 @@ class Member:
         rAB = self.rB-self.rA                                       # The relative coordinates of upper node from lower node [m]
         self.l = np.linalg.norm(rAB)                                # member length [m]
                 
+        # initialize member orientation variables
         self.q = rAB/self.l                                         # member axial unit vector
         self.p1 = np.zeros(3)                                       # member transverse unit vectors (to be filled in later)
         self.p2 = np.zeros(3)                                       # member transverse unit vectors
+        self.R = np.eye(3)                                          # rotation matrix from global x,y,z to member q,p1,p2
         
         # Drag coefficients
         self.Cd_q  = 0.1                                            # axial drag coefficient
@@ -127,68 +129,39 @@ class Member:
         self.pDyn=np.zeros([self.n,  nw], dtype=complex)            # dynamic pressure
         
         
-    def getDirections(self):
-        '''Returns the direction unit vector for the member based on its end positions'''
         
-        q  =  self.q
+    def calcOrientation(self):
+        '''Calculates member direction vectors q, p1, and p2 as well as member orientation matrix R 
+        based on the end positions and twist angle gamma.'''
         
-        # <<<<<<<<<< there's probably a better way to do/write this
-        nz = list(q).count(0)   # the number of zeros in the axial unit vector
+        rAB = self.rB-self.rA                                       # displacement vector from end A to end B [m]
+        q = rAB/np.linalg.norm(rAB)                                 # member axial unit vector
         
-        if nz==2:                       # if the member's axial unit vector is along an axis
-            i = list(q).index(1)            # the index where the 1 is
-            b = np.zeros(len(q))            # initialize an empty unit vector
-            b[i-1] = 1                      # set the value of 1 to the i-1 spot of the vector
-            
-        elif nz==1:                     # if the member's axial unit vector is in a 2D plane
-            b = np.array([q[0], 0, 0])
-
-        elif nz==0:                     # if the member's axial unit vector is in 3D space
-            b = np.array([q[0], q[1], 0])
-            # the resultant p1 should be p1[2]=0
-
+        beta = np.arctan2(q[1],q[0])                                # member incline heading from x axis
+        phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])         # member incline angle from vertical
         
-        p1 = np.cross( b, q )               # unit vector that is perpendicular to the 'beta' plane
-        p2 = np.cross( q, p1 )              # unit vector orthogonal to both p1 and q
-        
-        
-        # <<<<<<<< these inner functions might be able to be pulled out of member class
-        def rotateAbout(gamma, q, p1, p2):
-            '''function that rotates a set of two vectors about another vector
-            where gamma is the angle of rotation and q is the vector that vectos p1 and p2 are rotating about'''
-            
-            cos = np.cos(gamma)
-            sin = np.sin(gamma)
-            
-            
-            
-            RotAboutZ = np.array([ [cos , -sin,    0],
-                                   [sin ,  cos,    0],
-                                   [   0,    0,    1] ])
-            
-            
-            Rz2q = "rotates from z to q"
-            
-            
-            RotAboutQ = Rz2q * RotAboutZ * Rz2q^T
-            
-            
-            
-            
-            rot = np.array([ [cos , -sin,    0],
-                             [sin ,  cos,    0],
-                             [q[0], q[1], q[2]] ])
-            
-            p3 = np.matmul(rot, p1)
-            p4 = np.matmul(rot, p2)
-            
-            return p3, p4
+        # trig terms for Euler angles rotation based on beta, phi, and gamma
+        s1 = np.sin(beta) 
+        c1 = np.cos(beta)
+        s2 = np.sin(phi) 
+        c2 = np.cos(phi)
+        s3 = np.sin(np.deg2rad(self.gamma)) 
+        c3 = np.cos(np.deg2rad(self.gamma))
+    
+        R = np.array([[ c1*c2*c3-s1*s3, -c3*s1-c1*c2*s3,  c1*s2],
+                      [ c1*s3+c2*c3*s1,  c1*c3-c2*s1*s3,  s1*s2],
+                      [   -c3*s2      ,      s2*s3     ,    c3 ]])
         
         
-        #p1 = np.cross( np.array([0,1,0]), q)# transverse unit direction vector in X-Z plane
-        #p2 = np.cross( q, p1 )              # the other transverse unit vector
+        p1 = np.matmul( R, [1,0,0] )               # unit vector that is perpendicular to the 'beta' plane if gamma is zero
+        p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
         
-        return q, p1, p2
+        self.R  = R
+        self.q  = q
+        self.p1 = p1
+        self.p2 = p2
+        
+        return q, p1, p2  # also return the unit vectors for convenience
     
     
     
@@ -1301,7 +1274,8 @@ class FOWT():
         # loop through each member
         for mem in self.memberList:
             
-            q, p1, p2 = mem.getDirections()                # get unit direction vectors
+            # calculate member's orientation information (needed for later steps)
+            mem.calcOrientation() 
             
             
             # ---------------------- get member's mass and inertia properties ------------------------------
@@ -1434,9 +1408,6 @@ class FOWT():
             
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
-                
-                    q, p1, p2 = mem.getDirections()                # get unit direction vectors
-                    
                     
                     # set dl to half if at the member end (the end result is similar to trapezoid rule integration)
                     if il==0 or il==mem.n:
@@ -1450,14 +1421,14 @@ class FOWT():
 
 
                     # local added mass matrix
-                    Amat = rho*0.25*np.pi*mem.d[il]**2*dl *( mem.Ca_q*VecVecTrans(q) + mem.Ca_p1*VecVecTrans(p1) + mem.Ca_p2*VecVecTrans(p2) )
+                    Amat = rho*0.25*np.pi*mem.d[il]**2*dl *( mem.Ca_q*VecVecTrans(mem.q) + mem.Ca_p1*VecVecTrans(mem.p1) + mem.Ca_p2*VecVecTrans(mem.p2) )
                     
                     # add to global added mass matrix for Morison members
                     self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
                     
                     
                     # local inertial excitation matrix
-                    Imat = rho*0.25*np.pi*mem.d[il]**2*dl *( (1+mem.Ca_q)*VecVecTrans(q) + (1+mem.Ca_p1)*VecVecTrans(p1) + (1+mem.Ca_p2)*VecVecTrans(p2) )
+                    Imat = rho*0.25*np.pi*mem.d[il]**2*dl *( (1.+mem.Ca_q)*VecVecTrans(mem.q) + (1.+mem.Ca_p1)*VecVecTrans(mem.p1) + (1.+mem.Ca_p2)*VecVecTrans(mem.p2) )
                     
                     for i in range(self.nw):   # for each wave frequency...
                     
@@ -1472,19 +1443,19 @@ class FOWT():
                     if il==0:     # end A
                             
                         # local added mass matrix
-                        Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(q)                
+                        Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(mem.q)                
                         
                         # add to global added mass matrix for Morison members
                         self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
                         
                         
                         # local inertial excitation matrix
-                        Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(q)      
+                        Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(mem.q)      
                         
                         for i in range(self.nw):   # for each wave frequency...
                         
                             # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
-                            F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) + mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *q  
+                            F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) + mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *mem.q  
                         
                             # add to global excitation vector (frequency dependent)
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
@@ -1493,19 +1464,19 @@ class FOWT():
                     elif il==mem.n-1:  # end B
                    
                         # local added mass matrix
-                        Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(q)                
+                        Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(mem.q)                
                         
                         # add to global added mass matrix for Morison members
                         self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
                         
                         
                         # local inertial excitation matrix
-                        Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(q)      
+                        Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(mem.q)      
                         
                         for i in range(self.nw):   # for each wave frequency...
                         
                             # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
-                            F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) - mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *q  
+                            F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) - mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *mem.q  
                         
                             # add to global excitation vector (frequency dependent)
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
@@ -1617,8 +1588,6 @@ class FOWT():
         # loop through each member
         for mem in self.memberList:
             
-            q, p1, p2 = mem.getDirections()                # get unit direction vectors
-            
             # loop through each node of the member
             for il in range(mem.n):
                 
@@ -1633,9 +1602,9 @@ class FOWT():
                     vrel = mem.u[il,:] - vnode
                     
                     # break out velocity components in each direction relative to member orientation [nw]
-                    vrel_q  = vrel* q[:,None]
-                    vrel_p1 = vrel*p1[:,None]
-                    vrel_p2 = vrel*p2[:,None]
+                    vrel_q  = vrel*mem.q[ :,None]
+                    vrel_p1 = vrel*mem.p1[:,None]
+                    vrel_p2 = vrel*mem.p2[:,None]
                     
                     # get RMS of relative velocity component magnitudes (real-valued)
                     vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )  # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
@@ -1648,15 +1617,12 @@ class FOWT():
                     Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p2
                     
                     # convert to global orientation
-                    Bmat = Bprime_q*VecVecTrans(q) + Bprime_p1*VecVecTrans(p1) + Bprime_p2*VecVecTrans(p2)
+                    Bmat = Bprime_q*VecVecTrans(mem.q) + Bprime_p1*VecVecTrans(mem.p1) + Bprime_p2*VecVecTrans(mem.p2)
                     
                     # add to global damping matrix for Morison members
                     Btemp = translateMatrix3to6DOF(mem.r[il,:], Bmat)
-                    
-                    #breakpoint()
-                    
+                                        
                     B_hydro_drag += Btemp
-                    
                     
                     
                     # excitation force based on linearized damping coefficients [3 x nw]

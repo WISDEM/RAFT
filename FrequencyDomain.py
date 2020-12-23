@@ -150,7 +150,7 @@ class Member:
     
         R = np.array([[ c1*c2*c3-s1*s3, -c3*s1-c1*c2*s3,  c1*s2],
                       [ c1*s3+c2*c3*s1,  c1*c3-c2*s1*s3,  s1*s2],
-                      [   -c3*s2      ,      s2*s3     ,    c3 ]])
+                      [   -c3*s2      ,      s2*s3     ,    c2 ]])  #Z1Y2Z3 from https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
         
         
         p1 = np.matmul( R, [1,0,0] )               # unit vector that is perpendicular to the 'beta' plane if gamma is zero
@@ -519,6 +519,60 @@ class Member:
             
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
+    def plot(self, ax):
+        '''Draws the member on the passed axes'''
+        
+        # get coordinates of lines along sides relative to end A in member reference frame
+        
+        if self.shape=="circular":   # circular member cross section
+            n = 8                                                     # number of sides for a circle
+            X = []
+            Y = []
+            Z = []
+            for i in range(n+1):
+                x = np.cos(float(i)/float(n)*2.0*np.pi)    # x coordinates of a unit circle
+                y = np.sin(float(i)/float(n)*2.0*np.pi)    # y
+                
+                X.append(0.5*self.dA*x)   # point on end A
+                Y.append(0.5*self.dA*y)
+                Z.append(0.0)            
+                X.append(0.5*self.dB*x)   # point on end B
+                Y.append(0.5*self.dB*y)
+                Z.append(self.l)       
+                
+            coords = np.vstack([X, Y, Z])     
+                
+        elif self.shape=="rectangular":    # rectangular member cross section
+            n=4
+            coords = np.array([[ 0.5*self.slA[1], 0.5*self.slA[0], 0.0],      # point on end A
+                               [ 0.5*self.slB[1], 0.5*self.slB[0], self.l],   # point on end B           
+                               [-0.5*self.slA[1], 0.5*self.slA[0], 0.0],
+                               [-0.5*self.slB[1], 0.5*self.slB[0], self.l],
+                               [-0.5*self.slA[1],-0.5*self.slA[0], 0.0],
+                               [-0.5*self.slB[1],-0.5*self.slB[0], self.l],
+                               [ 0.5*self.slA[1],-0.5*self.slA[0], 0.0],
+                               [ 0.5*self.slB[1],-0.5*self.slB[0], self.l],
+                               [ 0.5*self.slA[1], 0.5*self.slA[0], 0.0],       # (we go full circle here, so five points for the rectangle rather than 4)
+                               [ 0.5*self.slB[1], 0.5*self.slB[0], self.l]]).T  # need transposed
+        
+        
+        # rotate into global frame
+        newcoords = np.matmul(self.R, coords)
+        
+        # shift to end A location
+        Xs = newcoords[0,:] + self.rA[0]
+        Ys = newcoords[1,:] + self.rA[1]
+        Zs = newcoords[2,:] + self.rA[2]
+        
+        # plot on the provided axes
+        linebit = []  # make empty list to hold plotted lines, however many there are
+        for i in range(n):  #range(int(len(Xs)/2-1)):
+            linebit.append(ax.plot(Xs[2*i:2*i+2],Ys[2*i:2*i+2],Zs[2*i:2*i+2]            , color='k'))  # side edges
+            linebit.append(ax.plot(Xs[[2*i,2*i+2]],Ys[[2*i,2*i+2]],Zs[[2*i,2*i+2]]      , color='k'))  # end A edges
+            linebit.append(ax.plot(Xs[[2*i+1,2*i+3]],Ys[[2*i+1,2*i+3]],Zs[[2*i+1,2*i+3]], color='k'))  # end B edges
+    
+        return linebit
+        
 
 def TaperV(R1, R2, H):
     '''returns the volume of a cylindrical section, possibly with taper'''
@@ -853,9 +907,9 @@ class Model():
             self.coords.append([0.0,0.0])
             self.nDOF += 6
             
-            ms.BodyList[0].type = -1  # need to make sure it's set to a coupled type
+            self.ms.BodyList[0].type = -1  # need to make sure it's set to a coupled type
         
-        ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
+        self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
         
         
         
@@ -1034,8 +1088,6 @@ class Model():
         ax[2].set_ylabel("wave amplitude (m)")
         ax[2].set_xlabel("frequency (Hz)")
 
-        plt.show()
-
          
          # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
         '''
@@ -1092,7 +1144,18 @@ class Model():
          
         ''' 
          
- 
+    
+    def plot(self):
+        '''plots the whole model, including FOWTs and mooring system...'''
+        
+        # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
+        fig, ax = self.ms.plot()
+        #fig = plt.figure(figsize=(20/2.54,12/2.54))
+        #ax = Axes3D(fig)
+
+        # plot each FOWT
+        for fowt in self.fowtList:
+            fowt.plot(ax)
         
 
 
@@ -1642,3 +1705,16 @@ class FOWT():
         # return the linearized coefficients
         return B_hydro_drag, F_hydro_drag
 
+
+    def plot(self, ax):
+        '''plots the FOWT...'''
+        
+        
+        # loop through each member and plot it
+        for mem in self.memberList:
+        
+            mem.calcOrientation()  # temporary
+        
+            mem.plot(ax)
+            
+#

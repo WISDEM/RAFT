@@ -51,8 +51,9 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
             memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60   0.0198   0.0    1025.0  ")
     
             # ---------- spar platform substructure description --------------
-            memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0  ")
-            memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0660   41.4    2000.0  ")
+            #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0  ")
+            memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0 ")
+            #memberStrings.append("11     2   re  20/9.400   20/9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0  45.0 ") # rectangular member test
             memberStrings.append("12     2   circ  9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270    0.0    1025.0  ")
             memberStrings.append("13     2   circ  6.500   6.500    0.0    0.0     -4.0   0.0    0.0    10.00   0.0270    0.0    1025.0  ")
     
@@ -365,8 +366,10 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
     
     model.solveDynamics()            # put everything together and iteratively solve the dynamic response
     
+    model.plot()
+    
     plt.show()
-
+    
 
 if __name__ == "__main__":
     

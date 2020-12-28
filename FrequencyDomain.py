@@ -97,7 +97,7 @@ class Member:
         self.Cd_q  = 0.1                                            # axial drag coefficient
         self.Cd_p1 = 0.6                                            # transverse1 drag coefficient
         self.Cd_p2 = 0.6                                            # transverse2 drag coefficient
-        self.Ca_End = 0.6                                           # end drag coefficient <<<<<<<<< should this be Cd_end? 
+        self.Cd_End = 0.6                                           # end drag coefficient
         # Added mass coefficients
         self.Ca_q  = 0.0                                            # axial added mass coefficient
         self.Ca_p1 = 0.97                                           # transverse1 added mass coefficient
@@ -160,6 +160,7 @@ class Member:
         self.q  = q
         self.p1 = p1
         self.p2 = p2
+
         
         return q, p1, p2  # also return the unit vectors for convenience
     
@@ -433,7 +434,8 @@ class Member:
             Fvec[4] = My - Fz*self.rA[0]                # moment about y axis [N-m]
             
             # derivatives aligned with incline heading
-            dFz_dz   = -env.rho*env.g*pi*0.25*dWP**2                  /cosPhi
+            #dFz_dz   = -env.rho*env.g*pi*0.25*dWP**2                  /cosPhi
+            dFz_dz   = -env.rho*env.g*AWP                  /cosPhi
             dFz_dPhi =  env.rho*env.g*pi*0.25*dWP**2*self.rA[2]*sinPhi/cosPhi**2
             dM_dz    =  1.0*dFz_dPhi
             dM_dPhi  = -env.rho*env.g*pi*0.25*dWP**2 * (dWP**2/32*(2*cosPhi + sinPhi**2/cosPhi + 2*sinPhi/cosPhi**2) + 0.5*self.rA[2]**2*(sinPhi**2+1)/cosPhi**3)
@@ -470,8 +472,7 @@ class Member:
             Cmat[4,4] = -dMy_dThy
             '''
             # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
-            Iwp = np.pi*dWP**4/64 # [m^4] Moment of Inertia of the waterplane
-            Iwp = np.pi*dWP**4/64 # [m^4] Moment of Inertia of the waterplane
+            #Iwp = np.pi*dWP**4/64 # [m^4] Moment of Inertia of the waterplane
             Cmat[2,2] = -dFz_dz
             Cmat[2,3] = env.rho*env.g*(     -AWP*yWP    )
             Cmat[2,4] = env.rho*env.g*(      AWP*xWP    )

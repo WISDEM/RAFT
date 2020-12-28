@@ -53,6 +53,7 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
             # ---------- spar platform substructure description --------------
             #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0  ")
             memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0 ")
+            #@mhall: Stein, I messed with the above member to get the platform stable. Feel free to change. I thought we had this matching the OC3 specs, I might be confused.
             #memberStrings.append("11     2   re  20/9.400   20/9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0  45.0 ") # rectangular member test
             memberStrings.append("12     2   circ  9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270    0.0    1025.0  ")
             memberStrings.append("13     2   circ  6.500   6.500    0.0    0.0     -4.0   0.0    0.0    10.00   0.0270    0.0    1025.0  ")
@@ -361,6 +362,8 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
     model.setEnv(Hs=8, Tp=12, V=10)  # set basic wave and wind info
 
     model.calcSystemProps()          # get all the setup calculations done within the model
+
+    model.solveEigen()
 
     model.calcMooringAndOffsets()    # calculate the offsets for the given loading
     

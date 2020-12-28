@@ -220,11 +220,12 @@ class Member:
             hci = FrustumCV(dAi, dBi, self.l)                           # center of mass/volume of the solid frustum with inner diameters [m]
             hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of mass/volume of the hollow frustum with shell thickness [m]
                                                                         # these are subtracted because we want to subtract the imaginary inner frustum contribution
-            hc_fill = FrustumCV(dAi, dBi_fill, self.l)
+            hc_fill = FrustumCV(dAi, dBi_fill, self.l_fill)             # center mass of filled ballast along axis from end A [m]
             
             hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
             
             center = self.rA + (self.q*hc)                              # total center of mass of the member from the PRP [m]
+        
         
         elif self.shape=='rectangular':
             # MASS AND CENTER OF GRAVITY
@@ -942,17 +943,17 @@ class Model():
         for fowt in self.fowtList:
             fowt.calcStatics()
             fowt.calcHydroConstants()
-            fowt.calcDynamicConstants()
+            #fowt.calcDynamicConstants()
     
+        ## First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
+        self.C_moor = self.ms.getCoupledStiffness()                             # this method accounts for eqiuilibrium of free objects in the system
+        self.F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)
+
     
     def calcMooringAndOffsets(self):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.
         '''
-
-        ## First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
-        #C_moor = self.ms.getCoupledStiffness()                             # this method accounts for eqiuilibrium of free objects in the system
-        #F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)
 
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
@@ -975,9 +976,66 @@ class Model():
     
     
     
+    def solveEigen(self):
+        '''finds natural frequencies of system'''
+        
+    
+        # total system coefficient arrays
+        M_tot = np.zeros([self.nDOF,self.nDOF])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
+        C_tot = np.zeros([self.nDOF,self.nDOF])       # total stiffness matrix [N/m, N, N-m]
+        
+    
+        # add in mooring stiffness from MoorPy system
+        C_tot = self.C_moor
+                
+        # ::: a loop could be added here for an array :::
+        fowt = self.fowtList[0]
+        
+        # range of DOFs for the current turbine
+        i1 = 0
+        i2 = 6            
+        
+        # add fowt's terms to system matrices (BEM arrays are not yet included here)        
+        M_tot[i1:i2] += fowt.M_struc + fowt.A_hydro_morison   # mass
+        C_tot[i1:i2] += fowt.C_struc + fowt.C_hydro           # stiffness
+        
+        # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
+        eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+        
+        print("natural frequencies from eigen values")
+        printVec(np.sqrt(eigenvals))
+
+
+        # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
+        if C_tot[0,0] == 0.0:
+            zMoorx = 0.0
+        else:
+            zMoorx = C_tot[0,4]/C_tot[0,0]  # effective z elevation of mooring system reaction forces in x and y directions
+        
+        if C_tot[1,1] == 0.0:
+            zMoory = 0.0
+        else:
+            zMoory = C_tot[1,3]/C_tot[1,1]
+        
+        zCG  = fowt.rCG_TOT[2]                    # center of mass in z
+        zCMx = M_tot[0,4]/M_tot[0,0]              # effective z elevation of center of mass and added mass in x and y directions
+        zCMy = M_tot[1,3]/M_tot[1,1]
+
+        print("natural frequencies with added mass")
+        fn = np.zeros(6)
+        fn[0] = np.sqrt( C_tot[0,0] / M_tot[0,0] )/ 2.0/np.pi
+        fn[1] = np.sqrt( C_tot[1,1] / M_tot[1,1] )/ 2.0/np.pi
+        fn[2] = np.sqrt( C_tot[2,2] / M_tot[2,2] )/ 2.0/np.pi
+        fn[5] = np.sqrt( C_tot[5,5] / M_tot[5,5] )/ 2.0/np.pi
+        fn[3] = np.sqrt( (C_tot[3,3] + C_tot[1,1]*((zCMy-zMoory)**2 - zMoory**2) ) / (M_tot[3,3] - M_tot[1,1]*zCMy**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+        fn[4] = np.sqrt( (C_tot[4,4] + C_tot[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M_tot[4,4] - M_tot[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
+        # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
+        printVec(fn)
+
+    
     
     def solveStatics(self):
-        # <<<< what is this <<<<< ?
+        '''Possibly a method to solve for the mean operating point (in conjunctoin with calcMooringAndOffsets)...'''
     
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
@@ -986,7 +1044,9 @@ class Model():
         i1 = 0
         i2 = 6  
         
-        fowt.W_hydro + fowt.W_struc
+        #C_tot0 = self.C_struc + self.C_hydro + C_moor0   # total system stiffness matrix about undisplaced position
+        #W_tot0 = self.W_struc + self.W_hydro + W_moor0   # system mean forces and moments at undisplaced position
+
     
     
     def solveDynamics(self):
@@ -1553,10 +1613,13 @@ class FOWT():
         Note: calcStatics and calcHydroConstants should be called before this method.
         '''
 
+        # moorings aren't normally considered in the fowt object directly, but include them here for the natural frequency calculations for now...
+
+
         # sum matrices to check totals from static calculations before hydrodynamic terms are added
 
-        C_tot0 = self.C_struc + self.C_hydro # + C_moor0   # total system stiffness matrix about undisplaced position
-        W_tot0 = self.W_struc + self.W_hydro #+ W_moor0   # system mean forces and moments at undisplaced position
+        C_tot0 = self.C_struc + self.C_hydro + C_moor0   # total system stiffness matrix about undisplaced position
+        W_tot0 = self.W_struc + self.W_hydro + W_moor0   # system mean forces and moments at undisplaced position
 
         M = self.M_struc + self.A_hydro_morison          # total mass plus added mass matrix
 
@@ -1600,8 +1663,16 @@ class FOWT():
 
         # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
 
-        zMoorx = C_tot0[0,4]/C_tot0[0,0]  # effective z elevation of mooring system reaction forces in x and y directions
-        zMoory = C_tot0[1,3]/C_tot0[1,1]
+        if C_tot0[0,0] == 0.0:
+            zMoorx = 0.0
+        else:
+            zMoorx = C_tot0[0,4]/C_tot0[0,0]  # effective z elevation of mooring system reaction forces in x and y directions
+        
+        if C_tot0[1,1] == 0.0:
+            zMoory = 0.0
+        else:
+            zMoory = C_tot0[1,3]/C_tot0[1,1]
+        
         zCG  = self.rCG_TOT[2]                    # center of mass in z
         zCMx = M[0,4]/M[0,0]              # effective z elevation of center of mass and added mass in x and y directions
         zCMy = M[1,3]/M[1,1]
@@ -1629,7 +1700,7 @@ class FOWT():
         # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
         printVec(fn)
 
-
+        breakpoint()
 
     def calcLinearizedTerms(self, Xi):
         '''The FOWT's dynamics solve iteration method. This calculates the amplitude-dependent linearized coefficients.

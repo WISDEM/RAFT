@@ -170,57 +170,23 @@ class Member:
         '''Calculates member inertia properties: mass, center of mass, moments of inertia.
         Assumes that the members are continuous and symmetrical (i.e. no weird shapes)'''
         
-        # <<<<<<<<<<<< These might be able to replace the TaperV/TaperCV functions, need to check with Matt
-        def FrustumV(dA, dB, l):
-            '''returns the volume of a frustum, which can be a cylinder, cone, or anything in between'''
-            return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
-        
-        def FrustumCV(dA, dB, l):
-            '''returns the height of the center of volume from the lower node of a frustum member'''
-            return l*((dA**2 + 2*dA*dB + 3*dB**2)/(4*(dA**2 + dA*dB + dB**2)))
-        
-        def FrustumVCV(dA, dB, H):
-            '''returns the volume and center of volume of a frustum, which can be a cylinder (box), cone (pyramid), or anything in between
-            Source: https://mathworld.wolfram.com/PyramidalFrustum.html '''
-            
-            if np.isscalar(dA) and np.isscalar(dB): # if the inputs are scalar, meaning that it's just a diameter
-                A1 = (np.pi/4)*dA**2
-                A2 = (np.pi/4)*dB**2
-                Amid = (np.pi/4)*dA*dB
-                #return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
-            elif len(dA)==2 and len(dB)==2: # if the inputs are of length 2, meaning if it's two side lengths per node
-                A1 = dA[0]*dA[1]
-                A2 = dB[0]*dB[1]
-                Amid = np.sqrt(A1*A2)
-            else:
-                raise ValueError('Input types not accepted')
-            
-            V = (A1 + A2 + Amid) * H/3
-            hc = ((A1 + 2*Amid + 3*A2)/(A1 + Amid + A2)) * H/4
-            
-            return V, hc
         
         if self.shape=='circular':
-            # MASS
+            # MASS AND CENTER OF GRAVITY
             dAi = self.dA - 2*self.t                                    # inner diameter of lower node [m]
             dBi = self.dB - 2*self.t                                    # inner diameter of upper node [m]
-            V_outer = FrustumV(self.dA, self.dB, self.l)                # volume of solid frustum with outer diameters [m^3]
-            V_inner = FrustumV(dAi, dBi, self.l)                        # volume of solid frustum with inner diameters [m^3]
+            V_outer, hco = FrustumVCV(self.dA, self.dB, self.l)         # volume and center of volume of solid frustum with outer diameters [m^3] [m]
+            V_inner, hci = FrustumVCV(dAi, dBi, self.l)                 # volume and center of volume of solid frustum with inner diameters [m^3] [m]
             v_shell = V_outer-V_inner                                   # volume of hollow frustum with shell thickness [m^3]
             m_shell = v_shell*self.rho_shell                            # mass of hollow frustum [kg]
             
+            hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of hollow frustum with shell thickness [m]
+            
             dBi_fill = (dBi-dAi)*(self.l_fill/self.l) + dAi             # interpolated inner diameter of frustum that ballast is filled to [m]
-            v_fill = FrustumV(dAi, dBi_fill, self.l_fill)               # volume of inner frustum that ballast occupies [m^3]
+            v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, self.l_fill)    # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
             m_fill = v_fill*self.rho_fill                               # mass of ballast in the member [kg]
             
             mass = m_shell + m_fill                                     # total mass of the member [kg]
-            
-            # CENTER OF GRAVITY - Calculated as the height above the bottom node @ self.rA
-            hco = FrustumCV(self.dA, self.dB, self.l)                   # center of mass/volume of the solid frustum with outer diameters [m]
-            hci = FrustumCV(dAi, dBi, self.l)                           # center of mass/volume of the solid frustum with inner diameters [m]
-            hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of mass/volume of the hollow frustum with shell thickness [m]
-                                                                        # these are subtracted because we want to subtract the imaginary inner frustum contribution
-            hc_fill = FrustumCV(dAi, dBi_fill, self.l_fill)             # center mass of filled ballast along axis from end A [m]
             
             hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
             
@@ -231,9 +197,9 @@ class Member:
             # MASS AND CENTER OF GRAVITY
             slAi = self.slA - 2*self.t                                  # inner side lengths of lower node [m]
             slBi = self.slB - 2*self.t                                  # inner side lengths of upper node [m]
-            V_outer, hco = FrustumVCV(self.slA, self.slB, self.l)      # volume and center of volume of solid frustum with outer side lengths [m^3]
-            V_inner, hci = FrustumV(slAi, slBi, self.l)                 # volume and center of volume of solid frustum with inner side lengths [m^3]
-            v_shell = V_outer-V_inner                                   # volume and center of volume of hollow frustum with shell thickness [m^3]
+            V_outer, hco = FrustumVCV(self.slA, self.slB, self.l)       # volume and center of volume of solid frustum with outer side lengths [m^3] [m]
+            V_inner, hci = FrustumVCV(slAi, slBi, self.l)               # volume and center of volume of solid frustum with inner side lengths [m^3] [m]
+            v_shell = V_outer-V_inner                                   # volume of hollow frustum with shell thickness [m^3]
             m_shell = v_shell*self.rho_shell                            # mass of hollow frustum [kg]
             
             hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of the hollow frustum with shell thickness [m]
@@ -249,27 +215,25 @@ class Member:
         
         
         
-        
-        
         # MOMENT OF INERTIA
         
         def FrustumMOI(dA, dB, H, p):
             '''returns the radial and axial moments of inertia of a potentially tapered circular member about the end node.
             Previously used equations found in a HydroDyn paper, now it uses newly derived ones. Ask Stein for reference if needed'''
-            if H==0:            # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
-                I_rad = 0
-                I_ax = 0
+            if H==0:        # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
+                I_rad = 0                                                   # radial MoI about end node [kg-m^2]
+                I_ax = 0                                                    # axial MoI about axial axis [kg-m^2]
             else:
-                if dA==dB:# if it's a cylinder
-                    r1 = dA/2
-                    r2 = dB/2
-                    I_rad = (1/12)*(p*H*np.pi*r1**2)*(3*r1**2 + 4*H**2)     #[kg-m^2]    about end node
-                    I_ax = (1/2)*p*np.pi*H*r1**4                            #[kg-m^2]    about axial axis
-                else:# if it's a tapered cylinder (frustum)
-                    r1 = dA/2
-                    r2 = dB/2
-                    I_rad = (1/20)*p*np.pi*H*(r2**5 - r1**5)/(r2 - r1) + (1/30)*p*np.pi*H**3*(r1**2 + 3*r1*r2 + 6*r2**2) #[kg-m^2]    about end node
-                    I_ax = (1/10)*p*np.pi*H*(r2**5-r1**5)/(r2-r1)           #[kg-m^2]    about axial axis
+                if dA==dB:  # if it's a cylinder
+                    r1 = dA/2                                               # bottom radius [m]
+                    r2 = dB/2                                               # top radius [m]
+                    I_rad = (1/12)*(p*H*np.pi*r1**2)*(3*r1**2 + 4*H**2)     # radial MoI about end node [kg-m^2]
+                    I_ax = (1/2)*p*np.pi*H*r1**4                            # axial MoI about axial axis [kg-m^2]
+                else:       # if it's a tapered cylinder (frustum)
+                    r1 = dA/2                                               # bottom radius [m]
+                    r2 = dB/2                                               # top radius [m]
+                    I_rad = (1/20)*p*np.pi*H*(r2**5 - r1**5)/(r2 - r1) + (1/30)*p*np.pi*H**3*(r1**2 + 3*r1*r2 + 6*r2**2) # radial MoI about end node [kg-m^2]
+                    I_ax = (1/10)*p*np.pi*H*(r2**5-r1**5)/(r2-r1)           # axial MoI about axial axis [kg-m^2]
             
             return I_rad, I_ax
         
@@ -277,25 +241,26 @@ class Member:
         def RectangularFrustumMOI(La, Wa, Lb, Wb, H, p):
             '''returns the moments of inertia about the end node of a cuboid that can be tapered. 
             - Inputs the lengths and widths at the top and bottom of the cuboid, as well as the height and material density.
-            - Works for cases when it is a perfect cuboid and a truncated pyramid, but not when La=Lb and Wa!=Wb.
+            - L is the side length along the local x-direction, W is the side length along the local y-direction.
+            - Does not work for members that are not symmetrical about the axial axis.
+            - Works for cases when it is a perfect cuboid, a truncated pyramid, and a truncated triangular prism
             - Equations derived by hand, ask Stein for reference if needed'''
             
             if H==0: # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
-                Ixx = 0
-                Iyy = 0
-                Izz = 0
+                Ixx = 0                                         # MoI around the local x-axis about the end node [kg-m^2]
+                Iyy = 0                                         # MoI around the local y-axis about the end node [kg-m^2]
+                Izz = 0                                         # MoI around the local z-axis about the axial axis [kg-m^2]
             else:
                 if La==Lb and Wa==Wb: # if it's a cuboid
+                    L = La                                      # length of the cuboid (La=Lb) [m]
+                    W = Wa                                      # width of the cuboid (Wa=Wb) [m]
+                    M = p*L*W*H                                 # mass of the cuboid [kg]
                     
-                    L = La
-                    W = Wa
-                    M = p*L*W*H
+                    Ixx = (1/12)*M*(W**2 + 4*H**2)              # MoI around the local x-axis about the end node [kg-m^2]
+                    Iyy = (1/12)*M*(L**2 + 4*H**2)              # MoI around the local y-axis about the end node [kg-m^2]
+                    Izz = (1/12)*M*(L**2 + W**2)                # MoI around the local z-axis about the axial axis [kg-m^2]
                     
-                    Ixx = (1/12)*M*(W**2 + 4*H**2)
-                    Iyy = (1/12)*M*(L**2 + 4*H**2)
-                    Izz = (1/12)*M*(L**2 + W**2)
-                    
-                elif La!=Lb and Wa!=Wb: # if it's a tapered pyramid for both side lengths
+                elif La!=Lb and Wa!=Wb: # if it's a truncated pyramid for both side lengths
                 
                     x2 = (1/12)*p* ( (Lb-La)**3*H*(Wb/5 + Wa/20) + (Lb-La)**2*La*H(3*Wb/4 + Wa/4) + \
                                      (Lb-La)*La**2*H*(Wb + Wa/2) + La**3*H*(Wb/2 + Wa/2) )
@@ -305,12 +270,34 @@ class Member:
                     
                     z2 = p*( Wb*Lb/5 + Wa*Lb/20 + La*Wb/20 + Wa*La*(8/15) )
                     
-                    Ixx = y2+z2
-                    Iyy = x2+z2
-                    Izz = x2+y2
+                    Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
+                    Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
+                    Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
                 
-                else: # if the top and bottom lengths are the same but the widths are different, and visa versa
-                    raise ValueError('This function can not handle this type yet, change to a cuboid or a truncated pyramid')
+                elif La==Lb and Wa!=Wb: # if it's a truncated triangular prism where only the lengths are the same on top and bottom
+                    L = La                                      # length of the truncated triangular prism [m]
+                    
+                    x2 = (1/24)*p*(L**3)*H*(Wb+Wa)
+                    y2 = (1/48)*p*L*H*( Wb**3 + Wa*Wb**2 + Wa**2*Wb + Wa**3 )
+                    z2 = (1/12)*p*L*(H**3)*( 3*Wb + Wa )
+                    
+                    Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
+                    Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
+                    Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
+                    
+                elif La!=Lb and Wa==Wb: # if it's a truncated triangular prism where only the widths are the same on top and bottom
+                    W = Wa                                      # width of the truncated triangular prism [m]
+                    
+                    x2 = (1/48)*p*W*H*( Lb**3 + La*Lb**2 + La**2*Lb + La**3 )
+                    y2 = (1/24)*p*(W**3)*H*(Lb+La)
+                    z2 = (1/12)*p*W*(H**3)*( 3*Lb + La )
+                    
+                    Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
+                    Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
+                    Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
+                
+                else:
+                    raise ValueError('You either have inconsistent inputs, or you are trying to calculate the MoI of a member that is not supported')
             
             return Ixx, Iyy, Izz
               
@@ -357,8 +344,7 @@ class Member:
             Iyy = I_rad
             Izz = I_ax
         
-
-        #return mass, center, I_rad, I_ax
+        
         return mass, center, Ixx, Iyy, Izz
         
     
@@ -400,10 +386,8 @@ class Member:
             LWP = abs(self.r[0,2])/cosPhi                   # get length of member that is still underwater. Assumes self.r is about global coords -> z=0 @ SWL
             
             
-            # Total enclosed underwater volume (see note in getInertia about new volume/CV functions, check with Matt)
-            V_UW = (np.pi/4)*(1/3)*(self.dA**2+dWP**2+self.dA*dWP)*LWP       #[m^3] 
-            
-            L_center = TaperCV(0.5*self.dA, 0.5*dWP, LWP) # distance from end A to center of buoyancy of member [m]
+            # Total enclosed underwater volume [m^3] and distance from end A to center of buoyancy of member [m]
+            V_UW, L_center = FrustumVCV(self.dA, dWP, LWP)
             
             r_center = self.rA + self.q*L_center          # absolute coordinates of center of volume [m]
         
@@ -493,10 +477,9 @@ class Member:
             IWP = 0
             xWP = 0
             yWP = 0
-        
-            V_UW  = TaperV( 0.5*self.dA, 0.5*self.dB, self.l)  # displaced volume of member [m^3]
             
-            alpha = TaperCV(0.5*self.dA, 0.5*self.dB, 1.0)  # relative location of center of volume from end A (0) to B (1)
+            # displaced volume [m^3] and relative location of center of volume from end A to B [m]
+            V_UW, alpha = FrustumVCV(self.dA, self.dB, self.l)
             
             r_center = self.rA*(1.0-alpha) + self.rB*alpha  # absolute coordinates of center of volume [m]
         
@@ -574,32 +557,47 @@ class Member:
             linebit.append(ax.plot(Xs[[2*i+1,2*i+3]],Ys[[2*i+1,2*i+3]],Zs[[2*i+1,2*i+3]], color='k'))  # end B edges
     
         return linebit
-        
 
-def TaperV(R1, R2, H):
-    '''returns the volume of a cylindrical section, possibly with taper'''
-    
-    if R1 == R2:             # if just a cylinder
-        return np.pi*R1*R1*H
-        #taperCV = H/2.0
 
-    elif R1 == 0:             # seperate this case out because it gives a divide by zero in general formula
-        return 1./3.*np.pi*R2*R2*H;                                            # cone volume
-        #taperCV = 3./4.*H                                                     # from base
+       
+""" FrustumVCV function can calculate volume and CV of both circular and rectangular members, making these old frustum
+functions (separate volume and CV calcs for only circular members) close to obsolete. Keeping here just in case, since
+I'm still unsure of the best way to organize getInertia
+
+def FrustumV(dA, dB, l):
+    '''returns the volume of a frustum, which can be a cylinder, cone, or anything in between'''
+    return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
+
+def FrustumCV(dA, dB, l):
+    '''returns the height of the center of volume from the lower node of a frustum member'''
+    return l*((dA**2 + 2*dA*dB + 3*dB**2)/(4*(dA**2 + dA*dB + dB**2)))  
+"""
+
+def FrustumVCV(dA, dB, H, rtn=0):
+    '''returns the volume and center of volume of a frustum, which can be a cylinder (box), cone (pyramid), or anything in between
+    Source: https://mathworld.wolfram.com/PyramidalFrustum.html '''
     
+    if np.isscalar(dA) and np.isscalar(dB): # if the inputs are scalar, meaning that it's just a diameter
+        A1 = (np.pi/4)*dA**2
+        A2 = (np.pi/4)*dB**2
+        Amid = (np.pi/4)*dA*dB
+        #return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
+    elif len(dA)==2 and len(dB)==2: # if the inputs are of length 2, meaning if it's two side lengths per node
+        A1 = dA[0]*dA[1]
+        A2 = dB[0]*dB[1]
+        Amid = np.sqrt(A1*A2)
     else:
-        coneH = H/(1.-R2/R1);                                                  # conical height
-        coneV = 1./3.*np.pi*R1*R1*coneH;                                       # cone volume
-        coneVtip = 1./3.*np.pi*R2*R2*(coneH-H);                                # height from end of taper to cone tip
-        return coneV-coneVtip;                                                 # taper volume
-        #taperCV = ( coneV*1./4.*coneH - coneVtip*(1./4.*(coneH-H) + H) )/ taperV # from base
+        raise ValueError('Input types not accepted')
     
-    return taperV
+    V = (A1 + A2 + Amid) * H/3
+    hc = ((A1 + 2*Amid + 3*A2)/(A1 + Amid + A2)) * H/4
     
-    
-def TaperCV(R1, R2, H):
-    '''returns the height of the center of buoyancy from the lower node'''
-    return H*(R1**2 + 2*R1*R2 + 3*R2**2)*0.25/(R1**2 + R1*R2 + R2**2)
+    if rtn==0:
+        return V, hc
+    elif rtn==1:
+        return V
+    elif rtn==2:
+        return hc
     
 
 def getVelocity(r, Xi, ws):
@@ -1404,14 +1402,18 @@ class FOWT():
             
             # ---------------------- get member's mass and inertia properties ------------------------------
             
-            #mass, center, I_rad, I_ax = mem.getInertia() # calls the getInertia method to calcaulte values
-            mass, center, Ixx, Iyy, Izz = mem.getInertia()
+            mass, center, Ixx, Iyy, Izz = mem.getInertia() # calls the getInertia method to calcaulte values
             
-            #Mmat = np.diag([mass, mass, mass, I_rad, I_rad, I_ax]) # MOI matrix = Mmat[3:,3:] is 0 on off diags bc symmetry in cylinders
-            Mmat = np.diag([mass, mass, mass, Ixx, Iyy, Izz])
+            # rotate the moments of inertia from the member's local axes to the unrotated, translated local member's axes
+            I = np.diag([Ixx, Iyy, Izz])    # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
+            T = mem.R.T                     # the transformation matrix to unrotate the member's local axes. Transposed because rotating axes
+            I_rot = np.matmul(T.T, np.matmul(I,T)) # MoI about member's CG with axes in same direction as global axes. [I'] = [T][I][T]^T -> [T]^T[I'][T] = [I]
+            
+            Mmat = np.diag([mass, mass, mass, 0, 0, 0]) # member's mass matrix without MoI tensor
+            Mmat[3:,3:] = I_rot
             # @mhall: Mmat as written above is the mass and inertia matrix about the member CG...@shousner: you betcha
+            # updated 12-29-20: member's mass and inertia matrix about the member CG in an unrotated, translated local frame
             
-          
             # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
             self.W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mass]) )  # weight vector
             self.M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix

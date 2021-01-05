@@ -376,19 +376,31 @@ class Member:
             if self.shape=='circular':
                 dWP = np.interp(0, self.r[:,2], self.d)     # diameter of member where its axis crosses the waterplane [m]
                 AWP = (np.pi/4)*dWP**2                      # waterplane area of member [m^2]
-                IWP = (np.pi/64)*dWP**4                     # waterplane moment of inertia [m^4] approximates the waterplane area as the shape of a circle
-            else:
+                IWP = (np.pi/64)*dWP**4                     # waterplane moment of inertia [m^4] approximates as a circle
+                IxWP = IWP                                  # MoI of circular waterplane is the same all around
+                IyWP = IWP                                  # MoI of circular waterplane is the same all around
+            elif self.shape=='rectangular':
                 slWP = np.interp(0, self.r[:,2], self.sl)   # side lengths of member where its axis crosses the waterplane [m]
-                AWP = slWP[0]*slWP[1]                       # waterplane area of rectangular member [m^2] (<<<<<<< do we need to account for phi?)
+                AWP = slWP[0]*slWP[1]                       # waterplane area of rectangular member [m^2]
                 IxWP = (1/12)*slWP[0]*slWP[1]**3            # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
                 IyWP = (1/12)*slWP[0]**3*slWP[0]            # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+                I = np.diag([IxWP, IyWP, 0])                # area moment of inertia tensor
+                T = self.R.T                                # the transformation matrix to unrotate the member's local axes
+                I_rot = np.matmul(T.T, np.matmul(I,T))      # area moment of inertia tensor where MoI axes are now in the same direction as PRP
+                IxWP = I_rot[0,0]
+                IyWP = I_rot[1,1]
             
-            LWP = abs(self.r[0,2])/cosPhi                   # get length of member that is still underwater. Assumes self.r is about global coords -> z=0 @ SWL
+            LWP = abs(self.r[0,2])/cosPhi                   # get length of member along member axis that is underwater [m]
             
+            # Assumption: the areas and MoI of the waterplane are as if the member were completely vertical, i.e. it doesn't account for phi
+            # This can be fixed later on if needed. We're using this assumption since the fix wouldn't significantly affect the outputs
             
             # Total enclosed underwater volume [m^3] and distance from end A to center of buoyancy of member [m]
-            V_UW, L_center = FrustumVCV(self.dA, dWP, LWP)
-            
+            if self.shape=='circular':
+                V_UW, L_center = FrustumVCV(self.dA, dWP, LWP)
+            elif self.shape=='rectangular':
+                V_UW, L_center = FrustumVCV(self.slA, slWP, LWP)
+                
             r_center = self.rA + self.q*L_center          # absolute coordinates of center of volume [m]
         
             
@@ -457,16 +469,15 @@ class Member:
             Cmat[4,4] = -dMy_dThy
             '''
             # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
-            #Iwp = np.pi*dWP**4/64 # [m^4] Moment of Inertia of the waterplane
             Cmat[2,2] = -dFz_dz
             Cmat[2,3] = env.rho*env.g*(     -AWP*yWP    )
             Cmat[2,4] = env.rho*env.g*(      AWP*xWP    )
             Cmat[3,2] = env.rho*env.g*(     -AWP*yWP    )
-            Cmat[3,3] = env.rho*env.g*(IWP + AWP*yWP**2 )
+            Cmat[3,3] = env.rho*env.g*(IxWP + AWP*yWP**2 )
             Cmat[3,4] = env.rho*env.g*(      AWP*xWP*yWP)
             Cmat[4,2] = env.rho*env.g*(      AWP*xWP    )
             Cmat[4,3] = env.rho*env.g*(      AWP*xWP*yWP)
-            Cmat[4,4] = env.rho*env.g*(IWP + AWP*xWP**2 )
+            Cmat[4,4] = env.rho*env.g*(IyWP + AWP*xWP**2 )
             
             
         
@@ -479,7 +490,10 @@ class Member:
             yWP = 0
             
             # displaced volume [m^3] and relative location of center of volume from end A to B [m]
-            V_UW, alpha = FrustumVCV(self.dA, self.dB, self.l)
+            if self.shape=='circular':
+                V_UW, alpha = FrustumVCV(self.dA, self.dB, self.l)
+            elif self.shape=='rectangular':
+                V_UW, alpha = FrustumVCV(self.slA, self.slB, self.l)
             
             r_center = self.rA*(1.0-alpha) + self.rB*alpha  # absolute coordinates of center of volume [m]
         

@@ -38,7 +38,7 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
             # ------------------ turbine Tower description ------------------
             # diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
             #                 number   type  shape  dA      dB      xa      ya     za     xb     yb      zb      t     l_fill  rho_ballast
-    
+            '''
             memberStrings.append(" 1     1   circ  6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76   0.0270   0.0    1025.0  ")
             memberStrings.append(" 2     1   circ  6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52   0.0262   0.0    1025.0  ")
             memberStrings.append(" 3     1   circ  5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28   0.0254   0.0    1025.0  ")
@@ -49,15 +49,16 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
             memberStrings.append(" 8     1   circ  4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08   0.0214   0.0    1025.0  ")
             memberStrings.append(" 9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84   0.0206   0.0    1025.0  ")
             memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60   0.0198   0.0    1025.0  ")
-    
+            '''
             # ---------- spar platform substructure description --------------
             #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0  ")
-            memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0 ")
-            #@mhall: Stein, I messed with the above member to get the platform stable. Feel free to change. I thought we had this matching the OC3 specs, I might be confused.
+            #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0 ")
+            memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   31.4    2910.0  ")
+            # ^ this isn't right yet. I was looking at the wrong output.
             #memberStrings.append("11     2   re  20/9.400   20/9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0  45.0 ") # rectangular member test
             memberStrings.append("12     2   circ  9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270    0.0    1025.0  ")
             memberStrings.append("13     2   circ  6.500   6.500    0.0    0.0     -4.0   0.0    0.0    10.00   0.0270    0.0    1025.0  ")
-    
+            
     
             # -------------------------- turbine RNA description ------------------------
             #                 Rotor          Nacelle
@@ -373,7 +374,25 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
     
     plt.show()
     
+    return model
+    
 
 if __name__ == "__main__":
     
-    runFDmodel()
+    model = runFDmodel()
+    fowt = model.fowtList[0]
+    print(fowt.mtower)
+    print(fowt.msubstruc)
+    print(fowt.M_struc[0,0])
+    #print(fowt.M_struc)
+    print(fowt.rCG_TOT)
+    #print(fowt.V*fowt.env.g*fowt.env.rho)
+    print(fowt.V*fowt.env.rho)
+    print(model.F_moor)
+    print(model.C_moor)
+    
+    
+    
+    
+    
+    

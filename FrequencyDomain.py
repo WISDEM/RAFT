@@ -1294,7 +1294,7 @@ class FOWT():
         # here we could pass main design parameters to the structural model so that some parts can be precomputed
         # or just store things internally for now
         self.turbineParams = turbineParams
-        
+        '''
         # below are temporary placeholders
         mRotor = 227962 #[kg]
         mNacelle = 446036 #[kg]
@@ -1314,6 +1314,12 @@ class FOWT():
 
         #hHub    = 119.0                          # hub height above water line [m]
         self.hHub    = 118.0 
+        '''
+        self.mRNA    = 110000               + 240000      # RNA mass [kg]
+        self.IxRNA   = 11776047*(1 + 1 + 1) + 115926      # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+        self.IrRNA   = 11776047*(1 +.5 +.5) + 2607890     # RNA moment of inertia about local y or z axes [kg-m^2]
+        self.xCG_RNA = 0                                  # x location of RNA center of mass [m] (Actual is ~= -0.27 m)
+        self.hHub    = 90.0                               # hub height above water line [m]
 
         
 
@@ -1406,7 +1412,10 @@ class FOWT():
         Sum_V_rCB = np.zeros(3)     # product of each member's buoyancy multiplied by center of buoyancy [m^4]
         Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
         Sum_M_center = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
-
+        
+        self.mtower = 0
+        self.msubstruc = 0
+        
         # loop through each member
         for mem in self.memberList:
             
@@ -1417,6 +1426,11 @@ class FOWT():
             # ---------------------- get member's mass and inertia properties ------------------------------
             
             mass, center, Ixx, Iyy, Izz = mem.getInertia() # calls the getInertia method to calcaulte values
+            
+            if mem.id <= 10:
+                self.mtower += mass
+            elif mem.id > 10:
+                self.msubstruc += mass
             
             # rotate the moments of inertia from the member's local axes to the unrotated, translated local member's axes
             I = np.diag([Ixx, Iyy, Izz])    # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
@@ -1460,7 +1474,7 @@ class FOWT():
         #self.C_struc += structural.K_lin(q0, qd0, self.turbineParams, u0)    # Linear Stifness Matrix
         #self.W_struc += structural.B_lin(q0, qd0, self.turbineParams, u0)    # Linear RHS
         
-        
+        self.V = VTOT
         # below are temporary placeholders
         # for now, turbine RNA is specified by some simple lumped properties
         Mmat = np.diag([self.mRNA, self.mRNA, self.mRNA, self.IxRNA, self.IrRNA, self.IrRNA])            # create mass/inertia matrix
@@ -1634,8 +1648,8 @@ class FOWT():
 
         # sum matrices to check totals from static calculations before hydrodynamic terms are added
 
-        C_tot0 = self.C_struc + self.C_hydro + C_moor0   # total system stiffness matrix about undisplaced position
-        W_tot0 = self.W_struc + self.W_hydro + W_moor0   # system mean forces and moments at undisplaced position
+        self.C_tot = self.C_struc + self.C_hydro + self.C_moor   # total system stiffness matrix about undisplaced position
+        #W_tot0 = self.W_struc + self.W_hydro + W_moor0   # system mean forces and moments at undisplaced position
 
         M = self.M_struc + self.A_hydro_morison          # total mass plus added mass matrix
 

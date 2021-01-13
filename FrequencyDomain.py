@@ -1023,9 +1023,35 @@ class Model():
         # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
         eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
         
+        
+        # sort to normal DOF order based on which DOF is largest in each eigenvector  - still has issues <<<<<<
+        ind_list = []
+        for i in range(6):     # loop through each vector        
+            '''
+            ind_list.append(np.argmax(np.abs(eigenvectors[i,:])))
+            '''
+            vec = np.abs(eigenvectors[:, i])
+        
+            for j in range(6):  # make sure the index isn't already claimed
+                
+                ind = np.argmax(vec)
+                
+                if ind in ind_list:
+                    vec[ind] = 0.0
+                else:
+                    ind_list.append(ind)
+                    break
+            
+        fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi
+        
+        modes = eigenvectors[:,ind_list]
+        
         print("natural frequencies from eigen values")
-        printVec(np.sqrt(eigenvals))
+        printVec(np.sqrt(eigenvals)/ 2.0/np.pi)
 
+        print("mode shapes from eigen values")
+        printMat(modes)
+        
 
         # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
         if C_tot[0,0] == 0.0:
@@ -1052,7 +1078,6 @@ class Model():
         fn[4] = np.sqrt( (C_tot[4,4] + C_tot[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M_tot[4,4] - M_tot[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
         # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
         printVec(fn)
-
     
     
     def solveStatics(self):

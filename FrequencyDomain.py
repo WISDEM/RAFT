@@ -398,13 +398,13 @@ class Member:
             # Assumption: the areas and MoI of the waterplane are as if the member were completely vertical, i.e. it doesn't account for phi
             # This can be fixed later on if needed. We're using this assumption since the fix wouldn't significantly affect the outputs
             
-            # Total enclosed underwater volume [m^3] and distance from end A to center of buoyancy of member [m]
+            # Total enclosed underwater volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
             if self.shape=='circular':
-                V_UW, L_center = FrustumVCV(self.dA, dWP, LWP)
+                V_UW, hc = FrustumVCV(self.dA, dWP, LWP)
             elif self.shape=='rectangular':
-                V_UW, L_center = FrustumVCV(self.slA, slWP, LWP)
+                V_UW, hc = FrustumVCV(self.slA, slWP, LWP)
                 
-            r_center = self.rA + self.q*L_center          # absolute coordinates of center of volume [m]
+            r_center = self.rA + self.q*hc          # absolute coordinates of center of volume [m]
         
             
             
@@ -492,13 +492,13 @@ class Member:
             xWP = 0
             yWP = 0
             
-            # displaced volume [m^3] and relative location of center of volume from end A to B [m]
+            # displaced volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
             if self.shape=='circular':
-                V_UW, alpha = FrustumVCV(self.dA, self.dB, self.l)
+                V_UW, hc = FrustumVCV(self.dA, self.dB, self.l)
             elif self.shape=='rectangular':
-                V_UW, alpha = FrustumVCV(self.slA, self.slB, self.l)
+                V_UW, hc = FrustumVCV(self.slA, self.slB, self.l)
             
-            r_center = self.rA*(1.0-alpha) + self.rB*alpha  # absolute coordinates of center of volume [m]
+            r_center = self.rA + self.q*hc             # absolute coordinates of center of volume [m]
         
             # buoyancy force (and moment) vector
             Fvec = translateForce3to6DOF( r_center, np.array([0, 0, env.rho*env.g*V_UW]) ) 

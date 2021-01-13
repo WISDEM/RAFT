@@ -51,7 +51,7 @@ class Member:
         
         
         entries = strin.split()                                     # split the input string into a list of string inputs
-        
+        print(entries)
         self.id = np.int(entries[0])                                # set the ID value of the member
         self.type = np.int(entries[1])                              # set the type of the member (for now, just arbitrary numbers: 0,1,2, etc.)
         
@@ -69,7 +69,7 @@ class Member:
             self.slA = np.array(entries[3].split("/"), dtype=float) # array of side lengths of lower node [m]
             self.slB = np.array(entries[4].split("/"), dtype=float) # array of side lengths of upper node [m]
             
-            self.gamma = np.float(entries[14])                      # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
+            self.gamma = np.float(entries[15])                      # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
         
         else:
             raise ValueError('The only allowable shape strings are circular and rectangular')
@@ -82,11 +82,13 @@ class Member:
         self.l_fill = np.float(entries[12])                         # length of member (from end A to B) filled with ballast [m]
         self.rho_fill = np.float(entries[13])                       # density of ballast in member [kg/m^3]
         
-        self.rho_shell = 8500                                       # shell mass density [kg/m^3] (could maybe become input later on?)
+        # moved to memberString input [14]
+        #self.rho_shell = 7850                                       # shell mass density [kg/m^3] (could maybe become input later on?)
+        self.rho_shell = np.float(entries[14])
         
         rAB = self.rB-self.rA                                       # The relative coordinates of upper node from lower node [m]
         self.l = np.linalg.norm(rAB)                                # member length [m]
-                
+        
         # initialize member orientation variables
         self.q = rAB/self.l                                         # member axial unit vector
         self.p1 = np.zeros(3)                                       # member transverse unit vectors (to be filled in later)
@@ -175,6 +177,7 @@ class Member:
             # MASS AND CENTER OF GRAVITY
             dAi = self.dA - 2*self.t                                    # inner diameter of lower node [m]
             dBi = self.dB - 2*self.t                                    # inner diameter of upper node [m]
+            
             V_outer, hco = FrustumVCV(self.dA, self.dB, self.l)         # volume and center of volume of solid frustum with outer diameters [m^3] [m]
             V_inner, hci = FrustumVCV(dAi, dBi, self.l)                 # volume and center of volume of solid frustum with inner diameters [m^3] [m]
             v_shell = V_outer-V_inner                                   # volume of hollow frustum with shell thickness [m^3]
@@ -191,7 +194,7 @@ class Member:
             hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
             
             center = self.rA + (self.q*hc)                              # total center of mass of the member from the PRP [m]
-        
+            #print(self.id, m_fill)
         
         elif self.shape=='rectangular':
             # MASS AND CENTER OF GRAVITY
@@ -591,20 +594,26 @@ def FrustumVCV(dA, dB, H, rtn=0):
     '''returns the volume and center of volume of a frustum, which can be a cylinder (box), cone (pyramid), or anything in between
     Source: https://mathworld.wolfram.com/PyramidalFrustum.html '''
     
-    if np.isscalar(dA) and np.isscalar(dB): # if the inputs are scalar, meaning that it's just a diameter
-        A1 = (np.pi/4)*dA**2
-        A2 = (np.pi/4)*dB**2
-        Amid = (np.pi/4)*dA*dB
-        #return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
-    elif len(dA)==2 and len(dB)==2: # if the inputs are of length 2, meaning if it's two side lengths per node
-        A1 = dA[0]*dA[1]
-        A2 = dB[0]*dB[1]
-        Amid = np.sqrt(A1*A2)
+    if dA==0 and dB==0:
+        V = 0
+        hc = 0
     else:
-        raise ValueError('Input types not accepted')
-    
-    V = (A1 + A2 + Amid) * H/3
-    hc = ((A1 + 2*Amid + 3*A2)/(A1 + Amid + A2)) * H/4
+        if np.isscalar(dA) and np.isscalar(dB): # if the inputs are scalar, meaning that it's just a diameter
+            A1 = (np.pi/4)*dA**2
+            A2 = (np.pi/4)*dB**2
+            Amid = (np.pi/4)*dA*dB
+            #print(dA, dB)
+            #print(A1, A2, Amid)
+            #return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
+        elif len(dA)==2 and len(dB)==2: # if the inputs are of length 2, meaning if it's two side lengths per node
+            A1 = dA[0]*dA[1]
+            A2 = dB[0]*dB[1]
+            Amid = np.sqrt(A1*A2)
+        else:
+            raise ValueError('Input types not accepted')
+        
+        V = (A1 + A2 + Amid) * H/3
+        hc = ((A1 + 2*Amid + 3*A2)/(A1 + Amid + A2)) * H/4
     
     if rtn==0:
         return V, hc
@@ -811,7 +820,7 @@ def translateMatrix6to6DOF(r, Min):
     
     # moment of inertia matrix  [I'] = [H][m][H]^T + [J]^T [H] + [H]^T [J] + [I]
     Mout[3:,3:] = np.matmul(np.matmul(H,Min[:3,:3]), H.T) + np.matmul(Min[3:,:3], H) + np.matmul(H.T, Min[:3,3:]) + Min[3:,3:]
-        
+    
     return Mout
     
 
@@ -1371,8 +1380,8 @@ class FOWT():
         # wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
         self.zeta = np.sqrt(S)
             
-            
-        Fthrust = 800.0e3            # peak thrust force, [N]
+        Fthrust = 0
+        #Fthrust = 800.0e3            # peak thrust force, [N]
         #Mthrust = self.hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
         
         # add thrust force and moment to mooring system body
@@ -1415,6 +1424,13 @@ class FOWT():
         
         self.mtower = 0
         self.msubstruc = 0
+        mtower_sum = 0
+        msubstruc_sum = 0
+        self.I44 = 0
+        self.I44B = 0
+        self.I55 = 0
+        self.I55B = 0
+        self.I66 = 0
         
         # loop through each member
         for mem in self.memberList:
@@ -1427,11 +1443,13 @@ class FOWT():
             
             mass, center, Ixx, Iyy, Izz = mem.getInertia() # calls the getInertia method to calcaulte values
             
-            if mem.id <= 10:
+            if mem.id <= 10:                # solves for the tower mass and CG
                 self.mtower += mass
-            elif mem.id > 10:
+                mtower_sum += center*mass
+            elif mem.id > 10:               # solves for the substructure mass and CG
                 self.msubstruc += mass
-            
+                msubstruc_sum += center*mass
+                
             # rotate the moments of inertia from the member's local axes to the unrotated, translated local member's axes
             I = np.diag([Ixx, Iyy, Izz])    # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
             T = mem.R.T                     # the transformation matrix to unrotate the member's local axes. Transposed because rotating axes
@@ -1448,6 +1466,22 @@ class FOWT():
             # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
             # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
             Sum_M_center += center*mass
+            
+            
+            # Solve for the moments of inertia of the substructure about the substructure's CM
+            rCG_subs = -89.89458737            # for OC3
+            #rCG_subs = -13.48                   # for OC4  
+            
+            # the substructure CG is calculated after the for loop, but I need the mass's the centers of each member
+            # in the for loop to solve for the MoI's. Haven't figured out the best way to do this
+            if mem.id > 10:
+                a = translateMatrix6to6DOF(center, Mmat)
+                self.I44 += a[3,3] - mass*(rCG_subs)**2
+                self.I44B += a[3,3]
+                self.I55 += a[4,4] - mass*(rCG_subs)**2
+                self.I55B += a[4,4]
+                self.I66 += a[5,5]
+            
             
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
             
@@ -1474,7 +1508,7 @@ class FOWT():
         #self.C_struc += structural.K_lin(q0, qd0, self.turbineParams, u0)    # Linear Stifness Matrix
         #self.W_struc += structural.B_lin(q0, qd0, self.turbineParams, u0)    # Linear RHS
         
-        self.V = VTOT
+        
         # below are temporary placeholders
         # for now, turbine RNA is specified by some simple lumped properties
         Mmat = np.diag([self.mRNA, self.mRNA, self.mRNA, self.IxRNA, self.IrRNA, self.IrRNA])            # create mass/inertia matrix
@@ -1487,7 +1521,11 @@ class FOWT():
 
 
         # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
-
+        
+        self.V = VTOT                                   # solve for the total underwater volume
+        self.rCG_tow = mtower_sum/self.mtower           # solve for just the tower mass and CG
+        self.rCG_sub = msubstruc_sum/self.msubstruc     # solve for just the substructure mass and CG
+        
         mTOT = self.M_struc[0,0]
         rCG_TOT = Sum_M_center/mTOT 
         self.rCG_TOT = rCG_TOT

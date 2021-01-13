@@ -21,7 +21,7 @@ fd = importlib.reload(fd)
 
 
 # >>>>> this is the test script to execture the frequency domain model <<<<<
-def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
+def runFDmodel(wt_opt = None, model = 'OC3'):
     '''
         wt_opt : this is where the openMDAO data structure from gc_WT_InitModel.py would get passed in
     '''
@@ -32,34 +32,43 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
         
         memberStrings = []    # initialize an empty list to hold all the member strings
         
-        if model=='OC3-Hywind':
+        if model=='OC3':
             # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
             
             # ------------------ turbine Tower description ------------------
+            
+            tStart =    0.0270          # [m] from waterline
+            tEnd =      0.0198       #
+            
+            nTowMem = 10
+            t = np.round(np.linspace(tStart, tEnd, nTowMem), 4)
+            
             # diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
             #                 number   type  shape  dA      dB      xa      ya     za     xb     yb      zb      t     l_fill  rho_ballast
-            '''
-            memberStrings.append(" 1     1   circ  6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76   0.0270   0.0    1025.0  ")
-            memberStrings.append(" 2     1   circ  6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52   0.0262   0.0    1025.0  ")
-            memberStrings.append(" 3     1   circ  5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28   0.0254   0.0    1025.0  ")
-            memberStrings.append(" 4     1   circ  5.711   5.448    0.0    0.0    33.28   0.0    0.0    41.04   0.0246   0.0    1025.0  ")
-            memberStrings.append(" 5     1   circ  5.448   5.185    0.0    0.0    41.04   0.0    0.0    48.80   0.0238   0.0    1025.0  ")
-            memberStrings.append(" 6     1   circ  5.185   4.922    0.0    0.0    48.80   0.0    0.0    56.56   0.0230   0.0    1025.0  ")
-            memberStrings.append(" 7     1   circ  4.922   4.659    0.0    0.0    56.56   0.0    0.0    64.32   0.0222   0.0    1025.0  ")
-            memberStrings.append(" 8     1   circ  4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08   0.0214   0.0    1025.0  ")
-            memberStrings.append(" 9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84   0.0206   0.0    1025.0  ")
-            memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60   0.0198   0.0    1025.0  ")
-            '''
-            # ---------- spar platform substructure description --------------
-            #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0  ")
-            #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0 ")
-            memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   31.4    2910.0  ")
-            # ^ this isn't right yet. I was looking at the wrong output.
-            #memberStrings.append("11     2   re  20/9.400   20/9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0  45.0 ") # rectangular member test
-            memberStrings.append("12     2   circ  9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270    0.0    1025.0  ")
-            memberStrings.append("13     2   circ  6.500   6.500    0.0    0.0     -4.0   0.0    0.0    10.00   0.0270    0.0    1025.0  ")
             
-    
+            memberStrings.append(" 1     1   circ  6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76  "+str(t[0])+"  0.0    1025.0   8500  ")
+            memberStrings.append(" 2     1   circ  6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52  "+str(t[1])+"  0.0    1025.0   8500  ")
+            memberStrings.append(" 3     1   circ  5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28  "+str(t[2])+"  0.0    1025.0   8500  ")
+            memberStrings.append(" 4     1   circ  5.711   5.448    0.0    0.0    33.28   0.0    0.0    41.04  "+str(t[3])+"  0.0    1025.0   8500  ")
+            memberStrings.append(" 5     1   circ  5.448   5.185    0.0    0.0    41.04   0.0    0.0    48.80  "+str(t[4])+"  0.0    1025.0   8500  ")
+            memberStrings.append(" 6     1   circ  5.185   4.922    0.0    0.0    48.80   0.0    0.0    56.56  "+str(t[5])+"  0.0    1025.0   8500  ")
+            memberStrings.append(" 7     1   circ  4.922   4.659    0.0    0.0    56.56   0.0    0.0    64.32  "+str(t[6])+"  0.0    1025.0   8500  ")
+            memberStrings.append(" 8     1   circ  4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08  "+str(t[7])+"  0.0    1025.0   8500  ")
+            memberStrings.append(" 9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84  "+str(t[8])+"  0.0    1025.0   8500  ")
+            memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60  "+str(t[9])+"  0.0    1025.0   8500  ")
+            
+            # ---------- spar platform substructure description --------------
+            # July 2020 weight-buoyancy balancing (either should work)
+            #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0   8500  ")
+            #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0  8500  ")
+            # January 2021 weight-buoyancy balancing
+            memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1860.0   8500  ")
+            
+            #memberStrings.append("11     2   re  20/9.400   20/9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0  8500  45.0 ") # rectangular member test
+            memberStrings.append("12     2   circ  9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00   0.0270    0.0    1025.0   8500  ")
+            memberStrings.append("13     2   circ  6.500   6.500    0.0    0.0     -4.0   0.0    0.0    10.00   0.0270    0.0    1025.0   8500  ")
+            
+            
             # -------------------------- turbine RNA description ------------------------
             #                 Rotor          Nacelle
             mRNA    = 110000               + 240000      # RNA mass [kg]
@@ -68,7 +77,8 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
             xCG_RNA = 0                                  # x location of RNA center of mass [m] (Actual is ~= -0.27 m)
             hHub    = 90.0                               # hub height above water line [m]
     
-            Fthrust = 800e3                              # peak thrust force, [N]
+            #Fthrust = 800e3                              # peak thrust force, [N]
+            Fthrust = 0
             
             
             # :::::::::::::::::::::::::::::: moorings inputs :::::::::::::::::::::::::::::::::::
@@ -85,12 +95,137 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
             angle =         np.array([0, 2*np.pi/3, -2*np.pi/3])    # [rad]
             rho =           1025.0                                  # [kg/m^3]
             
+            
             # make a single-type 3-line mooring system by calling a function in MoorDesign
             MooringSystem = md.make3LineSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength)
             # initialize the system
             MooringSystem.initialize()
             
+            
+        elif model=='OC4':
+            # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
+            
+            # ------------------ turbine Tower description ------------------
+            
+            tStart =    0.0270          # [m] from waterline
+            tEnd =      0.0198       #
+            nTowMem = 10
+            t = np.round(np.linspace(tStart, tEnd, nTowMem), 4)
+            
+            rho_shell = 7850
+            
+            # diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
+            #                 number   type  shape  dA      dB      xa      ya     za     xb     yb      zb      t     l_fill   rho_ballast  rho_shell
+            
+            memberStrings.append(" 1     1   circ  6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76  "+str(t[0])+"  0.0    1025.0   7850  ")
+            memberStrings.append(" 2     1   circ  6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52  "+str(t[1])+"  0.0    1025.0   7850  ")
+            memberStrings.append(" 3     1   circ  5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28  "+str(t[2])+"  0.0    1025.0   7850  ")
+            memberStrings.append(" 4     1   circ  5.711   5.448    0.0    0.0    33.28   0.0    0.0    41.04  "+str(t[3])+"  0.0    1025.0   7850  ")
+            memberStrings.append(" 5     1   circ  5.448   5.185    0.0    0.0    41.04   0.0    0.0    48.80  "+str(t[4])+"  0.0    1025.0   7850  ")
+            memberStrings.append(" 6     1   circ  5.185   4.922    0.0    0.0    48.80   0.0    0.0    56.56  "+str(t[5])+"  0.0    1025.0   7850  ")
+            memberStrings.append(" 7     1   circ  4.922   4.659    0.0    0.0    56.56   0.0    0.0    64.32  "+str(t[6])+"  0.0    1025.0   7850  ")
+            memberStrings.append(" 8     1   circ  4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08  "+str(t[7])+"  0.0    1025.0   7850  ")
+            memberStrings.append(" 9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84  "+str(t[8])+"  0.0    1025.0   7850  ")
+            memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60  "+str(t[9])+"  0.0    1025.0   7850  ")
+            
+            # ---------- spar platform substructure description --------------
+            # Main Column
+            memberStrings.append("11    2    circ    6.5     6.5      0.0      0.0    -20.0     0.0      0.0    10.00   0.03     0.0      1025.0   7850  ")
+            # Upper Columns
+            memberStrings.append("12    3    circ   12.0    12.0     14.43    25.0    -14.0    14.43    25.0    12.00   0.06     7.83     1025.0   7850  ")
+            memberStrings.append("13    3    circ   12.0    12.0    -28.87     0.0    -14.0   -28.87     0.0    12.00   0.06     7.83     1025.0   7850  ")
+            memberStrings.append("14    3    circ   12.0    12.0     14.43   -25.0    -14.0    14.43   -25.0    12.00   0.06     7.83     1025.0   7850  ")
+            # Base Columns
+            memberStrings.append("15    4    circ   24.0    24.0     14.43    25.0    -20.0    14.43    25.0   -14.00   0.06     5.1078   1025.0   7850  ")
+            memberStrings.append("16    4    circ   24.0    24.0    -28.87     0.0    -20.0   -28.87     0.0   -14.00   0.06     5.1078   1025.0   7850  ")
+            memberStrings.append("17    4    circ   24.0    24.0     14.43   -25.0    -20.0    14.43   -25.0   -14.00   0.06     5.1078   1025.0   7850  ")
+            # Delta Upper Pontoons
+            memberStrings.append("18    5    circ    1.6     1.6      9.20    22.0     10.0   -23.67     3.0    10.00   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("19    5    circ    1.6     1.6    -23.67    -3.0     10.0     9.2    -22.0    10.00   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("20    5    circ    1.6     1.6     14.43   -19.0     10.0    14.43    19.0    10.00   0.0175   0.0      1025.0   7850  ")
+            # Delta Lower Pontoons
+            memberStrings.append("21    6    circ    1.6     1.6      4.00    19.0    -17.0   -18.47     6.0   -17.00   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("22    6    circ    1.6     1.6    -18.47    -6.0    -17.0     4.0    -19.0   -17.00   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("23    6    circ    1.6     1.6     14.43   -13.0    -17.0    14.43    13.0   -17.00   0.0175   0.0      1025.0   7850  ")
+            # Y Upper Pontoons
+            memberStrings.append("24    7    circ    1.6     1.6      1.625    2.815   10.0    11.43    19.81   10.00   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("25    7    circ    1.6     1.6     -3.25     0.0     10.0   -22.87     0.0    10.00   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("26    7    circ    1.6     1.6      1.625   -2.815   10.0    11.43   -19.81   10.00   0.0175   0.0      1025.0   7850  ")
+            # Y Lower Pontoons
+            memberStrings.append("27    8    circ    1.6     1.6      1.625    2.815  -17.0     8.4     14.6   -17.00   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("28    8    circ    1.6     1.6     -3.25     0.0    -17.0   -16.87     0.0   -17.00   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("29    8    circ    1.6     1.6      1.625   -2.815  -17.0     8.4    -14.6   -17.00   0.0175   0.0      1025.0   7850  ")
+            # Cross Braces
+            memberStrings.append("30    9    circ    1.6     1.6      1.625    2.815  -16.2    11.43    19.81    9.13   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("31    9    circ    1.6     1.6     -3.25     0.0    -16.2   -22.87     0.0     9.13   0.0175   0.0      1025.0   7850  ")
+            memberStrings.append("32    9    circ    1.6     1.6      1.625   -2.815  -16.2    11.43   -19.81    9.13   0.0175   0.0      1025.0   7850  ")
+            
+            # Upper Column Top Caps
+            memberStrings.append("33    10   circ   11.88   11.88    14.43    25.0     11.94   14.43    25.0    12.00   5.94     0.0      1025.0   7850  ")
+            memberStrings.append("34    10   circ   11.88   11.88   -28.87     0.0     11.94  -28.87     0.0    12.00   5.94     0.0      1025.0   7850  ")
+            memberStrings.append("35    10   circ   11.88   11.88    14.43   -25.0     11.94   14.43   -25.0    12.00   5.94     0.0      1025.0   7850  ")
+            # Upper Column Bottom Caps
+            '''
+            memberStrings.append("36    11   circ   11.88   11.88    14.43    25.0    -14.0    14.43    25.0   -13.94   5.94     0.0      1025.0   7850  ")
+            memberStrings.append("37    11   circ   11.88   11.88   -28.87     0.0    -14.0   -28.87     0.0   -13.94   5.94     0.0      1025.0   7850  ")
+            memberStrings.append("38    11   circ   11.88   11.88    14.43   -25.0    -14.0    14.43   -25.0   -13.94   5.94     0.0      1025.0   7850  ")
+            '''
+            memberStrings.append("36    11   circ   12.00   12.00    14.43    25.0    -14.06    14.43    25.0   -14.0   6.00     0.0      1025.0   7850  ")
+            memberStrings.append("37    11   circ   12.00   12.00   -28.87     0.0    -14.06   -28.87     0.0   -14.0   6.00     0.0      1025.0   7850  ")
+            memberStrings.append("38    11   circ   12.00   12.00    14.43   -25.0    -14.06    14.43   -25.0   -14.0   6.00     0.0      1025.0   7850  ")
+            
+            # Base Column Top Caps
+            '''
+            memberStrings.append("39    12   circ   23.88   23.88    14.43    25.0    -14.06   14.43    25.0   -14.00   11.94     0.0      1025.0   7850  ")
+            memberStrings.append("40    12   circ   23.88   23.88   -28.87     0.0    -14.06  -28.87     0.0   -14.00   11.94     0.0      1025.0   7850  ")
+            memberStrings.append("41    12   circ   23.88   23.88    14.43   -25.0    -14.06   14.43   -25.0   -14.00   11.94     0.0      1025.0   7850  ")
+            '''
+            memberStrings.append("39    12   circ   23.88   23.88    14.43    25.0    -14.06   14.43    25.0   -14.00    5.94     0.0      1025.0   7850  ")
+            memberStrings.append("40    12   circ   23.88   23.88   -28.87     0.0    -14.06  -28.87     0.0   -14.00    5.94     0.0      1025.0   7850  ")
+            memberStrings.append("41    12   circ   23.88   23.88    14.43   -25.0    -14.06   14.43   -25.0   -14.00    5.94     0.0      1025.0   7850  ")
+            
+            
+            # Base Column Bottom Caps
+            memberStrings.append("42    13   circ   23.88   23.88    14.43    25.0    -20.0    14.43    25.0   -19.94   11.94     0.0      1025.0   7850  ")
+            memberStrings.append("43    13   circ   23.88   23.88   -28.87     0.0    -20.0   -28.87     0.0   -19.94   11.94     0.0      1025.0   7850  ")
+            memberStrings.append("44    13   circ   23.88   23.88    14.43   -25.0    -20.0    14.43   -25.0   -19.94   11.94     0.0      1025.0   7850  ")
+            
+            # Main Column Bottom Caps
+            memberStrings.append("45    14   circ    6.44    6.44     0.0      0.0    -20.0     0.0      0.0   -19.97    3.22     0.0      1025.0   7850  ")
+            
+            
+            # -------------------------- turbine RNA description ------------------------
+            #                 Rotor          Nacelle
+            mRNA    = 110000               + 240000      # RNA mass [kg]
+            IxRNA   = 11776047*(1 + 1 + 1) + 115926      # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+            IrRNA   = 11776047*(1 +.5 +.5) + 2607890     # RNA moment of inertia about local y or z axes [kg-m^2]
+            xCG_RNA = 0                                  # x location of RNA center of mass [m] (Actual is ~= -0.27 m)
+            hHub    = 90.0                               # hub height above water line [m]
     
+            #Fthrust = 800e3                              # peak thrust force, [N]
+            Fthrust = 0
+            
+            
+            # :::::::::::::::::::::::::::::: moorings inputs :::::::::::::::::::::::::::::::::::
+            
+            depth = 200.
+            type_string = 'main'
+            anchorR = 837.6
+            fairR = 40.868
+            fair_depth = 14.
+            LineLength = 835.5
+            LineD = 0.0766
+            dryMass_L = 113.35
+            EA = 753.6e6
+            angle =         np.array([0, 2*np.pi/3, -2*np.pi/3])    # [rad]
+            rho =           1025.0                                  # [kg/m^3]
+            
+            # make a single-type 3-line mooring system by calling a function in MoorDesign
+            MooringSystem = md.make3LineSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength)
+            # initialize the system
+            MooringSystem.initialize()
+            
+            
         elif model=='DTU-10MW':
             # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
             
@@ -379,18 +514,39 @@ def runFDmodel(wt_opt = None, model = 'OC3-Hywind'):
 
 if __name__ == "__main__":
     
-    model = runFDmodel()
-    fowt = model.fowtList[0]
-    print(fowt.mtower)
-    print(fowt.msubstruc)
-    print(fowt.M_struc[0,0])
-    #print(fowt.M_struc)
-    print(fowt.rCG_TOT)
-    #print(fowt.V*fowt.env.g*fowt.env.rho)
-    print(fowt.V*fowt.env.rho)
-    print(model.F_moor)
-    print(model.C_moor)
+    #runFDmodel()
     
+    model = runFDmodel()
+    #model = runFDmodel(model='OC4')
+    
+    
+    fowt = model.fowtList[0]
+    print('Tower Mass:          ',np.round(fowt.mtower,2),' kg')
+    print('Tower CG:            ',np.round(fowt.rCG_tow[2],4),' m from SWL')
+    print('Substructure Mass:   ',np.round(fowt.msubstruc,2),' kg')
+    print('Substructure CG:     ',np.round(fowt.rCG_sub[2],4),' m from SWL')
+    print('Total Mass:          ',np.round(fowt.M_struc[0,0],2),' kg')
+    print('Total CG:            ',np.round(fowt.rCG_TOT[2],2),' m from SWL')
+    print('Roll Inertia at PCM  ',np.round(fowt.I44,2),' kg-m^2')
+    print('Pitch Inertia at PCM ',np.round(fowt.I55,2),' kg-m^2')
+    print('Yaw Inertia at PCM   ',np.round(fowt.I66,2),' kg-m^2')
+    print('-------MAKE SURE YOU HAVE THE RIGHT SUBSTRUCTURE CM IN CALCSTATICS OF FREQUENCYDOMAIN LINE 1472---------')
+    #print('Roll Inertia at PRP: ',np.round(fowt.I44B,2),' kg-m^2')
+    #print('Pitch Inertia at PRP:',np.round(fowt.I55B,2),' kg-m^2')
+    print('Buoyancy (pgV):      ',np.round(fowt.V*fowt.env.g*fowt.env.rho,2),' N')
+    print('C33:                 ',np.round(fowt.C_hydro[2,2],2),' N')
+    print('C44:                 ',np.round(fowt.C_hydro[3,3],2),' Nm/rad')
+    print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
+    
+    print(fowt.C_struc[3,3])
+    print(fowt.C_struc[4,4])
+    
+    print('F_lines: ',list(np.round(np.array(model.F_moor),2)),' N')
+    print('C_lines: ',model.C_moor)
+    
+    
+    def pdiff(x,y):
+        return (abs(x-y)/y)*100
     
     
     

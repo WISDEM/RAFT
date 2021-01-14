@@ -51,7 +51,7 @@ class Member:
         
         
         entries = strin.split()                                     # split the input string into a list of string inputs
-        print(entries)
+        
         self.id = np.int(entries[0])                                # set the ID value of the member
         self.type = np.int(entries[1])                              # set the type of the member (for now, just arbitrary numbers: 0,1,2, etc.)
         
@@ -359,7 +359,7 @@ class Member:
             
         # partially submerged case
         if self.r[0,2]*self.r[-1,2] <= 0:    # if member crosses (or touches) water plane
-                
+            
             # angles
             beta = np.arctan2(self.q[1],self.q[0])  # member incline heading from x axis
             phi  = np.arctan2(np.sqrt(self.q[0]**2 + self.q[1]**2), self.q[2])  # member incline angle from vertical
@@ -406,9 +406,9 @@ class Member:
                 
             r_center = self.rA + self.q*hc          # absolute coordinates of center of volume [m]
         
+
             
             
-        
             # >>>> question: should this function be able to use displaced/rotated values? <<<<
             
             # ------------- get hydrostatic derivatives ---------------- 
@@ -481,12 +481,20 @@ class Member:
             Cmat[4,2] = env.rho*env.g*(      AWP*xWP    )
             Cmat[4,3] = env.rho*env.g*(      AWP*xWP*yWP)
             Cmat[4,4] = env.rho*env.g*(IyWP + AWP*xWP**2 )
+            '''
+            roll_arm = np.linalg.norm([r_center[1], r_center[2]])
+            pitch_arm = np.linalg.norm([r_center[0], r_center[2]])
             
+            Cmat[3,3] += env.rho*env.g*V_UW * -roll_arm
+            Cmat[4,4] += env.rho*env.g*V_UW * -pitch_arm
+            '''
+            Cmat[3,3] += env.rho*env.g*V_UW * r_center[2]
+            Cmat[4,4] += env.rho*env.g*V_UW * r_center[2]
             
         
         # fully submerged case 
         elif self.r[0,2] <= 0 and self.r[-1,2] <= 0:
-        
+            
             AWP = 0
             IWP = 0
             xWP = 0
@@ -504,7 +512,14 @@ class Member:
             Fvec = translateForce3to6DOF( r_center, np.array([0, 0, env.rho*env.g*V_UW]) ) 
   
             # hydrostatic stiffness matrix (about end A)
-            Cmat = np.zeros([6,6])  
+            Cmat = np.zeros([6,6])
+            '''
+            roll_arm = np.linalg.norm([r_center[1], r_center[2]])
+            pitch_arm = np.linalg.norm([r_center[0], r_center[2]])
+            
+            Cmat[3,3] += env.rho*env.g*V_UW * -roll_arm
+            Cmat[4,4] += env.rho*env.g*V_UW * -pitch_arm
+            '''
             Cmat[3,3] = env.rho*env.g*V_UW * r_center[2]
             Cmat[4,4] = env.rho*env.g*V_UW * r_center[2]
             
@@ -518,7 +533,9 @@ class Member:
             r_center = np.zeros(3)
             Fvec = np.zeros(6)
             Cmat = np.zeros([6,6])
-            
+            L_center = 0
+        
+        #print(self.id, a, Cmat[3,3], Cmat[4,4])
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
     def plot(self, ax):
@@ -888,7 +905,7 @@ def printVec(vec):
 class Model():
 
 
-    def __init__(self, memberList=[], turbineParams=None, BEM=None, nTurbines=1, ms=None, w=[], depth=300):
+    def __init__(self, memberList=[], turbineParams=None, BEM=None, nTurbines=1, ms=None, w=[], depth=300, RNAprops={}):
         '''
         Empty frequency domain model initialization function
         
@@ -912,6 +929,12 @@ class Model():
             self.ms = ms
             
         self.depth = depth
+        
+        # If you're modeling OC3 spar, for example, import the manual yaw stiffness needed by the bridle config
+        if 'yaw stiffness' in RNAprops:
+            self.yawstiff = RNAprops['yaw stiffness']
+        else:
+            self.yawstiff = 0
             
         # analysis frequency array
         if len(w)==0:
@@ -926,7 +949,7 @@ class Model():
         
         # if FOWT members were included, set up the FOWT here  <<< only set for 1 FOWT for now <<<
         if len(memberList)>0:
-            self.fowtList.append(FOWT(memberList, turbineParams=turbineParams, w=self.w, mpb=ms.BodyList[0], depth=depth))
+            self.fowtList.append(FOWT(memberList, turbineParams=turbineParams, w=self.w, mpb=ms.BodyList[0], depth=depth, RNAprops=RNAprops))
             self.coords.append([0.0,0.0])
             self.nDOF += 6
             
@@ -967,7 +990,7 @@ class Model():
             #fowt.calcDynamicConstants()
     
         ## First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
-        self.C_moor = self.ms.getCoupledStiffness()                             # this method accounts for eqiuilibrium of free objects in the system
+        self.C_moor = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
         self.F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)
 
     
@@ -986,11 +1009,11 @@ class Model():
         printVec(r6eq)
         print("Surge: {:.2f}".format(r6eq[0]))
         print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
-        C_moor = self.ms.getCoupledStiffness()
+        C_moor = self.ms.getCoupledStiffness(lines_only=True)
         F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
 
         # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
-        C_moor[5,5] += 98340000.0
+        C_moor[5,5] += self.yawstiff
         
         self.C_moor = C_moor
         self.F_moor = F_moor
@@ -1271,7 +1294,7 @@ class Model():
 class FOWT():
     '''This class comprises the frequency domain model of a single floating wind turbine'''
 
-    def __init__(self, memberStrings, turbineParams=None, w=[], mpb=None, depth=600):
+    def __init__(self, memberStrings, turbineParams=None, w=[], mpb=None, depth=600, RNAprops={}):
         '''This initializes the FOWT object which contains everything for a single turbine's frequency-domain dynamics.
         The initializiation sets up the design description.
         
@@ -1328,33 +1351,13 @@ class FOWT():
         # here we could pass main design parameters to the structural model so that some parts can be precomputed
         # or just store things internally for now
         self.turbineParams = turbineParams
-        '''
-        # below are temporary placeholders
-        mRotor = 227962 #[kg]
-        mNacelle = 446036 #[kg]
-        IxHub = 325671 #[kg-m^2]
-        IzNacelle = 7326346 #[kg-m^2]
-        IxBlades = 45671252 #[kg-m^2] MOI value from FAST file, don't know where MOI is about. Assuming about the hub
-        xCG_Hub = -7.07 #[m] from yaw axis
-        xCG_Nacelle = 2.687 #[m] from yaw axis
-
-
-        self.mRNA = mRotor + mNacelle #[kg]
-        self.IxRNA = IxBlades*(1 + 1 + 1) + IxHub # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
-        self.IrRNA = IxBlades*(1 + .5 + .5) + IzNacelle # RNA moment of inertia about local y or z axes [kg-m^2]
-
-
-        self.xCG_RNA = ((mRotor*xCG_Hub)+(mNacelle*xCG_Nacelle))/(mRotor+mNacelle)          # x location of RNA center of mass [m]
-
-        #hHub    = 119.0                          # hub height above water line [m]
-        self.hHub    = 118.0 
-        '''
-        self.mRNA    = 110000               + 240000      # RNA mass [kg]
-        self.IxRNA   = 11776047*(1 + 1 + 1) + 115926      # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
-        self.IrRNA   = 11776047*(1 +.5 +.5) + 2607890     # RNA moment of inertia about local y or z axes [kg-m^2]
-        self.xCG_RNA = 0                                  # x location of RNA center of mass [m] (Actual is ~= -0.27 m)
-        self.hHub    = 90.0                               # hub height above water line [m]
-
+        
+        
+        self.mRNA = RNAprops['mRNA']
+        self.IxRNA = RNAprops['IxRNA']
+        self.IrRNA = RNAprops['IrRNA']
+        self.xCG_RNA = RNAprops['xCG_RNA']
+        self.hHub = RNAprops['hHub']
         
 
             
@@ -1447,15 +1450,15 @@ class FOWT():
         Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
         Sum_M_center = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
         
-        self.mtower = 0
-        self.msubstruc = 0
-        mtower_sum = 0
-        msubstruc_sum = 0
-        self.I44 = 0
-        self.I44B = 0
-        self.I55 = 0
-        self.I55B = 0
-        self.I66 = 0
+        self.mtower = 0             # total mass of just the members that make up the tower (of type=1) [kg]
+        self.msubstruc = 0          # total mass of just the members that make up the substructure [kg]
+        mtower_sum = 0              # product of each tower member's mass and CG, to be used to find the total tower CG [kg-m]
+        msubstruc_sum = 0           # product of each substructure member's mass and CG, to be used to find the total substructure CG [kg-m]
+        
+        I44list = []                # list to store the I44 MoI about the PRP of each substructure member
+        I55list = []                # list to store the I55 MoI about the PRP of each substructure member
+        I66list = []                # list to store the I66 MoI about the PRP of each substructure member
+        masslist = []               # list to store the mass of each substructure member
         
         # loop through each member
         for mem in self.memberList:
@@ -1468,10 +1471,10 @@ class FOWT():
             
             mass, center, Ixx, Iyy, Izz = mem.getInertia() # calls the getInertia method to calcaulte values
             
-            if mem.id <= 10:                # solves for the tower mass and CG
+            if mem.type <= 1:                # solves for the tower mass and CG
                 self.mtower += mass
                 mtower_sum += center*mass
-            elif mem.id > 10:               # solves for the substructure mass and CG
+            elif mem.type > 1:               # solves for the substructure mass and CG
                 self.msubstruc += mass
                 msubstruc_sum += center*mass
                 
@@ -1492,21 +1495,14 @@ class FOWT():
             # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
             Sum_M_center += center*mass
             
-            
-            # Solve for the moments of inertia of the substructure about the substructure's CM
-            rCG_subs = -89.89458737            # for OC3
-            #rCG_subs = -13.48                   # for OC4  
-            
-            # the substructure CG is calculated after the for loop, but I need the mass's the centers of each member
-            # in the for loop to solve for the MoI's. Haven't figured out the best way to do this
-            if mem.id > 10:
+            # store the roll and pitch moments of inertia
+            if mem.type > 1:        # if the member is not part of the tower and is part of the substructure
                 a = translateMatrix6to6DOF(center, Mmat)
-                self.I44 += a[3,3] - mass*(rCG_subs)**2
-                self.I44B += a[3,3]
-                self.I55 += a[4,4] - mass*(rCG_subs)**2
-                self.I55B += a[4,4]
-                self.I66 += a[5,5]
-            
+                I44list.append(a[3,3])
+                I55list.append(a[4,4])
+                I66list.append(a[5,5])
+                masslist.append(mass)
+                
             
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
             
@@ -1533,7 +1529,6 @@ class FOWT():
         #self.C_struc += structural.K_lin(q0, qd0, self.turbineParams, u0)    # Linear Stifness Matrix
         #self.W_struc += structural.B_lin(q0, qd0, self.turbineParams, u0)    # Linear RHS
         
-        
         # below are temporary placeholders
         # for now, turbine RNA is specified by some simple lumped properties
         Mmat = np.diag([self.mRNA, self.mRNA, self.mRNA, self.IxRNA, self.IrRNA, self.IrRNA])            # create mass/inertia matrix
@@ -1544,17 +1539,42 @@ class FOWT():
         self.M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
         Sum_M_center += center*self.mRNA
 
-
-        # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
+     
+        # ----------- process inertia-related totals ----------------
         
-        self.V = VTOT                                   # solve for the total underwater volume
-        self.rCG_tow = mtower_sum/self.mtower           # solve for just the tower mass and CG
+        if self.mtower==0:                              # solve for just the tower mass and CG
+            self.rCG_tow = np.array([0,0,0])
+        else:
+            self.rCG_tow = mtower_sum/self.mtower
         self.rCG_sub = msubstruc_sum/self.msubstruc     # solve for just the substructure mass and CG
         
-        mTOT = self.M_struc[0,0]
-        rCG_TOT = Sum_M_center/mTOT 
+        self.I44 = 0        # moment of inertia in roll due to roll of the substructure about the substruc's CG [kg-m^2]
+        self.I44B = 0       # moment of inertia in roll due to roll of the substructure about the PRP [kg-m^2]
+        self.I55 = 0        # moment of inertia in pitch due to pitch of the substructure about the substruc's CG [kg-m^2]
+        self.I55B = 0       # moment of inertia in pitch due to pitch of the substructure about the PRP [kg-m^2]
+        self.I66 = 0        # moment of inertia in yaw due to yaw of the substructure about the substruc's centerline [kg-m^2]
+        
+        # Use the parallel axis theorem to move each substructure's MoI to the substructure's CG
+        # Writing I44B and I55B here for organization
+        x = np.linalg.norm([self.rCG_sub[1],self.rCG_sub[2]])   # the normalized distance between the x and x' axes
+        y = np.linalg.norm([self.rCG_sub[0],self.rCG_sub[2]])   # the normalized distance between the y and y' axes
+        z = np.linalg.norm([self.rCG_sub[0],self.rCG_sub[1]])   # the normalized distance between the z and z' axes
+        #d = np.linalg.norm(self.rCG_sub)                        # the normalized distance from the PRP to the subs CG
+        for i in range(len(I44list)):
+            self.I44 += I44list[i] - masslist[i]*x**2
+            self.I44B += I44list[i]
+            self.I55 += I55list[i] - masslist[i]*y**2
+            self.I55B += I55list[i]
+            self.I66 += I66list[i] - masslist[i]*z**2
+   
+        
+        mTOT = self.M_struc[0,0]                        # total mass of all the members
+        rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
         self.rCG_TOT = rCG_TOT
-
+        
+        # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
+        
+        self.V = VTOT                                   # save the total underwater volume
         rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
 
         if VTOT==0: # if you're only working with members above the platform, like modeling the wind turbine

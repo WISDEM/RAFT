@@ -30,9 +30,15 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
     # >>>>>>>>>> the simpler case of nothing passed in, so just using manual model inputs specified below <<<<<<<<
     if wt_opt == None:
         
-        memberStrings = []    # initialize an empty list to hold all the member strings
+        memberStrings = []      # initialize an empty list to hold all the member strings
+        RNAprops = {}           # initialize an empty dictionary to hold all RNA properties
+        
+        # turn off and on the wind thrust force
+        #Fthrust = 800e3                              # peak thrust force, [N]
+        Fthrust = 0
         
         if model=='OC3':
+            # --- OC3 ---
             # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
             
             # ------------------ turbine Tower description ------------------
@@ -69,16 +75,16 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append("13     2   circ  6.500   6.500    0.0    0.0     -4.0   0.0    0.0    10.00   0.0270    0.0    1025.0   8500  ")
             
             
-            # -------------------------- turbine RNA description ------------------------
+            # ::::::::::::::::::::::::::: turbine RNA description :::::::::::::::::::::::::::
             #                 Rotor          Nacelle
             mRNA    = 110000               + 240000      # RNA mass [kg]
             IxRNA   = 11776047*(1 + 1 + 1) + 115926      # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
             IrRNA   = 11776047*(1 +.5 +.5) + 2607890     # RNA moment of inertia about local y or z axes [kg-m^2]
             xCG_RNA = 0                                  # x location of RNA center of mass [m] (Actual is ~= -0.27 m)
             hHub    = 90.0                               # hub height above water line [m]
-    
-            #Fthrust = 800e3                              # peak thrust force, [N]
-            Fthrust = 0
+            
+            #yawstiff = 98340000.0   # this shouldn't go in the RNA description, but I needed a dictionary variable
+            yawstiff = 0
             
             
             # :::::::::::::::::::::::::::::: moorings inputs :::::::::::::::::::::::::::::::::::
@@ -100,9 +106,43 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             MooringSystem = md.make3LineSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength)
             # initialize the system
             MooringSystem.initialize()
+        
+        
+        elif model=='test':
+            # --- test ---
+            # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
+            memberStrings.append("1  20  circ  10  10  0  0  -10  0  0  10  0.1  0  1025  8500")
             
+            # ::::::::::::::::::::::::::: turbine RNA description :::::::::::::::::::::::::::
+            #                 Rotor          Nacelle
+            mRNA    = 110000               + 240000      # RNA mass [kg]
+            IxRNA   = 11776047*(1 + 1 + 1) + 115926      # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+            IrRNA   = 11776047*(1 +.5 +.5) + 2607890     # RNA moment of inertia about local y or z axes [kg-m^2]
+            xCG_RNA = 0                                  # x location of RNA center of mass [m] (Actual is ~= -0.27 m)
+            hHub    = 90.0                               # hub height above water line [m]
+            
+            
+            # :::::::::::::::::::::::::::::: moorings inputs :::::::::::::::::::::::::::::::::::
+            depth =         320.                                    # [m] from waterline
+            type_string =   'main'                                  #
+            anchorR =       853.87                                  # [m] from centerline
+            fairR =         5.2                                     # [m] from centerline
+            fair_depth =    70.                                     # [m] from waterline
+            LineLength =    902.2                                   # [m]
+            LineD =         0.09                                    # [m]
+            dryMass_L =     77.7066                                 # [kg/m]
+            EA =            384243000                               # [N]
+            angle =         np.array([0, 2*np.pi/3, -2*np.pi/3])    # [rad]
+            rho =           1025.0                                  # [kg/m^3]
+            
+            
+            # make a single-type 3-line mooring system by calling a function in MoorDesign
+            MooringSystem = md.make3LineSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength)
+            # initialize the system
+            MooringSystem.initialize()
             
         elif model=='OC4':
+            # --- OC4 ---
             # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
             
             # ------------------ turbine Tower description ------------------
@@ -111,8 +151,6 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             tEnd =      0.0198       #
             nTowMem = 10
             t = np.round(np.linspace(tStart, tEnd, nTowMem), 4)
-            
-            rho_shell = 7850
             
             # diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
             #                 number   type  shape  dA      dB      xa      ya     za     xb     yb      zb      t     l_fill   rho_ballast  rho_shell
@@ -194,16 +232,13 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append("45    14   circ    6.44    6.44     0.0      0.0    -20.0     0.0      0.0   -19.97    3.22     0.0      1025.0   7850  ")
             
             
-            # -------------------------- turbine RNA description ------------------------
+            # ::::::::::::::::::::::::::: turbine RNA description :::::::::::::::::::::::::::
             #                 Rotor          Nacelle
             mRNA    = 110000               + 240000      # RNA mass [kg]
             IxRNA   = 11776047*(1 + 1 + 1) + 115926      # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
             IrRNA   = 11776047*(1 +.5 +.5) + 2607890     # RNA moment of inertia about local y or z axes [kg-m^2]
             xCG_RNA = 0                                  # x location of RNA center of mass [m] (Actual is ~= -0.27 m)
             hHub    = 90.0                               # hub height above water line [m]
-    
-            #Fthrust = 800e3                              # peak thrust force, [N]
-            Fthrust = 0
             
             
             # :::::::::::::::::::::::::::::: moorings inputs :::::::::::::::::::::::::::::::::::
@@ -227,6 +262,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             
             
         elif model=='DTU-10MW':
+            # --- DTU 10MW ---
             # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
             
             # ------------------ turbine Tower description ------------------
@@ -270,8 +306,27 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append("15     2  circ  14.75    8.00    0.0    0.0    -20.000   0.0    0.0     -5.000   0.063    0.000    1025.0   ")
             memberStrings.append("16     2  circ   8.00    8.00    0.0    0.0     -5.000   0.0    0.0      7.000   0.068    0.000    1025.0   ")
             memberStrings.append("17     2  circ   8.00    7.00    0.0    0.0      7.000   0.0    0.0     11.000   0.055    0.000    1025.0   ")
+            
+            
+            # ::::::::::::::::::::::::::: turbine RNA description :::::::::::::::::::::::::::          
+            mRotor      = 227962        #[kg]
+            mNacelle    = 446036        #[kg]
+            IxHub       = 325671        #[kg-m^2]
+            IzNacelle   = 7326346       #[kg-m^2]
+            IxBlades    = 45671252      #[kg-m^2] MOI value from FAST file, don't know where MOI is about. Assuming about the hub
+            xCG_Hub     = -7.07         #[m] from yaw axis
+            xCG_Nacelle = 2.687         #[m] from yaw axis
     
+            mRNA = mRotor + mNacelle    #[kg]
+            IxRNA = IxBlades*(1 + 1 + 1) + IxHub # RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+            IrRNA = IxBlades*(1 + .5 + .5) + IzNacelle # RNA moment of inertia about local y or z axes [kg-m^2]
     
+            xCG_RNA = ((mRotor*xCG_Hub)+(mNacelle*xCG_Nacelle))/(mRotor+mNacelle)          # x location of RNA center of mass [m]
+    
+            #hHub    = 119.0                          # hub height above water line [m]
+            hHub    = 118.0                 # changed to fit FAST data back in late July 2020
+            
+            
             # :::::::::::::::::::::::::::::: moorings inputs :::::::::::::::::::::::::::::::::::
             
             bridle = 1      # flag to determine whether to use the bridle mooring configuration or not
@@ -449,29 +504,24 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
         MooringSystem = ms
 
 
-        ''' Other stuff that might be useful later
-        # RNA
-        mRNA = wt_opt['towerse.rna_mass']
-        CG_RNA = wt_opt['towerse.rna_cg']
-        I_RNA = wr['towerse.rna_I']
-        
-        if "loading" in modeling_options:
-            for k in range(modeling_options["tower"]["nLC"]):
-                kstr = "" if modeling_options["tower"]["nLC"] == 0 else str(k + 1)
-                Fthrust = wt_opt["towerse.pre" + kstr + ".rna_F"]
-                Mthrust = wt_opt["towerse.pre" + kstr + ".rna_M"]
-                windspeed = wt_opt["towerse.wind" + kstr + ".Uref"]
-        
-        
-        # Environmental Inputs
-        g = 9.81            #[m/s^2]
-        rho = wt_opt['env.rho_water']
-        depth = wt_opt['env.water_depth']
-        Hs = wt_opt['env.hsig_wave']
-        Tp = wt_opt['env.Tsig_wave']
-        '''
 
 
+
+
+    # --- RNA ---
+    # store the RNA data in the RNAprops dictionary
+    RNAprops['mRNA'] = mRNA
+    RNAprops['IxRNA'] = IxRNA
+    RNAprops['IrRNA'] = IrRNA
+    RNAprops['xCG_RNA'] = xCG_RNA
+    RNAprops['hHub'] = hHub
+    RNAprops['Fthrust'] = Fthrust
+    if model=='OC3':
+        RNAprops['yaw stiffness'] = yawstiff
+    
+
+
+    # --- BEM ---
     # (preprocessing step:) Generate and load BEM hydro data
     capyData = []
     
@@ -490,10 +540,11 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
     capyData = (wCapy, addedMass, damping, fEx)
     '''
 
-
+    
+    # --- Create Model ---
     # now that memberStrings and MooringSystem are made on way or another, call the model 
 
-    model = fd.Model(memberList=memberStrings, ms=MooringSystem, w=w, depth=depth, BEM=capyData)  # set up model
+    model = fd.Model(memberList=memberStrings, ms=MooringSystem, w=w, depth=depth, BEM=capyData, RNAprops=RNAprops)  # set up model
 
     model.setEnv(Hs=8, Tp=12, V=10)  # set basic wave and wind info
 
@@ -518,6 +569,7 @@ if __name__ == "__main__":
     
     model = runFDmodel()
     #model = runFDmodel(model='OC4')
+    #model = runFDmodel(model='test')
     
     
     fowt = model.fowtList[0]
@@ -530,17 +582,12 @@ if __name__ == "__main__":
     print('Roll Inertia at PCM  ',np.round(fowt.I44,2),' kg-m^2')
     print('Pitch Inertia at PCM ',np.round(fowt.I55,2),' kg-m^2')
     print('Yaw Inertia at PCM   ',np.round(fowt.I66,2),' kg-m^2')
-    print('-------MAKE SURE YOU HAVE THE RIGHT SUBSTRUCTURE CM IN CALCSTATICS OF FREQUENCYDOMAIN LINE 1472---------')
     #print('Roll Inertia at PRP: ',np.round(fowt.I44B,2),' kg-m^2')
     #print('Pitch Inertia at PRP:',np.round(fowt.I55B,2),' kg-m^2')
     print('Buoyancy (pgV):      ',np.round(fowt.V*fowt.env.g*fowt.env.rho,2),' N')
     print('C33:                 ',np.round(fowt.C_hydro[2,2],2),' N')
     print('C44:                 ',np.round(fowt.C_hydro[3,3],2),' Nm/rad')
     print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
-    
-    print(fowt.C_struc[3,3])
-    print(fowt.C_struc[4,4])
-    
     print('F_lines: ',list(np.round(np.array(model.F_moor),2)),' N')
     print('C_lines: ',model.C_moor)
     

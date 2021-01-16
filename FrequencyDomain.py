@@ -43,11 +43,10 @@ class Member:
         # note: haven't decided yet how to lump masses and handle segments
         
         # Example strings that can be used to create a Member object
-        #                       ID  type  shape  dA/slA  dB/slB   lower node position   upper node position   thick   l_fill  rho_fill  gamma
-        # memberStrings.append("11   2    circ    9.400  9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0      ", nw)
-        # memberStrings.append("12   2    rect    20/10  10/5     0.0    0.0   -120.0   0.0    0.0   -12.00   0.0660   41.4    2000.0   0.0". nw)
-        
-        # The addition of the shape param should just be a temporary fix, at least until we figure out a better way to input data
+        #                       [0]  [1]   [2]     [3]    [4]      [5]   [6]   [7]      [8]    [9]    [10]     [11]    [12]     [13]    [14]       [15]     [16]
+        #                       ID  type  shape  dA/slA  dB/slB   lower node position   upper node position   thickA  thickB   l_fill  rho_fill  rho_shell  gamma
+        # memberStrings.append("11   2    circ    9.400  9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270  0.0262    52.0    1850.0     8500         ", nw)
+        # memberStrings.append("12   2    rect    20/10  10/5     0.0    0.0   -120.0   0.0    0.0   -12.00   0.0660  0.0660    41.4    2000.0     7850      0.0". nw)
         
         
         entries = strin.split()                                     # split the input string into a list of string inputs
@@ -69,7 +68,7 @@ class Member:
             self.slA = np.array(entries[3].split("/"), dtype=float) # array of side lengths of lower node [m]
             self.slB = np.array(entries[4].split("/"), dtype=float) # array of side lengths of upper node [m]
             
-            self.gamma = np.float(entries[15])                      # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
+            self.gamma = np.float(entries[16])                      # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
         
         else:
             raise ValueError('The only allowable shape strings are circular and rectangular')
@@ -77,14 +76,14 @@ class Member:
         
         self.rA = np.array(entries[5:8], dtype=np.double)           # [x,y,z] coordinates of lower node [m]
         self.rB = np.array(entries[8:11], dtype=np.double)          # [x,y,z] coordinates of upper node [m]
-        self.t  = np.float(entries[11])                             # shell thickness [m]
         
-        self.l_fill = np.float(entries[12])                         # length of member (from end A to B) filled with ballast [m]
-        self.rho_fill = np.float(entries[13])                       # density of ballast in member [kg/m^3]
+        self.tA  = np.float(entries[11])                            # shell thickness of lower node [m]
+        self.tB = np.float(entries[12])                             # shell thickness of upper node [m]
         
-        # moved to memberString input [14]
-        #self.rho_shell = 7850                                       # shell mass density [kg/m^3] (could maybe become input later on?)
-        self.rho_shell = np.float(entries[14])
+        self.l_fill = np.float(entries[13])                         # length of member (from end A to B) filled with ballast [m]
+        self.rho_fill = np.float(entries[14])                       # density of ballast in member [kg/m^3]
+                                             
+        self.rho_shell = np.float(entries[15])                      # shell mass density [kg/m^3]
         
         rAB = self.rB-self.rA                                       # The relative coordinates of upper node from lower node [m]
         self.l = np.linalg.norm(rAB)                                # member length [m]
@@ -175,8 +174,8 @@ class Member:
         
         if self.shape=='circular':
             # MASS AND CENTER OF GRAVITY
-            dAi = self.dA - 2*self.t                                    # inner diameter of lower node [m]
-            dBi = self.dB - 2*self.t                                    # inner diameter of upper node [m]
+            dAi = self.dA - 2*self.tA                                   # inner diameter of lower node [m]
+            dBi = self.dB - 2*self.tB                                   # inner diameter of upper node [m]
             
             V_outer, hco = FrustumVCV(self.dA, self.dB, self.l)         # volume and center of volume of solid frustum with outer diameters [m^3] [m]
             V_inner, hci = FrustumVCV(dAi, dBi, self.l)                 # volume and center of volume of solid frustum with inner diameters [m^3] [m]
@@ -194,12 +193,12 @@ class Member:
             hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
             
             center = self.rA + (self.q*hc)                              # total center of mass of the member from the PRP [m]
-            #print(self.id, m_fill)
+            
         
         elif self.shape=='rectangular':
             # MASS AND CENTER OF GRAVITY
-            slAi = self.slA - 2*self.t                                  # inner side lengths of lower node [m]
-            slBi = self.slB - 2*self.t                                  # inner side lengths of upper node [m]
+            slAi = self.slA - 2*self.tA                                 # inner side lengths of lower node [m]
+            slBi = self.slB - 2*self.tB                                 # inner side lengths of upper node [m]
             V_outer, hco = FrustumVCV(self.slA, self.slB, self.l)       # volume and center of volume of solid frustum with outer side lengths [m^3] [m]
             V_inner, hci = FrustumVCV(slAi, slBi, self.l)               # volume and center of volume of solid frustum with inner side lengths [m^3] [m]
             v_shell = V_outer-V_inner                                   # volume of hollow frustum with shell thickness [m^3]
@@ -969,16 +968,17 @@ class Model():
         # would potentially need to add a mooring system body for it too <<<
         
     
-    def setEnv(self, Hs=8, Tp=12, V=10, beta=0):
+    def setEnv(self, Hs=8, Tp=12, V=10, beta=0, Fthrust=0):
     
         self.env = Env()
         self.env.Hs   = Hs   
         self.env.Tp   = Tp   
         self.env.V    = V    
-        self.env.beta = beta 
+        self.env.beta = beta
+        self.Fthrust = Fthrust
     
         for fowt in self.fowtList:
-            fowt.setEnv(Hs=Hs, Tp=Tp, V=V, beta=beta)
+            fowt.setEnv(Hs=Hs, Tp=Tp, V=V, beta=beta, Fthrust=Fthrust)
     
     
     def calcSystemProps(self):
@@ -1387,7 +1387,7 @@ class FOWT():
         '''
 
 
-    def setEnv(self, Hs=8, Tp=12, V=10, beta=0):
+    def setEnv(self, Hs=8, Tp=12, V=10, beta=0, Fthrust=0):
         '''For now, this is where the environmental conditions acting on the FOWT are set.'''
 
         # ------- Wind conditions
@@ -1400,7 +1400,6 @@ class FOWT():
         self.env.Tp   = Tp   
         self.env.V    = V    
         self.env.beta = beta 
-
         
         # make wave spectrum
         S = JONSWAP(self.w, Hs, Tp)
@@ -1408,7 +1407,7 @@ class FOWT():
         # wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
         self.zeta = np.sqrt(S)
             
-        Fthrust = 0
+        #Fthrust = 0
         #Fthrust = 800.0e3            # peak thrust force, [N]
         #Mthrust = self.hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
         

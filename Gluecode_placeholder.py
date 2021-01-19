@@ -41,7 +41,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             # --- OC3 ---
             # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
             
-            # ------------------ turbine Tower description ------------------
+            # turbine Tower description ------------------
             
             # diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
             #                 number   type  shape  dA      dB      xa      ya     za     xb     yb      zb        tA       tB   l_fill  rho_fill rho_shell
@@ -56,7 +56,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append(" 9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84    0.0206   0.0198   0.0    1025.0   8500  ")
             memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60    0.0198   0.0190   0.0    1025.0   8500  ")
             
-            # ---------- spar platform substructure description --------------
+            # spar platform substructure description --------------
             # July 2020 weight-buoyancy balancing (either should work)
             #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0   8500  ")
             #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0  0.0    0.0   -12.00   0.0660   41.4    2000.0  8500  ")
@@ -138,7 +138,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             # --- OC4 ---
             # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
             
-            # ------------------ turbine Tower description ------------------
+            # turbine Tower description ------------------
             
             # diameters and thicknesses linearly interpolated from dA[0] to dB[-1] and t[0] to t[-1]
             #                 number   type  shape  dA      dB      xa      ya     za     xb     yb      zb        tA       tB   l_fill  rho_fill rho_shell
@@ -153,7 +153,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append(" 9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84    0.0206   0.0198   0.0    1025.0   8500  ")
             memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60    0.0198   0.0190   0.0    1025.0   8500  ")
             """
-            # ---------- spar platform substructure description --------------
+            # spar platform substructure description --------------
             # Main Column
             memberStrings.append("11    2    circ    6.5     6.5      0.0      0.0    -20.0     0.0      0.0    10.00   0.03    0.03     0.0      1025.0   7850  ")
             # Upper Columns
@@ -304,11 +304,82 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             MooringSystem.initialize()
             
             
+        elif model=='Volturnus':
+            # --- Volturnus ---
+            # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
+            
+            # turbine Tower description ------------------
+            
+            #                 number   type  shape   dA      dB      xa      ya     za      xb     yb      zb           tA         tB   l_fill  rho_fill rho_shell
+            memberStrings.append(" 1     1   circ  10.000   9.964    0.0    0.0    15.00    0.0    0.0    28.00     0.082954   0.082954   0.0    1025.0   7850  ")
+            memberStrings.append(" 2     1   circ   9.964   9.964    0.0    0.0    28.00    0.0    0.0    28.001    0.082954   0.083073   0.0    1025.0   7850  ")
+            memberStrings.append(" 3     1   circ   9.964   9.967    0.0    0.0    28.001   0.0    0.0    41.00     0.083073   0.083073   0.0    1025.0   7850  ")
+            memberStrings.append(" 4     1   circ   9.967   9.967    0.0    0.0    41.00    0.0    0.0    41.001    0.083073   0.082799   0.0    1025.0   7850  ")
+            memberStrings.append(" 5     1   circ   9.967   9.927    0.0    0.0    41.001   0.0    0.0    54.00     0.082799   0.082799   0.0    1025.0   7850  ")
+            memberStrings.append(" 6     1   circ   9.927   9.927    0.0    0.0    54.00    0.0    0.0    54.001    0.082799   0.029900   0.0    1025.0   7850  ")
+            memberStrings.append(" 7     1   circ   9.927   9.528    0.0    0.0    54.001   0.0    0.0    67.00     0.029900   0.029900   0.0    1025.0   7850  ")
+            memberStrings.append(" 8     1   circ   9.528   9.528    0.0    0.0    67.00    0.0    0.0    67.001    0.029900   0.027842   0.0    1025.0   7850  ")
+            memberStrings.append(" 9     1   circ   9.528   9.149    0.0    0.0    67.001   0.0    0.0    80.00     0.027842   0.027842   0.0    1025.0   7850  ")
+            memberStrings.append("10     1   circ   9.149   9.149    0.0    0.0    80.00    0.0    0.0    80.001    0.027842   0.025567   0.0    1025.0   7850  ")
+            memberStrings.append("11     1   circ   9.149   8.945    0.0    0.0    80.001   0.0    0.0    93.00     0.025567   0.025567   0.0    1025.0   7850  ")
+            memberStrings.append("12     1   circ   8.945   8.945    0.0    0.0    93.00    0.0    0.0    93.001    0.025567   0.022854   0.0    1025.0   7850  ")
+            memberStrings.append("13     1   circ   8.945   8.735    0.0    0.0    93.001   0.0    0.0   106.00     0.022854   0.022854   0.0    1025.0   7850  ")
+            memberStrings.append("14     1   circ   8.735   8.735    0.0    0.0   106.00    0.0    0.0   106.001    0.022854   0.020250   0.0    1025.0   7850  ")
+            memberStrings.append("15     1   circ   8.735   8.405    0.0    0.0   106.001   0.0    0.0   119.00     0.020250   0.020250   0.0    1025.0   7850  ")
+            memberStrings.append("16     1   circ   8.405   8.405    0.0    0.0   119.00    0.0    0.0   119.001    0.020250   0.018339   0.0    1025.0   7850  ")
+            memberStrings.append("17     1   circ   8.405   7.321    0.0    0.0   119.001   0.0    0.0   132.00     0.018339   0.018339   0.0    1025.0   7850  ")
+            memberStrings.append("18     1   circ   7.321   7.321    0.0    0.0   132.00    0.0    0.0   132.001    0.018339   0.021211   0.0    1025.0   7850  ")
+            memberStrings.append("19     1   circ   7.321   6.500    0.0    0.0   132.001   0.0    0.0   144.582    0.021211   0.021211   0.0    1025.0   7850  ")
+            
+            # Main Column
+            memberStrings.append("20    2    circ   10.0    10.0      0.0      0.0    -20.0      0.0      0.0     15.0    0.05    0.05    0.0    1025.0   7850  ")
+            # Upper Columns
+            memberStrings.append("21    3    circ   12.5    12.5     25.875   44.817  -20.0     25.875   44.817   15.0    0.05    0.05    4.00   5000.0   7850  ")
+            memberStrings.append("22    3    circ   12.5    12.5    -51.75     0.0    -20.0    -51.75     0.0     15.0    0.05    0.05    4.00   5000.0   7850  ")
+            memberStrings.append("23    3    circ   12.5    12.5     25.875  -44.817  -20.0     25.875  -44.817   15.0    0.05    0.05    4.00   5000.0   7850  ")
+            # Lower Rectangular Pontoons
+            memberStrings.append("24    4    rect   12.5/7  12.5/7    2.5      4.33   -16.5     25.875   44.817  -16.5    0.05    0.05   40.0    1025.0   7850  0.0 ")
+            memberStrings.append("25    4    rect   12.5/7  12.5/7   -5.0      0.0    -16.5    -51.75     0.0    -16.5    0.05    0.05   40.0    1025.0   7850  0.0 ")
+            memberStrings.append("26    4    rect   12.5/7  12.5/7    2.5     -4.33   -16.5     25.875  -44.817  -16.5    0.05    0.05   40.0    1025.0   7850  0.0 ")
+            # Upper Supports
+            memberStrings.append("27    5    circ    0.91    0.91     2.5      4.33    14.545   23.375    40.487  14.545  0.01    0.01    0.0    1025.0   7850  ")
+            memberStrings.append("28    5    circ    0.91    0.91    -5.0      0.0     14.545  -45.5      0.0     14.545  0.01    0.01    0.0    1025.0   7850  ")
+            memberStrings.append("29    5    circ    0.91    0.91     2.5     -4.33    14.545   23.375   -40.487  14.545  0.01    0.01    0.0    1025.0   7850  ")
+            
+            
+            # ::::::::::::::::::::::::::: turbine RNA description :::::::::::::::::::::::::::
+            mRNA    = 991000                             # RNA mass [kg]
+            IxRNA = 0
+            IrRNA = 0
+            xCG_RNA = 0                                  # x location of RNA center of mass [m] (Actual is ~= -0.27 m)
+            hHub    = 150.0                              # hub height above water line [m]
+            
+            
+            # :::::::::::::::::::::::::::::: moorings inputs :::::::::::::::::::::::::::::::::::
+            
+            depth = 200.
+            type_string = 'chain'
+            anchorR = 837.6
+            fairR = 58.
+            fair_depth = 14.
+            LineLength = 850.
+            LineD = 0.185
+            dryMass_L = 685
+            EA = 3270e6
+            angle =         np.array([np.pi, np.pi/3, -np.pi/3])    # [rad]
+            rho =           1025.0                                  # [kg/m^3]
+            
+            # make a single-type 3-line mooring system by calling a function in MoorDesign
+            MooringSystem = md.make3LineSystem(depth, type_string, LineD, dryMass_L, EA, angle, anchorR, fair_depth, fairR, LineLength)
+            # initialize the system
+            MooringSystem.initialize()
+            
+            
         elif model=='DTU-10MW':
             # --- DTU 10MW ---
             # ::::::::::::::::::::::::::: member inputs ::::::::::::::::::::::::::::::::
             
-            # ------------------ turbine Tower description ------------------
+            # turbine Tower description ------------------
     
             # new version (done for OpenFAST reasons in the Shared Moorings Project)
             zStart =    11          # [m] from waterline
@@ -333,7 +404,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append("10     1    circ  5.75    5.50    0.0    0.0  "+str(z[9])+" 0.0    0.0  "+str(z[10])+" 0.020   0.0    1025.0  ")
             
     
-            # ---------- spar platform substructure description --------------
+            # spar platform substructure description --------------
             '''
             # Ballast members from Senu's sizing for Shared Moorings baseline design
             memberStrings.append("11     2  circ  14.75   14.75    0.0    0.0    -90.000   0.0    0.0    -85.200   0.046    4.800    3743.42  ")
@@ -593,7 +664,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
 
     model.calcSystemProps()          # get all the setup calculations done within the model
 
-    model.solveEigen()
+    #model.solveEigen()
 
     model.calcMooringAndOffsets()    # calculate the offsets for the given loading
     
@@ -611,8 +682,9 @@ if __name__ == "__main__":
     #runFDmodel()
     
     #model = runFDmodel()
-    model = runFDmodel(model='OC4')
+    #model = runFDmodel(model='OC4')
     #model = runFDmodel(model='test')
+    model = runFDmodel(model='Volturnus')
     
     
     fowt = model.fowtList[0]

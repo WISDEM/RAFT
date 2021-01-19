@@ -193,7 +193,6 @@ class Member:
             hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
             
             center = self.rA + (self.q*hc)                              # total center of mass of the member from the PRP [m]
-            
         
         elif self.shape=='rectangular':
             # MASS AND CENTER OF GRAVITY
@@ -610,7 +609,7 @@ def FrustumVCV(dA, dB, H, rtn=0):
     '''returns the volume and center of volume of a frustum, which can be a cylinder (box), cone (pyramid), or anything in between
     Source: https://mathworld.wolfram.com/PyramidalFrustum.html '''
     
-    if dA==0 and dB==0:
+    if np.sum(dA)==0 and np.sum(dB)==0:
         V = 0
         hc = 0
     else:
@@ -988,11 +987,11 @@ class Model():
             fowt.calcStatics()
             fowt.calcHydroConstants()
             #fowt.calcDynamicConstants()
-    
+        
         ## First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
         self.C_moor = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
         self.F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)
-
+        
     
     def calcMooringAndOffsets(self):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
@@ -1002,13 +1001,15 @@ class Model():
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
         # (This assumes some loads have been applied)
-        self.ms.solveEquilibrium3(DOFtype="both")     # get the system to its equilibrium
+        #self.ms.solveEquilibrium3(DOFtype="both")     # get the system to its equilibrium
+        self.ms.solveEquilibrium()
         self.ms.plot()
         r6eq = self.ms.BodyList[0].r6
         print("Equilibirum platform positions/rotations:")
         printVec(r6eq)
         print("Surge: {:.2f}".format(r6eq[0]))
         print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
+        
         C_moor = self.ms.getCoupledStiffness(lines_only=True)
         F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
 
@@ -1017,7 +1018,7 @@ class Model():
         
         self.C_moor = C_moor
         self.F_moor = F_moor
-    
+        
     
     
     def solveEigen(self):

@@ -1001,12 +1001,19 @@ class Model():
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
         # (This assumes some loads have been applied)
-        #self.ms.solveEquilibrium3(DOFtype="both")     # get the system to its equilibrium
-        self.ms.solveEquilibrium()
-        self.ms.plot()
+        #self.ms.display=2
+        
+        self.ms.solveEquilibrium3(DOFtype="both", rmsTol=1.0E-8)     # get the system to its equilibrium
+        print("Equilibrium'3' platform positions/rotations:")
+        printVec(self.ms.BodyList[0].r6)
+        
+        self.ms.solveEquilibrium(DOFtype="both")
+        print("Equilibrium platform positions/rotations:")        
         r6eq = self.ms.BodyList[0].r6
-        print("Equilibirum platform positions/rotations:")
         printVec(r6eq)
+        
+        self.ms.plot()
+                
         print("Surge: {:.2f}".format(r6eq[0]))
         print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
         

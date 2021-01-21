@@ -345,8 +345,12 @@ class Member:
             Iyy = I_rad
             Izz = I_ax
         
+        extras = {}
+        extras['m_shell'] = m_shell
+        extras['m_fill'] = m_fill
+        extras['rho_fill'] = self.rho_fill
         
-        return mass, center, Ixx, Iyy, Izz
+        return mass, center, Ixx, Iyy, Izz, extras
         
     
     
@@ -488,7 +492,7 @@ class Member:
             '''
             Cmat[3,3] += env.rho*env.g*V_UW * r_center[2]
             Cmat[4,4] += env.rho*env.g*V_UW * r_center[2]
-            
+            print(self.id, xWP, Cmat[2,4])
         
         # fully submerged case 
         elif self.r[0,2] <= 0 and self.r[-1,2] <= 0:
@@ -1009,6 +1013,7 @@ class Model():
         
         self.ms.solveEquilibrium(DOFtype="both")
         print("Equilibrium platform positions/rotations:")        
+
         r6eq = self.ms.BodyList[0].r6
         printVec(r6eq)
         
@@ -1461,6 +1466,9 @@ class FOWT():
         self.msubstruc = 0          # total mass of just the members that make up the substructure [kg]
         mtower_sum = 0              # product of each tower member's mass and CG, to be used to find the total tower CG [kg-m]
         msubstruc_sum = 0           # product of each substructure member's mass and CG, to be used to find the total substructure CG [kg-m]
+        self.mshell = 0             # total mass of the shells/steel of the members in the substructure [kg]
+        mballast = []          # list to store the mass of the ballast in each of the substructure members [kg]
+        pballast = []          # list to store the density of ballast in each of the substructure members [kg]
         
         I44list = []                # list to store the I44 MoI about the PRP of each substructure member
         I55list = []                # list to store the I55 MoI about the PRP of each substructure member
@@ -1476,7 +1484,7 @@ class FOWT():
             
             # ---------------------- get member's mass and inertia properties ------------------------------
             
-            mass, center, Ixx, Iyy, Izz = mem.getInertia() # calls the getInertia method to calcaulte values
+            mass, center, Ixx, Iyy, Izz, extras = mem.getInertia() # calls the getInertia method to calcaulte values
             
             if mem.type <= 1:                # solves for the tower mass and CG
                 self.mtower += mass
@@ -1484,6 +1492,11 @@ class FOWT():
             elif mem.type > 1:               # solves for the substructure mass and CG
                 self.msubstruc += mass
                 msubstruc_sum += center*mass
+                self.mshell += extras['m_shell']
+                # Store the mass and the density of ballast in each of the members of the substructure
+                mballast.append(extras['m_fill'])
+                pballast.append(extras['rho_fill'])
+                
                 
             # rotate the moments of inertia from the member's local axes to the unrotated, translated local member's axes
             I = np.diag([Ixx, Iyy, Izz])    # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
@@ -1579,10 +1592,25 @@ class FOWT():
         rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
         self.rCG_TOT = rCG_TOT
         
+        # Solve for the total mass of each type of ballast in the substructure
+        self.pb = []                                                # empty list to store the unique ballast densities
+        for i in range(len(pballast)):
+            if pballast[i] != 0:                                    # if the value in pballast is not zero
+                if self.pb.count(pballast[i]) == 0:                 # and if that value is not already in pb
+                    self.pb.append(pballast[i])                     # store that ballast density value
+        
+        self.mballast = np.zeros(len(self.pb))                      # make an empty mballast list with len=len(pb)
+        for i in range(len(self.pb)):                               # for each ballast density
+            for j in range(len(mballast)):                          # loop through each ballast mass
+                if np.float(pballast[j]) == np.float(self.pb[i]):   # but only if the index of the ballast mass (density) matches the value of pb
+                    self.mballast[i] += mballast[j]                 # add that ballast mass to the correct index of mballast
+            
+        
         # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
         
         self.V = VTOT                                   # save the total underwater volume
         rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
+        self.rCB = rCB_TOT
 
         if VTOT==0: # if you're only working with members above the platform, like modeling the wind turbine
             zMeta = 0

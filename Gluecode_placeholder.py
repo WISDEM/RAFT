@@ -241,7 +241,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append("23    6    circ    1.6     1.6     14.43   -13.0    -17.0    14.43    13.0   -17.00   0.0175  0.0175   0.0         0.0   7850  ")
             # Y Upper Pontoons
             memberStrings.append("24    7    circ    1.6     1.6      1.625    2.815   10.0    11.43    19.81   10.00   0.0175  0.0175   0.0         0.0   7850  ")
-            memberStrings.append("25    7    circ    1.6     1.6     -3.25     0.0     10.0   -22.87     0.0    10.00   0.0175  0.0175   0.0         0.0   7850  ")
+            memberStrings.append("25    7    circ    1.6     1.6     -3.25     0.0     10.0   -22.86     0.0    10.00   0.0175  0.0175   0.0         0.0   7850  ")
             memberStrings.append("26    7    circ    1.6     1.6      1.625   -2.815   10.0    11.43   -19.81   10.00   0.0175  0.0175   0.0         0.0   7850  ")
             # Y Lower Pontoons
             memberStrings.append("27    8    circ    1.6     1.6      1.625    2.815  -17.0     8.4     14.6   -17.00   0.0175  0.0175   0.0         0.0   7850  ")
@@ -684,8 +684,8 @@ if __name__ == "__main__":
     
     #runFDmodel()
     
-    model = runFDmodel()
-    #model = runFDmodel(model='OC4')
+    #model = runFDmodel()
+    model = runFDmodel(model='OC4')
     #model = runFDmodel(model='test')
     #model = runFDmodel(model='Volturnus')
     
@@ -710,8 +710,8 @@ if __name__ == "__main__":
     print('C33:                 ',np.round(fowt.C_hydro[2,2],2),' N')
     print('C44:                 ',np.round(fowt.C_hydro[3,3],2),' Nm/rad')
     print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
-    print('F_lines: ',list(np.round(np.array(model.F_moor),2)),' N')
-    print('C_lines: ',model.C_moor)
+    print('F_lines: ',list(np.round(np.array(model.F_moor0),2)),' N')
+    print('C_lines: ',model.C_moor0)
     
     def pdiff(x,y):
         return (abs(x-y)/y)*100

@@ -483,16 +483,12 @@ class Member:
             Cmat[4,2] = env.rho*env.g*(      AWP*xWP    )
             Cmat[4,3] = env.rho*env.g*(      AWP*xWP*yWP)
             Cmat[4,4] = env.rho*env.g*(IyWP + AWP*xWP**2 )
-            '''
-            roll_arm = np.linalg.norm([r_center[1], r_center[2]])
-            pitch_arm = np.linalg.norm([r_center[0], r_center[2]])
             
-            Cmat[3,3] += env.rho*env.g*V_UW * -roll_arm
-            Cmat[4,4] += env.rho*env.g*V_UW * -pitch_arm
-            '''
+            
+            
             Cmat[3,3] += env.rho*env.g*V_UW * r_center[2]
             Cmat[4,4] += env.rho*env.g*V_UW * r_center[2]
-            print(self.id, xWP, Cmat[2,4])
+            
         
         # fully submerged case 
         elif self.r[0,2] <= 0 and self.r[-1,2] <= 0:
@@ -515,13 +511,7 @@ class Member:
   
             # hydrostatic stiffness matrix (about end A)
             Cmat = np.zeros([6,6])
-            '''
-            roll_arm = np.linalg.norm([r_center[1], r_center[2]])
-            pitch_arm = np.linalg.norm([r_center[0], r_center[2]])
             
-            Cmat[3,3] += env.rho*env.g*V_UW * -roll_arm
-            Cmat[4,4] += env.rho*env.g*V_UW * -pitch_arm
-            '''
             Cmat[3,3] = env.rho*env.g*V_UW * r_center[2]
             Cmat[4,4] = env.rho*env.g*V_UW * r_center[2]
             
@@ -537,7 +527,7 @@ class Member:
             Cmat = np.zeros([6,6])
             L_center = 0
         
-        #print(self.id, a, Cmat[3,3], Cmat[4,4])
+        
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
     def plot(self, ax):
@@ -993,8 +983,8 @@ class Model():
             #fowt.calcDynamicConstants()
         
         ## First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
-        self.C_moor = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
-        self.F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)
+        self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
+        self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
         
     
     def calcMooringAndOffsets(self):
@@ -1007,7 +997,7 @@ class Model():
         # (This assumes some loads have been applied)
         #self.ms.display=2
         
-        self.ms.solveEquilibrium3(DOFtype="both", rmsTol=1.0E-8)     # get the system to its equilibrium
+        self.ms.solveEquilibrium3(DOFtype="both", rmsTol=1.0E-5)     # get the system to its equilibrium
         print("Equilibrium'3' platform positions/rotations:")
         printVec(self.ms.BodyList[0].r6)
         
@@ -1031,7 +1021,7 @@ class Model():
         self.C_moor = C_moor
         self.F_moor = F_moor
         
-    
+        
     
     def solveEigen(self):
         '''finds natural frequencies of system'''
@@ -1043,8 +1033,8 @@ class Model():
         
     
         # add in mooring stiffness from MoorPy system
-        C_tot = self.C_moor
-                
+        C_tot = np.array(self.C_moor0)
+               
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
         
@@ -1058,7 +1048,6 @@ class Model():
         
         # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
         eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
-        
         
         # sort to normal DOF order based on which DOF is largest in each eigenvector  - still has issues <<<<<<
         ind_list = []
@@ -1114,7 +1103,7 @@ class Model():
         fn[4] = np.sqrt( (C_tot[4,4] + C_tot[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M_tot[4,4] - M_tot[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
         # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
         printVec(fn)
-    
+        
     
     def solveStatics(self):
         '''Possibly a method to solve for the mean operating point (in conjunctoin with calcMooringAndOffsets)...'''

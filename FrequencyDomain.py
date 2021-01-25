@@ -6,6 +6,7 @@
 
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib import cm
 
 import sys
 sys.path.insert(1, '../MoorPy')
@@ -1125,7 +1126,7 @@ class Model():
 
     
     
-    def solveDynamics(self, nIter=2):
+    def solveDynamics(self, nIter=15, tol=0.01):
         '''After all constant parts have been computed, call this to iterate through remaining terms 
         until convergence on dynamic response.
         
@@ -1134,9 +1135,12 @@ class Model():
 
 
         # total system complex response amplitudes (this gets updated each iteration)
-        Xi = np.zeros([self.nDOF,self.nw], dtype=complex) + 0.01    # displacement and rotation complex amplitudes [m, rad]
+        XiLast = np.zeros([self.nDOF,self.nw], dtype=complex) + 0.1    # displacement and rotation complex amplitudes [m, rad]
 
-        
+        fig, ax = plt.subplots(3,1,sharex=True)                    #
+        c = np.arange(nIter)                                       #
+        c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))            # set up colormap to use to plot successive iteration restuls
+                   
 
         # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<
         for iiter in range(nIter):
@@ -1164,15 +1168,18 @@ class Model():
             i2 = 6            
             
             # get linearized terms for the current turbine given latest amplitudes
-            B_lin, F_lin = fowt.calcLinearizedTerms(Xi)
+            B_lin, F_lin = fowt.calcLinearizedTerms(XiLast)
             
-            # add fowt's terms to system matrices (BEM arrays are not yet included here)
-            
-            for ii in range(self.nw):          # loop through each frequency
-                M_tot[:,:,ii] = M_tot[:,:,ii] + fowt.M_struc + fowt.A_hydro_morison   # mass
-                B_tot[:,:,ii] = B_tot[:,:,ii] + fowt.B_struc + B_lin             # damping (structural and linearized morison)
-                C_tot[:,:,ii] = C_tot[:,:,ii] + fowt.C_struc + fowt.C_hydro           # stiffness
-                F_tot[:,  ii] = F_tot[:,  ii] + F_lin[:,ii] + fowt.F_hydro_iner[:,ii] # excitation force complex amplitudes
+            # calculate the response based on the latest linearized terms            
+            Xi = np.zeros([self.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
+
+            for ii in range(self.nw):                                                    # loop through each frequency
+                
+                # add fowt's terms to system matrices (BEM arrays are not yet included here)            
+                M_tot[:,:,ii] = M_tot[:,:,ii] + fowt.M_struc + fowt.A_hydro_morison      # mass
+                B_tot[:,:,ii] = B_tot[:,:,ii] + fowt.B_struc + B_lin                     # damping (structural and linearized morison)
+                C_tot[:,:,ii] = C_tot[:,:,ii] + fowt.C_struc + fowt.C_hydro              # stiffness
+                F_tot[:,  ii] = F_tot[:,  ii] + F_lin[:,ii] + fowt.F_hydro_iner[:,ii]    # excitation force complex amplitudes
                 
                 # form impedance matrix
                 Z[:,:,ii] = -self.w[ii]**2 * M_tot[:,:,ii] + 1j*self.w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii]
@@ -1181,28 +1188,33 @@ class Model():
                 Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
             
             
-            breakpoint()
-            '''
-
-            #Xi{imeto} = rao{imeto}.*repmat(sqrt(S(:,imeto)),1,6); # complex response!
+            # plots of surge response at each iteration for observing convergence
+            ax[0].plot(self.w, np.abs(Xi[0,:]) , color=c[iiter], label=f"iteration {iiter}")
+            ax[1].plot(self.w, np.real(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
+            ax[2].plot(self.w, np.imag(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
             
-            #aNacRAO{imeto} = -(w').^2 .* (rao{imeto}(:,1) + hNac*rao{imeto}(:,5));      # Nacelle Accel RAO
-            #aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));     # RMS Nacelle Accel
-
+            # check for convergence
+            tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
+            if (tolCheck < tol).all():
+                print(f" Iteration {iiter}, converged, with largest tolCheck of {np.max(tolCheck)} < {tol}")
+                break
+            else:
+                XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration 
+                                                # (uses hard-coded successive under relaxation for now)
+                print(f" Iteration {iiter}, still going since largest tolCheck is {np.max(tolCheck)} >= {tol}")
             
-            # ----------------- convergence check --------------------
-            conv = abs(aNac2(imeto)/aNac2last - 1);
-            #disp(['at ' num2str(iiter) ' iterations - convergence is ' num2str(conv)])
-            if conv < 0.0001
-
-                 
-                 break
-            else
-                 aNac2last = aNac2(imeto);
-            end
+            if iiter == nIter-1:
+                print("WARNING - solveDynamics iteration did not converge to the tolerance.")
             
-            '''
-
+        # labels for convergence plots
+        ax[1].legend()
+        ax[0].set_ylabel("response magnitude")
+        ax[1].set_ylabel("response, real")
+        ax[2].set_ylabel("response, imag")
+        ax[2].set_xlabel("frequency (rad/s)")
+        fig.suptitle("Response convergence")
+        
+        
         # ------------------------------ preliminary plotting of response ---------------------------------
 
         fig, ax = plt.subplots(3,1, sharex=True)

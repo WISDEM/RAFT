@@ -111,6 +111,7 @@ class Member:
         
         self.w = 1                                                  # mass per unit length [kg/m]
         
+        # distributed quantities
         self.r  = np.zeros([self.n,3])                              # undisplaced node positions along member  [m]
         self.d  = np.zeros( self.n   )                              # local diameter along member [m]
         self.sl = np.zeros([self.n,2])                              # local side lengths along member [m] (assuming rectangular=2 side lengths)
@@ -122,13 +123,14 @@ class Member:
                 self.sl[i,:] = self.slA + (i/self.n-1)*(self.slB-self.slA)  # spread evenly
         
         # complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
-        self.dr = np.zeros([self.n,3,nw], dtype=complex)            # displacement
-        self.v  = np.zeros([self.n,3,nw], dtype=complex)            # velocity
-        self.a  = np.zeros([self.n,3,nw], dtype=complex)            # acceleration
-        self.u  = np.zeros([self.n,3,nw], dtype=complex)            # wave velocity
-        self.ud = np.zeros([self.n,3,nw], dtype=complex)            # wave acceleration
-        self.pDyn=np.zeros([self.n,  nw], dtype=complex)            # dynamic pressure
-        
+        self.dr        = np.zeros([self.n,3,nw], dtype=complex)            # displacement
+        self.v         = np.zeros([self.n,3,nw], dtype=complex)            # velocity
+        self.a         = np.zeros([self.n,3,nw], dtype=complex)            # acceleration
+        self.u         = np.zeros([self.n,3,nw], dtype=complex)            # wave velocity
+        self.ud        = np.zeros([self.n,3,nw], dtype=complex)            # wave acceleration
+        self.pDyn      = np.zeros([self.n,  nw], dtype=complex)            # dynamic pressure
+        self.F_exc_iner= np.zeros([self.n,3,nw], dtype=complex)            # wave excitation from inertia (Froude-Krylov)
+        self.F_exc_drag= np.zeros([self.n,3,nw], dtype=complex)            # wave excitation from linearized drag
         
         
     def calcOrientation(self):
@@ -161,6 +163,11 @@ class Member:
         self.q  = q
         self.p1 = p1
         self.p2 = p2
+        
+        # matrices of vector multiplied by vector transposed, used in computing force components
+        self.qMat  = VecVecTrans(self.q)
+        self.p1Mat = VecVecTrans(self.p1)
+        self.p2Mat = VecVecTrans(self.p2)
 
         
         return q, p1, p2  # also return the unit vectors for convenience
@@ -669,8 +676,7 @@ def getWaveKin(zeta0, w, k, h, r, nw, rho=1025.0, g=9.91):
         zeta[i] = zeta0[i]* np.exp( -1j*(k[i]*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))  # shift each zetaC to account for location
         
         
-        # ...................... wave velocities and accelerations ............................
-        
+        # ...................... wave velocities and accelerations ............................        
         z = r[2]
         
         # only process wave kinematics if this node is submerged
@@ -680,6 +686,7 @@ def getWaveKin(zeta0, w, k, h, r, nw, rho=1025.0, g=9.91):
             # given the wave number, k, water depth, h, and elevation z, as inputs.
             if (    k[i]   == 0.0  ):                   # When .TRUE., the shallow water formulation is ill-conditioned; thus, the known value of unity is returned.
                 SINHNumOvrSIHNDen = 1.0
+                breakpoint()
                 COSHNumOvrSIHNDen = 99999.0
                 COSHNumOvrCOSHDen = 99999.0   # <<< check
             elif ( k[i]*h >  89.4 ):                # When .TRUE., the shallow water formulation will trigger a floating point overflow error; however, with h > 14.23*wavelength (since k = 2*Pi/wavelength) we can use the numerically-stable deep water formulation instead.
@@ -701,6 +708,7 @@ def getWaveKin(zeta0, w, k, h, r, nw, rho=1025.0, g=9.91):
             
             # Fourier transform of dynamic pressure
             pDyn[i] = rho*g* zeta[i] * COSHNumOvrCOSHDen 
+            
         
     return u, ud, pDyn
 
@@ -930,7 +938,7 @@ class Model():
             
         # analysis frequency array
         if len(w)==0:
-            w = np.arange(.01, 3, 0.01)  # angular frequencies tp analyze (rad/s)
+            w = np.arange(.05, 3, 0.05)  # angular frequencies tp analyze (rad/s)
         
         self.w = np.array(w)
         self.nw = len(w)  # number of frequencies
@@ -1049,31 +1057,28 @@ class Model():
         # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
         eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
         
-        # sort to normal DOF order based on which DOF is largest in each eigenvector  - still has issues <<<<<<
+        # sort to normal DOF order based on which DOF is largest in each eigenvector
         ind_list = []
-        for i in range(6):     # loop through each vector        
-            '''
-            ind_list.append(np.argmax(np.abs(eigenvectors[i,:])))
-            '''
-            vec = np.abs(eigenvectors[:, i])
+        for i in range(5,-1, -1):     
+            vec = np.abs(eigenvectors[i,:])  # look at each row (DOF) at a time (use reverse order to pick out rotational DOFs first)
         
-            for j in range(6):  # make sure the index isn't already claimed
+            for j in range(6):               # now do another loop in case the index was claimed previously
                 
-                ind = np.argmax(vec)
+                ind = np.argmax(vec)         # find the index of the vector with the largest value of the current DOF
                 
-                if ind in ind_list:
+                if ind in ind_list:          # if a previous vector claimed this DOF, set it to zero in this vector so that we look at the other vectors
                     vec[ind] = 0.0
                 else:
-                    ind_list.append(ind)
+                    ind_list.append(ind)     # if it hasn't been claimed before, assign this vector to the DOF
                     break
-            
-        fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi
         
-        modes = eigenvectors[:,ind_list]
+        ind_list.reverse()   # reverse the index list since we made it in reverse order
+            
+        fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
+        modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
         
         print("natural frequencies from eigen values")
-        printVec(np.sqrt(eigenvals)/ 2.0/np.pi)
-
+        printVec(fns)
         print("mode shapes from eigen values")
         printMat(modes)
         
@@ -1103,7 +1108,7 @@ class Model():
         fn[4] = np.sqrt( (C_tot[4,4] + C_tot[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M_tot[4,4] - M_tot[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
         # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
         printVec(fn)
-        
+                
     
     def solveStatics(self):
         '''Possibly a method to solve for the mean operating point (in conjunctoin with calcMooringAndOffsets)...'''
@@ -1120,15 +1125,18 @@ class Model():
 
     
     
-    def solveDynamics(self):
+    def solveDynamics(self, nIter=2):
         '''After all constant parts have been computed, call this to iterate through remaining terms 
-        until convergence on dynamic response.'''
+        until convergence on dynamic response.
+        
+        nIter = 2  # maximum number of iterations to allow
+        '''
 
 
         # total system complex response amplitudes (this gets updated each iteration)
         Xi = np.zeros([self.nDOF,self.nw], dtype=complex) + 0.01    # displacement and rotation complex amplitudes [m, rad]
 
-        nIter = 2  # maximum number of iterations to allow
+        
 
         # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<
         for iiter in range(nIter):
@@ -1173,6 +1181,7 @@ class Model():
                 Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
             
             
+            breakpoint()
             '''
 
             #Xi{imeto} = rao{imeto}.*repmat(sqrt(S(:,imeto)),1,6); # complex response!
@@ -1218,7 +1227,7 @@ class Model():
         ax[0].set_ylabel("response magnitude (m)")
         ax[1].set_ylabel("response magnitude (deg)")
         ax[2].set_ylabel("wave amplitude (m)")
-        ax[2].set_xlabel("frequency (Hz)")
+        ax[2].set_xlabel("frequency (rad/s)")
 
          
          # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
@@ -1405,6 +1414,9 @@ class FOWT():
         
         # make wave spectrum
         S = JONSWAP(self.w, Hs, Tp)
+        
+        for i in range(self.nw):
+            self.k[i] = waveNumber(self.w[i], self.depth)
         
         # wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
         self.zeta = np.sqrt(S)
@@ -1619,37 +1631,6 @@ class FOWT():
 
 
 
-# #print(stopt)
-# # ------------------------------- sum all static matrices -----------------------------------------
-# # this is to check totals from static calculations before hydrodynamic terms are added
-
-# M_tot_stat = M_struc             
-# C_tot_stat = C_struc + C_hydro + C_moor
-# W_tot_stat = W_struc + W_hydro + W_moor
-
-
-
-
-# print("hydrostatic stiffness matrix")
-# printMat(C_hydro)    
-    
-# print("structural stiffness matrix")
-# printMat(C_struc)
-    
-# print("mooring stiffness matrix")
-# printMat(C_moor)
-    
-
-# print("total static mass matrix")
-# printMat(M_tot_stat)
-    
-# print("total static stiffness matrix")
-# printMat(C_tot_stat)
-    
-# print("total static forces and moments")
-# printVec(W_tot_stat)
-
-
     def calcHydroConstants(self):
 
         rho = self.env.rho
@@ -1670,91 +1651,62 @@ class FOWT():
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
                     
-                    # set dl to half if at the member end (the end result is similar to trapezoid rule integration)
-                    if il==0 or il==mem.n:
-                        dl = 0.5*mem.dl
-                    else:
-                        dl = mem.dl
-                    
-                    
                     # get wave kinematics spectra given a certain wave spectrum and location
                     mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
 
 
-                    # local added mass matrix
-                    Amat = rho*0.25*np.pi*mem.d[il]**2*dl *( mem.Ca_q*VecVecTrans(mem.q) + mem.Ca_p1*VecVecTrans(mem.p1) + mem.Ca_p2*VecVecTrans(mem.p2) )
+                    # ----- compute side effects ---------------------------------------------------------
                     
-                    # add to global added mass matrix for Morison members
-                    self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
+                    dl = 0.5*mem.dl if (il==0 or il==mem.n) else 1.0*mem.dl              # set dl to half if at the member end (the end result is similar to trapezoid rule integration)
+                    v_i = 0.25*np.pi*mem.d[il]**2*dl                                     # member volume assigned to this node
                     
+                    # added mass
+                    Amat = rho*v_i *( mem.Ca_q*mem.qMat + mem.Ca_p1*mem.p1Mat + mem.Ca_p2*mem.p2Mat )  # local added mass matrix
                     
-                    # local inertial excitation matrix
-                    Imat = rho*0.25*np.pi*mem.d[il]**2*dl *( (1.+mem.Ca_q)*VecVecTrans(mem.q) + (1.+mem.Ca_p1)*VecVecTrans(mem.p1) + (1.+mem.Ca_p2)*VecVecTrans(mem.p2) )
+                    self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)    # add to global added mass matrix for Morison members
                     
-                    for i in range(self.nw):   # for each wave frequency...
+                    # inertial excitation - Froude-Krylov
+                    Imat = rho*v_i *( (1.+mem.Ca_q)*mem.qMat + (1.+mem.Ca_p1)*mem.p1Mat + (1.+mem.Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
                     
-                        # local inertial excitation force complex amplitude in x,y,z
-                        F_exc_inert = np.matmul(Imat, mem.ud[il,:,i])  
+                    for i in range(self.nw):                                             # for each wave frequency...
                     
-                        # add to global excitation vector (frequency dependent)
-                        self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
-
-
-                    # add end effects for added mass, and excitation including dynamic pressure
-                    if il==0:     # end A
+                        mem.F_exc_iner[il,:,i] = np.matmul(Imat, mem.ud[il,:,i])         # add to global excitation vector (frequency dependent)
+                        
+                        self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_iner[il,:,i])  # add to global excitation vector (frequency dependent)
+                        
+                    
+                    # ----- add end effects for added mass, and excitation including dynamic pressure ------
+                    
+                    if il==0 or il==mem.n-1:
+                    
+                        v_i = np.pi*mem.d[il]**3/6.0                                     # volume assigned to this end surface
+                        a_i = 0.25*np.pi*mem.d[il]**2                                    # end area
                             
-                        # local added mass matrix
-                        Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(mem.q)                
+                        # added mass
+                        Amat = rho*v_i * mem.Ca_End*mem.qMat                             # local added mass matrix
                         
-                        # add to global added mass matrix for Morison members
-                        self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
+                        self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
                         
+                        # inertial excitation
+                        Imat = rho*v_i * (1+mem.Ca_End)*mem.qMat                         # local inertial excitation matrix
                         
-                        # local inertial excitation matrix
-                        Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(mem.q)      
+                        for i in range(self.nw):                                         # for each wave frequency...
                         
-                        for i in range(self.nw):   # for each wave frequency...
+                            F_exc_iner_temp = np.matmul(Imat, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
+                                               
+                            if il == 0:
+                                F_exc_iner_temp += mem.pDyn[il,i]*rho*a_i *mem.q         # add dynamic pressure - positive with q if end A
+                            else:
+                                F_exc_iner_temp -= mem.pDyn[il,i]*rho*a_i *mem.q         # add dynamic pressure - negative with q if end B
+                            
+                            mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
+                            
+                            self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
                         
-                            # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
-                            F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) + mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *mem.q  
-                        
-                            # add to global excitation vector (frequency dependent)
-                            self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
-                        
-                        
-                    elif il==mem.n-1:  # end B
-                   
-                        # local added mass matrix
-                        Amat = rho*np.pi*mem.d[il]**3/6.0 *mem.Ca_End*VecVecTrans(mem.q)                
-                        
-                        # add to global added mass matrix for Morison members
-                        self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)
-                        
-                        
-                        # local inertial excitation matrix
-                        Imat = rho*np.pi*mem.d[il]**3/6.0 * (1+mem.Ca_End)*VecVecTrans(mem.q)      
-                        
-                        for i in range(self.nw):   # for each wave frequency...
-                        
-                            # local inertial (plus dynamic pressure) excitation force complex amplitude in x,y,z
-                            F_exc_inert = np.matmul(Imat, mem.ud[il,:,i]) - mem.pDyn[il,i]*rho*0.25*np.pi*mem.d[il]**2 *mem.q  
-                        
-                            # add to global excitation vector (frequency dependent)
-                            self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_inert)
-                        
-
-    def calcDynamicConstants(self):
-        ''' get system properties in undisplaced position ----------------------------
-         these are useful for verification, etc.
-        
-        Note: calcStatics and calcHydroConstants should be called before this method.
-        '''
-
-        # moorings aren't normally considered in the fowt object directly, but include them here for the natural frequency calculations for now...
 
 
         # sum matrices to check totals from static calculations before hydrodynamic terms are added
-
+        '''
         self.C_tot = self.C_struc + self.C_hydro + self.C_moor   # total system stiffness matrix about undisplaced position
         #W_tot0 = self.W_struc + self.W_hydro + W_moor0   # system mean forces and moments at undisplaced position
 
@@ -1762,7 +1714,6 @@ class FOWT():
 
         # do we want to relinearize structural properties about displaced position/orientation?  (Probably not)
 
-        '''
         print("hydrostatic stiffness matrix")
         printMat(C_hydro)    
             
@@ -1790,54 +1741,6 @@ class FOWT():
         print("total static forces and moments about undisplaced position")
         printVec(W_tot0)
         '''
-
-
-
-        # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
-
-        eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M), C_tot0))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
-
-
-        # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
-
-        if C_tot0[0,0] == 0.0:
-            zMoorx = 0.0
-        else:
-            zMoorx = C_tot0[0,4]/C_tot0[0,0]  # effective z elevation of mooring system reaction forces in x and y directions
-        
-        if C_tot0[1,1] == 0.0:
-            zMoory = 0.0
-        else:
-            zMoory = C_tot0[1,3]/C_tot0[1,1]
-        
-        zCG  = self.rCG_TOT[2]                    # center of mass in z
-        zCMx = M[0,4]/M[0,0]              # effective z elevation of center of mass and added mass in x and y directions
-        zCMy = M[1,3]/M[1,1]
-
-        print("natural frequencies without added mass")
-        fn = np.zeros(6)
-        fn[0] = np.sqrt( C_tot0[0,0] / self.M_struc[0,0] )/ 2.0/np.pi
-        fn[1] = np.sqrt( C_tot0[1,1] / self.M_struc[1,1] )/ 2.0/np.pi
-        fn[2] = np.sqrt( C_tot0[2,2] / self.M_struc[2,2] )/ 2.0/np.pi
-        fn[5] = np.sqrt( C_tot0[5,5] / self.M_struc[5,5] )/ 2.0/np.pi
-        zg = self.rCG_TOT[2]
-        fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,1]*((zCG-zMoory)**2 - zMoory**2) ) / (self.M_struc[3,3] - self.M_struc[1,1]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-        fn[4] = np.sqrt( (C_tot0[4,4] + C_tot0[0,0]*((zCG-zMoorx)**2 - zMoorx**2) ) / (self.M_struc[4,4] - self.M_struc[0,0]*zg**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-        printVec(fn)
-
-
-        print("natural frequencies with added mass")
-        fn = np.zeros(6)
-        fn[0] = np.sqrt( C_tot0[0,0] / M[0,0] )/ 2.0/np.pi
-        fn[1] = np.sqrt( C_tot0[1,1] / M[1,1] )/ 2.0/np.pi
-        fn[2] = np.sqrt( C_tot0[2,2] / M[2,2] )/ 2.0/np.pi
-        fn[5] = np.sqrt( C_tot0[5,5] / M[5,5] )/ 2.0/np.pi
-        fn[3] = np.sqrt( (C_tot0[3,3] + C_tot0[1,1]*((zCMy-zMoory)**2 - zMoory**2) ) / (M[3,3] - M[1,1]*zCMy**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-        fn[4] = np.sqrt( (C_tot0[4,4] + C_tot0[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M[4,4] - M[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-        # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
-        printVec(fn)
-
-        breakpoint()
 
     def calcLinearizedTerms(self, Xi):
         '''The FOWT's dynamics solve iteration method. This calculates the amplitude-dependent linearized coefficients.
@@ -1870,42 +1773,59 @@ class FOWT():
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
                 
+                    # ----- compute side effects ------------------------
+                    
+                    dl = 0.5*mem.dl if (il==0 or il==mem.n) else 1.0*mem.dl              # set dl to half if at the member end (the end result is similar to trapezoid rule integration)
+                    a_i = mem.d[il] * dl                                                 # member side cross-sectional area assigned to this node
+                    
                     # water relative velocity over node (complex amplitude spectrum)  [3 x nw]
                     vrel = mem.u[il,:] - vnode
                     
                     # break out velocity components in each direction relative to member orientation [nw]
-                    vrel_q  = vrel*mem.q[ :,None]
+                    vrel_q  = vrel*mem.q[ :,None]     # (the ,None is for broadcasting q across all frequencies in vrel)
                     vrel_p1 = vrel*mem.p1[:,None]
                     vrel_p2 = vrel*mem.p2[:,None]
                     
                     # get RMS of relative velocity component magnitudes (real-valued)
-                    vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )  # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
+                    vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )                          # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
                     vRMS_p1 = np.linalg.norm( np.abs(vrel_p1) )
                     vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
                     
                     # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
-                    Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*mem.d[il]*mem.dl * mem.Cd_q 
-                    Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p1
-                    Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * mem.d[il]*mem.dl * mem.Cd_p2
+                    Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*a_i * mem.Cd_q 
+                    Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho *       a_i * mem.Cd_p1
+                    Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho *       a_i * mem.Cd_p2
                     
-                    # convert to global orientation
-                    Bmat = Bprime_q*VecVecTrans(mem.q) + Bprime_p1*VecVecTrans(mem.p1) + Bprime_p2*VecVecTrans(mem.p2)
+                    Bmat = Bprime_q*mem.qMat + Bprime_p1*mem.p1Mat + Bprime_p2*mem.p2Mat # damping matrix for the node based on linearized drag coefficients 
                     
-                    # add to global damping matrix for Morison members
-                    Btemp = translateMatrix3to6DOF(mem.r[il,:], Bmat)
-                                        
-                    B_hydro_drag += Btemp
-                    
-                    
-                    # excitation force based on linearized damping coefficients [3 x nw]
-                    F_exc_drag = np.zeros([3, self.nw], dtype=complex)  # <<< should set elsewhere <<<
+                    B_hydro_drag += translateMatrix3to6DOF(mem.r[il,:], Bmat)            # add to global damping matrix for Morison members
+                                   
                     for i in range(self.nw):
 
-                        # get local 3d drag excitation force complex amplitude for each frequency
-                        F_exc_drag[:,i] = np.matmul(Bmat, mem.u[il,:,i])  
+                        mem.F_exc_drag[il,:,i] = np.matmul(Bmat, mem.u[il,:,i])          # get local 3d drag excitation force complex amplitude for each frequency [3 x nw]
+                        
+                        F_hydro_drag[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_drag[il,:,i])   # add to global excitation vector (frequency dependent)
+                        
                     
-                        # add to global excitation vector (frequency dependent)
-                        F_hydro_drag[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag[:,i])
+                    # ----- add end effects for added mass, and excitation including dynamic pressure ------
+                    
+                    if il==0 or il==mem.n-1:
+                    
+                        a_i = 0.25*np.pi*mem.d[il]**2                                    # end area
+                        Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*np.pi*a_i*mem.Cd_End 
+                    
+                        Bmat = Bprime_End*mem.qMat                                       # 
+                        
+                        B_hydro_drag += translateMatrix3to6DOF(mem.r[il,:], Bmat)        # add to global damping matrix for Morison members
+                        
+                        for i in range(self.nw):                                         # for each wave frequency...
+                        
+                            F_exc_drag_temp = np.matmul(Bmat, mem.u[il,:,i])             # local drag excitation force complex amplitude in x,y,z
+                            
+                            mem.F_exc_drag[il,:,i] += F_exc_drag_temp                    # add to stored member force vector
+                            
+                            F_hydro_drag[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag_temp) # add to global excitation vector (frequency dependent)
+                    
 
         # save the arrays internally in case there's ever a need for the FOWT to solve it's own latest dynamics
         self.B_hydro_drag = B_hydro_drag
@@ -1925,5 +1845,8 @@ class FOWT():
             mem.calcOrientation()  # temporary
         
             mem.plot(ax)
+            
+        # in future should consider ability to animate mode shapes and also to animate response at each frequency 
+        # including hydro excitation vectors stored in each member
             
 #

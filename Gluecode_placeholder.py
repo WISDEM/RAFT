@@ -644,7 +644,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
     
     capyTestFile = f'./test_data/mesh_converge_0.750_1.250.nc'
 
-    w = np.arange(0.1, 2.8, 0.01)  # frequency range (to be set by modeling options yaml)
+    w = np.arange(0.05, 2.8, 0.05)  # frequency range (to be set by modeling options yaml)
     
     '''
     # load or generate Capytaine data

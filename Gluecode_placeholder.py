@@ -191,7 +191,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append("34    10   circ   11.88   11.88   -28.87     0.0     11.94  -28.87     0.0    12.00   5.94    5.94     0.0         0.0   7850  ")
             memberStrings.append("35    10   circ   11.88   11.88    14.43   -25.0     11.94   14.43   -25.0    12.00   5.94    5.94     0.0         0.0   7850  ")
             # Upper Column Bottom Caps
-            '''
+            
             memberStrings.append("36    11   circ   11.88   11.88    14.43    25.0    -14.0    14.43    25.0   -13.94   5.94    5.94     0.0         0.0   7850  ")
             memberStrings.append("37    11   circ   11.88   11.88   -28.87     0.0    -14.0   -28.87     0.0   -13.94   5.94    5.94     0.0         0.0   7850  ")
             memberStrings.append("38    11   circ   11.88   11.88    14.43   -25.0    -14.0    14.43   -25.0   -13.94   5.94    5.94     0.0         0.0   7850  ")
@@ -199,9 +199,9 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append("36    11   circ   12.00   12.00    14.43    25.0    -14.06    14.43    25.0   -14.0   6.00    6.00     0.0         0.0   7850  ")
             memberStrings.append("37    11   circ   12.00   12.00   -28.87     0.0    -14.06   -28.87     0.0   -14.0   6.00    6.00     0.0         0.0   7850  ")
             memberStrings.append("38    11   circ   12.00   12.00    14.43   -25.0    -14.06    14.43   -25.0   -14.0   6.00    6.00     0.0         0.0   7850  ")
-            
-            # Base Column Top Caps
             '''
+            # Base Column Top Caps
+            
             memberStrings.append("39    12   circ   23.88   23.88    14.43    25.0    -14.06   14.43    25.0   -14.00  11.94   11.94     0.0         0.0   7850  ")
             memberStrings.append("40    12   circ   23.88   23.88   -28.87     0.0    -14.06  -28.87     0.0   -14.00  11.94   11.94     0.0         0.0   7850  ")
             memberStrings.append("41    12   circ   23.88   23.88    14.43   -25.0    -14.06   14.43   -25.0   -14.00  11.94   11.94     0.0         0.0   7850  ")
@@ -209,7 +209,7 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append("39    12   circ   23.88   23.88    14.43    25.0    -14.06   14.43    25.0   -14.00   5.94    5.94     0.0         0.0   7850  ")
             memberStrings.append("40    12   circ   23.88   23.88   -28.87     0.0    -14.06  -28.87     0.0   -14.00   5.94    5.94     0.0         0.0   7850  ")
             memberStrings.append("41    12   circ   23.88   23.88    14.43   -25.0    -14.06   14.43   -25.0   -14.00   5.94    5.94     0.0         0.0   7850  ")
-            
+            '''
             
             # Base Column Bottom Caps
             memberStrings.append("42    13   circ   23.88   23.88    14.43    25.0    -20.0    14.43    25.0   -19.94  11.94   11.94     0.0         0.0   7850  ")
@@ -684,13 +684,14 @@ if __name__ == "__main__":
     
     #runFDmodel()
     
-    #model = runFDmodel()
-    model = runFDmodel(model='OC4')
+    model = runFDmodel()
+    #model = runFDmodel(model='OC4')
     #model = runFDmodel(model='test')
     #model = runFDmodel(model='Volturnus')
     
     
     fowt = model.fowtList[0]
+    '''
     print('Tower Mass:          ',np.round(fowt.mtower,2),' kg')
     print('Tower CG:            ',np.round(fowt.rCG_tow[2],4),' m from SWL')
     print('Substructure Mass:   ',np.round(fowt.msubstruc,2),' kg')
@@ -712,6 +713,24 @@ if __name__ == "__main__":
     print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
     print('F_lines: ',list(np.round(np.array(model.F_moor0),2)),' N')
     print('C_lines: ',model.C_moor0)
+    '''
+    print('A11/A22:             ',fowt.A_hydro_morison[0,0],' kg')
+    print(fowt.A_hydro_morison[2,2])
+    print(fowt.A_hydro_morison[3,3])
+    print(fowt.A_hydro_morison[0,4])
+    print(fowt.A_hydro_morison[1,3])
+    
+    
+    mag = abs(fowt.F_hydro_iner/fowt.zeta)
+    
+    plt.plot(fowt.w, mag[0,:])
+    plt.plot(fowt.w, mag[2,:])
+    plt.plot(fowt.w, mag[4,:])
+    plt.xlabel('Frequency (rad/s)')
+    plt.ylabel('Exciting Force [N')
+    
+    
+    
     
     def pdiff(x,y):
         return (abs(x-y)/y)*100

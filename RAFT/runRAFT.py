@@ -213,8 +213,8 @@ if __name__ == "__main__":
     
     model = runRAFT('OC3spar.yaml', 'env.yaml')
     
-    
     fowt = model.fowtList[0]
+    '''
     print('Tower Mass:          ',np.round(fowt.mtower,2),' kg')
     print('Tower CG:            ',np.round(fowt.rCG_tow[2],4),' m from SWL')
     print('Substructure Mass:   ',np.round(fowt.msubstruc,2),' kg')
@@ -236,6 +236,21 @@ if __name__ == "__main__":
     print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
     print('F_lines: ',list(np.round(np.array(model.F_moor0),2)),' N')
     print('C_lines: ',model.C_moor0)
+    '''
+    print('A11/A22:             ',fowt.A_hydro_morison[0,0],' kg')
+    print(fowt.A_hydro_morison[2,2])
+    print(fowt.A_hydro_morison[3,3])
+    print(fowt.A_hydro_morison[0,4])
+    print(fowt.A_hydro_morison[1,3])
+    
+    
+    mag = abs(fowt.F_hydro_iner/fowt.zeta)
+    
+    plt.plot(fowt.w, mag[0,:])
+    plt.plot(fowt.w, mag[2,:])
+    plt.plot(fowt.w, mag[4,:])
+    plt.xlabel('Frequency (rad/s)')
+    plt.ylabel('Exciting Force [N')
     
     def pdiff(x,y):
         return (abs(x-y)/y)*100

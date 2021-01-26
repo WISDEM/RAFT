@@ -1653,7 +1653,6 @@ class FOWT():
         self.A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
         self.F_hydro_iner    = np.zeros([6,self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
-
         # loop through each member
         for mem in self.memberList:
             
@@ -1685,7 +1684,6 @@ class FOWT():
                         mem.F_exc_iner[il,:,i] = np.matmul(Imat, mem.ud[il,:,i])         # add to global excitation vector (frequency dependent)
                         
                         self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_iner[il,:,i])  # add to global excitation vector (frequency dependent)
-                        
                     
                     # ----- add end effects for added mass, and excitation including dynamic pressure ------
                     
@@ -1714,7 +1712,6 @@ class FOWT():
                             mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
                             
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
-                        
 
 
         # sum matrices to check totals from static calculations before hydrodynamic terms are added

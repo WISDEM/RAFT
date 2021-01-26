@@ -1,0 +1,189 @@
+type: input file for RAFT
+name: 5MW with OC3-Hywind spar
+comments: sample to get things working with
+
+turbine:
+    
+    mRNA          :     350000        #  [kg]       RNA mass 
+    IxRNA         :   35444067        #  [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+    IrRNA         :   26159984.0      #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
+    xCG_RNA       :          0        #  [m]        x location of RNA center of mass [m] (Actual is ~= -0.27 m)
+    hHub          :         90.0      #  [m]        hub height above water line [m]
+    Fthrust       :        800.0E3    #  [N]        temporary thrust force to use
+    yaw_stiffness :   98340000.0      #  [N-m/rad]  additional yaw stiffness to apply if not modeling crowfoot in the mooring system <<< move this to platform section
+
+    tower_input_type: strings
+
+    tower_strings:
+        #   number type  shape  dA      dB      xa      ya     za     xb     yb      zb        tA       tB   l_fill  rho_fill rho_shell
+        - "    1     1   circ  6.500   6.237    0.0    0.0    10.00   0.0    0.0    17.76    0.0270   0.0262   0.0       0.0    8500  "
+        - "    2     1   circ  6.237   5.974    0.0    0.0    17.76   0.0    0.0    25.52    0.0262   0.0254   0.0       0.0    8500  "
+        - "    3     1   circ  5.974   5.711    0.0    0.0    25.52   0.0    0.0    33.28    0.0254   0.0246   0.0       0.0    8500  "
+        - "    4     1   circ  5.711   5.448    0.0    0.0    33.28   0.0    0.0    41.04    0.0246   0.0238   0.0       0.0    8500  "
+        - "    5     1   circ  5.448   5.185    0.0    0.0    41.04   0.0    0.0    48.80    0.0238   0.0230   0.0       0.0    8500  "
+        - "    6     1   circ  5.185   4.922    0.0    0.0    48.80   0.0    0.0    56.56    0.0230   0.0222   0.0       0.0    8500  "
+        - "    7     1   circ  4.922   4.659    0.0    0.0    56.56   0.0    0.0    64.32    0.0222   0.0214   0.0       0.0    8500  "
+        - "    8     1   circ  4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08    0.0214   0.0206   0.0       0.0    8500  "
+        - "    9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84    0.0206   0.0198   0.0       0.0    8500  "
+        - "   10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60    0.0198   0.0190   0.0       0.0    8500  "
+
+
+platform:
+
+    member_input_type: list            # the format platform info will be in: strings, arrays, list, file
+    
+    member_strings:                                   # set member_input_type as "strings" to use this format
+        #    number type  shape  dA      dB      xa      ya     za     xb     yb      zb        tA       tB   l_fill  rho_fill rho_shell
+        - "    11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00    0.0270   0.0270  52.0    1860.0    8500     "
+        - "    12     2   circ  9.400   6.500    0.0    0.0    -12.0   0.0    0.0    -4.00    0.0270   0.0270   0.0       0.0    8500     "
+        - "    13     2   circ  6.500   6.500    0.0    0.0     -4.0   0.0    0.0    10.00    0.0270   0.0270   0.0       0.0    8500     "
+
+    member_arrays:                                    # set member_input_type as "arrays" to use this format
+        number    :  [ 11     , 12     , 13     ]     #          to be reconsidered...
+        type      :  [ 2      , 2      , 2      ]     #          indicates whether above or below water ... could eventually be considered for potential flow flagging too...
+        shape     :  [ circ   , circ   , circ   ]     #          circ or rect
+        dA        :  [ 9.400  , 9.400  , 6.500  ]     #  [m]     diameter (or pair of side lengths seperated by a "/" at end A
+        dB        :  [ 9.4    , 6.5    , 6.5    ]     #  [m]     ....
+        xa        :  [ 0      , 0      , 0      ]     #  [m]
+        ya        :  [ 0      , 0      , 0      ]     #  [m]
+        za        :  [ -120   , -12    , -4     ]     #  [m]
+        xb        :  [ 0      , 0      , 0      ]     #  [m]
+        yb        :  [ 0      , 0      , 0      ]     #  [m]
+        zb        :  [ -12    , -4     , 10     ]     #  [m]
+        tA        :  [ 0.027  , 0.027  , 0.027  ]     #  [m]
+        tB        :  [ 0.027  , 0.027  , 0.027  ]     #  [m]
+        l_fill    :  [ 52     , 0      , 0      ]     #  [m]      length along axis from end A that ballast extends to
+        rho_fill  :  [ 1860   , 0      , 0      ]     #  [kg/m3]  ballast material density
+        rho_shell :  [ 8500   , 8500   , 8500   ]     #  [kg/m3]  shell material density
+
+    member_list:                                      # set member_input_type as "list" to use this format
+     
+      - number    :  11         #          to be reconsidered...
+        type      :  2          #          indicates whether above or below water ... could eventually be considered for potential flow flagging too...
+        shape     :  circ       #          circ or rect
+        dA        :  9.400      #  [m]     diameter (or pair of side lengths seperated by a "/" at end A
+        dB        :  9.4        #  [m]     ....
+        xa        :  0          #  [m]
+        ya        :  0          #  [m]
+        za        :  -120       #  [m]
+        xb        :  0          #  [m]
+        yb        :  0          #  [m]
+        zb        :  -12        #  [m]
+        tA        :  0.027      #  [m]
+        tB        :  0.027      #  [m]
+        l_fill    :  52         #  [m]      length along axis from end A that ballast extends to
+        rho_fill  :  1860       #  [kg/m3]  ballast material density
+        rho_shell :  8500       #  [kg/m3]  shell material density
+
+      - number    :  12       
+        type      :  2        
+        shape     :  circ     
+        dA        :  9.400    
+        dB        :  6.5      
+        xa        :  0        
+        ya        :  0        
+        za        :  -12      
+        xb        :  0        
+        yb        :  0        
+        zb        :  -4       
+        tA        :  0.027    
+        tB        :  0.027    
+        l_fill    :  0        
+        rho_fill  :  0        
+        rho_shell :  8500     
+                    
+      - number    :  13       
+        type      :  2        
+        shape     :  circ     
+        dA        :  6.500    
+        dB        :  6.5      
+        xa        :  0        
+        ya        :  0        
+        za        :  -4       
+        xb        :  0        
+        yb        :  0        
+        zb        :  10       
+        tA        :  0.027    
+        tB        :  0.027    
+        l_fill    :  0        
+        rho_fill  :  0        
+        rho_shell :  8500     
+
+    member_file: "filename.txt"           # the filename to a text file containing the member strings (after one header line)
+
+    
+    
+    
+
+mooring:
+    water_depth: 320                                  # [m]       uniform water depth
+    
+    points:
+        - name: line1_anchor
+          type: fixed
+          location: [853.87, 0.0, -320.0]
+          anchor_type: drag_embedment
+
+        - name: line2_anchor
+          type: fixed
+          location: [-426.94, 739.47, -320.0]
+          anchor_type: drag_embedment
+
+        - name: line3_anchor
+          type: fixed
+          location: [-426.94, -739.47, -320.0]
+          anchor_type: drag_embedment
+
+        - name: line1_vessel
+          type: vessel
+          location: [5.2,      0.0,     -70.0]
+
+        - name: line2_vessel
+          type: vessel
+          location: [-2.6,      4.5,     -70.0]
+
+        - name: line3_vessel
+          type: vessel
+          location: [-2.6,     -4.5,     -70.0]
+
+    lines:
+        - name: line1
+          endA: line1_anchor
+          endB: line1_vessel
+          type: main
+          length: 902.2
+
+        - name: line2
+          endA: line2_anchor
+          endB: line2_vessel
+          type: main
+          length: 902.2
+
+        - name: line3
+          endA: line3_anchor
+          endB: line3_vessel
+          type: main
+          length: 902.2
+
+    line_types:
+        - name: main
+          diameter: 0.09
+          mass_density: 77.7066
+          stiffness: 384.243e6
+          breaking_load: 1e8
+          cost: 100.0
+          transverse_added_mass: 1.0
+          tangential_added_mass: 0.0
+          transverse_drag: 1.6
+          tangential_drag: 0.1
+
+    anchor_types:
+        - name: drag_embedment
+          mass: 1e3
+          cost: 1e4
+          max_vertical_load: 0.0
+          max_lateral_load: 1e5
+    
+
+                
+              

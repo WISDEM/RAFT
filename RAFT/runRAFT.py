@@ -5,9 +5,9 @@ import yaml
 import matplotlib.pyplot as plt
 
 # test local code; consider src layout in future to test installed code
-sys.path.append('..')
-sys.path.append('c:/code/MoorPy')
-import FrequencyDomain as fd
+#sys.path.append('..')
+sys.path.insert(1, '../../MoorPy')
+import RAFT as fd
 import MoorPy as mp
 
 
@@ -37,78 +37,16 @@ def runRAFT(fname_design, fname_env):
     
     
     # ----- process platform information ----------------------------------------
+
+    memberStrings = []      # initialize an empty list to hold all the member strings
     
-    # create member strings (4 different input formats supported)
-    # note: some redundancy here with Member.init - may want to reconsider
+    for mi in design['platform']['members']:
     
-    if design['platform']['member_input_type'] == 'strings':
-        
-        memberStrings = design['platform']['member_strings']
+        # pattern option for rotational symmetries could be inserted here
     
-    
-    elif design['platform']['member_input_type'] == 'arrays':
-        
-        mi = design['platform']['member_arrays']
-        
-        nMembers = len(mi['number'])
-    
-        memberStrings = []      # initialize an empty list to hold all the member strings
-        
-        for i in range(nMembers):
-        
-            memberStrings.append( f"{mi['number'   ][i]} "
-                                  f"{mi['type'     ][i]} "
-                                  f"{mi['shape'    ][i]} "
-                                  f"{mi['dA'       ][i]} "
-                                  f"{mi['dB'       ][i]} "
-                                  f"{mi['xa'       ][i]} "
-                                  f"{mi['ya'       ][i]} "
-                                  f"{mi['za'       ][i]} "
-                                  f"{mi['xb'       ][i]} "
-                                  f"{mi['yb'       ][i]} "
-                                  f"{mi['zb'       ][i]} "
-                                  f"{mi['tA'       ][i]} "
-                                  f"{mi['tB'       ][i]} "
-                                  f"{mi['l_fill'   ][i]} "
-                                  f"{mi['rho_fill' ][i]} "
-                                  f"{mi['rho_shell'][i]}")
+        memberStrings.append( fd.Member(mi) )
     
     
-    elif design['platform']['member_input_type'] == 'list':
-        
-        memberStrings = []      # initialize an empty list to hold all the member strings
-        
-        for mi in design['platform']['member_list']:
-        
-            memberStrings.append( f"{mi['number'   ]} "
-                                  f"{mi['type'     ]} "
-                                  f"{mi['shape'    ]} "
-                                  f"{mi['dA'       ]} "
-                                  f"{mi['dB'       ]} "
-                                  f"{mi['xa'       ]} "
-                                  f"{mi['ya'       ]} "
-                                  f"{mi['za'       ]} "
-                                  f"{mi['xb'       ]} "
-                                  f"{mi['yb'       ]} "
-                                  f"{mi['zb'       ]} "
-                                  f"{mi['tA'       ]} "
-                                  f"{mi['tB'       ]} "
-                                  f"{mi['l_fill'   ]} "
-                                  f"{mi['rho_fill' ]} "
-                                  f"{mi['rho_shell']}")
-    
-    
-    elif design['platform']['member_input_type'] == 'file':
-    
-        fname_members = design['platform']['member_file']
-        
-        with open(fnam_members) as file: 
-            lines = file.read()
-    
-        memberStrings = lines[1:]    # take the member strings to be all lines in the file after the first one
-    
-    else:
-        raise ValueError("YAML input entry for platform:member_input_type ('"+design['platform']['member_input_type']+"') not supported.")
     
     
     # ----- process mooring information ----------------------------------------------

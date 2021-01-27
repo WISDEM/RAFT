@@ -1773,18 +1773,24 @@ class FOWT():
                     # get wave kinematics spectra given a certain wave spectrum and location
                     mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
 
+                    # interpolate coefficients for the current strip
+                    Ca_q   = np.interp( mem.ls[il], mem.stations, mem.Ca_q  )
+                    Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
+                    Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
+                    Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
+
 
                     # ----- compute side effects ---------------------------------------------------------
                     
-                    v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[i]                            # member volume assigned to this node
+                    v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]                            # member volume assigned to this node
                     
                     # added mass
-                    Amat = rho*v_i *( mem.Ca_q*mem.qMat + mem.Ca_p1*mem.p1Mat + mem.Ca_p2*mem.p2Mat )  # local added mass matrix
+                    Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
                     
                     self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)    # add to global added mass matrix for Morison members
                     
                     # inertial excitation - Froude-Krylov
-                    Imat = rho*v_i *( (1.+mem.Ca_q)*mem.qMat + (1.+mem.Ca_p1)*mem.p1Mat + (1.+mem.Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
+                    Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
                     
                     for i in range(self.nw):                                             # for each wave frequency...
                     
@@ -1799,12 +1805,12 @@ class FOWT():
                     a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
                     
                     # added mass
-                    Amat = rho*v_i * mem.Ca_End*mem.qMat                             # local added mass matrix
+                    Amat = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
                     
                     self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
                     
                     # inertial excitation
-                    Imat = rho*v_i * (1+mem.Ca_End)*mem.qMat                         # local inertial excitation matrix
+                    Imat = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
                     
                     for i in range(self.nw):                                         # for each wave frequency...
                     

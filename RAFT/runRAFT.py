@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # test local code; consider src layout in future to test installed code
 #sys.path.append('..')
 sys.path.insert(1, '../../MoorPy')
-import RAFT as fd
+import RAFT
 import MoorPy as mp
 
 
@@ -16,7 +16,7 @@ import MoorPy as mp
 
 import importlib
 mp = importlib.reload(mp)
-fd = importlib.reload(fd)
+RAFT = importlib.reload(RAFT)
 
 
 
@@ -25,6 +25,7 @@ def runRAFT(fname_design, fname_env):
     This the main function for running the RAFT model in standalone form, where inputs are contained in the specified input files.
     '''
     
+    # open the design YAML file and parse it into a dictionary for passing to RAFT
     
     with open('OC3spar.yaml') as file:
         design = yaml.load(file, Loader=yaml.FullLoader)
@@ -32,34 +33,7 @@ def runRAFT(fname_design, fname_env):
     print("Loading file: "+fname_design)
     print(f"'{design['name']}'")
     
-    # ----- process turbine information -----------------------------------------
-    # No processing actually needed yet - we pass the dictionary directly to RAFT.
     
-    
-    # ----- process platform information ----------------------------------------
-
-    memberStrings = []      # initialize an empty list to hold all the member strings
-    
-    for mi in design['platform']['members']:
-    
-        # pattern option for rotational symmetries could be inserted here
-    
-        memberStrings.append( fd.Member(mi) )
-    
-    
-    
-    
-    # ----- process mooring information ----------------------------------------------
-      
-    MooringSystem = mp.System()
-    
-    MooringSystem.parseYAML(design['mooring'])
-      
-    MooringSystem.initialize()
-    
-    
-    
-    # may want to check that mooring depth matches wave environment depth at some point <<<      
             
     depth = float(design['mooring']['water_depth'])
             
@@ -87,10 +61,9 @@ def runRAFT(fname_design, fname_env):
     '''
 
     
-    # --- Create Model ---
-    # now that memberStrings and MooringSystem are made on way or another, call the model 
+    # --- Create and run the model ---
 
-    model = fd.Model(memberList=memberStrings, ms=MooringSystem, w=w, depth=depth, BEM=capyData, RNAprops=design['turbine'])  # set up model
+    model = RAFT.Model(design, w=w, depth=depth, BEM=capyData)  # set up model
 
     model.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
 
@@ -158,7 +131,7 @@ def runRAFTfromWEIS():
         
         # plug variables into a Member in FrequencyDomain and append to the memberString list
                     # change to string in FD v
-        memberStrings.append(fd.Member( str(name_member)+" "+str(type)+" "+str(dA)+" "+str(dB)+" "+str(rA[0])+" "+str(rA[1])+" "+str(rA[2])+\
+        memberStrings.append(RAFT.Member( str(name_member)+" "+str(type)+" "+str(dA)+" "+str(dB)+" "+str(rA[0])+" "+str(rA[1])+" "+str(rA[2])+\
                                  " "+str(rB[0])+" "+str(rB[1])+" "+str(rB[2])+" "+str(t)+" "+str(l_fill)+" "+str(rho_fill), nw))
   
   

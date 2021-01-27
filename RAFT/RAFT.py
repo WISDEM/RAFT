@@ -57,28 +57,32 @@ class Member:
         self.name  = str(mi['name'])
         self.type  = int(mi['type'])                                 # set the type of the member (for now, just arbitrary numbers: 0,1,2, etc.)
         
-        shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
-        
         self.rA = np.array(mi['rA'], dtype=np.double)                # [x,y,z] coordinates of lower node [m]
         self.rB = np.array(mi['rB'], dtype=np.double)                # [x,y,z] coordinates of upper node [m]
         
         # put heading rotation capability here <<<<
         
+        shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
+        
+        rAB = self.rB-self.rA                                        # The relative coordinates of upper node from lower node [m]
+        self.l = np.linalg.norm(rAB)                                 # member length [m]
+        
+        
         # station positions
         ns = len(mi['stations'])                                     # number of stations
         if ns < 2:  
-            throw valueError("At least two stations entries must be provided")
+            raise valueError("At least two stations entries must be provided")
             
         A = np.array(mi['stations'], dtype=float)    
-        self.stations = (A - A[0])/(A[-1] - A[0])                    # calculate relative station positions from 0 to 1
+        self.stations = (A - A[0])/(A[-1] - A[0])*self.l             # calculate relative station positions from 0 to 1
         
         
         # helper function to deal with scalar vs list inputs that should be size ns
-        def handleScalars (input):
+        def handleScalars(input):
             if np.isscalar(input): 
-                return = np.zeros(ns) + float(input)    # if a scalar is provided, tile it out to the length of ns
+                return np.zeros(ns) + float(input)    # if a scalar is provided, tile it out to the length of ns
             else:
-                return = np.array(input, dtype=float)
+                return np.array(input, dtype=float)
             # at some point should upgrade this to take dict and field name to provide default values if it's not provided in the dict
         
         
@@ -114,8 +118,6 @@ class Member:
                                              
         self.rho_shell = handleScalars(mi['rho_shell'])             # shell mass density [kg/m^3]
         
-        rAB = self.rB-self.rA                                       # The relative coordinates of upper node from lower node [m]
-        self.l = np.linalg.norm(rAB)                                # member length [m]
         
         # initialize member orientation variables
         self.q = rAB/self.l                                         # member axial unit vector
@@ -131,47 +133,56 @@ class Member:
         
         
         # Drag coefficients
-        self.Cd_q   = handleScalars(0           )                    # axial drag coefficient
-        self.Cd_p1  = handleScalars(mi['Cd'    ])                    # transverse1 drag coefficient
-        self.Cd_p2  = handleScalars(mi['Cd'    ])                    # transverse2 drag coefficient
-        self.Cd_End = handleScalars(mi['Cd_End'])                    # end drag coefficient        
+        self.Cd_q   = handleScalars(0          )                    # axial drag coefficient
+        self.Cd_p1  = handleScalars(mi['Cd'   ])                    # transverse1 drag coefficient
+        self.Cd_p2  = handleScalars(mi['Cd'   ])                    # transverse2 drag coefficient
+        self.Cd_End = handleScalars(mi['CdEnd'])                    # end drag coefficient        
         # Added mass coefficients
-        self.Ca_q   = handleScalars(0           )                    # axial added mass coefficient
-        self.Ca_p1  = handleScalars(mi['Ca'    ])                    # transverse1 added mass coefficient
-        self.Ca_p2  = handleScalars(mi['Ca'    ])                    # transverse2 added mass coefficient
-        self.Ca_End = handleScalars(mi['Ca_End'])                    # end added mass coefficient
+        self.Ca_q   = handleScalars(0          )                    # axial added mass coefficient
+        self.Ca_p1  = handleScalars(mi['Ca'   ])                    # transverse1 added mass coefficient
+        self.Ca_p2  = handleScalars(mi['Ca'   ])                    # transverse2 added mass coefficient
+        self.Ca_End = handleScalars(mi['CaEnd'])                    # end added mass coefficient
         
         
         # discretize for hydrodynamics
-        n = 0
+        dlMax = 10.0   # maximum node spacing <<< this should be an optional input at some point <<<
+        lh = [0.0]   # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
+        
         for i in range(1,ns):
-            pass   # >>>>>>>> working here >>>>
         
-        self.n = 10                                                 # number of nodes per member
-        self.dl = self.l/self.n                                     # lumped node length (I guess, for now) <<<
+            lsec = self.stations[i]-self.stations[i-1]
+            nsec = int(np.ceil( (lsec) / dlMax ))
+            dlsec= lsec/nsec
         
-        self.w = 1                                                  # mass per unit length [kg/m]
+            lh += [self.stations[i-1] + dlsec*(1+j) for j in range(nsec)] # add node locations
+            
+        self.nh  = len(lh)                                           # number of hydrodynamic nodes per member
+        self.lh = np.array(lh, dtype=float)
+        self.dl = 0.5*(np.diff([0.]+lh) + np.diff(lh+[lh[-1]]))      # lumped node lengths (end nodes have half the segment length)
         
-        # distributed quantities
-        self.r  = np.zeros([self.n,3])                              # undisplaced node positions along member  [m]
-        self.d  = np.zeros( self.n   )                              # local diameter along member [m]
-        self.sl = np.zeros([self.n,2])                              # local side lengths along member [m] (assuming rectangular=2 side lengths)
-        for i in range(self.n):
-            self.r[i,:] = self.rA + (i/(self.n-1))*rAB              # spread evenly for now
+        # distributed quantities for hydro
+        self.rh  = np.zeros([self.nh,3])                              # undisplaced node positions along member  [m]
+        self.dh  = np.zeros( self.nh   )                              # local diameter along member [m]
+        self.slh = np.zeros([self.nh,2])                              # local side lengths along member [m] (assuming rectangular=2 side lengths)
+        
+        for i in range(self.nh):
+            self.rh[i,:] = self.rA + (lh[i]/self.l)*rAB              # locations of hydrodynamics nodes
             if self.shape=='circular':
-                self.d[i]   = self.dA + (i/(self.n-1))*(self.dB-self.dA)# spread evenly since uniform taper
+                self.dh[i] = np.interp(lh[i], self.stations, self.d)
             elif self.shape=='rectangular':
-                self.sl[i,:] = self.slA + (i/self.n-1)*(self.slB-self.slA)  # spread evenly
+                self.slh[i,0] = np.interp(lh[i], self.stations, self.sl1)
+                self.slh[i,1] = np.interp(lh[i], self.stations, self.sl2)
+                
         
         # complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
-        self.dr        = np.zeros([self.n,3,nw], dtype=complex)            # displacement
-        self.v         = np.zeros([self.n,3,nw], dtype=complex)            # velocity
-        self.a         = np.zeros([self.n,3,nw], dtype=complex)            # acceleration
-        self.u         = np.zeros([self.n,3,nw], dtype=complex)            # wave velocity
-        self.ud        = np.zeros([self.n,3,nw], dtype=complex)            # wave acceleration
-        self.pDyn      = np.zeros([self.n,  nw], dtype=complex)            # dynamic pressure
-        self.F_exc_iner= np.zeros([self.n,3,nw], dtype=complex)            # wave excitation from inertia (Froude-Krylov)
-        self.F_exc_drag= np.zeros([self.n,3,nw], dtype=complex)            # wave excitation from linearized drag
+        self.dr        = np.zeros([self.nh,3,nw], dtype=complex)            # displacement
+        self.v         = np.zeros([self.nh,3,nw], dtype=complex)            # velocity
+        self.a         = np.zeros([self.nh,3,nw], dtype=complex)            # acceleration
+        self.u         = np.zeros([self.nh,3,nw], dtype=complex)            # wave velocity
+        self.ud        = np.zeros([self.nh,3,nw], dtype=complex)            # wave acceleration
+        self.pDyn      = np.zeros([self.nh,  nw], dtype=complex)            # dynamic pressure
+        self.F_exc_iner= np.zeros([self.nh,3,nw], dtype=complex)            # wave excitation from inertia (Froude-Krylov)
+        self.F_exc_drag= np.zeros([self.nh,3,nw], dtype=complex)            # wave excitation from linearized drag
         
         
     def calcOrientation(self):
@@ -946,14 +957,12 @@ def printVec(vec):
 class Model():
 
 
-    def __init__(self, memberList=[], turbineParams=None, BEM=None, nTurbines=1, ms=None, w=[], depth=300, RNAprops={}):
+    def __init__(self, design, BEM=None, nTurbines=1, w=[], depth=300):
         '''
         Empty frequency domain model initialization function
         
-        memberStrings
-            List of strings describing each member
-        turbineParams : dict
-            Dictionary of turbine parameters in the format used by this model.
+        design : dict
+            Dictionary of all the design info from turbine to platform to moorings
         nTurbines 
             could in future be used to set up any number of identical turbines
         '''
@@ -963,20 +972,31 @@ class Model():
         
         self.nDOF = 0  # number of DOFs in system
         
-        # mooring system
-        if ms==None:
-            self.ms = mp.system  # if nothing passed, create a new blank MoorPy mooring system to be filled in later
-        else:
-            self.ms = ms
+        
+    # ----- process turbine information -----------------------------------------
+    # No processing actually needed yet - we pass the dictionary directly to RAFT.
+    
+    
+    # ----- process platform information ----------------------------------------
+    # No processing actually needed yet - we pass the dictionary directly to RAFT.
+    
+        
+        # ----- process mooring information ----------------------------------------------
+          
+        self.ms = mp.System()
+        
+        self.ms.parseYAML(design['mooring'])
+          
+          
             
         self.depth = depth
         
         # If you're modeling OC3 spar, for example, import the manual yaw stiffness needed by the bridle config
-        if 'yaw stiffness' in RNAprops:
-            self.yawstiff = RNAprops['yaw stiffness']
+        if 'yaw stiffness' in design['turbine']:
+            self.yawstiff = design['turbine']['yaw stiffness']
         else:
             self.yawstiff = 0
-            
+        
         # analysis frequency array
         if len(w)==0:
             w = np.arange(.05, 3, 0.05)  # angular frequencies tp analyze (rad/s)
@@ -988,13 +1008,12 @@ class Model():
         for i in range(self.nw):
             self.k[i] = waveNumber(self.w[i], self.depth)
         
-        # if FOWT members were included, set up the FOWT here  <<< only set for 1 FOWT for now <<<
-        if len(memberList)>0:
-            self.fowtList.append(FOWT(memberList, turbineParams=turbineParams, w=self.w, mpb=ms.BodyList[0], depth=depth, RNAprops=RNAprops))
-            self.coords.append([0.0,0.0])
-            self.nDOF += 6
-            
-            self.ms.BodyList[0].type = -1  # need to make sure it's set to a coupled type
+        # set up the FOWT here  <<< only set for 1 FOWT for now <<<
+        self.fowtList.append(FOWT(design, w=self.w, mpb=self.ms.BodyList[0], depth=depth))
+        self.coords.append([0.0,0.0])
+        self.nDOF += 6
+        
+        self.ms.BodyList[0].type = -1  # need to make sure it's set to a coupled type
         
         self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
         
@@ -1286,13 +1305,13 @@ class Model():
         
         
         
-    def calcOutputs(self, Xi=Xi):
+    def calcOutputs(self, Xi):
         '''This is where various output quantities of interest are calculated based on the already-solved system response.'''
         
         
         
         
-         
+        '''
          # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
         
          
@@ -1345,7 +1364,7 @@ class Model():
          
          RMSsurge(imeto) = sqrt( sum( ((abs(rao{imeto}(:,1))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); 
          RMSheave(imeto) = sqrt( sum( ((abs(rao{imeto}(:,3))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); 
-         
+        ''' 
         
         
     
@@ -1368,17 +1387,15 @@ class Model():
 class FOWT():
     '''This class comprises the frequency domain model of a single floating wind turbine'''
 
-    def __init__(self, memberStrings, turbineParams=None, w=[], mpb=None, depth=600, RNAprops={}):
+    def __init__(self, design, w=[], mpb=None, depth=600):
         '''This initializes the FOWT object which contains everything for a single turbine's frequency-domain dynamics.
         The initializiation sets up the design description.
         
         Parameters
         ----------
         
-        memberStrings
-            List of strings describing each member
-        turbineParams : dict
-            Dictionary of turbine parameters in the format used by this model.
+        design : dict
+            Dictionary of ...
         w
             Array of frequencies to be used in analysis
         mpb
@@ -1410,8 +1427,8 @@ class FOWT():
         # list of member objects
         self.memberList = []
 
-        for memberString in memberStrings:
-            self.memberList.append(Member(memberString, self.nw))
+        for mi in design['platform']['members']:
+            self.memberList.append(Member(mi, self.nw))
 
 
         # ------------------------------ mooring system connection -----------------------------
@@ -1424,14 +1441,13 @@ class FOWT():
         
         # here we could pass main design parameters to the structural model so that some parts can be precomputed
         # or just store things internally for now
-        self.turbineParams = turbineParams
         
         
-        self.mRNA = RNAprops['mRNA']
-        self.IxRNA = RNAprops['IxRNA']
-        self.IrRNA = RNAprops['IrRNA']
-        self.xCG_RNA = RNAprops['xCG_RNA']
-        self.hHub = RNAprops['hHub']
+        self.mRNA    = design['turbine']['mRNA']
+        self.IxRNA   = design['turbine']['IxRNA']
+        self.IrRNA   = design['turbine']['IrRNA']
+        self.xCG_RNA = design['turbine']['xCG_RNA']
+        self.hHub    = design['turbine']['hHub']
         
 
             

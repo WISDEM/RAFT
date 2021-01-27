@@ -69,18 +69,18 @@ class Member:
         
         
         # station positions
-        ns = len(mi['stations'])                                     # number of stations
-        if ns < 2:  
+        n = len(mi['stations'])                                     # number of stations
+        if n < 2:  
             raise valueError("At least two stations entries must be provided")
             
         A = np.array(mi['stations'], dtype=float)    
         self.stations = (A - A[0])/(A[-1] - A[0])*self.l             # calculate relative station positions from 0 to 1
         
         
-        # helper function to deal with scalar vs list inputs that should be size ns
+        # helper function to deal with scalar vs list inputs that should be size n
         def handleScalars(input):
             if np.isscalar(input): 
-                return np.zeros(ns) + float(input)    # if a scalar is provided, tile it out to the length of ns
+                return np.zeros(n) + float(input)    # if a scalar is provided, tile it out to the length of n
             else:
                 return np.array(input, dtype=float)
             # at some point should upgrade this to take dict and field name to provide default values if it's not provided in the dict
@@ -97,10 +97,10 @@ class Member:
             self.shape = 'rectangular'
             
             if np.isscalar(mi['d']): 
-                self.sl = np.zeros([ns,2]) + float(mi['d'])          # handle if a scaler is provided
+                self.sl = np.zeros([n,2]) + float(mi['d'])          # handle if a scaler is provided
             
             elif np.isscalar(mi['d'][0]) and len(mi['d'])==2: 
-                self.sl = np.tile(np.array(mi['d'], dtype=float), [ns,1])  # handle if a single set of side lengths is provided (assume constant cross section)
+                self.sl = np.tile(np.array(mi['d'], dtype=float), [n,1])  # handle if a single set of side lengths is provided (assume constant cross section)
             
             else:
                 self.sl = np.array(mi['d'], dtype=float)             # array of side lengths of nodes along member [m]
@@ -144,45 +144,63 @@ class Member:
         self.Ca_End = handleScalars(mi['CaEnd'])                    # end added mass coefficient
         
         
-        # discretize for hydrodynamics
-        dlMax = 10.0   # maximum node spacing <<< this should be an optional input at some point <<<
-        lh = [0.0]   # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
+        # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
+        dlsMax = 10.0                  # maximum node spacing <<< this should be an optional input at some point <<<
+        ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
+        dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
+        ds     = [0.5*self.d[0]]       # mean diameter of each strip
+        drs    = [0.5*self.d[0]]       # change in radius over each strip (from node i-1 to node i)
         
-        for i in range(1,ns):
+        # below is for circular shapes only - rectangular case is not handled yet
+        if self.shape != 'circular': raise ValueError("Only circular shapes implemented here so far!")
         
-            lsec = self.stations[i]-self.stations[i-1]
-            nsec = int(np.ceil( (lsec) / dlMax ))
-            dlsec= lsec/nsec
-        
-            lh += [self.stations[i-1] + dlsec*(1+j) for j in range(nsec)] # add node locations
+        for i in range(1,n):
             
-        self.nh  = len(lh)                                           # number of hydrodynamic nodes per member
-        self.lh = np.array(lh, dtype=float)
-        self.dl = 0.5*(np.diff([0.]+lh) + np.diff(lh+[lh[-1]]))      # lumped node lengths (end nodes have half the segment length)
+            lstrip = self.stations[i]-self.stations[i-1]             # the axial length of the strip
+            
+            if lstrip > 0.0:
+                ns= int(np.ceil( (lstrip) / dlsMax ))
+                dlstrip = lstrip/ns
+                m   = 0.5*(self.d[i] - self.d[i-1])/dlstrip          # taper ratio
+                ls  += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
+                dls += [dlstrip]*ns                
+                ds  += [self.d[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]                
+                drs += [dlstrip*m]*ns
+                
+            elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions)
+                ns = 1
+                dlstrip = 0
+                ls  += [self.stations[i-1]]                          # add node location
+                dls += [dlstrip]
+                ds  += [0.5*(self.d[i-1] + self.d[i])]               # set diameter as midpoint diameter
+                drs += [0.5*(self.d[i] - self.d[i-1])]
+            
+        self.ns  = len(ls)                                           # number of hydrodynamic strip theory nodes per member
+        self.ls  = np.array(ls, dtype=float)                          # node locations along member axis
+        #self.dl = 0.5*(np.diff([0.]+lh) + np.diff(lh+[lh[-1]]))      
+        self.dls = np.array(dls)
+        self.ds  = np.array(ds)
+        self.drs = np.array(drs)
+        self.mh  = np.array(m)
         
-        # distributed quantities for hydro
-        self.rh  = np.zeros([self.nh,3])                              # undisplaced node positions along member  [m]
-        self.dh  = np.zeros( self.nh   )                              # local diameter along member [m]
-        self.slh = np.zeros([self.nh,2])                              # local side lengths along member [m] (assuming rectangular=2 side lengths)
+        self.r   = np.zeros([self.ns,3])                             # undisplaced node positions along member  [m]
         
-        for i in range(self.nh):
-            self.rh[i,:] = self.rA + (lh[i]/self.l)*rAB              # locations of hydrodynamics nodes
-            if self.shape=='circular':
-                self.dh[i] = np.interp(lh[i], self.stations, self.d)
-            elif self.shape=='rectangular':
-                self.slh[i,0] = np.interp(lh[i], self.stations, self.sl1)
-                self.slh[i,1] = np.interp(lh[i], self.stations, self.sl2)
+        for i in range(self.ns):
+            self.r[i,:] = self.rA + (ls[i]/self.l)*rAB               # locations of hydrodynamics nodes
+        
+        #self.slh[i,0] = np.interp(lh[i], self.stations, self.sl1)
+        #self.slh[i,1] = np.interp(lh[i], self.stations, self.sl2)
                 
         
         # complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
-        self.dr        = np.zeros([self.nh,3,nw], dtype=complex)            # displacement
-        self.v         = np.zeros([self.nh,3,nw], dtype=complex)            # velocity
-        self.a         = np.zeros([self.nh,3,nw], dtype=complex)            # acceleration
-        self.u         = np.zeros([self.nh,3,nw], dtype=complex)            # wave velocity
-        self.ud        = np.zeros([self.nh,3,nw], dtype=complex)            # wave acceleration
-        self.pDyn      = np.zeros([self.nh,  nw], dtype=complex)            # dynamic pressure
-        self.F_exc_iner= np.zeros([self.nh,3,nw], dtype=complex)            # wave excitation from inertia (Froude-Krylov)
-        self.F_exc_drag= np.zeros([self.nh,3,nw], dtype=complex)            # wave excitation from linearized drag
+        self.dr        = np.zeros([self.ns,3,nw], dtype=complex)            # displacement
+        self.v         = np.zeros([self.ns,3,nw], dtype=complex)            # velocity
+        self.a         = np.zeros([self.ns,3,nw], dtype=complex)            # acceleration
+        self.u         = np.zeros([self.ns,3,nw], dtype=complex)            # wave velocity
+        self.ud        = np.zeros([self.ns,3,nw], dtype=complex)            # wave acceleration
+        self.pDyn      = np.zeros([self.ns,  nw], dtype=complex)            # dynamic pressure
+        self.F_exc_iner= np.zeros([self.ns,3,nw], dtype=complex)            # wave excitation from inertia (Froude-Krylov)
+        self.F_exc_drag= np.zeros([self.ns,3,nw], dtype=complex)            # wave excitation from linearized drag
         
         
     def calcOrientation(self):

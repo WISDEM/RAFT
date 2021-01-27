@@ -13,22 +13,23 @@ turbine:
     yaw_stiffness :   98340000.0      #  [N-m/rad]  additional yaw stiffness to apply if not modeling crowfoot in the mooring system <<< move this to platform section
 
     tower:  # (could remove some entries that don't apply for the tower)
-        name      :  center_spar               # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0, 0, -120]             # [m]    end A coordinates
-        rB        :  [ 0, 0,    0]             # [m]    and B coordinates
+        name      :  tower                     # [-]    an identifier (no longer has to be number)       
+        type      :  1                         # [-]    
+        rA        :  [ 0, 0,   10]             # [m]    end A coordinates
+        rB        :  [ 0, 0, 87.6]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         
         # --- outer shell including hydro---
-        stations  :  [-120, -12,  -4,  10 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  [ 9.4, 9.4, 6.5,  6.5]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.027                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        stations  :  [ 10, 17.76, 25.52, 33.28, 41.04, 48.8, 56.56, 64.32, 72.08, 79.84, 87.6 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  [ 6.5, 6.237, 5.974, 5.711, 5.448, 5.185, 4.922, 4.659, 4.396, 4.133, 3.870 ]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        t         :  [ 0.027, 0.0262, 0.0254, 0.0246, 0.0238, 0.023, 0.0222, 0.0214, 0.0206, 0.0198, 0.0190 ]                     # [m]    wall thicknesses (scalar or list of same length as stations)
+        Cd        :  0.0                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  0.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         # (neglecting axial coefficients for now)
-        CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  8500                      # [kg/m3] 
+        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell :  8500                      # [kg/m3]   material density
+	gamma     :  0.0 		       # [deg]   twist angle about the member's z-axis
         
         # --- ballast ---
         l_fill    :  0                         # [m]
@@ -49,7 +50,7 @@ platform:
       - name      :  center_spar               # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
         rA        :  [ 0, 0, -120]             # [m]    end A coordinates
-        rB        :  [ 0, 0,    0]             # [m]    and B coordinates
+        rB        :  [ 0, 0,   10]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         
         # --- outer shell including hydro---

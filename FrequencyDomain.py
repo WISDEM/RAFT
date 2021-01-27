@@ -1821,7 +1821,7 @@ class FOWT():
                     if il==0 or il==mem.n-1:
                     
                         a_i = 0.25*np.pi*mem.d[il]**2                                    # end area
-                        Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*np.pi*a_i*mem.Cd_End 
+                        Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*a_i*mem.Cd_End 
                     
                         Bmat = Bprime_End*mem.qMat                                       # 
                         

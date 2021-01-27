@@ -629,8 +629,10 @@ class Member:
                 
                 pass
             
-        
-        r_center = r_centerV/V_UW    # calculate overall member center of buoyancy
+        if V_UW > 0:
+            r_center = r_centerV/V_UW    # calculate overall member center of buoyancy
+        else:
+            r_center = np.zeros(3)       # temporary fix for out-of-water members
         
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
@@ -1244,15 +1246,16 @@ class Model():
         c = np.arange(nIter)                                       #
         c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))            # set up colormap to use to plot successive iteration restuls
         
-        # range of DOFs for the current turbine
-        i1 = 0
-        i2 = 6        
+        # ::: a loop could be added here for an array :::
+        fowt = self.fowtList[0]
+        i1 = 0                                                # range of DOFs for the current turbine
+        i2 = 6            
         
         # sum up all linear (non-varying) matrices up front
-        M_lin =               fowt.M_struc + fowt.A_BEM + fowt.A_hydro_morison # mass
-        B_lin =               fowt.B_struc + fowt.B_BEM                        # damping (structural and linearized morison)
-        C_lin = self.C_moor + fowt.C_struc              + fowt.C_hydro         # stiffness
-        F_lin =                              fowt.F_BEM + fowt.F_hydro_iner    # excitation force complex amplitudes
+        M_lin = fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
+        B_lin = fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping 
+        C_lin = fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
+        F_lin =                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
         
 
         # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<
@@ -1271,9 +1274,7 @@ class Model():
             
             # ::: a loop could be added here for an array :::
             fowt = self.fowtList[0]
-            
-            # range of DOFs for the current turbine
-            i1 = 0
+            i1 = 0                                                # range of DOFs for the current turbine
             i2 = 6            
             
             # get linearized terms for the current turbine given latest amplitudes
@@ -1283,10 +1284,10 @@ class Model():
             Xi = np.zeros([self.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
                 
             # add fowt's terms to system matrices (BEM arrays are not yet included here)            
-            M_tot[i1:,:,:] = M_lin 
-            B_tot[i1:,:,:] = B_lin + B_linearized 
-            C_tot[i1:,:,:] = C_lin 
-            F_tot[i1:  ,:] = F_lin + F_linearized
+            M_tot[:,:,:] = M_lin 
+            B_tot[:,:,:] = B_lin           + B_linearized[:,:,None] 
+            C_tot[:,:,:] = C_lin[:,:,None]
+            F_tot[:  ,:] = F_lin           + F_linearized
                 
                 
             for ii in range(self.nw):
@@ -1845,7 +1846,7 @@ class FOWT():
         for mem in self.memberList:
             
             # loop through each node of the member
-            for il in range(mem.n):
+            for il in range(mem.ns):
                 
                 # node displacement, velocity, and acceleration (each [3 x nw])
                 drnode, vnode, anode = getVelocity(mem.r[il,:], Xi, self.w)      # get node complex velocity spectrum based on platform motion's and relative position from PRP
@@ -1854,10 +1855,16 @@ class FOWT():
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
                 
+                    # interpolate coefficients for the current strip
+                    Cd_q   = np.interp( mem.ls[il], mem.stations, mem.Ca_q  )
+                    Cd_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
+                    Cd_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
+                    Cd_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
+
+                
                     # ----- compute side effects ------------------------
                     
-                    dl = 0.5*mem.dl if (il==0 or il==mem.n) else 1.0*mem.dl              # set dl to half if at the member end (the end result is similar to trapezoid rule integration)
-                    a_i = mem.d[il] * dl                                                 # member side cross-sectional area assigned to this node
+                    a_i = mem.ds[il] * mem.dls[il]                                       # member side cross-sectional area assigned to this node
                     
                     # water relative velocity over node (complex amplitude spectrum)  [3 x nw]
                     vrel = mem.u[il,:] - vnode
@@ -1873,9 +1880,9 @@ class FOWT():
                     vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
                     
                     # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
-                    Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*a_i * mem.Cd_q 
-                    Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho *       a_i * mem.Cd_p1
-                    Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho *       a_i * mem.Cd_p2
+                    Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*a_i * Cd_q 
+                    Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho *       a_i * Cd_p1
+                    Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho *       a_i * Cd_p2
                     
                     Bmat = Bprime_q*mem.qMat + Bprime_p1*mem.p1Mat + Bprime_p2*mem.p2Mat # damping matrix for the node based on linearized drag coefficients 
                     
@@ -1888,25 +1895,26 @@ class FOWT():
                         F_hydro_drag[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_drag[il,:,i])   # add to global excitation vector (frequency dependent)
                         
                     
-                    # ----- add end effects for added mass, and excitation including dynamic pressure ------
+                    # ----- add end/axial effects for added mass, and excitation including dynamic pressure ------
+                
                     
-                    if il==0 or il==mem.n-1:
+                
+                    a_i = np.abs(np.pi*mem.ds[il]*mem.drs[il])                       # end area (removing sign for use as drag)
                     
-                        a_i = 0.25*np.pi*mem.d[il]**2                                    # end area
-                        Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*np.pi*a_i*mem.Cd_End 
+                    Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*a_i*Cd_End 
+                
+                    Bmat = Bprime_End*mem.qMat                                       # 
                     
-                        Bmat = Bprime_End*mem.qMat                                       # 
+                    B_hydro_drag += translateMatrix3to6DOF(mem.r[il,:], Bmat)        # add to global damping matrix for Morison members
+                    
+                    for i in range(self.nw):                                         # for each wave frequency...
+                    
+                        F_exc_drag_temp = np.matmul(Bmat, mem.u[il,:,i])             # local drag excitation force complex amplitude in x,y,z
                         
-                        B_hydro_drag += translateMatrix3to6DOF(mem.r[il,:], Bmat)        # add to global damping matrix for Morison members
+                        mem.F_exc_drag[il,:,i] += F_exc_drag_temp                    # add to stored member force vector
                         
-                        for i in range(self.nw):                                         # for each wave frequency...
-                        
-                            F_exc_drag_temp = np.matmul(Bmat, mem.u[il,:,i])             # local drag excitation force complex amplitude in x,y,z
-                            
-                            mem.F_exc_drag[il,:,i] += F_exc_drag_temp                    # add to stored member force vector
-                            
-                            F_hydro_drag[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag_temp) # add to global excitation vector (frequency dependent)
-                    
+                        F_hydro_drag[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_drag_temp) # add to global excitation vector (frequency dependent)
+                
 
         # save the arrays internally in case there's ever a need for the FOWT to solve it's own latest dynamics
         self.B_hydro_drag = B_hydro_drag

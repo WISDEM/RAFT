@@ -347,6 +347,7 @@ class Member:
         mshell = 0                                      # total mass of the shell material only of the member [kg]
         mfill = []                                      # list of ballast masses in each submember [kg]
         pfill = []                                      # list of ballast densities in each submember [kg]
+        self.M_struc = np.zeros([6,6])                  # member mass/inertia matrix [kg, kg-m, kg-m^2]
         
         # loop through each sub-member
         for i in range(1,n):                            # start at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
@@ -1590,8 +1591,8 @@ class FOWT():
                 self.msubstruc += mass              # mass of the substructure
                 msubstruc_sum += center*mass        # product sum of the substructure members and their centers of mass [kg-m]
                 self.mshell += mshell               # mass of the substructure shell material [kg]
-                mballast.append(mfill)              # list of ballast masses in each substructure member (list of lists) [kg]
-                pballast.append(pfill)              # list of ballast densities in each substructure member (list of lists) [kg/m^3]
+                mballast.extend(mfill)              # list of ballast masses in each substructure member (list of lists) [kg]
+                pballast.extend(pfill)              # list of ballast densities in each substructure member (list of lists) [kg/m^3]
                 # Store substructure moment of inertia terms
                 I44list.append(mem.M_struc[3,3])
                 I55list.append(mem.M_struc[4,4])
@@ -1640,6 +1641,8 @@ class FOWT():
         mTOT = self.M_struc[0,0]                        # total mass of all the members
         rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
         self.rCG_TOT = rCG_TOT
+        
+        self.rCG_sub = msubstruc_sum/self.msubstruc     # solve for just the substructure mass and CG
         
         self.I44 = 0        # moment of inertia in roll due to roll of the substructure about the substruc's CG [kg-m^2]
         self.I44B = 0       # moment of inertia in roll due to roll of the substructure about the PRP [kg-m^2]

@@ -76,7 +76,7 @@ class Member:
         # station positions
         n = len(mi['stations'])                                     # number of stations
         if n < 2:  
-            raise valueError("At least two stations entries must be provided")
+            raise ValueError("At least two stations entries must be provided")
             
         A = np.array(mi['stations'], dtype=float)    
         self.stations = (A - A[0])/(A[-1] - A[0])*self.l             # calculate relative station positions from 0 to 1
@@ -254,53 +254,7 @@ class Member:
         '''Calculates member inertia properties: mass, center of mass, moments of inertia.
         Assumes that the members are continuous and symmetrical (i.e. no weird shapes)'''
         
-        
-        if self.shape=='circular':
-            # MASS AND CENTER OF GRAVITY
-            dAi = self.dA - 2*self.tA                                   # inner diameter of lower node [m]
-            dBi = self.dB - 2*self.tB                                   # inner diameter of upper node [m]
-            
-            V_outer, hco = FrustumVCV(self.dA, self.dB, self.l)         # volume and center of volume of solid frustum with outer diameters [m^3] [m]
-            V_inner, hci = FrustumVCV(dAi, dBi, self.l)                 # volume and center of volume of solid frustum with inner diameters [m^3] [m]
-            v_shell = V_outer-V_inner                                   # volume of hollow frustum with shell thickness [m^3]
-            m_shell = v_shell*self.rho_shell                            # mass of hollow frustum [kg]
-            
-            hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of hollow frustum with shell thickness [m]
-            
-            dBi_fill = (dBi-dAi)*(self.l_fill/self.l) + dAi             # interpolated inner diameter of frustum that ballast is filled to [m]
-            v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, self.l_fill)    # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
-            m_fill = v_fill*self.rho_fill                               # mass of ballast in the member [kg]
-            
-            mass = m_shell + m_fill                                     # total mass of the member [kg]
-            
-            hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
-            
-            center = self.rA + (self.q*hc)                              # total center of mass of the member from the PRP [m]
-        
-        elif self.shape=='rectangular':
-            # MASS AND CENTER OF GRAVITY
-            slAi = self.slA - 2*self.tA                                 # inner side lengths of lower node [m]
-            slBi = self.slB - 2*self.tB                                 # inner side lengths of upper node [m]
-            V_outer, hco = FrustumVCV(self.slA, self.slB, self.l)       # volume and center of volume of solid frustum with outer side lengths [m^3] [m]
-            V_inner, hci = FrustumVCV(slAi, slBi, self.l)               # volume and center of volume of solid frustum with inner side lengths [m^3] [m]
-            v_shell = V_outer-V_inner                                   # volume of hollow frustum with shell thickness [m^3]
-            m_shell = v_shell*self.rho_shell                            # mass of hollow frustum [kg]
-            
-            hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of the hollow frustum with shell thickness [m]
-             
-            slBi_fill = (slBi-slAi)*(self.l_fill/self.l) + slAi         # interpolated side lengths of frustum that ballast is filled to [m]
-            v_fill, hc_fill = FrustumVCV(slAi, slBi_fill, self.l_fill) # volume and center of volume of inner frustum that ballast occupies [m^3]
-            m_fill = v_fill*self.rho_fill                               # mass of ballast in the member [kg]
-            
-            mass = m_shell + m_fill                                     # total mass of the member [kg]
-            hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass           # total center of mass of the member from the member's rA location [m]
-            
-            center = self.rA + (self.q*hc)                              # total center of mass of the member from the PRP [m]
-        
-        
-        
-        # MOMENT OF INERTIA
-        
+        # Moment of Inertia Helper Functions -----------------------
         def FrustumMOI(dA, dB, H, p):
             '''returns the radial and axial moments of inertia of a potentially tapered circular member about the end node.
             Previously used equations found in a HydroDyn paper, now it uses newly derived ones. Ask Stein for reference if needed'''
@@ -320,7 +274,6 @@ class Member:
                     I_ax = (1/10)*p*np.pi*H*(r2**5-r1**5)/(r2-r1)           # axial MoI about axial axis [kg-m^2]
             
             return I_rad, I_ax
-        
         
         def RectangularFrustumMOI(La, Wa, Lb, Wb, H, p):
             '''returns the moments of inertia about the end node of a cuboid that can be tapered. 
@@ -384,56 +337,149 @@ class Member:
                     raise ValueError('You either have inconsistent inputs, or you are trying to calculate the MoI of a member that is not supported')
             
             return Ixx, Iyy, Izz
-              
         
-        if self.shape=='circular':
-            I_rad_end_outer, I_ax_outer = FrustumMOI(self.dA, self.dB, self.l, self.rho_shell)  # radial and axial MoI about the end of the solid outer frustum [kg-m^2]
-            I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, self.l, self.rho_shell)          # radial and axial MoI about the end of the imaginary solid inner frustum [kg-m^2]
-            I_rad_end_shell = I_rad_end_outer-I_rad_end_inner                                   # radial MoI about the end of the frustum shell through superposition [kg-m^2]
-            I_ax_shell = I_ax_outer - I_ax_inner                                                # axial MoI of the shell through superposition [kg-m^2]
-            
-            I_rad_end_fill, I_ax_fill = FrustumMOI(dAi, dBi_fill, self.l_fill, self.rho_fill)   # radial and axial MoI about the end of the solid inner ballast frustum [kg-m^2]
-                    
-            I_rad_end = I_rad_end_shell + I_rad_end_fill                                        # radial MoI about the end of the member [kg-m^2]
-            I_rad = I_rad_end - mass*hc**2                                                      # radial MoI about the CoG of the member [kg-m^2]
-            
-            I_ax = I_ax_shell + I_ax_fill                                                       # axial MoI of the member about the total CoG (= about the end bc axial)
         
-        elif self.shape=='rectangular':
-            
-            # MoI about each axis at the bottom end node of the solid outer truncated pyramid [kg-m^2]
-            Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(self.slA[0], self.slA[1], self.slB[0], self.slB[1], self.l, self.rho_shell)
-            # MoI about each axis at the bottom end node of the solid imaginary inner truncated pyramid [kg-m^2]
-            Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi[0], slAi[1], slBi[0], slBi[1], self.l, self.rho_shell)
-            # MoI about each axis at the bottom end node of the shell using superposition [kg-m^2]
-            Ixx_end_shell = Ixx_end_outer - Ixx_end_inner
-            Iyy_end_shell = Iyy_end_outer - Iyy_end_inner
-            Izz_end_shell = Izz_end_outer - Izz_end_inner
-            
-            # MoI about each axis at the bottom end node of the solid inner ballast truncated pyramid [kg-m^2]
-            Ixx_end_fill, Iyy_end_fill, Izz_end_fill = RectangularFrustumMOI(slAi[0], slAi[1], slBi_fill[0], slBi_fill[1], self.l_fill, self.rho_fill)
-            
-            # total MoI of each axis at the center of gravity of the member using the parallel axis theorem [kg-m^2]
-            Ixx_end = Ixx_end_shell + Ixx_end_fill
-            Ixx = Ixx_end - mass*hc**2
-            Iyy_end = Iyy_end_shell + Iyy_end_fill
-            Iyy = Iyy_end - mass*hc**2
-            
-            Izz_end = Izz_end_shell + Izz_end_fill
-            Izz = Izz_end       # the total MoI of the member about the z-axis is the same at any point along the z-axis
-            
         
-        if self.shape=='circular':
-            Ixx = I_rad
-            Iyy = I_rad
-            Izz = I_ax
+        # ------- get inertial calculations ---------
+        n = len(self.stations)                          # set n as the number of stations = number of sub-members minus 1
         
-        extras = {}
-        extras['m_shell'] = m_shell
-        extras['m_fill'] = m_fill
-        extras['rho_fill'] = self.rho_fill
+        mass_center = 0                                 # total sum of mass the center of mass of the member [kg-m]
+        mshell = 0                                      # total mass of the shell material only of the member [kg]
+        mfill = []                                      # list of ballast masses in each submember [kg]
+        pfill = []                                      # list of ballast densities in each submember [kg]
         
-        return mass, center, Ixx, Iyy, Izz, extras
+        # loop through each sub-member
+        for i in range(1,n):                            # start at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
+            
+            # initialize common variables
+            rA = self.rA + self.q*self.stations[i-1]    # lower node position of the submember [m]
+            l = self.stations[i]-self.stations[i-1]     # length of the submember [m]
+            # if the following variables are input as scalars, keep them that way, if they're vectors, take the [i-1]th value
+            if np.isscalar(self.rho_shell):     # <<<<<< not sure if this is the best way to handle this
+                rho_shell = self.rho_shell              # density of the shell material [kg/m^3]
+                l_fill = self.l_fill                    # height of the ballast in the submember [m]
+                rho_fill = self.rho_fill                # density of the ballast material [kg/m^3]
+            else:
+                rho_shell = self.rho_shell[i-1]
+                l_fill = self.l_fill[i-1]
+                rho_fill = self.rho_fill[i-1]
+            
+            
+            if self.shape=='circular':
+                # MASS AND CENTER OF GRAVITY
+                dA = self.d[i-1]                        # outer diameter of the lower node [m]
+                dB = self.d[i]                          # outer diameter of the upper node [m]
+                dAi = self.d[i-1] - 2*self.t[i-1]       # inner diameter of the lower node [m]
+                dBi = self.d[i] - 2*self.t[i]           # inner diameter of the upper node [m]
+                
+                V_outer, hco = FrustumVCV(dA, dB, l)    # volume and center of volume of solid frustum with outer diameters [m^3] [m]
+                V_inner, hci = FrustumVCV(dAi, dBi, l)  # volume and center of volume of solid frustum with inner diameters [m^3] [m] 
+                v_shell = V_outer-V_inner               # volume of hollow frustum with shell thickness [m^3]
+                m_shell = v_shell*rho_shell             # mass of hollow frustum [kg]
+                
+                hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of hollow frustum with shell thickness [m]
+                
+                dBi_fill = (dBi-dAi)*(l_fill/l) + dAi   # interpolated inner diameter of frustum that ballast is filled to [m] <<<<<<<<<<<< can maybe use the intrp function in getHydrostatics
+                v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, l_fill)         # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
+                m_fill = v_fill*rho_fill                # mass of the ballast in the submember [kg]
+                
+                mass = m_shell + m_fill                 # total mass of the submember [kg]
+                hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass       # total center of mass of the submember from the submember's rA location [m]
+                
+                center = rA + (self.q*hc)               # total center of mass of the member from the PRP [m]
+                
+                # MOMENT OF INERTIA
+                I_rad_end_outer, I_ax_outer = FrustumMOI(dA, dB, l, rho_shell)          # radial and axial MoI about the end of the solid outer frustum [kg-m^2]
+                I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, l, rho_shell)        # radial and axial MoI about the end of the imaginary solid inner frustum [kg-m^2]
+                I_rad_end_shell = I_rad_end_outer-I_rad_end_inner                       # radial MoI about the end of the frustum shell through superposition [kg-m^2]
+                I_ax_shell = I_ax_outer - I_ax_inner                                    # axial MoI of the shell through superposition [kg-m^2]
+                
+                I_rad_end_fill, I_ax_fill = FrustumMOI(dAi, dBi_fill, l_fill, rho_fill) # radial and axial MoI about the end of the solid inner ballast frustum [kg-m^2]
+                
+                I_rad_end = I_rad_end_shell + I_rad_end_fill                            # radial MoI about the end of the submember [kg-m^2]
+                I_rad = I_rad_end - mass*hc**2                                          # radial MoI about the CoG of the submember through the parallel axis theorem [kg-m^2]
+                
+                I_ax = I_ax_shell + I_ax_fill                                           # axial MoI of the submember about the total CoG (= about the end also bc axial)
+
+                Ixx = I_rad                             # circular, so the radial MoI is about the x and y axes
+                Iyy = I_rad                             # circular, so the radial MoI is about the x and y axes
+                Izz = I_ax                              # circular, so the axial MoI is about the z axis
+                
+            
+            elif self.shape=='rectangular':
+                # MASS AND CENTER OF GRAVITY
+                slA = self.sl[i-1]                          # outer side lengths of the lower node, of length 2 [m]
+                slB = self.sl[i]                            # outer side lengths of the upper node, of length 2 [m]
+                slAi = self.sl[i-1] - 2*self.t[i-1]         # inner side lengths of the lower node, of length 2 [m]
+                slBi = self.sl[i] - 2*self.t[i]             # inner side lengths of the upper node, of length 2 [m]
+                
+                V_outer, hco = FrustumVCV(slA, slB, l)      # volume and center of volume of solid frustum with outer side lengths [m^3] [m]
+                V_inner, hci = FrustumVCV(slAi, slBi, l)    # volume and center of volume of solid frustum with inner side lengths [m^3] [m]
+                v_shell = V_outer-V_inner                   # volume of hollow frustum with shell thickness [m^3]
+                m_shell = v_shell*rho_shell                 # mass of hollow frustum [kg]
+                
+                hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of the hollow frustum with shell thickness [m]
+                
+                slBi_fill = (slBi-slAi)*(l_fill/l) + slAi   # interpolated side lengths of frustum that ballast is filled to [m]
+                v_fill, hc_fill = FrustumVCV(slAi, slBi_fill, l_fill)   # volume and center of volume of inner frustum that ballast occupies [m^3]
+                m_fill = v_fill*rho_fill                    # mass of ballast in the submember [kg]
+                
+                mass = m_shell + m_fill                     # total mass of the submember [kg]
+                hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass       # total center of mass of the submember from the submember's rA location [m]
+                
+                center = rA + (self.q*hc)                   # total center of mass of the member from the PRP [m]
+                
+                # MOMENT OF INERTIA
+                # MoI about each axis at the bottom end node of the solid outer truncated pyramid [kg-m^2]
+                Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA[0], slA[1], slB[0], slB[1], l, rho_shell)
+                # MoI about each axis at the bottom end node of the solid imaginary inner truncated pyramid [kg-m^2]
+                Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi[0], slAi[1], slBi[0], slBi[1], l, rho_shell)
+                # MoI about each axis at the bottom end node of the shell using superposition [kg-m^2]
+                Ixx_end_shell = Ixx_end_outer - Ixx_end_inner
+                Iyy_end_shell = Iyy_end_outer - Iyy_end_inner
+                Izz_end_shell = Izz_end_outer - Izz_end_inner
+                
+                # MoI about each axis at the bottom end node of the solid inner ballast truncated pyramid [kg-m^2]
+                Ixx_end_fill, Iyy_end_fill, Izz_end_fill = RectangularFrustumMOI(slAi[0], slAi[1], slBi_fill[0], slBi_fill[1], l_fill, rho_fill)
+                
+                # total MoI of each axis at the center of gravity of the member using the parallel axis theorem [kg-m^2]
+                Ixx_end = Ixx_end_shell + Ixx_end_fill
+                Ixx = Ixx_end - mass*hc**2
+                Iyy_end = Iyy_end_shell + Iyy_end_fill
+                Iyy = Iyy_end - mass*hc**2
+                
+                Izz_end = Izz_end_shell + Izz_end_fill
+                Izz = Izz_end       # the total MoI of the member about the z-axis is the same at any point along the z-axis
+
+            
+            
+            # add/append terms 
+            mass_center += mass*center                  # total sum of mass the center of mass of the member [kg-m]
+            mshell += m_shell                           # total mass of the shell material only of the member [kg]
+            mfill.append(m_fill)                        # list of ballast masses in each submember [kg]
+            pfill.append(rho_shell)                     # list of ballast densities in each submember [kg]
+            
+            # create a local submember mass matrix
+            Mmat = np.diag([mass, mass, mass, 0, 0, 0]) # submember's mass matrix without MoI tensor
+            # create the local submember MoI tensor in the correct directions
+            I = np.diag([Ixx, Iyy, Izz])                # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
+            T = self.R.T                                # transformation matrix to unrotate the member's local axes. Transposed because rotating axes.
+            I_rot = np.matmul(T.T, np.matmul(I,T))      # MoI about the member's local CG with axes in same direction as global axes. [I'] = [T][I][T]^T -> [T]^T[I'][T] = [I]
+
+            Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
+            
+            # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
+            self.M_struc += translateMatrix6to6DOF(center, Mmat) # mass matrix of the member about the PRP
+            
+            
+            # end of submember for loop
+            
+        mass = self.M_struc[0,0]        # total mass of the entire member [kg]
+        center = mass_center/mass       # total center of mass of the entire member from the PRP [m]
+        
+      
+        return mass, center, m_shell, mfill, pfill
+        
         
     
     
@@ -669,9 +715,6 @@ def FrustumVCV(dA, dB, H, rtn=0):
             A1 = (np.pi/4)*dA**2
             A2 = (np.pi/4)*dB**2
             Amid = (np.pi/4)*dA*dB
-            #print(dA, dB)
-            #print(A1, A2, Amid)
-            #return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
         elif len(dA)==2 and len(dB)==2: # if the inputs are of length 2, meaning if it's two side lengths per node
             A1 = dA[0]*dA[1]
             A2 = dB[0]*dB[1]
@@ -1510,13 +1553,11 @@ class FOWT():
         Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
         Sum_M_center = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
         
-        self.mtower = 0             # total mass of just the members that make up the tower (of type=1) [kg]
         self.msubstruc = 0          # total mass of just the members that make up the substructure [kg]
-        mtower_sum = 0              # product of each tower member's mass and CG, to be used to find the total tower CG [kg-m]
         msubstruc_sum = 0           # product of each substructure member's mass and CG, to be used to find the total substructure CG [kg-m]
         self.mshell = 0             # total mass of the shells/steel of the members in the substructure [kg]
-        mballast = []          # list to store the mass of the ballast in each of the substructure members [kg]
-        pballast = []          # list to store the density of ballast in each of the substructure members [kg]
+        mballast = []               # list to store the mass of the ballast in each of the substructure members [kg]
+        pballast = []               # list to store the density of ballast in each of the substructure members [kg]
         
         I44list = []                # list to store the I44 MoI about the PRP of each substructure member
         I55list = []                # list to store the I55 MoI about the PRP of each substructure member
@@ -1529,49 +1570,35 @@ class FOWT():
             # calculate member's orientation information (needed for later steps)
             mem.calcOrientation() 
             
-            
             # ---------------------- get member's mass and inertia properties ------------------------------
+            mass, center, mshell, mfill, pfill = mem.getInertia() # calls the getInertia method to calcaulte values
             
-            mass, center, Ixx, Iyy, Izz, extras = mem.getInertia() # calls the getInertia method to calcaulte values
             
-            if mem.type <= 1:                # solves for the tower mass and CG
-                self.mtower += mass
-                mtower_sum += center*mass
-            elif mem.type > 1:               # solves for the substructure mass and CG
-                self.msubstruc += mass
-                msubstruc_sum += center*mass
-                self.mshell += extras['m_shell']
-                # Store the mass and the density of ballast in each of the members of the substructure
-                mballast.append(extras['m_fill'])
-                pballast.append(extras['rho_fill'])
-                
-                
-            # rotate the moments of inertia from the member's local axes to the unrotated, translated local member's axes
-            I = np.diag([Ixx, Iyy, Izz])    # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
-            T = mem.R.T                     # the transformation matrix to unrotate the member's local axes. Transposed because rotating axes
-            I_rot = np.matmul(T.T, np.matmul(I,T)) # MoI about member's CG with axes in same direction as global axes. [I'] = [T][I][T]^T -> [T]^T[I'][T] = [I]
-            
-            Mmat = np.diag([mass, mass, mass, 0, 0, 0]) # member's mass matrix without MoI tensor
-            Mmat[3:,3:] = I_rot
-            # @mhall: Mmat as written above is the mass and inertia matrix about the member CG...@shousner: you betcha
-            # updated 12-29-20: member's mass and inertia matrix about the member CG in an unrotated, translated local frame
-            
-            # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+            # Calculate the mass matrix of the FOWT about the PRP
             self.W_struc += translateForce3to6DOF( center, np.array([0,0, -g*mass]) )  # weight vector
-            self.M_struc += translateMatrix6to6DOF(center, Mmat)                       # mass/inertia matrix
-            # @mhall: Using the diagonal Mmat, and calling the above function with the "center" coordinate, will give the mass/inertia about the PRP!
-            # @shousner: center is the position vector of the CG of the member, from the global coordinates aka PRP
-            Sum_M_center += center*mass
+            self.M_struc += mem.M_struc     # mass/inertia matrix about the PRP
             
-            # store the roll and pitch moments of inertia
-            if mem.type > 1:        # if the member is not part of the tower and is part of the substructure
-                a = translateMatrix6to6DOF(center, Mmat)
-                I44list.append(a[3,3])
-                I55list.append(a[4,4])
-                I66list.append(a[5,5])
+            Sum_M_center += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
+            
+            
+            # Tower calculations
+            if mem.type <= 1:   # <<<<<<<<<<<< maybe find a better way to do the if condition
+                self.mtower = mass                  # mass of the tower [kg]
+                self.rCG_tow = center               # center of mass of the tower from the PRP [m]
+            # Substructure calculations
+            if mem.type > 1:
+                self.msubstruc += mass              # mass of the substructure
+                msubstruc_sum += center*mass        # product sum of the substructure members and their centers of mass [kg-m]
+                self.mshell += mshell               # mass of the substructure shell material [kg]
+                mballast.append(mfill)              # list of ballast masses in each substructure member (list of lists) [kg]
+                pballast.append(pfill)              # list of ballast densities in each substructure member (list of lists) [kg/m^3]
+                # Store substructure moment of inertia terms
+                I44list.append(mem.M_struc[3,3])
+                I55list.append(mem.M_struc[4,4])
+                I66list.append(mem.M_struc[5,5])
                 masslist.append(mass)
-             
-            
+                
+                
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
             
             Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(self.env)  # call to Member method for hydrostatic calculations
@@ -1610,11 +1637,9 @@ class FOWT():
      
         # ----------- process inertia-related totals ----------------
         
-        if self.mtower==0:                              # solve for just the tower mass and CG
-            self.rCG_tow = np.array([0,0,0])
-        else:
-            self.rCG_tow = mtower_sum/self.mtower
-        self.rCG_sub = msubstruc_sum/self.msubstruc     # solve for just the substructure mass and CG
+        mTOT = self.M_struc[0,0]                        # total mass of all the members
+        rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
+        self.rCG_TOT = rCG_TOT
         
         self.I44 = 0        # moment of inertia in roll due to roll of the substructure about the substruc's CG [kg-m^2]
         self.I44B = 0       # moment of inertia in roll due to roll of the substructure about the PRP [kg-m^2]
@@ -1623,22 +1648,15 @@ class FOWT():
         self.I66 = 0        # moment of inertia in yaw due to yaw of the substructure about the substruc's centerline [kg-m^2]
         
         # Use the parallel axis theorem to move each substructure's MoI to the substructure's CG
-        # Writing I44B and I55B here for organization
         x = np.linalg.norm([self.rCG_sub[1],self.rCG_sub[2]])   # the normalized distance between the x and x' axes
         y = np.linalg.norm([self.rCG_sub[0],self.rCG_sub[2]])   # the normalized distance between the y and y' axes
         z = np.linalg.norm([self.rCG_sub[0],self.rCG_sub[1]])   # the normalized distance between the z and z' axes
-        #d = np.linalg.norm(self.rCG_sub)                        # the normalized distance from the PRP to the subs CG
         for i in range(len(I44list)):
             self.I44 += I44list[i] - masslist[i]*x**2
             self.I44B += I44list[i]
             self.I55 += I55list[i] - masslist[i]*y**2
             self.I55B += I55list[i]
             self.I66 += I66list[i] - masslist[i]*z**2
-   
-        
-        mTOT = self.M_struc[0,0]                        # total mass of all the members
-        rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
-        self.rCG_TOT = rCG_TOT
         
         # Solve for the total mass of each type of ballast in the substructure
         self.pb = []                                                # empty list to store the unique ballast densities
@@ -1652,7 +1670,8 @@ class FOWT():
             for j in range(len(mballast)):                          # loop through each ballast mass
                 if np.float(pballast[j]) == np.float(self.pb[i]):   # but only if the index of the ballast mass (density) matches the value of pb
                     self.mballast[i] += mballast[j]                 # add that ballast mass to the correct index of mballast
-            
+
+        
         
         # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
         

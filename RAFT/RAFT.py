@@ -8,6 +8,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
+from meshBEMforRAFT import memberMesh
+
 import sys
 sys.path.insert(1, '../../MoorPy')
 import MoorPy as mp
@@ -66,6 +68,9 @@ class Member:
         
         rAB = self.rB-self.rA                                        # The relative coordinates of upper node from lower node [m]
         self.l = np.linalg.norm(rAB)                                 # member length [m]
+        
+        
+        self.potMod = 1  # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
         
         
         # station positions
@@ -1040,6 +1045,7 @@ class Model():
         '''This gets the various static/constant calculations of each FOWT done.'''
         
         for fowt in self.fowtList:
+            fowt.calcBEM()
             fowt.calcStatics()
             fowt.calcHydroConstants()
             #fowt.calcDynamicConstants()
@@ -1181,7 +1187,7 @@ class Model():
     
     def solveDynamics(self, nIter=15, tol=0.01):
         '''After all constant parts have been computed, call this to iterate through remaining terms 
-        until convergence on dynamic response.
+        until convergence on dynamic response. Note that steady/mean quantities are excluded here.
         
         nIter = 2  # maximum number of iterations to allow
         '''
@@ -1193,7 +1199,17 @@ class Model():
         fig, ax = plt.subplots(3,1,sharex=True)                    #
         c = np.arange(nIter)                                       #
         c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))            # set up colormap to use to plot successive iteration restuls
-                   
+        
+        # range of DOFs for the current turbine
+        i1 = 0
+        i2 = 6        
+        
+        # sum up all linear (non-varying) matrices up front
+        M_lin =               fowt.M_struc + fowt.A_BEM + fowt.A_hydro_morison # mass
+        B_lin =               fowt.B_struc + fowt.B_BEM                        # damping (structural and linearized morison)
+        C_lin = self.C_moor + fowt.C_struc              + fowt.C_hydro         # stiffness
+        F_lin =                              fowt.F_BEM + fowt.F_hydro_iner    # excitation force complex amplitudes
+        
 
         # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<
         for iiter in range(nIter):
@@ -1207,10 +1223,6 @@ class Model():
             F_tot = np.zeros([self.nDOF,self.nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
 
             Z  = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=complex)  # total system impedance matrix
-
-            # add in mooring stiffness from MoorPy system
-            for ii in range(self.nw):          # loop through each frequency
-                C_tot[:,:,ii] = self.C_moor
             
             
             # ::: a loop could be added here for an array :::
@@ -1221,19 +1233,19 @@ class Model():
             i2 = 6            
             
             # get linearized terms for the current turbine given latest amplitudes
-            B_lin, F_lin = fowt.calcLinearizedTerms(XiLast)
+            B_linearized, F_linearized = fowt.calcLinearizedTerms(XiLast)
             
             # calculate the response based on the latest linearized terms            
             Xi = np.zeros([self.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
-
-            for ii in range(self.nw):                                                    # loop through each frequency
                 
-                # add fowt's terms to system matrices (BEM arrays are not yet included here)            
-                M_tot[:,:,ii] = M_tot[:,:,ii] + fowt.M_struc + fowt.A_hydro_morison      # mass
-                B_tot[:,:,ii] = B_tot[:,:,ii] + fowt.B_struc + B_lin                     # damping (structural and linearized morison)
-                C_tot[:,:,ii] = C_tot[:,:,ii] + fowt.C_struc + fowt.C_hydro              # stiffness
-                F_tot[:,  ii] = F_tot[:,  ii] + F_lin[:,ii] + fowt.F_hydro_iner[:,ii]    # excitation force complex amplitudes
+            # add fowt's terms to system matrices (BEM arrays are not yet included here)            
+            M_tot[i1:,:,:] = M_lin 
+            B_tot[i1:,:,:] = B_lin + B_linearized 
+            C_tot[i1:,:,:] = C_lin 
+            F_tot[i1:  ,:] = F_lin + F_linearized
                 
+                
+            for ii in range(self.nw):
                 # form impedance matrix
                 Z[:,:,ii] = -self.w[ii]**2 * M_tot[:,:,ii] + 1j*self.w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii]
                 
@@ -1386,90 +1398,52 @@ class FOWT():
         The initializiation sets up the design description.
         
         Parameters
-        ----------
-        
+        ----------        
         design : dict
-            Dictionary of ...
+            Dictionary of the design...
         w
             Array of frequencies to be used in analysis
-        mpb
-            Reference to the MoorPy Body that this FOWT will be attached to
-        
         '''
 
-        # store reference to the already-set-up MoorPy system (currently assuming the FOWT is represented by Body 1)
-        #self.ms = mooringSystem
 
-        # ------------------------------- basic setup -----------------------------------------
-
+        # basic setup 
         self.nDOF = 6
 
         if len(w)==0:
-            w = np.arange(.01, 3, 0.01)  # angular frequencies tp analyze (rad/s)
+            w = np.arange(.01, 3, 0.01)                              # angular frequencies tp analyze (rad/s)
         
         self.w = np.array(w)
-        self.nw = len(w)  # number of frequencies
-        self.k = np.zeros(self.nw)  # wave number
+        self.nw = len(w)                                             # number of frequencies
+        self.k = np.zeros(self.nw)                                   # wave number
         
         self.depth = depth
 
 
-        # ----------------------- member-based platform description --------------------------
-
-        # (hard-coded for now - set to OC3 Hywind Spar geometry - eventually these will be provided as inputs instead)
-
-        # list of member objects
-        self.memberList = []
-
+        # member-based platform description 
+        self.memberList = []                                         # list of member objects
+        
         for mi in design['platform']['members']:
             self.memberList.append(Member(mi, self.nw))
+            
+
+        # mooring system connection 
+        self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
 
-        # ------------------------------ mooring system connection -----------------------------
-        
-        # reference to Body in mooring system corresponding to this turbine
-        self.body = mpb
-
-
-        # -------------------------- turbine RNA description (eventually these should be inputs) ------------------------
-        
-        # here we could pass main design parameters to the structural model so that some parts can be precomputed
-        # or just store things internally for now
-        
-        
+        # turbine RNA description 
         self.mRNA    = design['turbine']['mRNA']
         self.IxRNA   = design['turbine']['IxRNA']
         self.IrRNA   = design['turbine']['IrRNA']
         self.xCG_RNA = design['turbine']['xCG_RNA']
         self.hHub    = design['turbine']['hHub']
         
-
-            
-
-        # ---------------------- set up key arrays (these are now created just in time)-----------------------------
-        '''
-        # structure-related arrays
-        -self.M_struc = np.zeros([6,6])                # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
-        -self.B_struc = np.zeros([6,6])                # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
-        -self.C_struc = np.zeros([6,6])                # structure effective stiffness matrix [N/m, N, N-m]
-        -self.W_struc = np.zeros([6])                  # static weight vector [N, N-m]
-
-        # hydrodynamics-related arrays
-        self.A_hydro = np.zeros([6,6,nw])             # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
-        self.B_hydro = np.zeros([6,6,nw])             # wave radiation drag matrix [kg, kg-m, kg-m^2]
-        self.B_hydro_drag = np.zeros([6,6])           # linearized viscous drag matrix [kg, kg-m, kg-m^2]
-        -self.C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N, N-m]
-        -self.W_hydro = np.zeros(6)                    # buoyancy force/moment vector [N, N-m]
-        self.F_hydro = np.zeros([6,nw],dtype=complex) # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
-        self.F_hydro_drag = np.zeros([6,nw],dtype=complex) # linearized drag wave excitation complex amplitudes vector [N, N-m]
-
-        # moorings-related arrays
-        self.A_moor = np.zeros([6,6,nw])              # mooring added mass matrix [kg, kg-m, kg-m^2] (may not be used)
-        self.B_moor = np.zeros([6,6,nw])              # mooring damping matrix [N-s/m, N-s, N-s-m] (may not be used)
-        self.C_moor = np.zeros([6,6])                 # mooring stiffness matrix (linearized about platform offset) [N/m, N, N-m]
-        self.W_moor = np.zeros(6)                     # mean net mooring force/moment vector [N, N-m]
-        '''
-
+       
+        # initialize BEM arrays, whether or not a BEM sovler is used
+        self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
+        self.B_BEM = np.zeros([6,6,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
+        self.F_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
+        
+        
 
     def setEnv(self, Hs=8, Tp=12, V=10, beta=0, Fthrust=0):
         '''For now, this is where the environmental conditions acting on the FOWT are set.'''
@@ -1704,8 +1678,57 @@ class FOWT():
 
 
 
-    def calcHydroConstants(self):
+    def calcBEM(self):
+        '''This generates a mesh for the platform and runs a BEM analysis on it.
+        The mesh is only for non-interesecting members flagged with potMod=1.'''
+        
+        rho = self.env.rho
+        g   = self.env.g
+        
+        # desired panel size (longitudinal and azimuthal)
+        dz = 2.5
+        da = 2.0
 
+        # vertices array that will contain all panel vertices for writing to mesh file
+        vertices = np.zeros([0,3])
+
+        # go through members to be modeled with BEM and calculated their meshes
+        for mem in self.memberList:                 
+        
+            if mem.potMod==1:
+                vertices_i = memberMesh(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                
+                vertices = np.vstack([vertices, vertices_i])             # append the member's vertices to the master list
+            
+         
+        # generate a mesh file (current example in WAMIT .gdf format)
+        npan = int(vertices.shape[0]/4)
+
+        f = open("platform.gdf", "w")
+        f.write('gdf mesh \n')
+        f.write('1.0   9.8 \n')
+        f.write('0, 0 \n')
+        f.write(f'{npan}\n')
+
+        for i in range(npan*4):
+            f.write(f'{vertices[i,0]:>10.3f} {vertices[i,1]:>10.3f} {vertices[i,2]:>10.3f}\n')
+        
+        f.close()
+        
+        
+        # >>> this is where a BEM solve could be executed <<<
+        
+        
+        # the BEM coefficients would be contained in the following at frequencies self.w:
+        #self.A_BEM
+        #self.B_BEM
+        #self.F_BEM
+        
+        
+        
+    def calcHydroConstants(self):
+        '''This computes the linear strip-theory-hydrodynamics terms.'''
+        
         rho = self.env.rho
         g   = self.env.g
 
@@ -1776,44 +1799,6 @@ class FOWT():
                             
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
                         
-
-
-        # sum matrices to check totals from static calculations before hydrodynamic terms are added
-        '''
-        self.C_tot = self.C_struc + self.C_hydro + self.C_moor   # total system stiffness matrix about undisplaced position
-        #W_tot0 = self.W_struc + self.W_hydro + W_moor0   # system mean forces and moments at undisplaced position
-
-        M = self.M_struc + self.A_hydro_morison          # total mass plus added mass matrix
-
-        # do we want to relinearize structural properties about displaced position/orientation?  (Probably not)
-
-        print("hydrostatic stiffness matrix")
-        printMat(C_hydro)    
-            
-        print("structural stiffness matrix")
-        printMat(C_struc)
-            
-        print("mooring stiffness matrix about undisplaced position")
-        printMat(C_moor0)
-            
-        print("total static stiffness matrix about undisplaced position")
-        printMat(C_tot0)
-            
-            
-
-        print("total static mass matrix")
-        printMat(M_struc)
-            
-        print("total added mass matrix")
-        printMat(A_hydro_morison)
-
-        print("total mass plus added mass matrix")
-        printMat(M)
-            
-            
-        print("total static forces and moments about undisplaced position")
-        printVec(W_tot0)
-        '''
 
     def calcLinearizedTerms(self, Xi):
         '''The FOWT's dynamics solve iteration method. This calculates the amplitude-dependent linearized coefficients.

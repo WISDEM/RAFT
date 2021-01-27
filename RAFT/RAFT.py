@@ -179,7 +179,7 @@ class Member:
                 dls += [dlstrip]
                 ds  += [0.5*(self.d[i-1] + self.d[i])]               # set diameter as midpoint diameter
                 drs += [0.5*(self.d[i] - self.d[i-1])]
-            
+        
         self.ns  = len(ls)                                           # number of hydrodynamic strip theory nodes per member
         self.ls  = np.array(ls, dtype=float)                          # node locations along member axis
         #self.dl = 0.5*(np.diff([0.]+lh) + np.diff(lh+[lh[-1]]))      
@@ -1469,6 +1469,7 @@ class FOWT():
         for mi in design['platform']['members']:
             self.memberList.append(Member(mi, self.nw))
             
+        self.memberList.append(Member(design['turbine']['tower'], self.nw))
 
         # mooring system connection 
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
@@ -1764,7 +1765,7 @@ class FOWT():
         for mem in self.memberList:
             
             # loop through each node of the member
-            for il in range(mem.n):
+            for il in range(mem.ns):
             
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
@@ -1775,8 +1776,7 @@ class FOWT():
 
                     # ----- compute side effects ---------------------------------------------------------
                     
-                    dl = 0.5*mem.dl if (il==0 or il==mem.n) else 1.0*mem.dl              # set dl to half if at the member end (the end result is similar to trapezoid rule integration)
-                    v_i = 0.25*np.pi*mem.d[il]**2*dl                                     # member volume assigned to this node
+                    v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[i]                            # member volume assigned to this node
                     
                     # added mass
                     Amat = rho*v_i *( mem.Ca_q*mem.qMat + mem.Ca_p1*mem.p1Mat + mem.Ca_p2*mem.p2Mat )  # local added mass matrix
@@ -1793,33 +1793,28 @@ class FOWT():
                         self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_iner[il,:,i])  # add to global excitation vector (frequency dependent)
                         
                     
-                    # ----- add end effects for added mass, and excitation including dynamic pressure ------
+                    # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
+                
+                    v_i = np.pi/6.0 * ((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
+                    a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
                     
-                    if il==0 or il==mem.n-1:
+                    # added mass
+                    Amat = rho*v_i * mem.Ca_End*mem.qMat                             # local added mass matrix
                     
-                        v_i = np.pi*mem.d[il]**3/6.0                                     # volume assigned to this end surface
-                        a_i = 0.25*np.pi*mem.d[il]**2                                    # end area
-                            
-                        # added mass
-                        Amat = rho*v_i * mem.Ca_End*mem.qMat                             # local added mass matrix
+                    self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
+                    
+                    # inertial excitation
+                    Imat = rho*v_i * (1+mem.Ca_End)*mem.qMat                         # local inertial excitation matrix
+                    
+                    for i in range(self.nw):                                         # for each wave frequency...
+                    
+                        F_exc_iner_temp = np.matmul(Imat, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
+                                           
+                        F_exc_iner_temp += mem.pDyn[il,i]*rho*a_i *mem.q             # add dynamic pressure - positive with q if end A - determined by sign of a_i
                         
-                        self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
+                        mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
                         
-                        # inertial excitation
-                        Imat = rho*v_i * (1+mem.Ca_End)*mem.qMat                         # local inertial excitation matrix
-                        
-                        for i in range(self.nw):                                         # for each wave frequency...
-                        
-                            F_exc_iner_temp = np.matmul(Imat, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
-                                               
-                            if il == 0:
-                                F_exc_iner_temp += mem.pDyn[il,i]*rho*a_i *mem.q         # add dynamic pressure - positive with q if end A
-                            else:
-                                F_exc_iner_temp -= mem.pDyn[il,i]*rho*a_i *mem.q         # add dynamic pressure - negative with q if end B
-                            
-                            mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
-                            
-                            self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
+                        self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
                         
 
     def calcLinearizedTerms(self, Xi):

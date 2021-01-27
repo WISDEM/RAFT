@@ -18,6 +18,7 @@ turbine:
         rA        :  [ 0, 0,   10]             # [m]    end A coordinates
         rB        :  [ 0, 0, 87.6]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
         
         # --- outer shell including hydro---
         stations  :  [ 10, 17.76, 25.52, 33.28, 41.04, 48.8, 56.56, 64.32, 72.08, 79.84, 87.6 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
@@ -29,7 +30,6 @@ turbine:
         CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  8500                      # [kg/m3]   material density
-	gamma     :  0.0 		       # [deg]   twist angle about the member's z-axis
         
         # --- ballast ---
         l_fill    :  0                         # [m]
@@ -52,6 +52,8 @@ platform:
         rA        :  [ 0, 0, -120]             # [m]    end A coordinates
         rB        :  [ 0, 0,   10]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
+        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
         
         # --- outer shell including hydro---
         stations  :  [-120, -12,  -4,  10 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB

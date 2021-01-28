@@ -92,7 +92,7 @@ class Member:
         if shape[0].lower() == 'c':
             self.shape = 'circular'
             self.d     = getFromDict(mi, 'd', shape=n)               # diameter of member nodes [m]  <<< should maybe check length of all of these
-            
+            print(self.d)
             self.gamma = 0                                           # twist angle about the member's z-axis [degrees] (don't need this for a circular member)
         
         elif shape[0].lower() == 'r':   # <<< this case not checked yet since update <<<
@@ -467,7 +467,65 @@ class Member:
             
             
             # end of submember for loop
+        
+        '''
+        # Add the inertia properties of any end caps
+        for i in range(len(self.cap_stations)):
             
+            memPosEnd = self.rA + self.q*self.stations[0]
+            
+            pos = self.cap_stations[i]
+            h = self.cap_t[i]
+            d_hole = self.cap_d_in[i]
+            
+            if L==self.rA:
+                dA = self.d[0]
+                dB = np.interp(L+h, self.stations, self.d)
+                dAi = d_hole
+                dBi = ()*(L+h/L) + 
+                dBi = np.interp(L+h, self.stations, self.d)
+                
+                dBi_fill = (dBi-dAi)*(l_fill/l) + dAi
+                
+            elif L==self.rB:
+                dA = np.interp(L-h, self.stations, self.d)
+                dB = self.d[-1]
+            else:
+                dA = np.interp(L-h/2, self.stations, self.d)
+                dB = np.interp(L+h/2, self.stations, self.d)
+            # what about a possible case when L < l < L+h
+                # case for ring stiffeners
+                # case for rectangulars
+                # center
+            
+            V_outer, hco = FrustumVCV(dA, dB, h)
+            m = v*self.rho_shell            # assume it's made out of the same material as the shell for now
+            if L==self.rA:
+                center
+            elif L==self.rB:
+                center
+            else:
+                center = L
+            
+            I_rad_end, I_ax = FrustumMOI(dA, dB, h, self.rho_shell)
+            I_rad = I_rad_end - m*hc**2
+            
+            Ixx = I_rad
+            Iyy = I_rad
+            Izz = I_ax
+
+                
+                
+            mass += m
+            mass_center += m*center
+            mshell += m                 # include end caps and bulkheads in the mass of the shell
+        '''
+        
+        
+        
+        
+        
+        
         mass = self.M_struc[0,0]        # total mass of the entire member [kg]
         center = mass_center/mass       # total center of mass of the entire member from the PRP [m]
         
@@ -1440,7 +1498,8 @@ class Model():
         print('C33:                 ',np.round(fowt.C_hydro[2,2],2),' N')
         print('C44:                 ',np.round(fowt.C_hydro[3,3],2),' Nm/rad')
         print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
-        
+        print('F_lines: ',list(np.round(np.array(self.F_moor0),2)),' N')
+        print('C_lines: ',self.C_moor0)
         
         '''
          # ---------- mooring line fairlead tension RAOs and constraint implementation ----------

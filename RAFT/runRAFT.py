@@ -211,13 +211,10 @@ def runRAFTfromWEIS():
 
 if __name__ == "__main__":
     
-    model = runRAFT('OC3spar.yaml', 'env.yaml')
+    runRAFT('OC3spar.yaml', 'env.yaml')
     
-    fowt = model.fowtList[0]
     
-    print('F_lines: ',list(np.round(np.array(model.F_moor0),2)),' N')
-    print('C_lines: ',model.C_moor0)
-    
+    ''' 
     print('A11/A22:             ',fowt.A_hydro_morison[0,0],' kg')
     print(fowt.A_hydro_morison[2,2])
     print(fowt.A_hydro_morison[3,3])
@@ -232,7 +229,7 @@ if __name__ == "__main__":
     plt.plot(fowt.w, mag[4,:])
     plt.xlabel('Frequency (rad/s)')
     plt.ylabel('Exciting Force [N')
-    
+    '''
     def pdiff(x,y):
         return (abs(x-y)/y)*100
     

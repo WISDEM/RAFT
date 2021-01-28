@@ -214,29 +214,10 @@ if __name__ == "__main__":
     model = runRAFT('OC3spar.yaml', 'env.yaml')
     
     fowt = model.fowtList[0]
-    '''
-    print('Tower Mass:          ',np.round(fowt.mtower,2),' kg')
-    print('Tower CG:            ',np.round(fowt.rCG_tow[2],4),' m from SWL')
-    print('Substructure Mass:   ',np.round(fowt.msubstruc,2),' kg')
-    print('Substructure CG:     ',np.round(fowt.rCG_sub[2],4),' m from SWL')
-    print('Steel Mass:          ',np.round(fowt.mshell,2),' kg')
-    print('Ballast Mass:        ',np.round(fowt.mballast,2),' kg')
-    print('Ballast Densities    ',fowt.pb,' kg/m^3')
-    print('Total Mass:          ',np.round(fowt.M_struc[0,0],2),' kg')
-    print('Total CG:            ',np.round(fowt.rCG_TOT[2],2),' m from SWL')
-    print('Roll Inertia at PCM  ',np.round(fowt.I44,2),' kg-m^2')
-    print('Pitch Inertia at PCM ',np.round(fowt.I55,2),' kg-m^2')
-    print('Yaw Inertia at PCM   ',np.round(fowt.I66,2),' kg-m^2')
-    print('Roll Inertia at PRP: ',np.round(fowt.I44B,2),' kg-m^2')
-    print('Pitch Inertia at PRP:',np.round(fowt.I55B,2),' kg-m^2')
-    print('Buoyancy (pgV):      ',np.round(fowt.V*fowt.env.g*fowt.env.rho,2),' N')
-    print('Center of Buoyancy:  ',np.round(fowt.rCB[2],4),'m from SWL')
-    print('C33:                 ',np.round(fowt.C_hydro[2,2],2),' N')
-    print('C44:                 ',np.round(fowt.C_hydro[3,3],2),' Nm/rad')
-    print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
+    
     print('F_lines: ',list(np.round(np.array(model.F_moor0),2)),' N')
     print('C_lines: ',model.C_moor0)
-    '''
+    
     print('A11/A22:             ',fowt.A_hydro_morison[0,0],' kg')
     print(fowt.A_hydro_morison[2,2])
     print(fowt.A_hydro_morison[3,3])

@@ -56,6 +56,8 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append(" 9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84    0.0206   0.0198   0.0       0.0    8500  ")
             memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60    0.0198   0.0190   0.0       0.0    8500  ")
             
+            #memberStrings.append(" 1     1   circ  6.500   3.870    0.0    0.0    10.00   0.0    0.0    87.60    0.0270   0.0190   0.0     0.0     8500  ")
+            
             # spar platform substructure description --------------
             # July 2020 weight-buoyancy balancing (either should work)
             #memberStrings.append("11     2   circ  9.400   9.400    0.0    0.0   -120.0   0.0    0.0   -12.00   0.0270   52.0    1850.0   8500  ")
@@ -152,9 +154,12 @@ def runFDmodel(wt_opt = None, model = 'OC3'):
             memberStrings.append(" 8     1   circ  4.659   4.396    0.0    0.0    64.32   0.0    0.0    72.08    0.0214   0.0206   0.0     0.0     8500  ")
             memberStrings.append(" 9     1   circ  4.396   4.133    0.0    0.0    72.08   0.0    0.0    79.84    0.0206   0.0198   0.0     0.0     8500  ")
             memberStrings.append("10     1   circ  4.133   3.870    0.0    0.0    79.84   0.0    0.0    87.60    0.0198   0.0190   0.0     0.0     8500  ")
+            
+            #memberStrings.append(" 1     1   circ  6.500   3.870    0.0    0.0    10.00   0.0    0.0    87.60    0.0270   0.0190   0.0     0.0     8500  ")
+            
             """
             # spar platform substructure description --------------
-            # Modeling the end caps to fit inside the ends of the cylindrical members
+            # Modeling the end caps to fit inside the ends of the cylindrical members (hydrostatics won't work this way because of the end cap definitions)
             # Main Column
             memberStrings.append("11    2    circ    6.5     6.5      0.0      0.0    -20.0     0.0      0.0    10.00   0.03    0.03     0.0         0.0   7850  ")
             # Upper Columns
@@ -691,7 +696,7 @@ if __name__ == "__main__":
     
     
     fowt = model.fowtList[0]
-    '''
+    
     print('Tower Mass:          ',np.round(fowt.mtower,2),' kg')
     print('Tower CG:            ',np.round(fowt.rCG_tow[2],4),' m from SWL')
     print('Substructure Mass:   ',np.round(fowt.msubstruc,2),' kg')
@@ -713,7 +718,7 @@ if __name__ == "__main__":
     print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
     print('F_lines: ',list(np.round(np.array(model.F_moor0),2)),' N')
     print('C_lines: ',model.C_moor0)
-    '''
+    
     print('A11/A22:             ',fowt.A_hydro_morison[0,0],' kg')
     print(fowt.A_hydro_morison[2,2])
     print(fowt.A_hydro_morison[3,3])

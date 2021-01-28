@@ -442,7 +442,7 @@ class Member:
             mass_center += mass*center                  # total sum of mass the center of mass of the member [kg-m]
             mshell += m_shell                           # total mass of the shell material only of the member [kg]
             mfill.append(m_fill)                        # list of ballast masses in each submember [kg]
-            pfill.append(rho_shell)                     # list of ballast densities in each submember [kg]
+            pfill.append(rho_fill)                     # list of ballast densities in each submember [kg]
             
             # create a local submember mass matrix
             Mmat = np.diag([mass, mass, mass, 0, 0, 0]) # submember's mass matrix without MoI tensor
@@ -463,7 +463,7 @@ class Member:
         center = mass_center/mass       # total center of mass of the entire member from the PRP [m]
         
       
-        return mass, center, m_shell, mfill, pfill
+        return mass, center, mshell, mfill, pfill
         
         
     
@@ -493,9 +493,9 @@ class Member:
             # calculate end locations for this segment only
             rA = self.rA + self.q*self.stations[i-1]
             rB = self.rA + self.q*self.stations[i  ]
-                
+            
             # partially submerged case
-            if self.rA[2]*self.rB[2] <= 0:    # if member crosses (or touches) water plane
+            if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
                 
                 # angles
                 beta = np.arctan2(self.q[1],self.q[0])  # member incline heading from x axis
@@ -533,7 +533,7 @@ class Member:
                     IxWP = I_rot[0,0]
                     IyWP = I_rot[1,1]
                 
-                LWP = abs(self.rA[2])/cosPhi                   # get length of segment along member axis that is underwater [m]
+                LWP = abs(rA[2])/cosPhi                   # get length of segment along member axis that is underwater [m]
                 
                 # Assumption: the areas and MoI of the waterplane are as if the member were completely vertical, i.e. it doesn't account for phi
                 # This can be fixed later on if needed. We're using this assumption since the fix wouldn't significantly affect the outputs
@@ -589,13 +589,13 @@ class Member:
                 
             
             # fully submerged case 
-            elif self.r[0,2] <= 0 and self.r[-1,2] <= 0:
-                                
+            elif rA[2] <= 0 and rB[2] <= 0:
+                
                 # displaced volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
                 if self.shape=='circular':
-                    V_UWi, hc = FrustumVCV(self.d[i-1], self.d[i], self.station[i]-self.station[i-1])
+                    V_UWi, hc = FrustumVCV(self.d[i-1], self.d[i], self.stations[i]-self.stations[i-1])
                 elif self.shape=='rectangular':
-                    V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.station[i]-self.station[i-1])
+                    V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.stations[i]-self.stations[i-1])
                 
                 r_center = rA + self.q*hc             # absolute coordinates of center of volume of this segment[m]
             
@@ -1392,16 +1392,37 @@ class Model():
         ax[1].set_ylabel("response magnitude (deg)")
         ax[2].set_ylabel("wave amplitude (m)")
         ax[2].set_xlabel("frequency (rad/s)")
-
+        
+        self.calcOutputs()
 
         return Xi  # currently returning the response rather than saving in the model object
         
         
         
-    def calcOutputs(self, Xi):
+    def calcOutputs(self):
         '''This is where various output quantities of interest are calculated based on the already-solved system response.'''
         
-        
+        fowt = self.fowtList[0]
+        print('---------------------------')        
+        print('Tower Mass:          ',np.round(fowt.mtower,2),' kg')
+        print('Tower CG:            ',np.round(fowt.rCG_tow,4),' m from SWL')
+        print('Substructure Mass:   ',np.round(fowt.msubstruc,2),' kg')
+        print('Substructure CG:     ',np.round(fowt.rCG_sub,4),' m from SWL')
+        print('Shell Mass:          ',np.round(fowt.mshell,2),' kg')
+        print('Ballast Mass:        ',np.round(fowt.mballast,2),' kg')
+        print('Ballast Densities    ',fowt.pb,' kg/m^3')
+        print('Total Mass:          ',np.round(fowt.M_struc[0,0],2),' kg')
+        print('Total CG:            ',np.round(fowt.rCG_TOT[2],2),' m from SWL')
+        print('Roll Inertia at PCM  ',np.round(fowt.I44,2),' kg-m^2')
+        print('Pitch Inertia at PCM ',np.round(fowt.I55,2),' kg-m^2')
+        print('Yaw Inertia at PCM   ',np.round(fowt.I66,2),' kg-m^2')
+        print('Roll Inertia at PRP: ',np.round(fowt.I44B,2),' kg-m^2')
+        print('Pitch Inertia at PRP:',np.round(fowt.I55B,2),' kg-m^2')
+        print('Buoyancy (pgV):      ',np.round(fowt.V*fowt.env.g*fowt.env.rho,2),' N')
+        print('Center of Buoyancy:  ',np.round(fowt.rCB[2],4),'m from SWL')
+        print('C33:                 ',np.round(fowt.C_hydro[2,2],2),' N')
+        print('C44:                 ',np.round(fowt.C_hydro[3,3],2),' Nm/rad')
+        print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
         
         
         '''
@@ -1642,6 +1663,7 @@ class FOWT():
                 I55list.append(mem.M_struc[4,4])
                 I66list.append(mem.M_struc[5,5])
                 masslist.append(mass)
+                
                 
                 
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------

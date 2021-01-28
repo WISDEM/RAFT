@@ -70,7 +70,7 @@ class Member:
         self.l = np.linalg.norm(rAB)                                 # member length [m]
         
         
-        self.potMod = 1  # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
+        self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
         
         
         # station positions
@@ -82,46 +82,30 @@ class Member:
         self.stations = (A - A[0])/(A[-1] - A[0])*self.l             # calculate relative station positions from 0 to 1
         
         
-        # helper function to deal with scalar vs list inputs that should be size n
-        def handleScalars(input):
-            if np.isscalar(input): 
-                return np.zeros(n) + float(input)    # if a scalar is provided, tile it out to the length of n
-            else:
-                return np.array(input, dtype=float)
-            # at some point should upgrade this to take dict and field name to provide default values if it's not provided in the dict
-        
-        
         # shapes
         if shape[0].lower() == 'c':
             self.shape = 'circular'
-            self.d = handleScalars(mi['d'])                          # diameter of member nodes [m]  <<< should maybe check length of all of these
+            self.d     = getFromDict(mi, 'd', shape=n)               # diameter of member nodes [m]  <<< should maybe check length of all of these
             
             self.gamma = 0                                           # twist angle about the member's z-axis [degrees] (don't need this for a circular member)
         
         elif shape[0].lower() == 'r':   # <<< this case not checked yet since update <<<
             self.shape = 'rectangular'
             
-            if np.isscalar(mi['d']): 
-                self.sl = np.zeros([n,2]) + float(mi['d'])          # handle if a scaler is provided
+            self.sl    = getFromDict(mi, 'd', shape=[n,2])           # array of side lengths of nodes along member [m]
             
-            elif np.isscalar(mi['d'][0]) and len(mi['d'])==2: 
-                self.sl = np.tile(np.array(mi['d'], dtype=float), [n,1])  # handle if a single set of side lengths is provided (assume constant cross section)
-            
-            else:
-                self.sl = np.array(mi['d'], dtype=float)             # array of side lengths of nodes along member [m]
-            
-            self.gamma = float(mi['gamma'])                          # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
+            self.gamma = getFromDict(mi, 'gamma', default=0.)        # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
         
         else:
             raise ValueError('The only allowable shape strings are circular and rectangular')
                     
         
-        self.t         = handleScalars(mi['t'])                     # shell thickness of upper node [m]
+        self.t         = getFromDict(mi, 't', shape=n)               # shell thickness of the nodes [m]
         
-        self.l_fill    = handleScalars(mi['l_fill'])                # length of member (from end A to B) filled with ballast [m]
-        self.rho_fill  = handleScalars(mi['rho_fill'])              # density of ballast in member [kg/m^3]
+        self.l_fill    = getFromDict(mi, 'l_fill'   , default=0.0)   # length of member (from end A to B) filled with ballast [m]
+        self.rho_fill  = getFromDict(mi, 'rho_fill' , default=1025.) # density of ballast in member [kg/m^3]
                                              
-        self.rho_shell = handleScalars(mi['rho_shell'])             # shell mass density [kg/m^3]
+        self.rho_shell = getFromDict(mi, 'rho_shell', default=8500.) # shell mass density [kg/m^3]
         
         
         # initialize member orientation variables
@@ -138,15 +122,15 @@ class Member:
         
         
         # Drag coefficients
-        self.Cd_q   = handleScalars(0          )                    # axial drag coefficient
-        self.Cd_p1  = handleScalars(mi['Cd'   ])                    # transverse1 drag coefficient
-        self.Cd_p2  = handleScalars(mi['Cd'   ])                    # transverse2 drag coefficient
-        self.Cd_End = handleScalars(mi['CdEnd'])                    # end drag coefficient        
+        self.Cd_q   = getFromDict(mi, 'Cd_q' , shape=n, default=0.0 )     # axial drag coefficient
+        self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse1 drag coefficient
+        self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse2 drag coefficient
+        self.Cd_End = getFromDict(mi, 'CdEnd', shape=n, default=0.6 )     # end drag coefficient   
         # Added mass coefficients
-        self.Ca_q   = handleScalars(0          )                    # axial added mass coefficient
-        self.Ca_p1  = handleScalars(mi['Ca'   ])                    # transverse1 added mass coefficient
-        self.Ca_p2  = handleScalars(mi['Ca'   ])                    # transverse2 added mass coefficient
-        self.Ca_End = handleScalars(mi['CaEnd'])                    # end added mass coefficient
+        self.Ca_q   = getFromDict(mi, 'Ca_q' , shape=n, default=0.0 )     # axial added mass coefficient
+        self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse1 added mass coefficient
+        self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse2 added mass coefficient
+        self.Ca_End = getFromDict(mi, 'CaEnd', shape=n, default=0.6 )     # end added mass coefficient
         
         
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
@@ -1000,8 +984,61 @@ def printMat(mat):
 def printVec(vec):
     '''Print a vector'''
     print( "\t".join(["{:+8.3e}"]*len(vec)).format( *vec ))
-    
 
+
+def getFromDict(dict, key, shape=0, dtype=float, default=None):
+    '''
+    Function to streamline getting values from design dictionary from YAML file, including error checking.
+    
+    Parameters
+    ----------
+    dict : dict
+        the dictionary
+    key : string
+        the key in the dictionary
+    shape : list, optional
+        The desired shape of the output. If not provided, assuming scalar output.
+    dtype : type
+        Must be a python type than can serve as a function to format the input value to the right type.
+    default : number, optional
+        The default value to fill in if the item isn't in the dictionary. Otherwise will raise error if the key doesn't exist.
+    '''
+    # in future could support nested keys   if type(key)==list: ...
+    
+    if key in dict:
+        val = dict[key]                                      # get the value from the dictionary
+        if shape==0:
+            return dtype(val)
+        else:
+            if np.isscalar(val):                             # if a scalar value is provided and we need to produce an array (of any shape)
+                return np.tile(dtype(val), shape)
+                
+            elif np.isscalar(shape):                         # if expecting a 1D array
+                if len(val) == shape:
+                    return np.array([dtype(v) for v in val])
+                else:
+                    raise valueError(f"Value for key '{key}' is not the expected size of {shape} and is instead: {val}")
+            
+            else:                                            # must be expecting a multi-D array
+                vala = np.array(val, dtype=dtype)            # make array
+                
+                if vala.shape == shape:                      # if provided with the right shape
+                    return vala
+                elif len(shape) > 2:
+                    raise valueError("Function getFromDict isn't set up for shapes larger than 2 dimensions")
+                elif vala.ndim==1 and len(vala)==shape[1]:   # if we expect an MxN array, and an array of size N is provided, tile it M times
+                    return np.tile(vala, [shape[0], 1] )
+                else:
+                    raise valueError(f"Value for key '{key}' is not a compatible size for target size of {shape} and is instead: {val}")
+
+    else:
+        if default == None:
+            raise ValueError(f"Key '{key}' not found in input file...")
+        else:
+            if shape==0:
+                return default
+            else:
+                return np.tile(default, shape)
 
 
 class Model():

@@ -107,7 +107,7 @@ class Member:
                                              
         self.rho_shell = getFromDict(mi, 'rho_shell', default=8500.) # shell mass density [kg/m^3]
         
-        
+        breakpoint()
         # initialize member orientation variables
         self.q = rAB/self.l                                         # member axial unit vector
         self.p1 = np.zeros(3)                                       # member transverse unit vectors (to be filled in later)
@@ -1013,7 +1013,10 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None):
             else:
                 raise ValueError(f"Value for key '{key}' is expected to be a scalar but instead is: {val}")
         elif shape==-1:                                      # any input shape accepted
-            return np.array(val, dtype=dtype)
+            if np.isscalar(val):
+                return dtype(val)
+            else:
+                return np.array(val, dtype=dtype)
         else:
             if np.isscalar(val):                             # if a scalar value is provided and we need to produce an array (of any shape)
                 return np.tile(dtype(val), shape)

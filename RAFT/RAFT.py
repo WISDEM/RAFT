@@ -85,7 +85,7 @@ class Member:
             raise ValueError("At least two stations entries must be provided")
             
         A = np.array(mi['stations'], dtype=float)    
-        self.stations = (A - A[0])/(A[-1] - A[0])*self.l             # calculate relative station positions from 0 to 1
+        self.stations = (A - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
         
         
         # shapes
@@ -122,9 +122,11 @@ class Member:
         
         
         # store end cap and bulkhead info
-        self.cap_stations = np.array(mi['cap_stations'], dtype=float) 
-        self.cap_t        = np.array(mi['cap_t'       ], dtype=float)
-        self.cap_d_in     = np.array(mi['cap_d_in'    ], dtype=float)
+        
+        cap_stations      = getFromDict(mi, 'cap_stations', shape=-1, default=[])   # station location inputs before scaling
+        self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape, default=[])   # thicknesses [m]
+        self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape, default=[])   # inner diameter (if it isn't a solid plate) [m]
+        self.cap_stations = (cap_stations - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
         
         
         # Drag coefficients

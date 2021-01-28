@@ -340,15 +340,16 @@ class Member:
             rA = self.rA + self.q*self.stations[i-1]    # lower node position of the submember [m]
             l = self.stations[i]-self.stations[i-1]     # length of the submember [m]
             # if the following variables are input as scalars, keep them that way, if they're vectors, take the [i-1]th value
-            if np.isscalar(self.rho_shell):     # <<<<<< not sure if this is the best way to handle this
-                rho_shell = self.rho_shell              # density of the shell material [kg/m^3]
-                l_fill = self.l_fill                    # height of the ballast in the submember [m]
-                rho_fill = self.rho_fill                # density of the ballast material [kg/m^3]
+            rho_shell = self.rho_shell              # density of the shell material [kg/m^3]
+            if np.isscalar(self.l_fill):            # set up l_fill and rho_fill based on whether it's scalar or not
+                l_fill = self.l_fill
             else:
-                rho_shell = self.rho_shell[i-1]
                 l_fill = self.l_fill[i-1]
+            if np.isscalar(self.rho_fill):
+                rho_fill = self.rho_fill
+            else:
                 rho_fill = self.rho_fill[i-1]
-            
+
             
             if self.shape=='circular':
                 # MASS AND CENTER OF GRAVITY
@@ -1025,7 +1026,7 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None):
                 if len(val) == shape:
                     return np.array([dtype(v) for v in val])
                 else:
-                    raise valueError(f"Value for key '{key}' is not the expected size of {shape} and is instead: {val}")
+                    raise ValueError(f"Value for key '{key}' is not the expected size of {shape} and is instead: {val}")
             
             else:                                            # must be expecting a multi-D array
                 vala = np.array(val, dtype=dtype)            # make array
@@ -1033,11 +1034,11 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None):
                 if vala.shape == shape:                      # if provided with the right shape
                     return vala
                 elif len(shape) > 2:
-                    raise valueError("Function getFromDict isn't set up for shapes larger than 2 dimensions")
+                    raise ValueError("Function getFromDict isn't set up for shapes larger than 2 dimensions")
                 elif vala.ndim==1 and len(vala)==shape[1]:   # if we expect an MxN array, and an array of size N is provided, tile it M times
                     return np.tile(vala, [shape[0], 1] )
                 else:
-                    raise valueError(f"Value for key '{key}' is not a compatible size for target size of {shape} and is instead: {val}")
+                    raise ValueError(f"Value for key '{key}' is not a compatible size for target size of {shape} and is instead: {val}")
 
     else:
         if default == None:

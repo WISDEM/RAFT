@@ -640,41 +640,41 @@ class Member:
     def plot(self, ax):
         '''Draws the member on the passed axes'''
         
-        # get coordinates of lines along sides relative to end A in member reference frame
+        # --- get coordinates of member edges in member reference frame -------------------
         
+        m = len(self.stations)
+              
+        # lists to be filled with coordinates for plotting
+        X = [] 
+        Y = []
+        Z = []
+            
         if self.shape=="circular":   # circular member cross section
-            n = 8                                                     # number of sides for a circle
-            X = []
-            Y = []
-            Z = []
+            n = 8                                          # number of sides for a circle
             for i in range(n+1):
                 x = np.cos(float(i)/float(n)*2.0*np.pi)    # x coordinates of a unit circle
                 y = np.sin(float(i)/float(n)*2.0*np.pi)    # y
                 
-                X.append(0.5*self.dA*x)   # point on end A
-                Y.append(0.5*self.dA*y)
-                Z.append(0.0)            
-                X.append(0.5*self.dB*x)   # point on end B
-                Y.append(0.5*self.dB*y)
-                Z.append(self.l)       
+                for j in range(m):
+                    X.append(0.5*self.d[j]*x)  
+                    Y.append(0.5*self.d[j]*y)
+                    Z.append(self.stations[j])      
                 
             coords = np.vstack([X, Y, Z])     
                 
         elif self.shape=="rectangular":    # rectangular member cross section
             n=4
-            coords = np.array([[ 0.5*self.slA[1], 0.5*self.slA[0], 0.0],      # point on end A
-                               [ 0.5*self.slB[1], 0.5*self.slB[0], self.l],   # point on end B           
-                               [-0.5*self.slA[1], 0.5*self.slA[0], 0.0],
-                               [-0.5*self.slB[1], 0.5*self.slB[0], self.l],
-                               [-0.5*self.slA[1],-0.5*self.slA[0], 0.0],
-                               [-0.5*self.slB[1],-0.5*self.slB[0], self.l],
-                               [ 0.5*self.slA[1],-0.5*self.slA[0], 0.0],
-                               [ 0.5*self.slB[1],-0.5*self.slB[0], self.l],
-                               [ 0.5*self.slA[1], 0.5*self.slA[0], 0.0],       # (we go full circle here, so five points for the rectangle rather than 4)
-                               [ 0.5*self.slB[1], 0.5*self.slB[0], self.l]]).T  # need transposed
+            for x,y in zip([1,-1,-1,1], [1,1,-1,-1]):
+            
+                for j in range(m):
+                    X.append(0.5*self.sl[j,0]*x)  
+                    Y.append(0.5*self.sl[j,1]*y)
+                    Z.append(self.stations[j])      
+                
+            coords = np.vstack([X, Y, Z])     
+            
         
-        
-        # rotate into global frame
+        # ----- rotate into global frame ------------------------------
         newcoords = np.matmul(self.R, coords)
         
         # shift to end A location
@@ -685,10 +685,15 @@ class Member:
         # plot on the provided axes
         linebit = []  # make empty list to hold plotted lines, however many there are
         for i in range(n):  #range(int(len(Xs)/2-1)):
-            linebit.append(ax.plot(Xs[2*i:2*i+2],Ys[2*i:2*i+2],Zs[2*i:2*i+2]            , color='k'))  # side edges
-            linebit.append(ax.plot(Xs[[2*i,2*i+2]],Ys[[2*i,2*i+2]],Zs[[2*i,2*i+2]]      , color='k'))  # end A edges
-            linebit.append(ax.plot(Xs[[2*i+1,2*i+3]],Ys[[2*i+1,2*i+3]],Zs[[2*i+1,2*i+3]], color='k'))  # end B edges
-    
+            #linebit.append(ax.plot(Xs[2*i:2*i+2],Ys[2*i:2*i+2],Zs[2*i:2*i+2]            , color='k'))  # side edges
+            #linebit.append(ax.plot(Xs[[2*i,2*i+2]],Ys[[2*i,2*i+2]],Zs[[2*i,2*i+2]]      , color='k'))  # end A edges
+            #linebit.append(ax.plot(Xs[[2*i+1,2*i+3]],Ys[[2*i+1,2*i+3]],Zs[[2*i+1,2*i+3]], color='k'))  # end B edges
+            
+            linebit.append(ax.plot(Xs[m*i:m*i+m],Ys[m*i:m*i+m],Zs[m*i:m*i+m]            , color='k'))  # side edges
+            
+        for j in range(m):            
+            linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color='k'))  # station rings
+                
         return linebit
 
 

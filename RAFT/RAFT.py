@@ -52,9 +52,8 @@ class Member:
             Rotation to apply to the coordinates when setting up the member - used for circular patterns of members.
         
         '''
-    
-        # note: haven't decided yet how to lump masses and handle segments
         
+        # overall member parameters
         self.id    = int(1)                                          # set the ID value of the member
         self.name  = str(mi['name'])
         self.type  = int(mi['type'])                                 # set the type of the member (for now, just arbitrary numbers: 0,1,2, etc.)
@@ -62,15 +61,22 @@ class Member:
         self.rA = np.array(mi['rA'], dtype=np.double)                # [x,y,z] coordinates of lower node [m]
         self.rB = np.array(mi['rB'], dtype=np.double)                # [x,y,z] coordinates of upper node [m]
         
-        # put heading rotation capability here <<<<
-        
         shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
         
         rAB = self.rB-self.rA                                        # The relative coordinates of upper node from lower node [m]
         self.l = np.linalg.norm(rAB)                                 # member length [m]
         
-        
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
+        
+        
+        # heading feature for rotation members about the z axis (used for rotated patterns)
+        heading = getFromDict(mi, 'heading', default=0.0)            # rotation about z axis to apply to the member [deg]
+        if heading != 0.0:
+            c = np.cos(np.deg2rad(heading))
+            s = np.sin(np.deg2rad(heading))
+            rotMat = np.array([[c, s, 0], [-s, c, 0], [0, 0, 1]])
+            self.rA = np.matmul(rotMat, self.rA)
+            self.rB = np.matmul(rotMat, self.rB)
         
         
         # station positions
@@ -1044,7 +1050,7 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None):
         if default == None:
             raise ValueError(f"Key '{key}' not found in input file...")
         else:
-            if shape==0:
+            if shape==0 or shape==-1:
                 return default
             else:
                 return np.tile(default, shape)
@@ -1540,7 +1546,14 @@ class FOWT():
         self.memberList = []                                         # list of member objects
         
         for mi in design['platform']['members']:
-            self.memberList.append(Member(mi, self.nw))
+            headings = getFromDict(mi, 'heading', shape=-1, default=0.)
+            if np.isscalar(headings):
+                mi['heading'] = headings
+                self.memberList.append(Member(mi, self.nw))
+            else:
+                for heading in headings:
+                    mi['heading'] = heading
+                    self.memberList.append(Member(mi, self.nw))
             
         self.memberList.append(Member(design['turbine']['tower'], self.nw))
 

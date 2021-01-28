@@ -102,8 +102,8 @@ class Member:
         
         self.t         = getFromDict(mi, 't', shape=n)               # shell thickness of the nodes [m]
         
-        self.l_fill    = getFromDict(mi, 'l_fill'   , default=0.0)   # length of member (from end A to B) filled with ballast [m]
-        self.rho_fill  = getFromDict(mi, 'rho_fill' , default=1025.) # density of ballast in member [kg/m^3]
+        self.l_fill    = getFromDict(mi, 'l_fill'  , shape=-1, default=0.0)   # length of member (from end A to B) filled with ballast [m]
+        self.rho_fill  = getFromDict(mi, 'rho_fill', shape=-1, default=1025.) # density of ballast in member [kg/m^3]
                                              
         self.rho_shell = getFromDict(mi, 'rho_shell', default=8500.) # shell mass density [kg/m^3]
         
@@ -997,7 +997,7 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None):
     key : string
         the key in the dictionary
     shape : list, optional
-        The desired shape of the output. If not provided, assuming scalar output.
+        The desired shape of the output. If not provided, assuming scalar output. If -1, any input shape is used.
     dtype : type
         Must be a python type than can serve as a function to format the input value to the right type.
     default : number, optional
@@ -1007,8 +1007,13 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None):
     
     if key in dict:
         val = dict[key]                                      # get the value from the dictionary
-        if shape==0:
-            return dtype(val)
+        if shape==0:                                         # scalar input expected
+            if np.isscalar(val):
+                return dtype(val)
+            else:
+                raise ValueError(f"Value for key '{key}' is expected to be a scalar but instead is: {val}")
+        elif shape==-1:                                      # any input shape accepted
+            return np.array(val, dtype=dtype)
         else:
             if np.isscalar(val):                             # if a scalar value is provided and we need to produce an array (of any shape)
                 return np.tile(dtype(val), shape)

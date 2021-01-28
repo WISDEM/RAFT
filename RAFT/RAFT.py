@@ -103,11 +103,11 @@ class Member:
         self.t         = getFromDict(mi, 't', shape=n)               # shell thickness of the nodes [m]
         
         self.l_fill    = getFromDict(mi, 'l_fill'  , shape=-1, default=0.0)   # length of member (from end A to B) filled with ballast [m]
-        self.rho_fill  = getFromDict(mi, 'rho_fill', shape=-1, default=1025.) # density of ballast in member [kg/m^3]
+        self.rho_fill  = getFromDict(mi, 'rho_fill', shape=-1, default=0.0)   # density of ballast in member [kg/m^3]
                                              
         self.rho_shell = getFromDict(mi, 'rho_shell', default=8500.) # shell mass density [kg/m^3]
         
-        breakpoint()
+        
         # initialize member orientation variables
         self.q = rAB/self.l                                         # member axial unit vector
         self.p1 = np.zeros(3)                                       # member transverse unit vectors (to be filled in later)

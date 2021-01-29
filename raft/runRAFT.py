@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 # test local code; consider src layout in future to test installed code
 #sys.path.append('..')
 sys.path.insert(1, '../../MoorPy')
-import RAFT
+import raft
 import MoorPy as mp
 
 
@@ -16,16 +16,16 @@ import MoorPy as mp
 
 import importlib
 mp = importlib.reload(mp)
-RAFT = importlib.reload(RAFT)
+raft = importlib.reload(raft)
 
 
 
 def runRAFT(fname_design, fname_env):
     '''
-    This the main function for running the RAFT model in standalone form, where inputs are contained in the specified input files.
+    This the main function for running the raft model in standalone form, where inputs are contained in the specified input files.
     '''
     
-    # open the design YAML file and parse it into a dictionary for passing to RAFT
+    # open the design YAML file and parse it into a dictionary for passing to raft
     
     with open(fname_design) as file:
         design = yaml.load(file, Loader=yaml.FullLoader)
@@ -63,7 +63,7 @@ def runRAFT(fname_design, fname_env):
     
     # --- Create and run the model ---
 
-    model = RAFT.Model(design, w=w, depth=depth, BEM=capyData)  # set up model
+    model = raft.Model(design, w=w, depth=depth, BEM=capyData)  # set up model
 
     model.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
 
@@ -131,7 +131,7 @@ def runRAFTfromWEIS():
         
         # plug variables into a Member in FrequencyDomain and append to the memberString list
                     # change to string in FD v
-        memberStrings.append(RAFT.Member( str(name_member)+" "+str(type)+" "+str(dA)+" "+str(dB)+" "+str(rA[0])+" "+str(rA[1])+" "+str(rA[2])+\
+        memberStrings.append(raft.Member( str(name_member)+" "+str(type)+" "+str(dA)+" "+str(dB)+" "+str(rA[0])+" "+str(rA[1])+" "+str(rA[2])+\
                                  " "+str(rB[0])+" "+str(rB[1])+" "+str(rB[2])+" "+str(t)+" "+str(l_fill)+" "+str(rho_fill), nw))
   
   

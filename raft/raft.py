@@ -11,7 +11,8 @@ import MoorPy as mp
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
-# import member2pnl
+import member2pnl
+
 #import F6T1RNA as structural    # import turbine structural model functions
 # reload the libraries each time in case we make any changes
 import importlib
@@ -1258,7 +1259,7 @@ class Model():
 
         self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
 
-
+        self.results = {}
 
     def addFOWT(self, fowt, xy0=[0,0]):
         '''adds an already set up FOWT to the frequency domain model solver.'''
@@ -1296,7 +1297,11 @@ class Model():
         self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
         self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
 
-
+        # >>>> add static properties to the results dict here <<<<
+        self.results['properties'] = {}
+        self.results['properties']['total mass'] = 0.0 # <<<<< etc.
+        
+    
     def calcMooringAndOffsets(self):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.
@@ -1331,7 +1336,12 @@ class Model():
         self.C_moor = C_moor
         self.F_moor = F_moor
 
-
+        # store results
+        self.results['means'] = {}
+        self.results['means']['platform offset'  ] = r6eq
+        self.results['means']['mooring force'    ] = F_moor
+        #self.results['means']['fairlead tensions'] = ... # <<<
+        
 
     def solveEigen(self):
         '''finds natural frequencies of system'''
@@ -1411,7 +1421,12 @@ class Model():
         # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
         printVec(fn)
 
-
+                
+        # store results
+        self.results['eigen'] = {}
+        self.results['eigen']['frequencies'] = fns
+        self.results['eigen']['modes'      ] = modes
+                
     def solveStatics(self):
         '''Possibly a method to solve for the mean operating point (in conjunctoin with calcMooringAndOffsets)...'''
 
@@ -1547,6 +1562,13 @@ class Model():
         ax[2].set_ylabel("wave amplitude (m)")
         ax[2].set_xlabel("frequency (rad/s)")
 
+        # store response results
+        self.results['response'] = {}
+        self.results['response']['frequencies'] = self.w/2/np.pi
+        self.results['response']['Xi'         ] = Xi
+        
+        self.Xi = Xi
+
         self.calcOutputs()
 
         return Xi  # currently returning the response rather than saving in the model object
@@ -1580,6 +1602,11 @@ class Model():
         print('F_lines: ',list(np.round(np.array(self.F_moor0),2)),' N')
         print('C_lines: ',self.C_moor0)
 
+        
+        # >>>>> TODO: also save the above (fantastic) list of results into a dict <<<<
+        
+        self.results['properties']['tower mass'] = fowt.mtower  
+        # etc.                                                                                      
         '''
          # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
 
@@ -1635,7 +1662,10 @@ class Model():
          RMSheave(imeto) = sqrt( sum( ((abs(rao{imeto}(:,3))).^2).*S(:,imeto) ) *(w(2)-w(1)) );
         '''
 
-
+        # save dynamic derived quantities
+        #self.results['response']['mooring tensions'] = ...
+        self.results['response']['nacelle acceleration'] = self.w**2 * (self.Xi[0] + self.Xi[4]*fowt.hHub)
+        
 
     def plot(self):
         '''plots the whole model, including FOWTs and mooring system...'''
@@ -1942,15 +1972,24 @@ class FOWT():
         # go through members to be modeled with BEM and calculated their nodes and panels lists
         nodes = []
         panels = []
+        
+        vertices = np.zeros([0,3])  # for GDF output
 
         for mem in self.memberList:
 
             if mem.potMod==1:
                 member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
                         dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+                        
+                # for GDF output
+                vertices_i = member2pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                vertices = np.vstack([vertices, vertices_i])             # append the member's vertices to the master list
 
         # generate a mesh file in the HAMS .pnl format
         member2pnl.writeMesh(nodes, panels)
+        
+        # also a GDF for visualization
+        member2pnl.writeMeshToGDF(vertices)
 
 
         # >>> this is where a BEM solve could be executed <<<

@@ -1,9 +1,10 @@
 import os
+import os.path as osp
 import sys
 import subprocess as sub
 import numpy as np
 
-def nemohmesh_to_pnl(nemohMeshPath, oDir=None):
+def nemohmesh_to_pnl(nemohMeshPath, writeDir=None):
     '''
     convert mesh from .nemoh format to HAMS .pnl format
 
@@ -29,12 +30,12 @@ def nemohmesh_to_pnl(nemohMeshPath, oDir=None):
       - no duplicate points (nodes)
     '''
 
-    nemohMeshPath = os.path.normpath(nemohMeshPath)
-    nemohDirName, nemohFileName = os.path.split(nemohMeshPath)
-    if oDir is None:
-        oDir = nemohDirName
-    if os.path.isdir(oDir) is not True:
-        os.makedirs(oDir)
+    nemohMeshPath = osp.normpath(nemohMeshPath)
+    nemohDirName, nemohFileName = osp.split(nemohMeshPath)
+    if writeDir is None:
+        writeDir = nemohDirName
+    if osp.isdir(writeDir) is not True:
+        os.makedirs(writeDir)
 
     # N.B. Nemoh input files can have slightly different headers (panels and
     # points on top line...or just '2 0' or '2 1' on top line).
@@ -57,7 +58,7 @@ def nemohmesh_to_pnl(nemohMeshPath, oDir=None):
     numVertices = ixZeros[0] - numHeaders
     numPanels = ixZeros[1] - 1 - numVertices - numHeaders
 
-    oFilePath = os.path.join(oDir, f'HullMesh.pnl')
+    oFilePath = osp.join(writeDir, f'HullMesh.pnl')
 
     oFile = open(oFilePath, 'w')
     oFile.write(f'    --------------Hull Mesh File---------------\n\n')
@@ -109,34 +110,34 @@ def create_hams_dirs(baseDir=None):
     if baseDir is None:
         baseDir = os.getcwd()
     else:
-        baseDir = os.path.normpath(baseDir)
-        if os.path.isdir(baseDir) is not True:
+        baseDir = osp.normpath(baseDir)
+        if osp.isdir(baseDir) is not True:
             os.makedirs(baseDir)
 
-    inputDir = os.path.join(baseDir, f'Input')
-    outputDirHams = os.path.join(baseDir, f'Output/Hams_format')
-    outputDirHydrostar = os.path.join(baseDir, f'Output/Hydrostar_format')
-    outputDirWamit = os.path.join(baseDir, f'Output/Wamit_format')
+    inputDir = osp.join(baseDir, f'Input')
+    outputDirHams = osp.join(baseDir, f'Output/Hams_format')
+    outputDirHydrostar = osp.join(baseDir, f'Output/Hydrostar_format')
+    outputDirWamit = osp.join(baseDir, f'Output/Wamit_format')
 
-    if os.path.isdir(inputDir) is not True:
+    if osp.isdir(inputDir) is not True:
         os.mkdir(inputDir)
-    if os.path.isdir(outputDirHams) is not True:
+    if osp.isdir(outputDirHams) is not True:
         os.makedirs(outputDirHams)
-    if os.path.isdir(outputDirHydrostar) is not True:
+    if osp.isdir(outputDirHydrostar) is not True:
         os.makedirs(outputDirHydrostar)
-    if os.path.isdir(outputDirWamit) is not True:
+    if osp.isdir(outputDirWamit) is not True:
         os.makedirs(outputDirWamit)
 
-def write_hydrostatic_file(oDir=None, cog=np.zeros(3), mass=np.zeros((6,6)),
+def write_hydrostatic_file(projectDir=None, cog=np.zeros(3), mass=np.zeros((6,6)),
                            damping=np.zeros((6,6)), kHydro=np.zeros((6,6)),
                            kExt=np.zeros((6,6))):
     '''
-    Writes Hydrostatic.in for HAMS (optional)
+    Writes Hydrostatic.in for HAMS
 
     Parameters
     ----------
-    oDir: str
-        directory to save Hydrostatic.in
+    projectDir: str
+        main HAMS project directory - Hydrostatic.in will be written in ./Input/
     cog: array
         3x1 array - body's CoG
     mass: array
@@ -154,17 +155,20 @@ def write_hydrostatic_file(oDir=None, cog=np.zeros(3), mass=np.zeros((6,6)),
 
     Raises
     ------
-    None
+    ValueError
+        if no projectDir is passed
 
     Notes
     -----
+    The Hydrostatic.in file is required by HAMS to run, but it may just contain
+    zeros if only the hydrodynamic coefficients are of interest.
     '''
-    if oDir is None:
-        oDir = os.getcwd()
+    if projectDir is None:
+        raise ValueError(f'No directory has been passed for where to write Hydrostatic.in')
     else:
-        oDir = os.path.normpath(oDir)
+        projectDir = osp.normpath(osp.join(projectDir, f'./Input'))
 
-    f = open(os.path.join(oDir, 'Hydrostatic.in'), 'w')
+    f = open(osp.join(projectDir, 'Hydrostatic.in'), 'w')
     f.write(f' Center of Gravity:\n ')
     f.write(f'  {cog[0]:10.15E}  {cog[0]:10.15E}  {cog[0]:10.15E} \n')
     f.write(f' Body Mass Matrix:\n')
@@ -189,16 +193,18 @@ def write_hydrostatic_file(oDir=None, cog=np.zeros(3), mass=np.zeros((6,6)),
         f.write(f'\n')
     f.close()
 
-def write_control_file(oDir=None, waterDepth=-50.0, iFType=3, oFType=3, numFreqs=-300,
+def write_control_file(projectDir=None, waterDepth=-50.0, iFType=3, oFType=3, numFreqs=-300,
                        minFreq=0.02, dFreq=0.02, freqList=None, numHeadings=1,
                        minHeading=0.0, dHeading=0.0,
                        refBodyCenter=[0.0, 0.0, 0.0], refBodyLen=1.0, irr=0,
                        numThreads=8):
     '''
-    Description of the function
+    writes HAMS ControlFile.in file
 
     Parameters
     ----------
+    projectDir: str
+        main HAMS project directory - ControlFile.in will be written in ./Input/
     waterDepth : float
         water depth (m)
     iFType: int
@@ -250,15 +256,14 @@ def write_control_file(oDir=None, waterDepth=-50.0, iFType=3, oFType=3, numFreqs
     -----
 
     '''
-
-    if oDir is None:
-        oDir = os.path.join(os.getcwd(), f'Input')
+    if projectDir is None:
+        raise ValueError(f'No directory has been passed for where to write Hydrostatic.in')
     else:
-        oDir = os.path.normpath(oDir)
+        projectDir = osp.normpath(osp.join(projectDir, f'./Input'))
 
     oFileName = f'ControlFile.in'
 
-    f = open(os.path.join(oDir, oFileName), 'w')
+    f = open(osp.join(projectDir, oFileName), 'w')
     f.write(f'   --------------HAMS Control file---------------\n\n')
     f.write(f'   Waterdepth  {waterDepth}D0\n\n')
     f.write(f'   #Start Definition of Wave Frequencies\n')
@@ -353,3 +358,16 @@ def read_wamit3(pathWamit3):
 
     return mod, phase, real, imag
 
+def run_hams(projectDir):
+    '''call the HAMS_x64.exe program in the specified project directory'''
+    # get absolute path to the local HAMS_x64.exe program
+    hamsDir = osp.dirname(__file__)
+    hamsExe = './bin/HAMS_x64.exe'
+    hamsPath = osp.normpath(osp.join(hamsDir, hamsExe))
+    # change directory to where the HAMS input files are
+    workingDir = sys.path[0]
+    os.chdir(projectDir)
+    # run HAMS
+    sub.run([f'{hamsPath}'])
+    # change back to working directory
+    os.chdir(workingDir)

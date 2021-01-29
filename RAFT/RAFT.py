@@ -3,25 +3,20 @@
 
 # 2020-05-23: Starting as a script that will evaluate a design based on properties/data provided in separate files.
 
-
+import os
+import os.path as osp
+import sys
+sys.path.insert(1, '../../MoorPy')
+import MoorPy as mp
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
-
 # import member2pnl
-
-import sys
-sys.path.insert(1, '../../MoorPy')
-
-import MoorPy as mp
 #import F6T1RNA as structural    # import turbine structural model functions
-
 # reload the libraries each time in case we make any changes
 import importlib
 mp   = importlib.reload(mp)
-
 import hams.pyhams as ph
-
 
 
 class Env:
@@ -1960,6 +1955,22 @@ class FOWT():
 
         # >>> this is where a BEM solve could be executed <<<
 
+        # TODO: maybe create a 'HAMS Project' class:
+        #     - methods:
+        #         - create HAMS project structure
+        #         - write HAMS input files
+        #         - call HAMS.exe
+        #     - attributes:
+        #         - addedMass, damping, fEx coefficients
+        cylinderDir = f'./data/cylinder'
+        ph.create_hams_dirs(cylinderDir)
+        ph.write_hydrostatic_file(cylinderDir)
+        ph.write_control_file(cylinderDir, numFreqs=-30, minFreq=0.2, dFreq=0.2)
+        ph.run_hams(cylinderDir)
+        data1 = osp.join(cylinderDir, f'Output/Wamit_format/Buoy.1')
+        data3 = osp.join(cylinderDir, f'Output/Wamit_format/Buoy.3')
+        addedMass, damping = ph.read_wamit1(data1)
+        fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)
 
         # the BEM coefficients would be contained in the following at frequencies self.w:
         #self.A_BEM
@@ -2172,5 +2183,3 @@ class FOWT():
 
         # in future should consider ability to animate mode shapes and also to animate response at each frequency
         # including hydro excitation vectors stored in each member
-
-#

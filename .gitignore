@@ -6,3 +6,6 @@
 build/
 develop-eggs/
 dist/s
+
+# HAMS-generated data
+raft/data/

@@ -8,7 +8,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-from meshBEMforRAFT import memberMesh
+import member2pnl
 
 import sys
 sys.path.insert(1, '../../MoorPy')
@@ -1938,34 +1938,21 @@ class FOWT():
         g   = self.env.g
         
         # desired panel size (longitudinal and azimuthal)
-        dz = 2.5
-        da = 2.0
+        dz = 4
+        da = 4
 
-        # vertices array that will contain all panel vertices for writing to mesh file
-        vertices = np.zeros([0,3])
-
-        # go through members to be modeled with BEM and calculated their meshes
+        # go through members to be modeled with BEM and calculated their nodes and panels lists
+        nodes = []
+        panels = []
+        
         for mem in self.memberList:                 
         
             if mem.potMod==1:
-                vertices_i = memberMesh(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB, 
+                        dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
                 
-                vertices = np.vstack([vertices, vertices_i])             # append the member's vertices to the master list
-            
-         
-        # generate a mesh file (current example in WAMIT .gdf format)
-        npan = int(vertices.shape[0]/4)
-
-        f = open("platform.gdf", "w")
-        f.write('gdf mesh \n')
-        f.write('1.0   9.8 \n')
-        f.write('0, 0 \n')
-        f.write(f'{npan}\n')
-
-        for i in range(npan*4):
-            f.write(f'{vertices[i,0]:>10.3f} {vertices[i,1]:>10.3f} {vertices[i,2]:>10.3f}\n')
-        
-        f.close()
+        # generate a mesh file in the HAMS .pnl format
+        member2pnl.writeMesh(nodes, panels)
         
         
         # >>> this is where a BEM solve could be executed <<<

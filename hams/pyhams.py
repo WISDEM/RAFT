@@ -317,7 +317,9 @@ def read_wamit1(pathWamit1):
     addedMassCol = wamit1[:,3]
     dampingCol = wamit1[:,4]
     addedMass = addedMassCol.reshape((len(w)), 6, 6)
+    addedMass = addedMass.transpose(1,2,0)
     damping = dampingCol.reshape((len(w), 6, 6))
+    damping = damping.transpose(1,2,0)
 
     return addedMass, damping
 

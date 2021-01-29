@@ -316,10 +316,8 @@ def read_wamit1(pathWamit1):
     w = np.unique(wamit1[:,0])
     addedMassCol = wamit1[:,3]
     dampingCol = wamit1[:,4]
-    addedMass = addedMassCol.reshape((len(w)), 6, 6)
-    addedMass = addedMass.transpose(1,2,0)
-    damping = dampingCol.reshape((len(w), 6, 6))
-    damping = damping.transpose(1,2,0)
+    addedMass = addedMassCol.reshape((len(w)), 6, 6).transpose(1,2,0)
+    damping = dampingCol.reshape((len(w), 6, 6)).transpose(1,2,0)
 
     return addedMass, damping
 
@@ -353,10 +351,10 @@ def read_wamit3(pathWamit3):
     wamit3 = np.loadtxt(pathWamit3)
     w = np.unique(wamit3[:,0])
     headings = np.unique(wamit3[:,1])
-    mod = wamit3[:,3].reshape((len(w), len(headings), 6))
-    phase = wamit3[:,4].reshape((len(w), len(headings), 6))
-    real = wamit3[:,5].reshape((len(w), len(headings), 6))
-    imag = wamit3[:,6].reshape((len(w), len(headings), 6))
+    mod = wamit3[:,3].reshape((len(w), 6)).transpose(1,0)
+    phase = wamit3[:,4].reshape((len(w), 6)).transpose(1,0)
+    real = wamit3[:,5].reshape((len(w), 6)).transpose(1,0)
+    imag = wamit3[:,6].reshape((len(w), 6)).transpose(1,0)
 
     return mod, phase, real, imag
 

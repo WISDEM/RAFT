@@ -27,7 +27,7 @@ def runRAFT(fname_design, fname_env):
     
     # open the design YAML file and parse it into a dictionary for passing to RAFT
     
-    with open('OC3spar.yaml') as file:
+    with open(fname_design) as file:
         design = yaml.load(file, Loader=yaml.FullLoader)
     
     print("Loading file: "+fname_design)
@@ -68,7 +68,7 @@ def runRAFT(fname_design, fname_env):
     model.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
 
     model.calcSystemProps()          # get all the setup calculations done within the model
-
+    
     model.solveEigen()
 
     model.calcMooringAndOffsets()    # calculate the offsets for the given loading
@@ -211,7 +211,8 @@ def runRAFTfromWEIS():
 
 if __name__ == "__main__":
     
-    runRAFT('OC3spar.yaml', 'env.yaml')
+    #model = runRAFT('OC3spar.yaml', 'env.yaml')
+    model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
     
     
     ''' 

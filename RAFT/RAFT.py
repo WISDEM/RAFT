@@ -123,10 +123,15 @@ class Member:
         
         # store end cap and bulkhead info
         
-        cap_stations      = getFromDict(mi, 'cap_stations', shape=-1, default=[])   # station location inputs before scaling
-        self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape, default=[])   # thicknesses [m]
-        self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape, default=[])   # inner diameter (if it isn't a solid plate) [m]
-        self.cap_stations = (cap_stations - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
+        cap_stations = getFromDict(mi, 'cap_stations', shape=-1, default=[])   # station location inputs before scaling
+        if cap_stations == []:
+            self.cap_t        = []
+            self.cap_d_in     = []
+            self.cap_stations = []
+        else:
+            self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape)   # thicknesses [m]
+            self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape)   # inner diameter (if it isn't a solid plate) [m]
+            self.cap_stations = (cap_stations - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
         
         
         # Drag coefficients
@@ -142,14 +147,12 @@ class Member:
         
         
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
+        dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter of side length pair
         dlsMax = 10.0                  # maximum node spacing <<< this should be an optional input at some point <<<
         ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
         dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
-        ds     = [0.5*self.d[0]]       # mean diameter of each strip
-        drs    = [0.5*self.d[0]]       # change in radius over each strip (from node i-1 to node i)
-        
-        # below is for circular shapes only - rectangular case is not handled yet
-        if self.shape != 'circular': raise ValueError("Only circular shapes implemented here so far!")
+        ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
+        drs    = [0.5*dorsl[0]]       # change in radius (or side half-length pair) over each strip (from node i-1 to node i)
         
         for i in range(1,n):
             
@@ -158,10 +161,10 @@ class Member:
             if lstrip > 0.0:
                 ns= int(np.ceil( (lstrip) / dlsMax ))
                 dlstrip = lstrip/ns
-                m   = 0.5*(self.d[i] - self.d[i-1])/dlstrip          # taper ratio
+                m   = 0.5*(dorsl[i] - dorsl[i-1])/dlstrip          # taper ratio
                 ls  += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
                 dls += [dlstrip]*ns                
-                ds  += [self.d[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]                
+                ds  += [dorsl[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]                
                 drs += [dlstrip*m]*ns
                 
             elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions)
@@ -169,8 +172,8 @@ class Member:
                 dlstrip = 0
                 ls  += [self.stations[i-1]]                          # add node location
                 dls += [dlstrip]
-                ds  += [0.5*(self.d[i-1] + self.d[i])]               # set diameter as midpoint diameter
-                drs += [0.5*(self.d[i] - self.d[i-1])]
+                ds  += [0.5*(dorsl[i-1] + dorsl[i])]               # set diameter as midpoint diameter
+                drs += [0.5*(dorsl[i] - dorsl[i-1])]
         
         self.ns  = len(ls)                                           # number of hydrodynamic strip theory nodes per member
         self.ls  = np.array(ls, dtype=float)                          # node locations along member axis
@@ -796,8 +799,8 @@ class Member:
             for x,y in zip([1,-1,-1,1], [1,1,-1,-1]):
             
                 for j in range(m):
-                    X.append(0.5*self.sl[j,0]*x)  
-                    Y.append(0.5*self.sl[j,1]*y)
+                    X.append(0.5*self.sl[j,1]*x)  
+                    Y.append(0.5*self.sl[j,0]*y)
                     Z.append(self.stations[j])      
                 
             coords = np.vstack([X, Y, Z])     
@@ -1989,6 +1992,8 @@ class FOWT():
 
         # loop through each member
         for mem in self.memberList:
+        
+            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
             
             # loop through each node of the member
             for il in range(mem.ns):
@@ -2008,7 +2013,10 @@ class FOWT():
 
                     # ----- compute side effects ---------------------------------------------------------
                     
-                    v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]                            # member volume assigned to this node
+                    if circ:
+                        v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il] 
+                    else:
+                        v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
                     
                     # added mass
                     Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
@@ -2027,8 +2035,13 @@ class FOWT():
                     
                     # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
                 
-                    v_i = np.pi/6.0 * ((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
-                    a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                    if circ:
+                        v_i = np.pi/6.0 * ((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
+                        a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                    else:
+                        v_i = np.pi/6.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
+                        a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
+                        # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
                     
                     # added mass
                     Amat = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
@@ -2070,6 +2083,8 @@ class FOWT():
         # loop through each member
         for mem in self.memberList:
             
+            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
+            
             # loop through each node of the member
             for il in range(mem.ns):
                 
@@ -2089,7 +2104,10 @@ class FOWT():
                 
                     # ----- compute side effects ------------------------
                     
-                    a_i = mem.ds[il] * mem.dls[il]                                       # member side cross-sectional area assigned to this node
+                    # member acting area assigned to this node in each direction
+                    a_i_q  = np.pi*mem.ds[il]*mem.dls[il]  if circ else  2*(mem.ds[il,0]+mem.ds[il,0])*mem.dls[il]             
+                    a_i_p1 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,0]      *mem.dls[il]            
+                    a_i_p1 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,1]      *mem.dls[il]            
                     
                     # water relative velocity over node (complex amplitude spectrum)  [3 x nw]
                     vrel = mem.u[il,:] - vnode
@@ -2105,9 +2123,9 @@ class FOWT():
                     vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
                     
                     # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
-                    Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * np.pi*a_i * Cd_q 
-                    Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho *       a_i * Cd_p1
-                    Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho *       a_i * Cd_p2
+                    Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * a_i_q  * Cd_q 
+                    Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * a_i_p1 * Cd_p1
+                    Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * a_i_p2 * Cd_p2
                     
                     Bmat = Bprime_q*mem.qMat + Bprime_p1*mem.p1Mat + Bprime_p2*mem.p2Mat # damping matrix for the node based on linearized drag coefficients 
                     
@@ -2121,11 +2139,13 @@ class FOWT():
                         
                     
                     # ----- add end/axial effects for added mass, and excitation including dynamic pressure ------
-                
                     
-                
-                    a_i = np.abs(np.pi*mem.ds[il]*mem.drs[il])                       # end area (removing sign for use as drag)
-                    
+                    # end/axial area (removing sign for use as drag)
+                    if circ:
+                        a_i = np.abs(np.pi*mem.ds[il]*mem.drs[il]) 
+                    else:
+                        a_i = np.abs((mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])(mem.ds[il,1]-mem.drs[il,1]))
+                        
                     Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*a_i*Cd_End 
                 
                     Bmat = Bprime_End*mem.qMat                                       # 

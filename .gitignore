@@ -1,2 +1,8 @@
 
 *.pyc
+
+# packaging
+*.egg-info
+build/
+develop-eggs/
+dist/s

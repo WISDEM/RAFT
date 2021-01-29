@@ -8,16 +8,19 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
-import member2pnl
+# import member2pnl
 
 import sys
 sys.path.insert(1, '../../MoorPy')
+
 import MoorPy as mp
 #import F6T1RNA as structural    # import turbine structural model functions
 
 # reload the libraries each time in case we make any changes
 import importlib
 mp   = importlib.reload(mp)
+
+import hams.pyhams as ph
 
 
 

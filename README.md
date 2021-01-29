@@ -1,4 +1,5 @@
-# RAFT: Response Amplitudes of Floating Turbines
+# RAFT
+Response Amplitudes of Floating Turbines
 
 ## About the Project
 

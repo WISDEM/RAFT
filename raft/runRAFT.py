@@ -213,27 +213,11 @@ if __name__ == "__main__":
     
     #model = runRAFT('OC3spar.yaml', 'env.yaml')
     model = runRAFT('OC4semi.yaml', 'env.yaml')
+    #model = runRAFT('OC4semi_2.yaml', 'env.yaml')
     #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
     
-    
-    ''' 
-    print('A11/A22:             ',fowt.A_hydro_morison[0,0],' kg')
-    print(fowt.A_hydro_morison[2,2])
-    print(fowt.A_hydro_morison[3,3])
-    print(fowt.A_hydro_morison[0,4])
-    print(fowt.A_hydro_morison[1,3])
-    
-    
-    mag = abs(fowt.F_hydro_iner/fowt.zeta)
-    
-    plt.plot(fowt.w, mag[0,:])
-    plt.plot(fowt.w, mag[2,:])
-    plt.plot(fowt.w, mag[4,:])
-    plt.xlabel('Frequency (rad/s)')
-    plt.ylabel('Exciting Force [N')
-    '''
-    def pdiff(x,y):
-        return (abs(x-y)/y)*100
+    fowt = model.fowtList[0]
+    mem = fowt.memberList
     
     
     

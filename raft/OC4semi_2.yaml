@@ -58,17 +58,17 @@ platform:
         cap_d_in     :  [ 0  ]                 # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
       
       
-      - name      :  offset_column              # [-]    an identifier (no longer has to be number)       
+      - name      :  upper_column              # [-]    an identifier (no longer has to be number)       
         type      :  3                         # [-]    (1=turbine, >1=substructure, for now)
-        rA        :  [ 28.86 , 0,  -20]        # [m]    end A coordinates
+        rA        :  [ 28.86 , 0,  -14]        # [m]    end A coordinates
         rB        :  [ 28.86 , 0,   12]        # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
         # --- outer shell including hydro---
-        stations  :  [-20, -14, -14, 12 ]                # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  [ 24, 24, 12,  12]                # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        stations  :  [-14, 12 ]                # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  [ 12,  12]                # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.06                      # [m]    wall thicknesses (scalar or list of same length as stations)
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
@@ -76,13 +76,40 @@ platform:
         CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  7850                      # [kg/m3]   material density
         # --- ballast ---
-        l_fill    :  [5.1018, 0, 7.77, 0]                    # [m]
-        rho_fill  :  [1025.0, 0, 1025.0, 0]                  # [kg/m3]
+        l_fill    :  [7.77]                    # [m]
+        rho_fill  :  [1025.0]                  # [kg/m3]
         # --- handling of end caps or any internal structures if we need them ---
         # (These will only be *within* the inner diameter of the outer shell, so they don't interrupt the outer shell.)
-        cap_stations :  [ -20, -14, -14, 12]             # [m]  location along member of any inner structures (in same scaling as set by 'stations')
-        cap_t        :  [ 0.06, 0.06, 0.06, 0.06  ]        # [m]  thickness of any internal structures
-        cap_d_in     :  [ 0 , 12, 0, 0   ]            # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+        cap_stations :  [ -14, 12]             # [m]  location along member of any inner structures (in same scaling as set by 'stations')
+        cap_t        :  [ 0.06, 0.06  ]        # [m]  thickness of any internal structures
+        cap_d_in     :  [ 0 , 0   ]            # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+
+
+      - name      :  base_column               # [-]    an identifier (no longer has to be number)       
+        type      :  4                         # [-]    (1=turbine, >1=substructure, for now)
+        rA        :  [ 28.86 , 0,  -20]        # [m]    end A coordinates
+        rB        :  [ 28.86 , 0,   -14]       # [m]    and B coordinates
+        heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
+        shape     :  circ                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
+        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        # --- outer shell including hydro---
+        stations  :  [-20, -14 ]               # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  [ 24,  24]                # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        t         :  0.06                      # [m]    wall thicknesses (scalar or list of same length as stations)
+        Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell :  7850                      # [kg/m3]   material density
+        # --- ballast ---
+        l_fill    :  [5.1018]                  # [m]
+        rho_fill  :  [1025.0]                  # [kg/m3]
+        # --- handling of end caps or any internal structures if we need them ---
+        # (These will only be *within* the inner diameter of the outer shell, so they don't interrupt the outer shell.)
+        cap_stations :  [ -20, -14]            # [m]  location along member of any inner structures (in same scaling as set by 'stations')
+        cap_t        :  [ 0.06, 0.06  ]        # [m]  thickness of any internal structures
+        cap_d_in     :  [ 0 , 12   ]            # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
 
 
       - name      :  delta_upper_pontoon       # [-]    an identifier (no longer has to be number)       

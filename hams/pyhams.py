@@ -311,7 +311,7 @@ def read_wamit1(pathWamit1):
     Notes
     -----
     '''
-
+    pathWamit1 = osp.normpath(pathWamit1)
     wamit1 = np.loadtxt(pathWamit1)
     w = np.unique(wamit1[:,0])
     addedMassCol = wamit1[:,3]
@@ -347,7 +347,7 @@ def read_wamit3(pathWamit3):
     Notes
     -----
     '''
-
+    pathWamit3 = osp.normpath(pathWamit3)
     wamit3 = np.loadtxt(pathWamit3)
     w = np.unique(wamit3[:,0])
     headings = np.unique(wamit3[:,1])

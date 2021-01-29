@@ -92,7 +92,7 @@ class Member:
         if shape[0].lower() == 'c':
             self.shape = 'circular'
             self.d     = getFromDict(mi, 'd', shape=n)               # diameter of member nodes [m]  <<< should maybe check length of all of these
-            print(self.d)
+            
             self.gamma = 0                                           # twist angle about the member's z-axis [degrees] (don't need this for a circular member)
         
         elif shape[0].lower() == 'r':   # <<< this case not checked yet since update <<<
@@ -332,7 +332,7 @@ class Member:
         
         
         
-        # ------- get inertial calculations ---------
+        # ------- member inertial calculations ---------
         n = len(self.stations)                          # set n as the number of stations = number of sub-members minus 1
         
         mass_center = 0                                 # total sum of mass the center of mass of the member [kg-m]
@@ -468,62 +468,140 @@ class Member:
             
             # end of submember for loop
         
-        '''
-        # Add the inertia properties of any end caps
+        
+        # END CAPS/BULKHEADS
+        # --------- Add the inertia properties of any end caps ---------
+        # Loop through each cap or bulkhead
         for i in range(len(self.cap_stations)):
             
-            memPosEnd = self.rA + self.q*self.stations[0]
+            L = self.cap_stations[i]        # The station position along the member where there is a cap or bulkhead
+            h = self.cap_t[i]               # The thickness, or height of the cap or bulkhead [m]
             
-            pos = self.cap_stations[i]
-            h = self.cap_t[i]
-            d_hole = self.cap_d_in[i]
             
-            if L==self.rA:
-                dA = self.d[0]
-                dB = np.interp(L+h, self.stations, self.d)
-                dAi = d_hole
-                dBi = ()*(L+h/L) + 
-                dBi = np.interp(L+h, self.stations, self.d)
+            if self.shape=='circular':      # <<<<<<<<<< This can probably be organized better
+                d_hole = self.cap_d_in[i]   # The diameter of the missing hole in the middle, if any [m]
+                d = self.d-2*self.t         # The list of inner diameters along the member [m]
                 
-                dBi_fill = (dBi-dAi)*(l_fill/l) + dAi
+                if L==self.stations[0]:  # if the cap is on the bottom end of the member
+                    dA = d[0]
+                    dB = np.interp(L+h, self.stations, d)
+                    dAi = d_hole
+                    dBi = dB*(dAi/dA)       # keep the same proportion in d_hole from bottom to top
+                elif L==self.stations[-1]:    # if the cap is on the top end of the member
+                    dA = np.interp(L-h, self.stations, d)
+                    dB = d[-1]
+                    dAi = dA*(dBi/dB)
+                    dBi = d_hole
+                elif (L > self.stations[0] and L < self.stations[0] + h) or (L < self.stations[-1] and L > self.stations[-1] + h):
+                    # there could be another case where 0 < L < h or self.l-h < L < self.l
+                    # this would cause the inner member to stick out beyond the end point based on the following else calcs
+                    # not including this for now since the modeler should be aware to not do this
+                    pass
+                else:
+                    dA = np.interp(L-h/2, self.stations, d)
+                    dB = np.interp(L+h/2, self.stations, d)
+                    dM = np.interp(L, self.stations, d)         # find the diameter at the middle, where L is referencing
+                    dMi = d_hole
+                    dAi = dA*(dMi/dM)
+                    dBi = dB*(dMi/dM)
                 
-            elif L==self.rB:
-                dA = np.interp(L-h, self.stations, self.d)
-                dB = self.d[-1]
-            else:
-                dA = np.interp(L-h/2, self.stations, self.d)
-                dB = np.interp(L+h/2, self.stations, self.d)
-            # what about a possible case when L < l < L+h
-                # case for ring stiffeners
-                # case for rectangulars
-                # center
+                # run inertial calculations for circular caps/bulkheads
+                V_outer, hco = FrustumVCV(dA, dB, h)
+                V_inner, hci = FrustumVCV(dAi, dBi, h)
+                v_cap = V_outer-V_inner
+                m_cap = v_cap*self.rho_shell    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
+                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)
+                
+                pos_cap = self.rA + self.q*L                    # position of the referenced cap station from the PRP
+                if L==self.stations[0]:         # if it's a bottom end cap, the position is at the bottom of the end cap
+                    center_cap = pos_cap + self.q*hc_cap            # and the CG of the cap is at hc from the bottom, so this is the simple case
+                elif L==self.stations[-1]:      # if it's a top end cap, the position is at the top of the end cap
+                    center_cap = pos_cap - self.q*(h - hc_cap)      # and the CG of the cap goes from the top, to h below the top, to hc above h below the top (wording...sorry)
+                else:                           # if it's a middle bulkhead, the position is at the middle of the bulkhead
+                    center_cap = pos_cap - self.q*((h/2) - hc_cap)  # so the CG goes from the middle of the bulkhead, down h/2, then up hc
+                
+                I_rad_end_outer, I_ax_outer = FrustumMOI(dA, dB, h, self.rho_shell)
+                I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, h, self.rho_shell)
+                I_rad_end = I_rad_end_outer-I_rad_end_inner
+                I_rad = I_rad_end - m_cap*hc_cap**2
+                I_ax = I_ax_outer - I_ax_inner
             
-            V_outer, hco = FrustumVCV(dA, dB, h)
-            m = v*self.rho_shell            # assume it's made out of the same material as the shell for now
-            if L==self.rA:
-                center
-            elif L==self.rB:
-                center
-            else:
-                center = L
+                Ixx = I_rad
+                Iyy = I_rad
+                Izz = I_ax
             
-            I_rad_end, I_ax = FrustumMOI(dA, dB, h, self.rho_shell)
-            I_rad = I_rad_end - m*hc**2
             
-            Ixx = I_rad
-            Iyy = I_rad
-            Izz = I_ax
+            
+            elif self.shape=='rectangular': 
+                sl_hole = self.cap_d_in[i,:]
+                sl = self.sl - 2*self.t
+                
+                if L==self.stations[0]:  # if the cap is on the bottom end of the member
+                    slA = sl[0,:]
+                    slB = np.interp(L+h, self.stations, sl)
+                    slAi = sl_hole
+                    slBi = slB*(slAi/slA)       # keep the same proportion in d_hole from bottom to top
+                elif L==self.stations[-1]:    # if the cap is on the top end of the member
+                    slA = np.interp(L-h, self.stations, sl)
+                    slB = sl[-1,:]
+                    slAi = slA*(slBi/slB)
+                    slBi = sl_hole
+                elif (L > self.stations[0] and L < self.stations[0] + h) or (L < self.stations[-1] and L > self.stations[-1] + h):
+                    # there could be another case where 0 < L < h or self.l-h < L < self.l
+                    # this would cause the inner member to stick out beyond the end point based on the following else calcs
+                    # not including this for now since the modeler should be aware to not do this
+                    pass
+                else:
+                    slA = np.interp(L-h/2, self.stations, sl)
+                    slB = np.interp(L+h/2, self.stations, sl)
+                    slM = np.interp(L, self.stations, sl)
+                    slMi = sl_hole
+                    slAi = slA*(slMi/slM)
+                    slBi = slB*(slMi/slM)
+                    
+                
+                # run inertial calculations for rectangular caps/bulkheads
+                V_outer, hco = FrustumVCV(slA, slB, h)
+                V_inner, hci = FrustumVCV(slAi, slBi, h)
+                v_cap = V_outer-V_inner
+                m_cap = v_cap*self.rho_shell    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
+                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)
+                
+                pos_cap = self.rA + self.q*L                    # position of the referenced cap station from the PRP
+                if L==self.stations[0]:         # if it's a bottom end cap, the position is at the bottom of the end cap
+                    center_cap = pos_cap + self.q*hc_cap            # and the CG of the cap is at hc from the bottom, so this is the simple case
+                elif L==self.stations[-1]:      # if it's a top end cap, the position is at the top of the end cap
+                    center_cap = pos_cap - self.q*(h - hc_cap)      # and the CG of the cap goes from the top, to h below the top, to hc above h below the top (wording...sorry)
+                else:                           # if it's a middle bulkhead, the position is at the middle of the bulkhead
+                    center_cap = pos_cap - self.q*((h/2) - hc_cap)  # so the CG goes from the middle of the bulkhead, down h/2, then up hc
+                
+                Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA, slB, h, self.rho_shell)
+                Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi, slBi, h, self.rho_shell)
+                Ixx_end = Ixx_end_outer-Ixx_end_inner
+                Iyy_end = Iyy_end_outer-Iyy_end_inner
+                Izz_end = Izz_end_outer-Izz_end_inner
+                Ixx = Ixx_end - m_cap*hc_cap**2
+                Iyy = Iyy_end - m_cap*hc_cap**2
+                Izz = Izz_end
+            
+            
+            # ----- add properties to relevant variables -----
+            mass += m_cap
+            mass_center += m_cap*center_cap
+            mshell += m_cap                # include end caps and bulkheads in the mass of the shell
 
-                
-                
-            mass += m
-            mass_center += m*center
-            mshell += m                 # include end caps and bulkheads in the mass of the shell
-        '''
-        
-        
-        
-        
+            # create a local submember mass matrix
+            Mmat = np.diag([m_cap, m_cap, m_cap, 0, 0, 0]) # submember's mass matrix without MoI tensor
+            # create the local submember MoI tensor in the correct directions
+            I = np.diag([Ixx, Iyy, Izz])                # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
+            T = self.R.T                                # transformation matrix to unrotate the member's local axes. Transposed because rotating axes.
+            I_rot = np.matmul(T.T, np.matmul(I,T))      # MoI about the member's local CG with axes in same direction as global axes. [I'] = [T][I][T]^T -> [T]^T[I'][T] = [I]
+
+            Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
+            
+            # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
+            self.M_struc += translateMatrix6to6DOF(center, Mmat) # mass matrix of the member about the PRP
+            
         
         
         mass = self.M_struc[0,0]        # total mass of the entire member [kg]

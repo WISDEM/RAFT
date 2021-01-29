@@ -37,9 +37,9 @@ turbine:
         
         # --- handling of end caps or any internal structures if we need them ---
         # (These will only be *within* the inner diameter of the outer shell, so they don't interrupt the outer shell.)
-        cap_stations :  [-120  ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
-        cap_t        :  [ 0.2  ]               # [m]  thickness of any internal structures
-        cap_d_in     :  [ 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+        cap_stations :  [  ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
+        cap_t        :  [   ]               # [m]  thickness of any internal structures
+        cap_d_in     :  [    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
 
 
 

@@ -49,8 +49,8 @@ platform:
         
       - name      :  center_spar               # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
-        rA        :  [ 40, 0, -120]             # [m]    end A coordinates
-        rB        :  [ 40, 0,   10]             # [m]    and B coordinates
+        rA        :  [ 0, 0, -120]             # [m]    end A coordinates
+        rB        :  [ 0, 0,   10]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory

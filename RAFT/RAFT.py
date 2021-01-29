@@ -2107,7 +2107,7 @@ class FOWT():
                     # member acting area assigned to this node in each direction
                     a_i_q  = np.pi*mem.ds[il]*mem.dls[il]  if circ else  2*(mem.ds[il,0]+mem.ds[il,0])*mem.dls[il]             
                     a_i_p1 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,0]      *mem.dls[il]            
-                    a_i_p1 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,1]      *mem.dls[il]            
+                    a_i_p2 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,1]      *mem.dls[il]            
                     
                     # water relative velocity over node (complex amplitude spectrum)  [3 x nw]
                     vrel = mem.u[il,:] - vnode
@@ -2144,7 +2144,7 @@ class FOWT():
                     if circ:
                         a_i = np.abs(np.pi*mem.ds[il]*mem.drs[il]) 
                     else:
-                        a_i = np.abs((mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])(mem.ds[il,1]-mem.drs[il,1]))
+                        a_i = np.abs((mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1]))
                         
                     Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*a_i*Cd_End 
                 

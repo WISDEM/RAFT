@@ -810,7 +810,7 @@ class Member:
         Z = []
 
         if self.shape=="circular":   # circular member cross section
-            n = 8                                          # number of sides for a circle
+            n = 12                                          # number of sides for a circle
             for i in range(n+1):
                 x = np.cos(float(i)/float(n)*2.0*np.pi)    # x coordinates of a unit circle
                 y = np.sin(float(i)/float(n)*2.0*np.pi)    # y
@@ -824,7 +824,7 @@ class Member:
 
         elif self.shape=="rectangular":    # rectangular member cross section
             n=4
-            for x,y in zip([1,-1,-1,1], [1,1,-1,-1]):
+            for x,y in zip([1,-1,-1,1,1], [1,1,-1,-1,1]):
 
                 for j in range(m):
                     X.append(0.5*self.sl[j,1]*x)
@@ -1345,13 +1345,9 @@ class Model():
         print("Equilibrium'3' platform positions/rotations:")
         printVec(self.ms.BodyList[0].r6)
 
-        self.ms.solveEquilibrium(DOFtype="both")
-        print("Equilibrium platform positions/rotations:")
-
         r6eq = self.ms.BodyList[0].r6
-        printVec(r6eq)
 
-        self.ms.plot()
+        #self.ms.plot()
 
         print("Surge: {:.2f}".format(r6eq[0]))
         print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
@@ -1717,20 +1713,30 @@ class Model():
         self.results['response']['nacelle acceleration'] = self.w**2 * (self.Xi[0] + self.Xi[4]*fowt.hHub)
         
 
-    def plot(self):
+    def plot(self, hideGrid=False):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
+        self.ms.BodyList[0].setPosition(np.zeros(6))
+        self.ms.initialize()
         fig, ax = self.ms.plot()
         #fig = plt.figure(figsize=(20/2.54,12/2.54))
         #ax = Axes3D(fig)
 
+        
+
         # plot each FOWT
         for fowt in self.fowtList:
             fowt.plot(ax)
-
-
-
+            
+        if hideGrid:       
+            ax.set_xticks([])    # Hide axes ticks
+            ax.set_yticks([])
+            ax.set_zticks([])     
+            ax.grid(False)       # Hide grid lines
+            plt.grid(b=None)
+            ax.axis('off')
+            plt.box(False)
 
 
 class FOWT():
@@ -2016,8 +2022,8 @@ class FOWT():
         g   = self.env.g
 
         # desired panel size (longitudinal and azimuthal)
-        dz = 4
-        da = 4
+        dz = 3
+        da = 2
 
         # go through members to be modeled with BEM and calculated their nodes and panels lists
         nodes = []
@@ -2043,7 +2049,7 @@ class FOWT():
 
 
         # >>> this is where a BEM solve could be executed <<<
-
+        '''
         # TODO: maybe create a 'HAMS Project' class:
         #     - methods:
         #         - create HAMS project structure
@@ -2065,7 +2071,7 @@ class FOWT():
         #self.A_BEM
         #self.B_BEM
         #self.F_BEM
-
+        '''
 
 
     def calcHydroConstants(self):

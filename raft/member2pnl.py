@@ -129,7 +129,7 @@ def meshMember(stations, diameters, rA, rB, dz_max=0, da_max=0, savedNodes=[], s
             dz_ps = dz_max; # (dz_ps is longitudinal dimension of panel)
         elif dz_s == 0: # horizontal case
             cos_m=0
-            sin_m=1
+            sin_m=np.sign(dr_s)
             dz_ps = 0.6*da_max
         else: # angled case - set panel size as weighted average based on slope
             m = dr_s/dz_s; # slope = dr/dz
@@ -145,10 +145,6 @@ def meshMember(stations, diameters, rA, rB, dz_max=0, da_max=0, savedNodes=[], s
             r_rp.append(  radii[i_s-1] + sin_m*i_z*d_l)
             z_rp.append(stations[i_s-1] + cos_m*i_z*d_l)
             
-        print("-----")
-        print(dz_s)
-        print(d_l)
-
 
     # fill in end B if it's submerged
     n_r = np.int(np.ceil( radii[-1] / (0.6*da_max) ))   # local panel radial discretization #
@@ -358,7 +354,7 @@ def meshMemberForGDF(stations, diameters, rA, rB, dz_max=0, da_max=0):
             dz_ps = dz_max; # (dz_ps is longitudinal dimension of panel)
         elif dz_s == 0: # horizontal case
             cos_m=0
-            sin_m=1
+            sin_m=np.sign(dr_s)
             dz_ps = 0.6*da_max
         else: # angled case - set panel size as weighted average based on slope
             m = dr_s/dz_s; # slope = dr/dz
@@ -373,11 +369,7 @@ def meshMemberForGDF(stations, diameters, rA, rB, dz_max=0, da_max=0):
         for i_z in range(1,n_z+1):
             r_rp.append(  radii[i_s-1] + sin_m*i_z*d_l)
             z_rp.append(stations[i_s-1] + cos_m*i_z*d_l)
-            
-        print("-----")
-        print(dz_s)
-        print(d_l)
-
+        
 
     # fill in end B if it's submerged
     n_r = np.int(np.ceil( radii[-1] / (0.6*da_max) ))   # local panel radial discretization #
@@ -501,11 +493,11 @@ def meshMemberForGDF(stations, diameters, rA, rB, dz_max=0, da_max=0):
     return vertices2.T
 
 
-def writeMeshToGDF(vertices):
+def writeMeshToGDF(vertices, filename="platform.gdf", aboveWater=True):
 
     npan = int(vertices.shape[0]/4)
 
-    f = open("member.gdf", "w")
+    f = open(filename, "w")
     f.write('gdf mesh \n')
     f.write('1.0   9.8 \n')
     f.write('0, 0 \n')
@@ -520,12 +512,14 @@ def writeMeshToGDF(vertices):
 
 if __name__ == "__main__":
     
-    stations = [0, 30, 40, 50]
-    diameters = [10, 10, 4, 4]
+    stations = [0, 6, 6,32]
+    diameters = [24, 24, 12,  12]
     
-    rA = np.array([-30, 0,-30])
-    rB = np.array([10, 0, 0])
+    rA = np.array([0, 0,-20])
+    rB = np.array([0, 0, 12])
     
-    nodes, panels = meshMember(stations, diameters, rA, rB, dz_max=1, da_max=1)
+    #nodes, panels = meshMember(stations, diameters, rA, rB, dz_max=1, da_max=1)    
+    #writeMesh(nodes, panels)
     
-    writeMesh(nodes, panels)
+    vertices = meshMemberForGDF(stations, diameters, rA, rB, dz_max=5, da_max=5)    
+    writeMeshToGDF(vertices)

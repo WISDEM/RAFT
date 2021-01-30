@@ -124,44 +124,33 @@ platform:
 mooring:
     water_depth: 200                                  # [m]       uniform water depth
     
-    
-    
-    #        # :::::::::::::::::::::::::::::: moorings inputs :::::::::::::::::::::::::::::::::::
-    #        
-    #        type_string = 'chain'
-    #        anchorR = 837.6
-    #        fairR = 58.
-    #        LineLength = 850.
-    #        angle =         np.array([np.pi, np.pi/3, -np.pi/3])    # [rad]
-            
-    
     points:
         - name: line1_anchor
           type: fixed
-          location: [853.87, 0.0, -200.0]
+          location: [-837, 0.0, -200.0]
           anchor_type: drag_embedment
 
         - name: line2_anchor
           type: fixed
-          location: [-426.94, 739.47, -200.0]
+          location: [418, 725, -200.0]
           anchor_type: drag_embedment
 
         - name: line3_anchor
           type: fixed
-          location: [-426.94, -739.47, -200.0]
+          location: [418, -725, -200.0]
           anchor_type: drag_embedment
 
         - name: line1_vessel
           type: vessel
-          location: [5.2,      0.0,     -14.0]
+          location: [-58,      0.0,     -14.0]
 
         - name: line2_vessel
           type: vessel
-          location: [-2.6,      4.5,     -14.0]
+          location: [29,      50,     -14.0]
 
         - name: line3_vessel
           type: vessel
-          location: [-2.6,     -4.5,     -14.0]
+          location: [29,     -50,     -14.0]
 
     lines:
         - name: line1

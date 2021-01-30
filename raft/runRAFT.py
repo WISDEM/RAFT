@@ -212,14 +212,7 @@ def runRAFTfromWEIS():
 if __name__ == "__main__":
     
     #model = runRAFT('OC3spar.yaml', 'env.yaml')
-    model = runRAFT('OC4semi.yaml', 'env.yaml')
-    #model = runRAFT('OC4semi_2.yaml', 'env.yaml')
-    #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
-    
-    fowt = model.fowtList[0]
-    mem = fowt.memberList
-    
-    
-    
+    #model = runRAFT('OC4semi.yaml', 'env.yaml')
+    model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
     
     

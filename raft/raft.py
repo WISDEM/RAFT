@@ -6,7 +6,6 @@
 import os
 import os.path as osp
 import sys
-sys.path.insert(1, '../../MoorPy')
 import MoorPy as mp
 import numpy as np
 import matplotlib.pyplot as plt

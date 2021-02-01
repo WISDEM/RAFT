@@ -485,9 +485,9 @@ class Member:
 
             L = self.cap_stations[i]        # The station position along the member where there is a cap or bulkhead
             h = self.cap_t[i]               # The thickness, or height of the cap or bulkhead [m]
+            rho_cap = self.rho_shell        # set the cap density to the density of the member for now [kg/m^3]
 
-
-            if self.shape=='circular':      # <<<<<<<<<< This can probably be organized better
+            if self.shape=='circular':
                 d_hole = self.cap_d_in[i]   # The diameter of the missing hole in the middle, if any [m]
                 d = self.d-2*self.t         # The list of inner diameters along the member [m]
 
@@ -501,17 +501,17 @@ class Member:
                     dB = d[-1]
                     dBi = d_hole
                     dAi = dA*(dBi/dB)
-                elif (L > self.stations[0] and L < self.stations[0] + h) or (L < self.stations[-1] and L > self.stations[-1] + h):
+                elif (L > self.stations[0] and L < self.stations[0] + h) or (L < self.stations[-1] and L > self.stations[-1] - h):
                     # there could be another case where 0 < L < h or self.l-h < L < self.l
                     # this would cause the inner member to stick out beyond the end point based on the following else calcs
                     # not including this for now since the modeler should be aware to not do this
-                    pass
-                elif i < n-1 and L==self.cap_stations[i+1]:
-                    dA = np.interp(L-h, self.stations, d)
+                    raise ValueError('This setup cannot be handled by getIneria yet')
+                elif i < n-1 and L==self.cap_stations[i+1]: # if there's a discontinuity in the member and l=0
+                    dA = np.interp(L-h, self.stations, d)   # make an end cap going down from the lower member
                     dB = d[i]
                     dBi = d_hole
                     dAi = dA*(dBi/dB)
-                elif i < n-1 and L==self.cap_stations[i-1]:
+                elif i > 0 and L==self.cap_stations[i-1]:   # and make an end cap going up from the upper member
                     dA = d[i]
                     dB = np.interp(L+h, self.stations, d)
                     dAi = d_hole
@@ -528,7 +528,7 @@ class Member:
                 V_outer, hco = FrustumVCV(dA, dB, h)
                 V_inner, hci = FrustumVCV(dAi, dBi, h)
                 v_cap = V_outer-V_inner
-                m_cap = v_cap*self.rho_shell    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
+                m_cap = v_cap*rho_cap    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
                 hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)
 
                 pos_cap = self.rA + self.q*L                    # position of the referenced cap station from the PRP
@@ -539,8 +539,8 @@ class Member:
                 else:                           # if it's a middle bulkhead, the position is at the middle of the bulkhead
                     center_cap = pos_cap - self.q*((h/2) - hc_cap)  # so the CG goes from the middle of the bulkhead, down h/2, then up hc
 
-                I_rad_end_outer, I_ax_outer = FrustumMOI(dA, dB, h, self.rho_shell)
-                I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, h, self.rho_shell)
+                I_rad_end_outer, I_ax_outer = FrustumMOI(dA, dB, h, rho_cap)
+                I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, h, rho_cap)
                 I_rad_end = I_rad_end_outer-I_rad_end_inner
                 I_rad = I_rad_end - m_cap*hc_cap**2
                 I_ax = I_ax_outer - I_ax_inner
@@ -565,17 +565,17 @@ class Member:
                     slB = sl[-1,:]
                     slAi = slA*(slBi/slB)
                     slBi = sl_hole
-                elif (L > self.stations[0] and L < self.stations[0] + h) or (L < self.stations[-1] and L > self.stations[-1] + h):
+                elif (L > self.stations[0] and L < self.stations[0] + h) or (L < self.stations[-1] and L > self.stations[-1] - h):
                     # there could be another case where 0 < L < h or self.l-h < L < self.l
                     # this would cause the inner member to stick out beyond the end point based on the following else calcs
                     # not including this for now since the modeler should be aware to not do this
-                    pass
+                    raise ValueError('This setup cannot be handled by getIneria yet')
                 elif i < n-1 and L==self.cap_stations[i+1]:
                     slA = np.interp(L-h, self.stations, sl)
                     slB = sl[i]
                     slBi = sl_hole
                     slAi = slA*(slBi/slB)
-                elif i < n-1 and L==self.cap_stations[i-1]:
+                elif i > 0 and L==self.cap_stations[i-1]:
                     slA = sl[i]
                     slB = np.interp(L+h, self.stations, sl)
                     slAi = sl_hole
@@ -593,7 +593,7 @@ class Member:
                 V_outer, hco = FrustumVCV(slA, slB, h)
                 V_inner, hci = FrustumVCV(slAi, slBi, h)
                 v_cap = V_outer-V_inner
-                m_cap = v_cap*self.rho_shell    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
+                m_cap = v_cap*rho_cap    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
                 hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)
 
                 pos_cap = self.rA + self.q*L                    # position of the referenced cap station from the PRP
@@ -604,8 +604,8 @@ class Member:
                 else:                           # if it's a middle bulkhead, the position is at the middle of the bulkhead
                     center_cap = pos_cap - self.q*((h/2) - hc_cap)  # so the CG goes from the middle of the bulkhead, down h/2, then up hc
 
-                Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA, slB, h, self.rho_shell)
-                Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi, slBi, h, self.rho_shell)
+                Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA, slB, h, rho_cap)
+                Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi, slBi, h, rho_cap)
                 Ixx_end = Ixx_end_outer-Ixx_end_inner
                 Iyy_end = Iyy_end_outer-Iyy_end_inner
                 Izz_end = Izz_end_outer-Izz_end_inner
@@ -615,7 +615,6 @@ class Member:
 
 
             # ----- add properties to relevant variables -----
-            #mass += m_cap
             mass_center += m_cap*center_cap
             mshell += m_cap                # include end caps and bulkheads in the mass of the shell
             self.m_cap_list.append(m_cap)
@@ -690,7 +689,7 @@ class Member:
                 # -------------------- buoyancy and waterplane area properties ------------------------
 
                 xWP = intrp(0, rA[2], rB[2], rA[0], rB[0])                     # x coordinate where member axis cross the waterplane [m]
-                xWP = intrp(0, rA[2], rB[2], rA[1], rB[1])                     # y coordinate where member axis cross the waterplane [m]
+                yWP = intrp(0, rA[2], rB[2], rA[1], rB[1])                     # y coordinate where member axis cross the waterplane [m]
                 if self.shape=='circular':
                     dWP = intrp(0, rA[2], rB[2], self.d[i], self.d[i-1])       # diameter of member where its axis crosses the waterplane [m]
                     AWP = (np.pi/4)*dWP**2                                     # waterplane area of member [m^2]
@@ -857,18 +856,7 @@ class Member:
 
 
 
-""" FrustumVCV function can calculate volume and CV of both circular and rectangular members, making these old frustum
-functions (separate volume and CV calcs for only circular members) close to obsolete. Keeping here just in case, since
-I'm still unsure of the best way to organize getInertia
 
-def FrustumV(dA, dB, l):
-    '''returns the volume of a frustum, which can be a cylinder, cone, or anything in between'''
-    return (np.pi/4)*(1/3)*(dA**2+dB**2+dA*dB)*l
-
-def FrustumCV(dA, dB, l):
-    '''returns the height of the center of volume from the lower node of a frustum member'''
-    return l*((dA**2 + 2*dA*dB + 3*dB**2)/(4*(dA**2 + dA*dB + dB**2)))
-"""
 
 def FrustumVCV(dA, dB, H, rtn=0):
     '''returns the volume and center of volume of a frustum, which can be a cylinder (box), cone (pyramid), or anything in between

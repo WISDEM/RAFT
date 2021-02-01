@@ -15,7 +15,7 @@ As RAFT is still a work in progress, prospective users and beta testers are reco
 
 ### Installation
 
-Download or clone this RAFT repository as well as the [MoorPy](https://github.com/NREL/MoorPy) repository. To install each package, go to its main directory and run ```python setup.py develop''' or ```pip install -e .``` from the command line.
+Download or clone this RAFT repository as well as the [MoorPy](https://github.com/NREL/MoorPy) repository. To install each package, go to its main directory and run ```python setup.py develop``` or ```pip install -e .``` from the command line.
 
 ## Documentation
 

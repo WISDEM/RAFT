@@ -3,7 +3,7 @@
 
 import numpy as np
 import os
-
+import os.path as osp
 
 def makePanel(X, Y, Z, savedNodes, savedPanels):
     '''
@@ -283,7 +283,9 @@ def writeMesh(savedNodes, savedPanels, oDir=""):
     numNodes    = len(savedNodes)    
         
     # write .pnl file
-    oDir = ""
+    if osp.isdir(oDir) is not True:
+        os.makedirs(oDir)
+        
     oFilePath = os.path.join(oDir, f'HullMesh.pnl')
 
     oFile = open(oFilePath, 'w')

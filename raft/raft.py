@@ -16,6 +16,7 @@ import member2pnl
 # reload the libraries each time in case we make any changes
 import importlib
 mp   = importlib.reload(mp)
+member2pnl   = importlib.reload(member2pnl)
 import hams.pyhams as ph
 
 
@@ -2011,7 +2012,7 @@ class FOWT():
         # desired panel size (longitudinal and azimuthal)
         dz = 3
         da = 2
-
+        
         # go through members to be modeled with BEM and calculated their nodes and panels lists
         nodes = []
         panels = []
@@ -2020,45 +2021,45 @@ class FOWT():
 
         for mem in self.memberList:
 
-            if mem.potMod==1:
+            if mem.potMod==True:
                 member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
                         dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
                         
                 # for GDF output
                 vertices_i = member2pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
-                vertices = np.vstack([vertices, vertices_i])             # append the member's vertices to the master list
-
-        # generate a mesh file in the HAMS .pnl format
-        member2pnl.writeMesh(nodes, panels)
-        
-        # also a GDF for visualization
-        member2pnl.writeMeshToGDF(vertices)
+                vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
 
 
-        # >>> this is where a BEM solve could be executed <<<
-        '''
-        # TODO: maybe create a 'HAMS Project' class:
-        #     - methods:
-        #         - create HAMS project structure
-        #         - write HAMS input files
-        #         - call HAMS.exe
-        #     - attributes:
-        #         - addedMass, damping, fEx coefficients
-        cylinderDir = f'./data/cylinder'
-        ph.create_hams_dirs(cylinderDir)
-        ph.write_hydrostatic_file(cylinderDir)
-        ph.write_control_file(cylinderDir, numFreqs=-30, minFreq=0.2, dFreq=0.2)
-        ph.run_hams(cylinderDir)
-        data1 = osp.join(cylinderDir, f'Output/Wamit_format/Buoy.1')
-        data3 = osp.join(cylinderDir, f'Output/Wamit_format/Buoy.3')
-        addedMass, damping = ph.read_wamit1(data1)
-        fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)
+        # only try to save a mesh and run HAMS if some members DO have potMod=True
+        if len(panels) > 0:
 
-        # the BEM coefficients would be contained in the following at frequencies self.w:
-        #self.A_BEM
-        #self.B_BEM
-        #self.F_BEM
-        '''
+            meshDir = 'BEM'
+
+            member2pnl.writeMesh(nodes, panels, oDir=osp.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
+            
+            member2pnl.writeMeshToGDF(vertices)                                # also a GDF for visualization
+            
+            # TODO: maybe create a 'HAMS Project' class:
+            #     - methods:
+            #         - create HAMS project structure
+            #         - write HAMS input files
+            #         - call HAMS.exe
+            #     - attributes:
+            #         - addedMass, damping, fEx coefficients
+            ph.create_hams_dirs(meshDir)
+            ph.write_hydrostatic_file(meshDir)
+            ph.write_control_file(meshDir, numFreqs=-len(self.w), minFreq=self.w[0], dFreq=np.diff(self.w[:2])[0])
+            ph.run_hams(meshDir)
+            data1 = osp.join(meshDir, f'Output/Wamit_format/Buoy.1')
+            data3 = osp.join(meshDir, f'Output/Wamit_format/Buoy.3')
+            addedMass, damping = ph.read_wamit1(data1)
+            fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)
+
+            # copy results over to the FOWT's coefficient arrays
+            self.A_BEM = addedMass
+            self.B_BEM = damping
+            self.F_BEM = fExReal + 1j*fExImag
+            
 
 
     def calcHydroConstants(self):
@@ -2087,62 +2088,66 @@ class FOWT():
                     # get wave kinematics spectra given a certain wave spectrum and location
                     mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
 
-                    # interpolate coefficients for the current strip
-                    Ca_q   = np.interp( mem.ls[il], mem.stations, mem.Ca_q  )
-                    Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
-                    Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
-                    Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
+                    # only compute inertial loads and added mass for members that aren't modeled with potential flow
+                    if mem.potMod==False:
+
+                        # interpolate coefficients for the current strip
+                        Ca_q   = np.interp( mem.ls[il], mem.stations, mem.Ca_q  )
+                        Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
+                        Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
+                        Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
 
 
-                    # ----- compute side effects ---------------------------------------------------------
+                        # ----- compute side effects ---------------------------------------------------------
 
-                    if circ:
-                        v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
-                    else:
-                        v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
+                        if circ:
+                            v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
+                        else:
+                            v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
 
-                    # added mass
-                    Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
+                        # added mass
+                        Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
 
-                    self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)    # add to global added mass matrix for Morison members
+                        self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)    # add to global added mass matrix for Morison members
 
-                    # inertial excitation - Froude-Krylov
-                    Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
+                        # inertial excitation - Froude-Krylov
+                        Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
 
-                    for i in range(self.nw):                                             # for each wave frequency...
+                        for i in range(self.nw):                                             # for each wave frequency...
 
-                        mem.F_exc_iner[il,:,i] = np.matmul(Imat, mem.ud[il,:,i])         # add to global excitation vector (frequency dependent)
+                            mem.F_exc_iner[il,:,i] = np.matmul(Imat, mem.ud[il,:,i])         # add to global excitation vector (frequency dependent)
 
-                        self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_iner[il,:,i])  # add to global excitation vector (frequency dependent)
+                            self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_iner[il,:,i])  # add to global excitation vector (frequency dependent)
 
 
-                    # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
+                        # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
 
-                    if circ:
-                        v_i = np.pi/6.0 * ((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
-                        a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
-                    else:
-                        v_i = np.pi/6.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
-                        a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
-                        # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
+                        if circ:
+                            v_i = np.pi/6.0 * ((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
+                            a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                        else:
+                            v_i = np.pi/6.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
+                            a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
+                            # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
 
-                    # added mass
-                    Amat = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
+                        # added mass
+                        Amat = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
 
-                    self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
+                        self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
 
-                    # inertial excitation
-                    Imat = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
+                        # inertial excitation
+                        Imat = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
 
-                    for i in range(self.nw):                                         # for each wave frequency...
+                        for i in range(self.nw):                                         # for each wave frequency...
 
-                        F_exc_iner_temp = np.matmul(Imat, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
+                            F_exc_iner_temp = np.matmul(Imat, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
 
-                        F_exc_iner_temp += mem.pDyn[il,i]*rho*a_i *mem.q             # add dynamic pressure - positive with q if end A - determined by sign of a_i
+                            F_exc_iner_temp += mem.pDyn[il,i]*rho*a_i *mem.q             # add dynamic pressure - positive with q if end A - determined by sign of a_i
 
-                        mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
+                            mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
 
-                        self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
+                            self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
+
 
 
     def calcLinearizedTerms(self, Xi):

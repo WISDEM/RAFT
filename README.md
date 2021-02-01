@@ -1,8 +1,8 @@
 # RAFT - Response Amplitudes of Floating Turbines
 
-RAFT is a Python code for frequency-domain analysis of floating wind turbines. It constitutes the first level of modeling fidelity in the WEIS toolset for floating wind turbine controls co-design. Once completed, RAFT will provide frequency-domain modeling of full floating wind turbine systems including turbine aerodynamics, controls, select structural degrees of freedom, platform hydrodynamics, and mooring dynamics. RAFT is under development and currently has the floating support structure components implemented. These components will be actively tested and revised as the model is verified and further developed. Upcoming development efforts focus on inclusion of tower flexibility and turbine aerodynamics. 
+RAFT is a Python code for frequency-domain analysis of floating wind turbines. It constitutes the "Level 1" of modeling fidelity in the [WEIS](https://weis.readthedocs.io/en/latest/index.html) toolset for floating wind turbine controls co-design. Once completed, RAFT will provide frequency-domain modeling of full floating wind turbine systems including turbine aerodynamics, controls, select structural degrees of freedom, platform hydrodynamics, and mooring response. RAFT is under active development and currently has the floating support structure components implemented. These components will be actively tested and revised as the model is verified and further developed. The mooring system is represented by [MoorPy](https://github.com/NREL/MoorPy). Upcoming development efforts focus on inclusion of tower flexibility and turbine aerodynamics, and then integration with the larger WEIS framework.
 
-This project makes use of the HAMS (Hydrodynamic Analysis of Marine Structures) tool developed by Yingyi Liu and available at https://github.com/YingyiLiu/HAMS.
+This project makes use of the HAMS (Hydrodynamic Analysis of Marine Structures) tool for boundary-element-method solution of the potential flow problem developed by Yingyi Liu and available at https://github.com/YingyiLiu/HAMS.
 
 ## Getting Started
 
@@ -11,10 +11,11 @@ As RAFT is still a work in progress, prospective users and beta testers are reco
 ### Prerequisites
 
 - Python 3
+- MoorPy (NREL's new quasi-static mooring library, available at https://github.com/NREL/MoorPy)
 
 ### Installation
 
-run ```python setup.py develop``` from cmd line to install the package as a developer
+Download or clone this RAFT repository as well as the [MoorPy](https://github.com/NREL/MoorPy) repository. To install each package, go to its main directory and run ```python setup.py develop''' or ```pip install -e .``` from the command line.
 
 ## Documentation
 

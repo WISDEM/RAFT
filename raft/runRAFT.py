@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 #sys.path.append('..')
 sys.path.insert(1, '../../MoorPy')
 import raft
-import MoorPy as mp
+import moorpy as mp
 
 
 #import Capytaine_placeholder as capy

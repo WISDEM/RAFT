@@ -6,7 +6,7 @@
 import os
 import os.path as osp
 import sys
-import MoorPy as mp
+import moorpy as mp
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm

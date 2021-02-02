@@ -1590,8 +1590,9 @@ class Model():
 
     def calcOutputs(self):
         '''This is where various output quantities of interest are calculated based on the already-solved system response.'''
-
+        
         fowt = self.fowtList[0]
+        '''
         print('---------------------------')
         print('Tower Mass:          ',np.round(fowt.mtower,2),' kg')
         print('Tower CG:            ',np.round(fowt.rCG_tow,4),' m from SWL')
@@ -1614,14 +1615,30 @@ class Model():
         print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
         print('F_lines: ',list(np.round(np.array(self.F_moor0),2)),' N')
         print('C_lines: ',self.C_moor0)
-
+        '''
         
-        # >>>>> TODO: also save the above (fantastic) list of results into a dict <<<<
+        self.results['properties']['tower mass'] = fowt.mtower
+        self.results['properties']['tower CG'] = fowt.rCG_tow
+        self.results['properties']['substructure mass'] = fowt.msubstruc
+        self.results['properties']['substructure CG'] = fowt.rCG_sub
+        self.results['properties']['shell mass'] = fowt.mshell
+        self.results['properties']['ballast mass'] = fowt.mballast
+        self.results['properties']['ballast densities'] = fowt.pb
+        self.results['properties']['total mass'] = fowt.M_struc[0,0]
+        self.results['properties']['total CG'] = fowt.rCG_TOT
+        self.results['properties']['roll inertia at subCG'] = fowt.I44
+        self.results['properties']['pitch inertia at subCG'] = fowt.I55
+        self.results['properties']['yaw inertia at subCG'] = fowt.I66
         
-        self.results['properties']['tower mass'] = fowt.mtower  
-        # etc.                                                                                      
-
-        ''' 
+        self.results['properties']['Buoyancy (pgV)'] = fowt.env.rho*fowt.env.g*fowt.V
+        self.results['properties']['Center of Buoyancy'] = fowt.rCB
+        self.results['properties']['C stiffness matrix'] = fowt.C_hydro
+        
+        self.results['properties']['F_lines0'] = self.F_moor0
+        self.results['properties']['C_lines0'] = self.C_moor0
+        
+        
+        '''
         print('A11/A22:             ',fowt.A_hydro_morison[0,0],' kg')
         print(fowt.A_hydro_morison[2,2])
         print(fowt.A_hydro_morison[3,3])
@@ -2020,7 +2037,7 @@ class FOWT():
         vertices = np.zeros([0,3])  # for GDF output
 
         for mem in self.memberList:
-
+            
             if mem.potMod==True:
                 member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
                         dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
@@ -2052,9 +2069,21 @@ class FOWT():
             ph.run_hams(meshDir)
             data1 = osp.join(meshDir, f'Output/Wamit_format/Buoy.1')
             data3 = osp.join(meshDir, f'Output/Wamit_format/Buoy.3')
-            addedMass, damping = ph.read_wamit1(data1)
-            fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)
-
+            
+            raftDir = osp.dirname(__file__)
+            addedMass, damping = ph.read_wamit1(osp.join(raftDir, data1))
+            fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(osp.join(raftDir, data3))
+            
+            # The above should now work for everyone, including those using Spyder. Keeping the below just in case
+            
+            #addedMass, damping = ph.read_wamit1(data1)         # original
+            #addedMass, damping = ph.read_wamit1('C:\\Code\\RAFT\\raft\\data\\cylinder\\Output\\Wamit_format\\Buoy.1')
+            #addedMass, damping = ph.read_wamit1('C:\\Code\\RAFT\\raft\\BEM\\Output\\Wamit_format\\Buoy.1')
+            
+            #fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)         # original
+            #fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3('C:\\Code\\RAFT\\raft\\data\\cylinder\\Output\\Wamit_format\\Buoy.3')
+            #fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3('C:\\Code\\RAFT\\raft\\BEM\\Output\\Wamit_format\\Buoy.3')
+            
             # copy results over to the FOWT's coefficient arrays
             self.A_BEM = addedMass
             self.B_BEM = damping

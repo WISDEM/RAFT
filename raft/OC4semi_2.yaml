@@ -109,7 +109,7 @@ platform:
         # (These will only be *within* the inner diameter of the outer shell, so they don't interrupt the outer shell.)
         cap_stations :  [ -20, -14]            # [m]  location along member of any inner structures (in same scaling as set by 'stations')
         cap_t        :  [ 0.06, 0.06  ]        # [m]  thickness of any internal structures
-        cap_d_in     :  [ 0 , 12   ]            # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+        cap_d_in     :  [ 0 , 12  ]            # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
 
 
       - name      :  delta_upper_pontoon       # [-]    an identifier (no longer has to be number)       

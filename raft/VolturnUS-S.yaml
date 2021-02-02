@@ -28,7 +28,7 @@ turbine:
         # (neglecting axial coefficients for now)
         CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  8500                      # [kg/m3]   material density
+        rho_shell :  7850                      # [kg/m3]   material density
             
 
 platform:
@@ -53,7 +53,7 @@ platform:
         rho_shell :  7850                      # [kg/m3] 
         # --- handling of end caps or any internal structures if we need them ---
         cap_stations :  [ 0    ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
-        cap_t        :  [ 0.1  ]               # [m]  thickness of any internal structures
+        cap_t        :  [ 0.001  ]             # [m]  thickness of any internal structures
         cap_d_in     :  [ 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
 
         
@@ -79,7 +79,7 @@ platform:
         rho_fill  :  5000                      # [kg/m3]
         # --- handling of end caps or any internal structures if we need them ---
         cap_stations :  [ 0    ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
-        cap_t        :  [ 0.1  ]               # [m]  thickness of any internal structures
+        cap_t        :  [ 0.001  ]             # [m]  thickness of any internal structures
         cap_d_in     :  [ 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
 
         
@@ -99,7 +99,9 @@ platform:
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
+        rho_shell :  7850                      # [kg/m3]
+        l_fill    :  43.0                      # [m]
+        rho_fill  :  1025.0                    # [kg/m3]
         
         
       - name      :  upper_support             # [-]    an identifier (no longer has to be number)       

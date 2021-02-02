@@ -33,37 +33,14 @@ def runRAFT(fname_design, fname_env):
     print("Loading file: "+fname_design)
     print(f"'{design['name']}'")
     
-    
-            
     depth = float(design['mooring']['water_depth'])
-            
     
-    
-    
-
-    # --- BEM ---
-    # (preprocessing step:) Generate and load BEM hydro data
-    capyData = []
-    
-    capyTestFile = f'./test_data/mesh_converge_0.750_1.250.nc'
-
+    # set up frequency range
     w = np.arange(0.05, 2.8, 0.05)  # frequency range (to be set by modeling options yaml)
-    
-    '''
-    # load or generate Capytaine data
-    if capyDataExists:
-        wDes, addedMass, damping, fEx = capy.read_capy_nc(capyTestFile, wDes=w)
-    else:
-        wCapy, addedMass, damping, fEx = capy.call_capy(meshFName, w)
-        
-    # package results to send to model
-    capyData = (wCapy, addedMass, damping, fEx)
-    '''
-
     
     # --- Create and run the model ---
 
-    model = raft.Model(design, w=w, depth=depth, BEM=capyData)  # set up model
+    model = raft.Model(design, w=w, depth=depth)  # set up model
 
     model.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
 
@@ -81,6 +58,7 @@ def runRAFT(fname_design, fname_env):
     
     return model
     
+
     
     
 def runRAFTfromWEIS():    
@@ -214,5 +192,47 @@ if __name__ == "__main__":
     model = runRAFT('OC3spar.yaml', 'env.yaml')
     #model = runRAFT('OC4semi.yaml', 'env.yaml')
     #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
+    
+    
+    
+    # ----- temporary script for comparing hydro coefficient curves -----
+    '''
+    
+    # load the design
+    with open('OC3spar.yaml') as file:
+        design = yaml.load(file, Loader=yaml.FullLoader)
+        
+    depth = float(design['mooring']['water_depth'])
+    w = np.arange(0.05, 2.8, 0.05)  # frequency range (to be set by modeling options yaml)
+    
+    # Create the model and compute hydrodynamic constants (with BEM)
+    model1 = raft.Model(design, w=w, depth=depth)  # set up model
+    model1.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
+    model1.calcSystemProps()          # get all the setup calculations done within the model
+    
+    # now turn off PotMod in the design dictionary
+    for mi in design['platform']['members']:    mi['potMod'] = False
+        
+    # Create another model and compute hydrodynamic constants (with strip theory only)
+    model2 = raft.Model(design, w=w, depth=depth)  # set up model
+    model2.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
+    model2.calcSystemProps()          # get all the setup calculations done within the model
+    
+    
+    fix, ax = plt.subplots(5,1, sharex=True)
+    for i in range(5):
+        ax[i].plot(model1.w, model1.fowtList[0].F_BEM       [i].real, 'b'  , label="F BEM real")
+        ax[i].plot(model1.w, model1.fowtList[0].F_BEM       [i].imag, 'b--', label="F BEM imag")
+        ax[i].plot(model2.w, model2.fowtList[0].F_hydro_iner[i].real, 'g'  , label="F Froude-Kry real")
+        ax[i].plot(model2.w, model2.fowtList[0].F_hydro_iner[i].imag, 'g--', label="F Froude-Kry imag")
+    ax[-1].legend()
+    
+    ax[0].set_ylabel('surge')
+    ax[1].set_ylabel('sway' )
+    ax[2].set_ylabel('heave')
+    ax[3].set_ylabel('roll' )
+    ax[4].set_ylabel('pitch')
+    '''
+    plt.show()
     
     

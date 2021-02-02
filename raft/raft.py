@@ -11,13 +11,14 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import member2pnl
+import hams.pyhams as ph
 
 #import F6T1RNA as structural    # import turbine structural model functions
 # reload the libraries each time in case we make any changes
 import importlib
 mp   = importlib.reload(mp)
+ph   = importlib.reload(ph)
 member2pnl   = importlib.reload(member2pnl)
-import hams.pyhams as ph
 
 
 class Env:

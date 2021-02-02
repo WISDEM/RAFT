@@ -363,7 +363,7 @@ def run_hams(projectDir):
     # get absolute path to the local HAMS_x64.exe program
     hamsDir = osp.dirname(__file__)
     hamsExe = './bin/HAMS_x64.exe'
-    hamsPath = osp.normpath(osp.join(hamsDir, hamsExe))
+    hamsPath = osp.abspath(osp.join(hamsDir, hamsExe))
     # change directory to where the HAMS input files are
     workingDir = sys.path[0]
     os.chdir(projectDir)

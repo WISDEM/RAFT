@@ -10,7 +10,6 @@ sys.path.insert(1, '../../MoorPy')
 import raft
 import moorpy as mp
 
-
 #import Capytaine_placeholder as capy
 
 
@@ -26,7 +25,7 @@ def runRAFT(fname_design, fname_env):
     '''
     
     # open the design YAML file and parse it into a dictionary for passing to raft
-    
+
     with open(fname_design) as file:
         design = yaml.load(file, Loader=yaml.FullLoader)
     
@@ -34,7 +33,7 @@ def runRAFT(fname_design, fname_env):
     print(f"'{design['name']}'")
     
     depth = float(design['mooring']['water_depth'])
-    
+
     # set up frequency range
     w = np.arange(0.05, 2.8, 0.05)  # frequency range (to be set by modeling options yaml)
     
@@ -49,11 +48,11 @@ def runRAFT(fname_design, fname_env):
     model.solveEigen()
 
     model.calcMooringAndOffsets()    # calculate the offsets for the given loading
-    
+
     model.solveDynamics()            # put everything together and iteratively solve the dynamic response
-    
+
     model.plot()
-    
+
     plt.show()
     
     return model
@@ -189,15 +188,20 @@ def runRAFTfromWEIS():
 
 if __name__ == "__main__":
     
-    #model = runRAFT('OC3spar.yaml', 'env.yaml')
+    
+    model = runRAFT('OC3spar.yaml', 'env.yaml')
     #model = runRAFT('OC4semi.yaml', 'env.yaml')
     #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
+    fowt = model.fowtList[0]
     
     
+    def pdiff(x,y):
+        return (abs(x-y)/y)*100
     
+    
+    """
     # ----- temporary script for comparing hydro coefficient curves -----
-    
-    
+
     # load the design
     with open('OC3spar.yaml') as file:
         design = yaml.load(file, Loader=yaml.FullLoader)
@@ -250,5 +254,5 @@ if __name__ == "__main__":
     
     
     plt.show()
-    
+    """
     

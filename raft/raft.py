@@ -1641,25 +1641,37 @@ class Model():
         self.results['properties']['C_lines0'] = self.C_moor0
         
         
-        '''
-        print('A11/A22:             ',fowt.A_hydro_morison[0,0],' kg')
-        print(fowt.A_hydro_morison[2,2])
-        print(fowt.A_hydro_morison[3,3])
-        print(fowt.A_hydro_morison[0,4])
-        print(fowt.A_hydro_morison[1,3])
+        print('A11/A22:       ',fowt.A_hydro_morison[0,0],' kg')
+        print('A33:           ',fowt.A_hydro_morison[2,2],' kg')
+        print('A44/A55:       ',fowt.A_hydro_morison[3,3],' kg-m^2')
+        print('A15:           ',fowt.A_hydro_morison[0,4],' kg-m')
+        print('A24:           ',fowt.A_hydro_morison[1,3],' kg-m')
         
         
         mag = abs(fowt.F_hydro_iner/fowt.zeta)
         
-        plt.plot(fowt.w, mag[0,:])
-        plt.plot(fowt.w, mag[2,:])
-        plt.plot(fowt.w, mag[4,:])
-        plt.xlabel('Frequency (rad/s)')
-        plt.ylabel('Exciting Force [N')
-        '''
-        def pdiff(x,y):
-            return (abs(x-y)/y)*100
         
+        plt.figure()
+        plt.plot(fowt.w, mag[0,:] ,'tab:pink')
+        plt.plot(fowt.w, mag[1,:], 'tab:cyan')
+        plt.plot(fowt.w, mag[2,:], 'lime')
+        plt.xlabel('Frequency [rad/s]')
+        plt.ylabel('Exciting Force Magnitude [N/m]')
+        plt.legend(['Surge','Sway','Heave'])
+        plt.title('Wave excitation per unit amplitude - Translational')
+        plt.grid()
+        
+        plt.figure()
+        plt.plot(fowt.w, mag[3,:] ,'tab:pink')
+        plt.plot(fowt.w, mag[4,:], 'tab:cyan')
+        plt.plot(fowt.w, mag[5,:], 'lime')
+        plt.xlabel('Frequency [rad/s]')
+        plt.ylabel('Exciting Moment Magnitude [Nm/m]')
+        plt.legend(['Roll','Pitch','Yaw'])
+        plt.title('Wave excitation per unit amplitude - Rotational')
+        plt.grid()
+        
+    
 
         '''
          # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
@@ -1727,7 +1739,7 @@ class Model():
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
         self.ms.BodyList[0].setPosition(np.zeros(6))
         self.ms.initialize()
-        fig, ax = self.ms.plot()
+        fig, ax = self.ms.plot(rbound=70)
         #fig = plt.figure(figsize=(20/2.54,12/2.54))
         #ax = Axes3D(fig)
 
@@ -2043,7 +2055,7 @@ class FOWT():
         vertices = np.zeros([0,3])  # for GDF output
 
         for mem in self.memberList:
-            
+            mem.potMod = False
             if mem.potMod==True:
                 member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
                         dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
@@ -2057,7 +2069,7 @@ class FOWT():
         if len(panels) > 0:
 
             meshDir = 'BEM'
-
+            
             member2pnl.writeMesh(nodes, panels, oDir=osp.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
             
             member2pnl.writeMeshToGDF(vertices)                                # also a GDF for visualization
@@ -2096,7 +2108,7 @@ class FOWT():
             self.B_BEM = self.env.rho*self.env.g * damping
             self.X_BEM = self.env.rho*self.env.g * (fExReal + 1j*fExImag)  # linear wave excitation coefficients
             self.F_BEM = self.X_BEM * self.zeta     # wave excitation force
-            
+
 
 
     def calcHydroConstants(self):
@@ -2109,7 +2121,6 @@ class FOWT():
 
         self.A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
         self.F_hydro_iner    = np.zeros([6,self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
-
 
         # loop through each member
         for mem in self.memberList:
@@ -2150,7 +2161,7 @@ class FOWT():
                         Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
 
                         self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)    # add to global added mass matrix for Morison members
-
+                        
                         # inertial excitation - Froude-Krylov  (axial term explicitly excluded here - we aren't dealing with chains)
                         Imat = rho*v_i *(  (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
                         #Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
@@ -2161,15 +2172,12 @@ class FOWT():
 
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_iner[il,:,i])  # add to global excitation vector (frequency dependent)
 
-                        if il==3:
-                            plt.figure()
-                            plt.plot(mem.F_exc_iner[il,0,:])
 
                         # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
                         # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
 
                         if circ:
-                            v_i = np.pi/6.0 * ((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
+                            v_i = np.pi/6.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
                             a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
                         else:
                             v_i = np.pi/6.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
@@ -2178,9 +2186,10 @@ class FOWT():
 
                         # added mass
                         Amat = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
-
+                        if Amat[2,2] < 0.0 or Amat[2,2] > 0:
+                            print(Amat[2,2])
                         self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
-
+                        
                         # inertial excitation
                         ImatE = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
 
@@ -2195,9 +2204,6 @@ class FOWT():
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
 
                         
-                        if il==3:
-                            plt.plot(mem.F_exc_iner[il,0,:], 'g--')
-                            plt.show()
 
 
     def calcLinearizedTerms(self, Xi):

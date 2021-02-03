@@ -63,7 +63,7 @@ platform:
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         # (neglecting axial coefficients for now)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        CaEnd     :  0.23                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  8500                      # [kg/m3] 
         
         # --- ballast ---

@@ -193,7 +193,7 @@ def write_hydrostatic_file(projectDir=None, cog=np.zeros(3), mass=np.zeros((6,6)
         f.write(f'\n')
     f.close()
 
-def write_control_file(projectDir=None, waterDepth=-50.0, iFType=3, oFType=3, numFreqs=-300,
+def write_control_file(projectDir=None, waterDepth=50.0, iFType=3, oFType=3, numFreqs=-300,
                        minFreq=0.02, dFreq=0.02, freqList=None, numHeadings=1,
                        minHeading=0.0, dHeading=0.0,
                        refBodyCenter=[0.0, 0.0, 0.0], refBodyLen=1.0, irr=0,
@@ -265,7 +265,7 @@ def write_control_file(projectDir=None, waterDepth=-50.0, iFType=3, oFType=3, nu
 
     f = open(osp.join(projectDir, oFileName), 'w')
     f.write(f'   --------------HAMS Control file---------------\n\n')
-    f.write(f'   Waterdepth  {waterDepth}D0\n\n')
+    f.write(f'   Waterdepth  {-waterDepth}D0\n\n')             # note: HAMS expects the depth to be given as negative
     f.write(f'   #Start Definition of Wave Frequencies\n')
     f.write(f'    Input_frequency_type    {iFType}\n')
     f.write(f'    Output_frequency_type   {oFType}\n')
@@ -365,7 +365,7 @@ def run_hams(projectDir):
     hamsExe = './bin/HAMS_x64.exe'
     hamsPath = osp.abspath(osp.join(hamsDir, hamsExe))
     # change directory to where the HAMS input files are
-    workingDir = sys.path[0]
+    workingDir = os.getcwd()
     os.chdir(projectDir)
     # run HAMS
     sub.run([f'{hamsPath}'])

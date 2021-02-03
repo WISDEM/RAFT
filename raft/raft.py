@@ -28,6 +28,7 @@ class Env:
         self.g = 9.81
         self.Hs = 1.0
         self.Tp = 10.0
+        self.spectrum = "unit"
         self.V = 10.0
         self.beta = 0.0
 
@@ -148,7 +149,7 @@ class Member:
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter of side length pair
-        dlsMax = 10.0                  # maximum node spacing <<< this should be an optional input at some point <<<
+        dlsMax = 5.0                  # maximum node spacing <<< this should be an optional input at some point <<<
         ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
         dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
         ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
@@ -1289,14 +1290,15 @@ class Model():
         # would potentially need to add a mooring system body for it too <<<
 
 
-    def setEnv(self, Hs=8, Tp=12, V=10, beta=0, Fthrust=0):
+    def setEnv(self, Hs=8, Tp=12, spectrum='unit', V=10, beta=0, Fthrust=0):
 
         self.env = Env()
-        self.env.Hs   = Hs
-        self.env.Tp   = Tp
-        self.env.V    = V
-        self.env.beta = beta
-        self.Fthrust = Fthrust
+        self.env.Hs       = Hs
+        self.env.Tp       = Tp
+        self.env.spectrum = spectrum
+        self.env.V        = V
+        self.env.beta     = beta
+        self.Fthrust      = Fthrust
 
         for fowt in self.fowtList:
             fowt.setEnv(Hs=Hs, Tp=Tp, V=V, beta=beta, Fthrust=Fthrust)
@@ -1808,7 +1810,7 @@ class FOWT():
 
 
 
-    def setEnv(self, Hs=8, Tp=12, V=10, beta=0, Fthrust=0):
+    def setEnv(self, Hs=8, Tp=12, spectrum='unit', V=10, beta=0, Fthrust=0):
         '''For now, this is where the environmental conditions acting on the FOWT are set.'''
 
         # ------- Wind conditions
@@ -1817,19 +1819,22 @@ class FOWT():
 
 
         self.env = Env()
-        self.env.Hs   = Hs
-        self.env.Tp   = Tp
-        self.env.V    = V
-        self.env.beta = beta
+        self.env.Hs       = Hs
+        self.env.Tp       = Tp
+        self.env.spectrum = spectrum
+        self.env.V        = V
+        self.env.beta     = beta
 
-        # make wave spectrum
-        S = JONSWAP(self.w, Hs, Tp)
-
+        # calculate wave number
         for i in range(self.nw):
             self.k[i] = waveNumber(self.w[i], self.depth)
-
-        # wave elevation amplitudes (these are easiest to use) - no need to be complex given frequency domain use
-        self.zeta = np.sqrt(S)
+            
+        # make wave spectrum
+        if spectrum == 'unit':
+            self.zeta = np.tile(1, self.nw)
+        else:
+            S = JONSWAP(self.w, Hs, Tp)        
+            self.zeta = np.sqrt(S)    # wave elevation amplitudes (these are easiest to use)
 
         #Fthrust = 0
         #Fthrust = 800.0e3            # peak thrust force, [N]
@@ -2066,7 +2071,8 @@ class FOWT():
             #         - addedMass, damping, fEx coefficients
             ph.create_hams_dirs(meshDir)
             ph.write_hydrostatic_file(meshDir)
-            ph.write_control_file(meshDir, numFreqs=-len(self.w), minFreq=self.w[0], dFreq=np.diff(self.w[:2])[0])
+            ph.write_control_file(meshDir, waterDepth=self.depth,
+                                  numFreqs=-len(self.w), minFreq=self.w[0], dFreq=np.diff(self.w[:2])[0])
             ph.run_hams(meshDir)
             data1 = osp.join(meshDir, f'Output/Wamit_format/Buoy.1')
             data3 = osp.join(meshDir, f'Output/Wamit_format/Buoy.3')
@@ -2086,9 +2092,10 @@ class FOWT():
             #fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3('C:\\Code\\RAFT\\raft\\BEM\\Output\\Wamit_format\\Buoy.3')
             
             # copy results over to the FOWT's coefficient arrays
-            self.A_BEM = addedMass
-            self.B_BEM = damping
-            self.F_BEM = fExReal + 1j*fExImag
+            self.A_BEM = self.env.rho*self.env.g * addedMass
+            self.B_BEM = self.env.rho*self.env.g * damping
+            self.X_BEM = self.env.rho*self.env.g * (fExReal + 1j*fExImag)  # linear wave excitation coefficients
+            self.F_BEM = self.X_BEM * self.zeta     # wave excitation force
             
 
 
@@ -2134,14 +2141,19 @@ class FOWT():
                             v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
                         else:
                             v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
-
+                            
+                        if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
+                            v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
+                            
+                         
                         # added mass
                         Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
 
                         self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:], Amat)    # add to global added mass matrix for Morison members
 
-                        # inertial excitation - Froude-Krylov
-                        Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
+                        # inertial excitation - Froude-Krylov  (axial term explicitly excluded here - we aren't dealing with chains)
+                        Imat = rho*v_i *(  (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
+                        #Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
 
                         for i in range(self.nw):                                             # for each wave frequency...
 
@@ -2149,8 +2161,12 @@ class FOWT():
 
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], mem.F_exc_iner[il,:,i])  # add to global excitation vector (frequency dependent)
 
+                        if il==3:
+                            plt.figure()
+                            plt.plot(mem.F_exc_iner[il,0,:])
 
                         # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
+                        # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
 
                         if circ:
                             v_i = np.pi/6.0 * ((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
@@ -2166,18 +2182,22 @@ class FOWT():
                         self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
 
                         # inertial excitation
-                        Imat = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
+                        ImatE = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
 
                         for i in range(self.nw):                                         # for each wave frequency...
 
-                            F_exc_iner_temp = np.matmul(Imat, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
+                            F_exc_iner_temp = np.matmul(ImatE, mem.ud[il,:,i])            # local inertial excitation force complex amplitude in x,y,z
 
-                            F_exc_iner_temp += mem.pDyn[il,i]*rho*a_i *mem.q             # add dynamic pressure - positive with q if end A - determined by sign of a_i
+                            F_exc_iner_temp += mem.pDyn[il,i]*a_i *mem.q                 # add dynamic pressure - positive with q if end A - determined by sign of a_i
 
                             mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
 
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
 
+                        
+                        if il==3:
+                            plt.plot(mem.F_exc_iner[il,0,:], 'g--')
+                            plt.show()
 
 
     def calcLinearizedTerms(self, Xi):
@@ -2257,6 +2277,7 @@ class FOWT():
 
 
                     # ----- add end/axial effects for added mass, and excitation including dynamic pressure ------
+                    # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
 
                     # end/axial area (removing sign for use as drag)
                     if circ:

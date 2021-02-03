@@ -189,25 +189,25 @@ def runRAFTfromWEIS():
 
 if __name__ == "__main__":
     
-    model = runRAFT('OC3spar.yaml', 'env.yaml')
+    #model = runRAFT('OC3spar.yaml', 'env.yaml')
     #model = runRAFT('OC4semi.yaml', 'env.yaml')
     #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
     
     
     
     # ----- temporary script for comparing hydro coefficient curves -----
-    '''
+    
     
     # load the design
     with open('OC3spar.yaml') as file:
         design = yaml.load(file, Loader=yaml.FullLoader)
         
     depth = float(design['mooring']['water_depth'])
-    w = np.arange(0.05, 2.8, 0.05)  # frequency range (to be set by modeling options yaml)
+    w = np.arange(0.1, 2.8, 0.1)  # frequency range (to be set by modeling options yaml)
     
     # Create the model and compute hydrodynamic constants (with BEM)
     model1 = raft.Model(design, w=w, depth=depth)  # set up model
-    model1.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
+    model1.setEnv(spectrum="unit")  # set basic wave and wind info
     model1.calcSystemProps()          # get all the setup calculations done within the model
     
     # now turn off PotMod in the design dictionary
@@ -215,24 +215,40 @@ if __name__ == "__main__":
         
     # Create another model and compute hydrodynamic constants (with strip theory only)
     model2 = raft.Model(design, w=w, depth=depth)  # set up model
-    model2.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
+    model2.setEnv(spectrum='unit')
     model2.calcSystemProps()          # get all the setup calculations done within the model
     
     
-    fix, ax = plt.subplots(5,1, sharex=True)
-    for i in range(5):
-        ax[i].plot(model1.w, model1.fowtList[0].F_BEM       [i].real, 'b'  , label="F BEM real")
-        ax[i].plot(model1.w, model1.fowtList[0].F_BEM       [i].imag, 'b--', label="F BEM imag")
-        ax[i].plot(model2.w, model2.fowtList[0].F_hydro_iner[i].real, 'g'  , label="F Froude-Kry real")
-        ax[i].plot(model2.w, model2.fowtList[0].F_hydro_iner[i].imag, 'g--', label="F Froude-Kry imag")
+    fix, ax = plt.subplots(3,1, sharex=True)
+    for i, j in enumerate([0,2,4]):       # go through surge, heave, and pitch
+        ax[i].plot(model1.w, model1.fowtList[0].F_BEM       [j].real, 'b'  , label="F BEM real")
+        ax[i].plot(model1.w, model1.fowtList[0].F_BEM       [j].imag, 'b--', label="F BEM imag")
+        ax[i].plot(model2.w, model2.fowtList[0].F_hydro_iner[j].real, 'g'  , label="F Froude-Kry real")
+        ax[i].plot(model2.w, model2.fowtList[0].F_hydro_iner[j].imag, 'g--', label="F Froude-Kry imag")
     ax[-1].legend()
     
     ax[0].set_ylabel('surge')
-    ax[1].set_ylabel('sway' )
-    ax[2].set_ylabel('heave')
-    ax[3].set_ylabel('roll' )
-    ax[4].set_ylabel('pitch')
+    ax[1].set_ylabel('heave')
+    ax[2].set_ylabel('pitch')
+    
+    
+    # plot member distributed stuff now
     '''
+    f = model2.fowtList[0]
+    n = f.memberList[0].F_exc_iner.shape[0]
+    
+    fix, ax = plt.subplots(n,1, sharex=True)
+    for i in range(n):       # go through surge, heave, and pitch
+        ax[i].axhline(0.0, color='k', lw=0.4)
+        ax[i].plot(model2.w, model2.fowtList[0].memberList[0].F_exc_iner[i,0,:].real, 'g'  , label="strip real")
+        ax[i].plot(model2.w, model2.fowtList[0].memberList[0].F_exc_iner[i,0,:].imag, 'g--', label="strip imag")
+        ax[i].plot(model2.w, model2.fowtList[0].memberList[0].F_exc_iner[i,2,:].real, 'r'  , label="strip real")
+        ax[i].plot(model2.w, model2.fowtList[0].memberList[0].F_exc_iner[i,2,:].imag, 'r--', label="strip imag")
+        
+    ax[-1].legend()
+    '''
+    
+    
     plt.show()
     
     

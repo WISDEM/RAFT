@@ -5,12 +5,8 @@ import yaml
 import matplotlib.pyplot as plt
 
 # test local code; consider src layout in future to test installed code
-#sys.path.append('..')
-sys.path.insert(1, '../../MoorPy')
 import raft
 import moorpy as mp
-
-#import Capytaine_placeholder as capy
 
 
 import importlib
@@ -33,6 +29,9 @@ def runRAFT(fname_design, fname_env):
     print(f"'{design['name']}'")
     
     depth = float(design['mooring']['water_depth'])
+    
+    # now off potMod in the design dictionary to avoid BEM analysis
+    for mi in design['platform']['members']:    mi['potMod'] = False
 
     # set up frequency range
     w = np.arange(0.05, 2.8, 0.05)  # frequency range (to be set by modeling options yaml)

@@ -149,7 +149,7 @@ class Member:
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter of side length pair
-        dlsMax = 5.0                  # maximum node spacing <<< this should be an optional input at some point <<<
+        dlsMax = 2.0                  # maximum node spacing <<< this should be an optional input at some point <<<
         ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
         dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
         ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
@@ -162,12 +162,12 @@ class Member:
             if lstrip > 0.0:
                 ns= int(np.ceil( (lstrip) / dlsMax ))
                 dlstrip = lstrip/ns
-                m   = 0.5*(dorsl[i] - dorsl[i-1])/dlstrip          # taper ratio
+                m   = 0.5*(dorsl[i] - dorsl[i-1])/lstrip          # taper ratio
                 ls  += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
                 dls += [dlstrip]*ns
                 ds  += [dorsl[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]
                 drs += [dlstrip*m]*ns
-
+                
             elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions)
                 ns = 1
                 dlstrip = 0
@@ -191,7 +191,6 @@ class Member:
 
         #self.slh[i,0] = np.interp(lh[i], self.stations, self.sl1)
         #self.slh[i,1] = np.interp(lh[i], self.stations, self.sl2)
-
 
         # complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
         self.dr        = np.zeros([self.ns,3,nw], dtype=complex)            # displacement
@@ -2055,7 +2054,7 @@ class FOWT():
         vertices = np.zeros([0,3])  # for GDF output
 
         for mem in self.memberList:
-            mem.potMod = False
+        
             if mem.potMod==True:
                 member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
                         dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
@@ -2085,7 +2084,9 @@ class FOWT():
             ph.write_hydrostatic_file(meshDir)
             ph.write_control_file(meshDir, waterDepth=self.depth,
                                   numFreqs=-len(self.w), minFreq=self.w[0], dFreq=np.diff(self.w[:2])[0])
-            ph.run_hams(meshDir)
+            
+            #ph.run_hams(meshDir) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            
             data1 = osp.join(meshDir, f'Output/Wamit_format/Buoy.1')
             data3 = osp.join(meshDir, f'Output/Wamit_format/Buoy.3')
             
@@ -2177,18 +2178,17 @@ class FOWT():
                         # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
 
                         if circ:
-                            v_i = np.pi/6.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
+                            v_i = np.pi/12.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
                             a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
                         else:
-                            v_i = np.pi/6.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
+                            v_i = np.pi/12.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
                             a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
                             # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
 
                         # added mass
-                        Amat = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
-                        if Amat[2,2] < 0.0 or Amat[2,2] > 0:
-                            print(Amat[2,2])
-                        self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],Amat) # add to global added mass matrix for Morison members
+                        AmatE = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
+
+                        self.A_hydro_morison += translateMatrix3to6DOF(mem.r[il,:],AmatE) # add to global added mass matrix for Morison members
                         
                         # inertial excitation
                         ImatE = rho*v_i * (1+Ca_End)*mem.qMat                         # local inertial excitation matrix
@@ -2203,7 +2203,6 @@ class FOWT():
 
                             self.F_hydro_iner[:,i] += translateForce3to6DOF( mem.r[il,:], F_exc_iner_temp) # add to global excitation vector (frequency dependent)
 
-                        
 
 
     def calcLinearizedTerms(self, Xi):

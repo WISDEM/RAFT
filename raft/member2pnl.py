@@ -197,15 +197,15 @@ def meshMember(stations, diameters, rA, rB, dz_max=0, da_max=0, savedNodes=[], s
                 th2 = (ia-0.5)*2*np.pi/naz*2
                 th3 = (ia    )*2*np.pi/naz*2
 
-                x.append([r1*np.cos(th1), r2*np.cos(th1), r2*np.cos(th2), (r1*np.cos(th1)+r1*np.cos(th3))/2 ])
-                y.append([r1*np.sin(th1), r2*np.sin(th1), r2*np.sin(th2), (r1*np.sin(th1)+r1*np.sin(th3))/2 ])
-                z.append([z1            , z2            , z2            , z1                                ])
+                x.append([(r1*np.cos(th1)+r1*np.cos(th3))/2, r2*np.cos(th2), r2*np.cos(th1), r1*np.cos(th1)])
+                y.append([(r1*np.sin(th1)+r1*np.sin(th3))/2, r2*np.sin(th2), r2*np.sin(th1), r1*np.sin(th1)])
+                z.append([z1                               , z2            , z2            , z1            ])
 
                 npan += 1
 
-                x.append([(r1*np.cos(th1)+r1*np.cos(th3))/2, r2*np.cos(th2), r2*np.cos(th3), r1*np.cos(th3)])
-                y.append([(r1*np.sin(th1)+r1*np.sin(th3))/2, r2*np.sin(th2), r2*np.sin(th3), r1*np.sin(th3)])
-                z.append([z1                               , z2            , z2            , z1            ])
+                x.append([r1*np.cos(th3), r2*np.cos(th3), r2*np.cos(th2), (r1*np.cos(th1)+r1*np.cos(th3))/2])
+                y.append([r1*np.sin(th3), r2*np.sin(th3), r2*np.sin(th2), (r1*np.sin(th1)+r1*np.sin(th3))/2])
+                z.append([z1            , z2            , z2            , z1                               ])
 
                 npan += 1
 
@@ -216,15 +216,15 @@ def meshMember(stations, diameters, rA, rB, dz_max=0, da_max=0, savedNodes=[], s
                 th2 = (ia-0.5)*2*np.pi/naz*2
                 th3 = (ia    )*2*np.pi/naz*2
 
-                x.append([r1*np.cos(th1), r2*np.cos(th1), r2*(np.cos(th1)+np.cos(th3))/2, r1*np.cos(th2)])
-                y.append([r1*np.sin(th1), r2*np.sin(th1), r2*(np.sin(th1)+np.sin(th3))/2, r1*np.sin(th2)])
-                z.append([z1            , z2            , z2                            , z1            ])
+                x.append([r1*np.cos(th2), r2*(np.cos(th1)+np.cos(th3))/2, r2*np.cos(th1), r1*np.cos(th1)])
+                y.append([r1*np.sin(th2), r2*(np.sin(th1)+np.sin(th3))/2, r2*np.sin(th1), r1*np.sin(th1)])
+                z.append([z1            , z2                            , z2            , z1            ])
 
                 npan += 1;
 
-                x.append([r1*np.cos(th2), r2*(np.cos(th1)+np.cos(th3))/2, r2*np.cos(th3), r1*np.cos(th3)])
-                y.append([r1*np.sin(th2), r2*(np.sin(th1)+np.sin(th3))/2, r2*np.sin(th3), r1*np.sin(th3)])
-                z.append([z1            , z2                            , z2            , z1            ])
+                x.append([r1*np.cos(th3), r2*np.cos(th3), r2*(np.cos(th1)+np.cos(th3))/2, r1*np.cos(th2)])
+                y.append([r1*np.sin(th3), r2*np.sin(th3), r2*(np.sin(th1)+np.sin(th3))/2, r1*np.sin(th2)])
+                z.append([z1            , z2            , z2                            , z1            ])
 
                 npan += 1
 
@@ -234,8 +234,8 @@ def meshMember(stations, diameters, rA, rB, dz_max=0, da_max=0, savedNodes=[], s
                 th1 = (ia-1)*2*np.pi/naz
                 th2 = (ia  )*2*np.pi/naz
                 
-                x.append([r1*np.cos(th1), r2*np.cos(th1), r2*np.cos(th2), r1*np.cos(th2)])
-                y.append([r1*np.sin(th1), r2*np.sin(th1), r2*np.sin(th2), r1*np.sin(th2)])
+                x.append([r1*np.cos(th2), r2*np.cos(th2), r2*np.cos(th1), r1*np.cos(th1)])
+                y.append([r1*np.sin(th2), r2*np.sin(th2), r2*np.sin(th1), r1*np.sin(th1)])
                 z.append([z1            , z2            , z2            , z1            ])
 
                 npan += 1
@@ -424,15 +424,15 @@ def meshMemberForGDF(stations, diameters, rA, rB, dz_max=0, da_max=0):
                 th2 = (ia-0.5)*2*np.pi/naz*2;
                 th3 = (ia    )*2*np.pi/naz*2;
 
-                x += [r1*np.cos(th1), r2*np.cos(th1), r2*np.cos(th2), (r1*np.cos(th1)+r1*np.cos(th3))/2 ]
-                y += [r1*np.sin(th1), r2*np.sin(th1), r2*np.sin(th2), (r1*np.sin(th1)+r1*np.sin(th3))/2 ]
-                z += [z1            , z2            , z2            , z1                                ]
+                x += [(r1*np.cos(th1)+r1*np.cos(th3))/2, r2*np.cos(th2), r2*np.cos(th1), r1*np.cos(th1) ]
+                y += [(r1*np.sin(th1)+r1*np.sin(th3))/2, r2*np.sin(th2), r2*np.sin(th1), r1*np.sin(th1) ]
+                z += [z1                               , z2            , z2            , z1             ]
 
                 npan += 1
 
-                x += [(r1*np.cos(th1)+r1*np.cos(th3))/2, r2*np.cos(th2), r2*np.cos(th3), r1*np.cos(th3)]
-                y += [(r1*np.sin(th1)+r1*np.sin(th3))/2, r2*np.sin(th2), r2*np.sin(th3), r1*np.sin(th3)]
-                z += [z1                               , z2            , z2            , z1            ]
+                x += [r1*np.cos(th3), r2*np.cos(th3), r2*np.cos(th2), (r1*np.cos(th1)+r1*np.cos(th3))/2]
+                y += [r1*np.sin(th3), r2*np.sin(th3), r2*np.sin(th2), (r1*np.sin(th1)+r1*np.sin(th3))/2]
+                z += [z1            , z2            , z2            , z1                               ]
 
                 npan += 1
 
@@ -442,15 +442,15 @@ def meshMemberForGDF(stations, diameters, rA, rB, dz_max=0, da_max=0):
                 th1 = (ia-1  )*2*np.pi/naz*2;
                 th2 = (ia-0.5)*2*np.pi/naz*2;
                 th3 = (ia    )*2*np.pi/naz*2;
-                x += [r1*np.cos(th1), r2*np.cos(th1), r2*(np.cos(th1)+np.cos(th3))/2, r1*np.cos(th2)]
-                y += [r1*np.sin(th1), r2*np.sin(th1), r2*(np.sin(th1)+np.sin(th3))/2, r1*np.sin(th2)]
-                z += [z1            , z2            , z2                            , z1            ]
+                x += [r1*np.cos(th2), r2*(np.cos(th1)+np.cos(th3))/2, r2*np.cos(th1), r1*np.cos(th1)]
+                y += [r1*np.sin(th2), r2*(np.sin(th1)+np.sin(th3))/2, r2*np.sin(th1), r1*np.sin(th1)]
+                z += [z1            , z2                            , z2            , z1            ]
 
                 npan += 1;
 
-                x += [r1*np.cos(th2), r2*(np.cos(th1)+np.cos(th3))/2, r2*np.cos(th3), r1*np.cos(th3)]
-                y += [r1*np.sin(th2), r2*(np.sin(th1)+np.sin(th3))/2, r2*np.sin(th3), r1*np.sin(th3)]
-                z += [z1            , z2                            , z2            , z1            ]
+                x += [r1*np.cos(th3), r2*np.cos(th3), r2*(np.cos(th1)+np.cos(th3))/2, r1*np.cos(th2)]
+                y += [r1*np.sin(th3), r2*np.sin(th3), r2*(np.sin(th1)+np.sin(th3))/2, r1*np.sin(th2)]
+                z += [z1            , z2            , z2                            , z1            ]
 
                 npan += 1
 
@@ -459,8 +459,8 @@ def meshMemberForGDF(stations, diameters, rA, rB, dz_max=0, da_max=0):
             for ia in range(1, naz+1):
                 th1 = (ia-1)*2*np.pi/naz;
                 th2 = (ia  )*2*np.pi/naz;
-                x += [r1*np.cos(th1), r2*np.cos(th1), r2*np.cos(th2), r1*np.cos(th2)]
-                y += [r1*np.sin(th1), r2*np.sin(th1), r2*np.sin(th2), r1*np.sin(th2)]
+                x += [r1*np.cos(th2), r2*np.cos(th2), r2*np.cos(th1), r1*np.cos(th1)]
+                y += [r1*np.sin(th2), r2*np.sin(th2), r2*np.sin(th1), r1*np.sin(th1)]
                 z += [z1            , z2            , z2            , z1            ]
 
                 npan += 1

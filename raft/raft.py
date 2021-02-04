@@ -149,7 +149,7 @@ class Member:
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter of side length pair
-        dlsMax = 2.0                  # maximum node spacing <<< this should be an optional input at some point <<<
+        dlsMax = 5.0                  # maximum node spacing <<< this should be an optional input at some point <<<
         ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
         dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
         ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
@@ -165,7 +165,7 @@ class Member:
                 m   = 0.5*(dorsl[i] - dorsl[i-1])/lstrip          # taper ratio
                 ls  += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
                 dls += [dlstrip]*ns
-                ds  += [dorsl[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]
+                ds  += [dorsl[i-1] + dlstrip*2*m*(0.5+j) for j in range(ns)]
                 drs += [dlstrip*m]*ns
                 
             elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions)

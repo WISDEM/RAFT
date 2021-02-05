@@ -2048,14 +2048,7 @@ class FOWT():
         vertices = np.zeros([0,3])  # for GDF output
 
         for mem in self.memberList:
-            '''
-            if self.potModMaster==1:        # run strip theory for all members
-                mem.potMod = False
-            elif self.potModMaster==2 or self.potModMaster==3:  # run BEM for all members
-                mem.potMod = True
-            elif self.potModMaster==0: # setting this as 0 instead of just 'else' in case there's more options in the future
-                pass
-            '''
+            
             if mem.potMod==True:
                 member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
                         dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
@@ -2140,14 +2133,6 @@ class FOWT():
                     # get wave kinematics spectra given a certain wave spectrum and location
                     mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
 
-                    '''
-                    if self.potModMaster==1 or self.potModMaster==3:
-                        mem.potMod = False
-                    elif self.potModMaster==2:
-                        mem.potMod = True
-                    elif self.potModMaster==0:
-                        pass
-                    '''
                     # only compute inertial loads and added mass for members that aren't modeled with potential flow
                     if mem.potMod==False:
 

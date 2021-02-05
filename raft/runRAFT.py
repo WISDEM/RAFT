@@ -31,7 +31,7 @@ def runRAFT(fname_design, fname_env):
     depth = float(design['mooring']['water_depth'])
     
     # now off potMod in the design dictionary to avoid BEM analysis
-    #for mi in design['platform']['members']:    mi['potMod'] = False
+    for mi in design['platform']['members']:    mi['potMod'] = False
 
     # set up frequency range
     w = np.arange(0.05, 5, 0.05)  # frequency range (to be set by modeling options yaml)

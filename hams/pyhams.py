@@ -321,6 +321,36 @@ def read_wamit1(pathWamit1):
 
     return addedMass, damping
 
+def read_wamit1B(pathWamit1, wFlag=1):
+    '''
+    Read added mass and damping from .1 file (WAMIT format)
+    '''
+    pathWamit1 = osp.normpath(pathWamit1)
+    wamit1 = np.loadtxt(pathWamit1)
+    T = np.unique(wamit1[:,0])
+    if wFlag:   # if wFlag=1, the first column values are frequencies
+        w = T
+    else:       # if wFlag=0, the first column values are periods
+        w = 2*np.pi/T
+    addedMassCol = wamit1[:,3]
+    dampingCol = wamit1[:,4]
+    matRow = wamit1[:,1]
+    matCol = wamit1[:,2]
+    addedMass = np.zeros([len(w),6,6])
+    damping = np.zeros([len(w),6,6])
+    
+    nw = len(w)
+    nA = len(addedMassCol)
+    x = int(nA/nw)
+    for j in range(len(w)):
+        for i in range(x):
+            addedMass[j,int(matRow[i])-1,int(matCol[i])-1] = addedMassCol[i+x*j]
+            damping[j,int(matRow[i])-1,int(matCol[i])-1] = dampingCol[i+x*j]
+    
+    A = addedMass.transpose(1,2,0)
+    B = damping.transpose(1,2,0)
+    
+    return A, B, w
 
 def read_wamit3(pathWamit3):
     '''

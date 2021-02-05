@@ -68,7 +68,7 @@ class Member:
         self.l = np.linalg.norm(rAB)                                 # member length [m]
 
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
-
+        
 
         # heading feature for rotation members about the z axis (used for rotated patterns)
         heading = getFromDict(mi, 'heading', default=0.0)            # rotation about z axis to apply to the member [deg]
@@ -1247,7 +1247,7 @@ class Model():
 
         self.ms.parseYAML(design['mooring'])
 
-
+        
 
         self.depth = depth
 
@@ -1594,30 +1594,6 @@ class Model():
         '''This is where various output quantities of interest are calculated based on the already-solved system response.'''
         
         fowt = self.fowtList[0]
-        '''
-        print('---------------------------')
-        print('Tower Mass:          ',np.round(fowt.mtower,2),' kg')
-        print('Tower CG:            ',np.round(fowt.rCG_tow,4),' m from SWL')
-        print('Substructure Mass:   ',np.round(fowt.msubstruc,2),' kg')
-        print('Substructure CG:     ',np.round(fowt.rCG_sub,4),' m from SWL')
-        print('Shell Mass:          ',np.round(fowt.mshell,2),' kg')
-        print('Ballast Mass:        ',np.round(fowt.mballast,2),' kg')
-        print('Ballast Densities    ',fowt.pb,' kg/m^3')
-        print('Total Mass:          ',np.round(fowt.M_struc[0,0],2),' kg')
-        print('Total CG:            ',np.round(fowt.rCG_TOT[2],2),' m from SWL')
-        print('Roll Inertia at PCM  ',np.round(fowt.I44,2),' kg-m^2')
-        print('Pitch Inertia at PCM ',np.round(fowt.I55,2),' kg-m^2')
-        print('Yaw Inertia at PCM   ',np.round(fowt.I66,2),' kg-m^2')
-        print('Roll Inertia at PRP: ',np.round(fowt.I44B,2),' kg-m^2')
-        print('Pitch Inertia at PRP:',np.round(fowt.I55B,2),' kg-m^2')
-        print('Buoyancy (pgV):      ',np.round(fowt.V*fowt.env.g*fowt.env.rho,2),' N')
-        print('Center of Buoyancy:  ',np.round(fowt.rCB[2],4),'m from SWL')
-        print('C33:                 ',np.round(fowt.C_hydro[2,2],2),' N')
-        print('C44:                 ',np.round(fowt.C_hydro[3,3],2),' Nm/rad')
-        print('C55:                 ',np.round(fowt.C_hydro[4,4],2),' Nm/rad')
-        print('F_lines: ',list(np.round(np.array(self.F_moor0),2)),' N')
-        print('C_lines: ',self.C_moor0)
-        '''
         
         self.results['properties']['tower mass'] = fowt.mtower
         self.results['properties']['tower CG'] = fowt.rCG_tow
@@ -1647,9 +1623,10 @@ class Model():
         print('A24:           ',fowt.A_hydro_morison[1,3],' kg-m')
         
         
+      
         mag = abs(fowt.F_hydro_iner/fowt.zeta)
         
-        
+        '''
         plt.figure()
         plt.plot(fowt.w, mag[0,:] ,'tab:pink')
         plt.plot(fowt.w, mag[1,:], 'tab:cyan')
@@ -1669,7 +1646,7 @@ class Model():
         plt.legend(['Roll','Pitch','Yaw'])
         plt.title('Wave excitation per unit amplitude - Rotational')
         plt.grid()
-        
+        '''
     
 
         '''
@@ -1785,7 +1762,8 @@ class FOWT():
         self.k = np.zeros(self.nw)                                   # wave number
 
         self.depth = depth
-
+        
+        self.potModMaster = design['potModMaster']      # the global potMod variable <<<<< FOWT or Model class?
 
         # member-based platform description
         self.memberList = []                                         # list of member objects
@@ -1794,9 +1772,25 @@ class FOWT():
             headings = getFromDict(mi, 'heading', shape=-1, default=0.)
             if np.isscalar(headings):
                 mi['heading'] = headings
+                
+                if self.potModMaster==1:
+                    mi['potMod'] = False
+                elif self.potModMaster==2:
+                    mi['potMod'] = True
+                elif self.potModMaster==0:
+                    pass
+                
                 self.memberList.append(Member(mi, self.nw))
             else:
                 for heading in headings:
+                    
+                    if self.potModMaster==1:
+                        mi['potMod'] = False
+                    elif self.potModMaster==2:
+                        mi['potMod'] = True
+                    elif self.potModMaster==0:
+                        pass
+                    
                     mi['heading'] = heading
                     self.memberList.append(Member(mi, self.nw))
 
@@ -2054,7 +2048,14 @@ class FOWT():
         vertices = np.zeros([0,3])  # for GDF output
 
         for mem in self.memberList:
-        
+            '''
+            if self.potModMaster==1:        # run strip theory for all members
+                mem.potMod = False
+            elif self.potModMaster==2 or self.potModMaster==3:  # run BEM for all members
+                mem.potMod = True
+            elif self.potModMaster==0: # setting this as 0 instead of just 'else' in case there's more options in the future
+                pass
+            '''
             if mem.potMod==True:
                 member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
                         dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
@@ -2085,13 +2086,14 @@ class FOWT():
             ph.write_control_file(meshDir, waterDepth=self.depth,
                                   numFreqs=-len(self.w), minFreq=self.w[0], dFreq=np.diff(self.w[:2])[0])
             
-            #ph.run_hams(meshDir) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            ph.run_hams(meshDir) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             
             data1 = osp.join(meshDir, f'Output/Wamit_format/Buoy.1')
             data3 = osp.join(meshDir, f'Output/Wamit_format/Buoy.3')
             
             raftDir = osp.dirname(__file__)
-            addedMass, damping = ph.read_wamit1(osp.join(raftDir, data1))
+            #addedMass, damping = ph.read_wamit1(osp.join(raftDir, data1))
+            addedMass, damping, w_HAMS = ph.read_wamit1B(osp.join(raftDir, data1))
             fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(osp.join(raftDir, data3))
             
             # The above should now work for everyone, including those using Spyder. Keeping the below just in case
@@ -2105,10 +2107,11 @@ class FOWT():
             #fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3('C:\\Code\\RAFT\\raft\\BEM\\Output\\Wamit_format\\Buoy.3')
             
             # copy results over to the FOWT's coefficient arrays
-            self.A_BEM = self.env.rho*self.env.g * addedMass
-            self.B_BEM = self.env.rho*self.env.g * damping
-            self.X_BEM = self.env.rho*self.env.g * (fExReal + 1j*fExImag)  # linear wave excitation coefficients
+            self.A_BEM = self.env.rho * addedMass
+            self.B_BEM = self.env.rho * damping
+            self.X_BEM = self.env.rho * (fExReal + 1j*fExImag)  # linear wave excitation coefficients
             self.F_BEM = self.X_BEM * self.zeta     # wave excitation force
+            self.w_BEM = w_HAMS
 
 
 
@@ -2137,6 +2140,14 @@ class FOWT():
                     # get wave kinematics spectra given a certain wave spectrum and location
                     mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
 
+                    '''
+                    if self.potModMaster==1 or self.potModMaster==3:
+                        mem.potMod = False
+                    elif self.potModMaster==2:
+                        mem.potMod = True
+                    elif self.potModMaster==0:
+                        pass
+                    '''
                     # only compute inertial loads and added mass for members that aren't modeled with potential flow
                     if mem.potMod==False:
 

@@ -31,10 +31,10 @@ def runRAFT(fname_design, fname_env):
     depth = float(design['mooring']['water_depth'])
     
     # now off potMod in the design dictionary to avoid BEM analysis
-    for mi in design['platform']['members']:    mi['potMod'] = False
+    #for mi in design['platform']['members']:    mi['potMod'] = False
 
     # set up frequency range
-    w = np.arange(0.05, 2.8, 0.05)  # frequency range (to be set by modeling options yaml)
+    w = np.arange(0.05, 5, 0.05)  # frequency range (to be set by modeling options yaml)
     
     # --- Create and run the model ---
 
@@ -188,15 +188,59 @@ def runRAFTfromWEIS():
 if __name__ == "__main__":
     
     
-    model = runRAFT('OC3spar.yaml', 'env.yaml')
+    #model = runRAFT('OC3spar.yaml', 'env.yaml')
     #model = runRAFT('OC4semi.yaml', 'env.yaml')
     #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
-    fowt = model.fowtList[0]
+    #fowt = model.fowtList[0]
     
     
-    def pdiff(x,y):
-        return (abs(x-y)/y)*100
     
+    import os.path as osp
+    import hams.pyhams as ph
+    
+    rho = 1025
+    
+    runRAFTdir = osp.dirname(__file__)
+    A_wamit, B_wamit, w_wamit = ph.read_wamit1B(osp.join(runRAFTdir,'spar.1'), wFlag=0)
+    A_wamit = A_wamit*rho
+    B_wamit = B_wamit*rho
+    
+    with open('OC3spar.yaml') as file:
+        design = yaml.load(file, Loader=yaml.FullLoader)
+        
+    depth = float(design['mooring']['water_depth'])
+    w = np.arange(0.05, 5, 0.05)
+    
+    
+    # Model where potModMaster is 1, so strip theory is used
+    design['potModMaster'] = 1
+    modelA = raft.Model(design, w=w, depth=depth)  # set up model
+    modelA.setEnv()  # set basic wave and wind info
+    modelA.calcSystemProps()          # get all the setup calculations done within the model
+    
+    # Model where potModMaster is 2, so only BEM is used
+    design['potModMaster'] = 2
+    modelB = raft.Model(design, w=w, depth=depth)  # set up model
+    modelB.setEnv()  # set basic wave and wind info
+    modelB.calcSystemProps()          # get all the setup calculations done within the model
+    
+    fowtA = modelA.fowtList[0]
+    fowtB = modelB.fowtList[0]
+    
+    plt.figure()
+    plt.plot(fowtA.w, np.array([fowtA.A_hydro_morison[0,0]]*len(fowtA.w)))
+    plt.plot(fowtB.w_BEM, fowtB.A_BEM[0,0,:])
+    plt.plot(w_wamit, np.flip(A_wamit[0,0,:]))
+    plt.xlabel('Frequency [rad/s]')
+    plt.ylabel('Added Mass [kg]')
+    plt.legend(['Surge-Strip', 'Surge-HAMS', 'Surge-WAMIT'])
+    
+    
+    
+
+    
+    
+
     
     """
     # ----- temporary script for comparing hydro coefficient curves -----

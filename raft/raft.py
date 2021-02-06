@@ -75,7 +75,7 @@ class Member:
         if heading != 0.0:
             c = np.cos(np.deg2rad(heading))
             s = np.sin(np.deg2rad(heading))
-            rotMat = np.array([[c, s, 0], [-s, c, 0], [0, 0, 1]])
+            rotMat = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
             self.rA = np.matmul(rotMat, self.rA)
             self.rB = np.matmul(rotMat, self.rB)
 
@@ -1246,7 +1246,18 @@ class Model():
         self.ms = mp.System()
 
         self.ms.parseYAML(design['mooring'])
-
+        
+        
+        self.potModMaster = getFromDict(design, 'potModMaster', dtype=int, default=0)
+        
+        for mi in design['platform']['members']:
+            if self.potModMaster==1:
+                mi['potMod'] = False
+            elif self.potModMaster==2:
+                mi['potMod'] = True
+        
+        self.XiStart = getFromDict(design, 'XiStart', default=0.1)
+        self.nIter = getFromDict(design, 'nIter', default=15)
         
 
         self.depth = depth
@@ -1457,20 +1468,22 @@ class Model():
 
 
 
-    def solveDynamics(self, nIter=15, tol=0.01):
+    def solveDynamics(self, tol=0.01):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
         nIter = 2  # maximum number of iterations to allow
         '''
-
-
+        
+        nIter = int(self.nIter) + 1         # maybe think of a better name for the first nIter
+        XiStart = self.XiStart
+        
         # total system complex response amplitudes (this gets updated each iteration)
-        XiLast = np.zeros([self.nDOF,self.nw], dtype=complex) + 0.1    # displacement and rotation complex amplitudes [m, rad]
-
-        fig, ax = plt.subplots(3,1,sharex=True)                    #
-        c = np.arange(nIter)                                       #
-        c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))            # set up colormap to use to plot successive iteration restuls
+        XiLast = np.zeros([self.nDOF,self.nw], dtype=complex) + XiStart    # displacement and rotation complex amplitudes [m, rad]
+        
+        fig, ax = plt.subplots(3,1,sharex=True)
+        c = np.arange(nIter+1)      # adding 1 again here so that there are no RuntimeErrors
+        c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))      # set up colormap to use to plot successive iteration results
 
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
@@ -1482,11 +1495,11 @@ class Model():
         B_lin = fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
         C_lin = fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
         F_lin =                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
-
-
+        
+        
         # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<
         for iiter in range(nIter):
-
+            
             # ::: re-zero some things that will be added to :::
 
             # total system coefficient arrays
@@ -1519,16 +1532,17 @@ class Model():
             for ii in range(self.nw):
                 # form impedance matrix
                 Z[:,:,ii] = -self.w[ii]**2 * M_tot[:,:,ii] + 1j*self.w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii]
-
+                
                 # solve response (complex amplitude)
                 Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
 
-
+            
+            # Convergence Plotting
             # plots of surge response at each iteration for observing convergence
             ax[0].plot(self.w, np.abs(Xi[0,:]) , color=c[iiter], label=f"iteration {iiter}")
             ax[1].plot(self.w, np.real(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
             ax[2].plot(self.w, np.imag(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
-
+    
             # check for convergence
             tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
             if (tolCheck < tol).all():
@@ -1538,7 +1552,7 @@ class Model():
                 XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
                                                 # (uses hard-coded successive under relaxation for now)
                 print(f" Iteration {iiter}, still going since largest tolCheck is {np.max(tolCheck)} >= {tol}")
-
+    
             if iiter == nIter-1:
                 print("WARNING - solveDynamics iteration did not converge to the tolerance.")
 
@@ -1552,7 +1566,8 @@ class Model():
 
 
         # ------------------------------ preliminary plotting of response ---------------------------------
-
+        
+        # RAO plotting
         fig, ax = plt.subplots(3,1, sharex=True)
 
         fowt = self.fowtList[0]
@@ -1616,37 +1631,9 @@ class Model():
         self.results['properties']['C_lines0'] = self.C_moor0
         
         
-        print('A11/A22:       ',fowt.A_hydro_morison[0,0],' kg')
-        print('A33:           ',fowt.A_hydro_morison[2,2],' kg')
-        print('A44/A55:       ',fowt.A_hydro_morison[3,3],' kg-m^2')
-        print('A15:           ',fowt.A_hydro_morison[0,4],' kg-m')
-        print('A24:           ',fowt.A_hydro_morison[1,3],' kg-m')
         
+
         
-      
-        mag = abs(fowt.F_hydro_iner/fowt.zeta)
-        
-        '''
-        plt.figure()
-        plt.plot(fowt.w, mag[0,:] ,'tab:pink')
-        plt.plot(fowt.w, mag[1,:], 'tab:cyan')
-        plt.plot(fowt.w, mag[2,:], 'lime')
-        plt.xlabel('Frequency [rad/s]')
-        plt.ylabel('Exciting Force Magnitude [N/m]')
-        plt.legend(['Surge','Sway','Heave'])
-        plt.title('Wave excitation per unit amplitude - Translational')
-        plt.grid()
-        
-        plt.figure()
-        plt.plot(fowt.w, mag[3,:] ,'tab:pink')
-        plt.plot(fowt.w, mag[4,:], 'tab:cyan')
-        plt.plot(fowt.w, mag[5,:], 'lime')
-        plt.xlabel('Frequency [rad/s]')
-        plt.ylabel('Exciting Moment Magnitude [Nm/m]')
-        plt.legend(['Roll','Pitch','Yaw'])
-        plt.title('Wave excitation per unit amplitude - Rotational')
-        plt.grid()
-        '''
     
 
         '''
@@ -1762,9 +1749,8 @@ class FOWT():
         self.k = np.zeros(self.nw)                                   # wave number
 
         self.depth = depth
+             
         
-        self.potModMaster = design['potModMaster']      # the global potMod variable <<<<< FOWT or Model class?
-
         # member-based platform description
         self.memberList = []                                         # list of member objects
 
@@ -1772,25 +1758,9 @@ class FOWT():
             headings = getFromDict(mi, 'heading', shape=-1, default=0.)
             if np.isscalar(headings):
                 mi['heading'] = headings
-                
-                if self.potModMaster==1:
-                    mi['potMod'] = False
-                elif self.potModMaster==2:
-                    mi['potMod'] = True
-                elif self.potModMaster==0:
-                    pass
-                
                 self.memberList.append(Member(mi, self.nw))
             else:
                 for heading in headings:
-                    
-                    if self.potModMaster==1:
-                        mi['potMod'] = False
-                    elif self.potModMaster==2:
-                        mi['potMod'] = True
-                    elif self.potModMaster==0:
-                        pass
-                    
                     mi['heading'] = heading
                     self.memberList.append(Member(mi, self.nw))
 

@@ -188,13 +188,13 @@ def runRAFTfromWEIS():
 if __name__ == "__main__":
     
     
-    #model = runRAFT('OC3spar.yaml', 'env.yaml')
+    model = runRAFT('OC3spar.yaml', 'env.yaml')
     #model = runRAFT('OC4semi.yaml', 'env.yaml')
     #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
-    #fowt = model.fowtList[0]
+    fowt = model.fowtList[0]
     
     
-    
+    '''
     import os.path as osp
     import hams.pyhams as ph
     
@@ -226,21 +226,47 @@ if __name__ == "__main__":
     
     fowtA = modelA.fowtList[0]
     fowtB = modelB.fowtList[0]
+    '''
+    
+
+    
+    mag = abs(fowt.F_hydro_iner/fowt.zeta)
+    mag2 = abs((fowt.F_hydro_iner + fowt.F_hydro_drag)/fowt.zeta)
     
     plt.figure()
-    plt.plot(fowtA.w, np.array([fowtA.A_hydro_morison[0,0]]*len(fowtA.w)))
-    plt.plot(fowtB.w_BEM, fowtB.A_BEM[0,0,:])
-    plt.plot(w_wamit, np.flip(A_wamit[0,0,:]))
+    plt.plot(fowt.w, mag[0,:], label='F_hydro_iner')
+    plt.plot(fowt.w, mag2[0,:], label='F_hydro_iner + F_hydro_drag')
     plt.xlabel('Frequency [rad/s]')
-    plt.ylabel('Added Mass [kg]')
-    plt.legend(['Surge-Strip', 'Surge-HAMS', 'Surge-WAMIT'])
+    plt.ylabel('Exciting Force Magnitude [N/m]')
+    plt.title('Surge')
+    plt.legend()
     
     
+    '''
+    plt.figure()
+    plt.plot(fowtA.w, mag[0,:] ,'tab:pink')
+    plt.plot(fowtA.w, mag[1,:], 'tab:cyan')
+    plt.plot(fowtA.w, mag[2,:], 'lime')
+    plt.plot(fowtB.w, fowtB.X_BEM[0,:])
+    plt.plot(fowtB.w, fowtB.X_BEM[2,:])
+    plt.plot(fowtB.w, fowtB.X_BEM[4,:])
+    plt.xlabel('Frequency [rad/s]')
+    plt.ylabel('Exciting Force Magnitude [N/m]')
+    plt.legend(['Surge','Sway','Heave'])
+    plt.title('Wave excitation per unit amplitude - Translational')
+    plt.grid()
     
-
     
-    
-
+    plt.figure()
+    plt.plot(fowtA.w, mag[3,:] ,'tab:pink')
+    plt.plot(fowtA.w, mag[4,:], 'tab:cyan')
+    plt.plot(fowtA.w, mag[5,:], 'lime')
+    plt.xlabel('Frequency [rad/s]')
+    plt.ylabel('Exciting Moment Magnitude [Nm/m]')
+    plt.legend(['Roll','Pitch','Yaw'])
+    plt.title('Wave excitation per unit amplitude - Rotational')
+    plt.grid()
+    '''
     
     """
     # ----- temporary script for comparing hydro coefficient curves -----

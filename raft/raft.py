@@ -1592,10 +1592,6 @@ class Model():
         ax[2].set_ylabel("wave amplitude (m)")
         ax[2].set_xlabel("frequency (rad/s)")
 
-        # store response results
-        self.results['response'] = {}
-        self.results['response']['frequencies'] = self.w/2/np.pi
-        self.results['response']['Xi'         ] = Xi
         
         self.Xi = Xi
 
@@ -1608,7 +1604,11 @@ class Model():
     def calcOutputs(self):
         '''This is where various output quantities of interest are calculated based on the already-solved system response.'''
         
-        fowt = self.fowtList[0]
+        fowt = self.fowtList[0]   # just using a single turbine for now
+        
+        
+        # ----- system properties outputs -----------------------------
+        # all values about platform reference point (z=0) unless otherwise noted
         
         self.results['properties']['tower mass'] = fowt.mtower
         self.results['properties']['tower CG'] = fowt.rCG_tow
@@ -1629,10 +1629,28 @@ class Model():
         
         self.results['properties']['F_lines0'] = self.F_moor0
         self.results['properties']['C_lines0'] = self.C_moor0
+                
+        # 6DOF matrices for the support structure (everything but turbine) including mass, hydrostatics, and mooring reactions
+        self.results['properties']['M support structure'] = fowt.M_struc                                # mass matrix
+        self.results['properties']['A support structure'] = fowt.A_hydro_morison + fowt.A_BEM[:,:,-1]   # hydrodynamic added mass (currently using highest frequency of BEM added mass)
+        self.results['properties']['C support structure'] = fowt.C_struc + fowt.C_hydro + self.C_moor0  # stiffness
         
         
+        # ----- response outputs (always in standard units) ---------------------------------------
         
-
+        self.results['response'] = {}
+        
+        RAOmag      = abs(self.Xi          /fowt.zeta)  # magnitudes of motion RAO
+        
+        self.results['response']['frequencies'] = self.w/2/np.pi         # Hz
+        self.results['response']['wave elevation'] = fowt.zeta
+        self.results['response']['Xi'         ] = self.Xi
+        self.results['response']['surge RAO'  ] = RAOmag[0,:]
+        self.results['response'][ 'sway RAO'  ] = RAOmag[1,:]
+        self.results['response']['heave RAO'  ] = RAOmag[2,:]
+        self.results['response']['pitch RAO'  ] = RAOmag[3,:]
+        self.results['response'][ 'roll RAO'  ] = RAOmag[4,:]
+        self.results['response'][  'yaw RAO'  ] = RAOmag[5,:]
         
     
 
@@ -1694,6 +1712,8 @@ class Model():
         # save dynamic derived quantities
         #self.results['response']['mooring tensions'] = ...
         self.results['response']['nacelle acceleration'] = self.w**2 * (self.Xi[0] + self.Xi[4]*fowt.hHub)
+        
+        return self.results
         
 
     def plot(self, hideGrid=False):
@@ -2076,7 +2096,9 @@ class FOWT():
             self.F_BEM = self.X_BEM * self.zeta     # wave excitation force
             self.w_BEM = w_HAMS
 
-
+            # >>> do we want to seperate out infinite-frequency added mass? <<<
+            
+            
 
     def calcHydroConstants(self):
         '''This computes the linear strip-theory-hydrodynamics terms.'''

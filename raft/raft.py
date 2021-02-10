@@ -1292,7 +1292,8 @@ class Model():
 
         self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
 
-        self.results = {}
+        self.results = {}     # dictionary to hold all results from the model
+        
 
     def addFOWT(self, fowt, xy0=[0,0]):
         '''adds an already set up FOWT to the frequency domain model solver.'''
@@ -1331,14 +1332,13 @@ class Model():
         self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
         self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
 
-        # >>>> add static properties to the results dict here <<<<
-        self.results['properties'] = {}
-        self.results['properties']['total mass'] = 0.0 # <<<<< etc.
+        self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
+        
         
     
     def calcMooringAndOffsets(self):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
-        setEnv and calcSystemProps must be called first.
+        setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
         '''
 
 
@@ -1347,6 +1347,14 @@ class Model():
         #self.ms.display=2
 
         self.ms.solveEquilibrium3(DOFtype="both", rmsTol=1.0E-5)     # get the system to its equilibrium
+        
+        # ::: a loop could be added here for an array :::
+        fowt = self.fowtList[0]
+
+        # range of DOFs for the current turbine
+        i1 = 0
+        i2 = 6
+        
         print("Equilibrium'3' platform positions/rotations:")
         printVec(self.ms.BodyList[0].r6)
 
@@ -1367,11 +1375,13 @@ class Model():
         self.F_moor = F_moor
 
         # store results
-        self.results['means'] = {}
+        self.results['means'] = {}   # signal this data is available by adding a section to the results dictionary
         self.results['means']['platform offset'  ] = r6eq
         self.results['means']['mooring force'    ] = F_moor
         #self.results['means']['fairlead tensions'] = ... # <<<
         
+    
+    
 
     def solveEigen(self):
         '''finds natural frequencies of system'''
@@ -1453,24 +1463,10 @@ class Model():
 
                 
         # store results
-        self.results['eigen'] = {}
+        self.results['eigen'] = {}   # signal this data is available by adding a section to the results dictionary
         self.results['eigen']['frequencies'] = fns
         self.results['eigen']['modes'      ] = modes
-                
-    def solveStatics(self):
-        '''Possibly a method to solve for the mean operating point (in conjunctoin with calcMooringAndOffsets)...'''
-
-        # ::: a loop could be added here for an array :::
-        fowt = self.fowtList[0]
-
-        # range of DOFs for the current turbine
-        i1 = 0
-        i2 = 6
-
-        #C_tot0 = self.C_struc + self.C_hydro + C_moor0   # total system stiffness matrix about undisplaced position
-        #W_tot0 = self.W_struc + self.W_hydro + W_moor0   # system mean forces and moments at undisplaced position
-
-
+  
 
     def solveDynamics(self, tol=0.01):
         '''After all constant parts have been computed, call this to iterate through remaining terms
@@ -1599,7 +1595,7 @@ class Model():
         
         self.Xi = Xi
 
-        self.calcOutputs()
+        self.results['response'] = {}   # signal this data is available by adding a section to the results dictionary
 
         return Xi  # currently returning the response rather than saving in the model object
 
@@ -1614,47 +1610,49 @@ class Model():
         # ----- system properties outputs -----------------------------
         # all values about platform reference point (z=0) unless otherwise noted
         
-        self.results['properties']['tower mass'] = fowt.mtower
-        self.results['properties']['tower CG'] = fowt.rCG_tow
-        self.results['properties']['substructure mass'] = fowt.msubstruc
-        self.results['properties']['substructure CG'] = fowt.rCG_sub
-        self.results['properties']['shell mass'] = fowt.mshell
-        self.results['properties']['ballast mass'] = fowt.mballast
-        self.results['properties']['ballast densities'] = fowt.pb
-        self.results['properties']['total mass'] = fowt.M_struc[0,0]
-        self.results['properties']['total CG'] = fowt.rCG_TOT
-        self.results['properties']['roll inertia at subCG'] = fowt.I44
-        self.results['properties']['pitch inertia at subCG'] = fowt.I55
-        self.results['properties']['yaw inertia at subCG'] = fowt.I66
+        if 'properties' in results:
         
-        self.results['properties']['Buoyancy (pgV)'] = fowt.env.rho*fowt.env.g*fowt.V
-        self.results['properties']['Center of Buoyancy'] = fowt.rCB
-        self.results['properties']['C stiffness matrix'] = fowt.C_hydro
-        
-        self.results['properties']['F_lines0'] = self.F_moor0
-        self.results['properties']['C_lines0'] = self.C_moor0
-                
-        # 6DOF matrices for the support structure (everything but turbine) including mass, hydrostatics, and mooring reactions
-        self.results['properties']['M support structure'] = fowt.M_struc                                # mass matrix
-        self.results['properties']['A support structure'] = fowt.A_hydro_morison + fowt.A_BEM[:,:,-1]   # hydrodynamic added mass (currently using highest frequency of BEM added mass)
-        self.results['properties']['C support structure'] = fowt.C_struc + fowt.C_hydro + self.C_moor0  # stiffness
+            self.results['properties']['tower mass'] = fowt.mtower
+            self.results['properties']['tower CG'] = fowt.rCG_tow
+            self.results['properties']['substructure mass'] = fowt.msubstruc
+            self.results['properties']['substructure CG'] = fowt.rCG_sub
+            self.results['properties']['shell mass'] = fowt.mshell
+            self.results['properties']['ballast mass'] = fowt.mballast
+            self.results['properties']['ballast densities'] = fowt.pb
+            self.results['properties']['total mass'] = fowt.M_struc[0,0]
+            self.results['properties']['total CG'] = fowt.rCG_TOT
+            self.results['properties']['roll inertia at subCG'] = fowt.I44
+            self.results['properties']['pitch inertia at subCG'] = fowt.I55
+            self.results['properties']['yaw inertia at subCG'] = fowt.I66
+            
+            self.results['properties']['Buoyancy (pgV)'] = fowt.env.rho*fowt.env.g*fowt.V
+            self.results['properties']['Center of Buoyancy'] = fowt.rCB
+            self.results['properties']['C stiffness matrix'] = fowt.C_hydro
+            
+            self.results['properties']['F_lines0'] = self.F_moor0
+            self.results['properties']['C_lines0'] = self.C_moor0
+                    
+            # 6DOF matrices for the support structure (everything but turbine) including mass, hydrostatics, and mooring reactions
+            self.results['properties']['M support structure'] = fowt.M_struc                                # mass matrix
+            self.results['properties']['A support structure'] = fowt.A_hydro_morison + fowt.A_BEM[:,:,-1]   # hydrodynamic added mass (currently using highest frequency of BEM added mass)
+            self.results['properties']['C support structure'] = fowt.C_struc + fowt.C_hydro + self.C_moor0  # stiffness
         
         
         # ----- response outputs (always in standard units) ---------------------------------------
         
-        self.results['response'] = {}
-        
-        RAOmag      = abs(self.Xi          /fowt.zeta)  # magnitudes of motion RAO
-        
-        self.results['response']['frequencies'] = self.w/2/np.pi         # Hz
-        self.results['response']['wave elevation'] = fowt.zeta
-        self.results['response']['Xi'         ] = self.Xi
-        self.results['response']['surge RAO'  ] = RAOmag[0,:]
-        self.results['response'][ 'sway RAO'  ] = RAOmag[1,:]
-        self.results['response']['heave RAO'  ] = RAOmag[2,:]
-        self.results['response']['pitch RAO'  ] = RAOmag[3,:]
-        self.results['response'][ 'roll RAO'  ] = RAOmag[4,:]
-        self.results['response'][  'yaw RAO'  ] = RAOmag[5,:]
+        if 'response' in results:
+            
+            RAOmag      = abs(self.Xi          /fowt.zeta)  # magnitudes of motion RAO
+            
+            self.results['response']['frequencies'] = self.w/2/np.pi         # Hz
+            self.results['response']['wave elevation'] = fowt.zeta
+            self.results['response']['Xi'         ] = self.Xi
+            self.results['response']['surge RAO'  ] = RAOmag[0,:]
+            self.results['response'][ 'sway RAO'  ] = RAOmag[1,:]
+            self.results['response']['heave RAO'  ] = RAOmag[2,:]
+            self.results['response']['pitch RAO'  ] = RAOmag[3,:]
+            self.results['response'][ 'roll RAO'  ] = RAOmag[4,:]
+            self.results['response'][  'yaw RAO'  ] = RAOmag[5,:]
         
     
 

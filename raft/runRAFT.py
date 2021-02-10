@@ -39,7 +39,7 @@ def runRAFT(fname_design, fname_env):
     # --- Create and run the model ---
 
     model = raft.Model(design, w=w, depth=depth)  # set up model
-
+    
     model.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
 
     model.calcSystemProps()          # get all the setup calculations done within the model
@@ -193,80 +193,9 @@ if __name__ == "__main__":
     #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
     fowt = model.fowtList[0]
     
-    
-    '''
-    import os.path as osp
-    import hams.pyhams as ph
-    
-    rho = 1025
-    
-    runRAFTdir = osp.dirname(__file__)
-    A_wamit, B_wamit, w_wamit = ph.read_wamit1B(osp.join(runRAFTdir,'spar.1'), wFlag=0)
-    A_wamit = A_wamit*rho
-    B_wamit = B_wamit*rho
-    
-    with open('OC3spar.yaml') as file:
-        design = yaml.load(file, Loader=yaml.FullLoader)
-        
-    depth = float(design['mooring']['water_depth'])
-    w = np.arange(0.05, 5, 0.05)
-    
-    
-    # Model where potModMaster is 1, so strip theory is used
-    design['potModMaster'] = 1
-    modelA = raft.Model(design, w=w, depth=depth)  # set up model
-    modelA.setEnv()  # set basic wave and wind info
-    modelA.calcSystemProps()          # get all the setup calculations done within the model
-    
-    # Model where potModMaster is 2, so only BEM is used
-    design['potModMaster'] = 2
-    modelB = raft.Model(design, w=w, depth=depth)  # set up model
-    modelB.setEnv()  # set basic wave and wind info
-    modelB.calcSystemProps()          # get all the setup calculations done within the model
-    
-    fowtA = modelA.fowtList[0]
-    fowtB = modelB.fowtList[0]
-    '''
-    
 
     
-    mag = abs(fowt.F_hydro_iner/fowt.zeta)
-    mag2 = abs((fowt.F_hydro_iner + fowt.F_hydro_drag)/fowt.zeta)
     
-    plt.figure()
-    plt.plot(fowt.w, mag[0,:], label='F_hydro_iner')
-    plt.plot(fowt.w, mag2[0,:], label='F_hydro_iner + F_hydro_drag')
-    plt.xlabel('Frequency [rad/s]')
-    plt.ylabel('Exciting Force Magnitude [N/m]')
-    plt.title('Surge')
-    plt.legend()
-    
-    
-    '''
-    plt.figure()
-    plt.plot(fowtA.w, mag[0,:] ,'tab:pink')
-    plt.plot(fowtA.w, mag[1,:], 'tab:cyan')
-    plt.plot(fowtA.w, mag[2,:], 'lime')
-    plt.plot(fowtB.w, fowtB.X_BEM[0,:])
-    plt.plot(fowtB.w, fowtB.X_BEM[2,:])
-    plt.plot(fowtB.w, fowtB.X_BEM[4,:])
-    plt.xlabel('Frequency [rad/s]')
-    plt.ylabel('Exciting Force Magnitude [N/m]')
-    plt.legend(['Surge','Sway','Heave'])
-    plt.title('Wave excitation per unit amplitude - Translational')
-    plt.grid()
-    
-    
-    plt.figure()
-    plt.plot(fowtA.w, mag[3,:] ,'tab:pink')
-    plt.plot(fowtA.w, mag[4,:], 'tab:cyan')
-    plt.plot(fowtA.w, mag[5,:], 'lime')
-    plt.xlabel('Frequency [rad/s]')
-    plt.ylabel('Exciting Moment Magnitude [Nm/m]')
-    plt.legend(['Roll','Pitch','Yaw'])
-    plt.title('Wave excitation per unit amplitude - Rotational')
-    plt.grid()
-    '''
     
     """
     # ----- temporary script for comparing hydro coefficient curves -----

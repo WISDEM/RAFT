@@ -321,17 +321,21 @@ def read_wamit1(pathWamit1):
 
     return addedMass, damping
 
-def read_wamit1B(pathWamit1, wFlag=1):
+def read_wamit1B(pathWamit1, TFlag=0):
     '''
     Read added mass and damping from .1 file (WAMIT format)
     '''
     pathWamit1 = osp.normpath(pathWamit1)
     wamit1 = np.loadtxt(pathWamit1)
+    # <<<<<< NEED TO MAKE SURE THAT YOU HAVE DELETED THE HYDROSTATIC PART OUT OF THE .1 FILE
+    # SO THAT THERE IS THE SAME NUMBER OF COLUMNS FOR EVERY ROW IN THE FILE >>>>>>>>>>>>>>>>
+    # can add in functionality to make a hydrostatic matrix, but not needed yet
+    
     T = np.unique(wamit1[:,0])
-    if wFlag:   # if wFlag=1, the first column values are frequencies
-        w = T
-    else:       # if wFlag=0, the first column values are periods
+    if TFlag:   # if TFlag=1, the first column values are periods
         w = 2*np.pi/T
+    else:       # if TFlag=0, the first column values are frequencies
+        w = T
     addedMassCol = wamit1[:,3]
     dampingCol = wamit1[:,4]
     matRow = wamit1[:,1]
@@ -347,7 +351,8 @@ def read_wamit1B(pathWamit1, wFlag=1):
             addedMass[j,int(matRow[i])-1,int(matCol[i])-1] = addedMassCol[i+x*j]
             damping[j,int(matRow[i])-1,int(matCol[i])-1] = dampingCol[i+x*j]
     
-    A = addedMass.transpose(1,2,0)
+    # transpose(a,b,c) function switches the sizes in an order of k[a] to the 0 spot, k[b] to the 1 spot, and k[c] to the 2 spot
+    A = addedMass.transpose(1,2,0) # transposes addedMass.shape = (100,6row,6col) to (6row,6col,100)
     B = damping.transpose(1,2,0)
     
     return A, B, w
@@ -387,6 +392,51 @@ def read_wamit3(pathWamit3):
     imag = wamit3[:,6].reshape((len(w), 6)).transpose(1,0)
 
     return mod, phase, real, imag
+
+def read_wamit3B(pathWamit3, TFlag=0):
+    '''
+    Read excitation force coefficients from .3 file (WAMIT format)
+    '''
+    
+    pathWamit3 = osp.normpath(pathWamit3)
+    wamit3 = np.loadtxt(pathWamit3)
+    T = np.unique(wamit3[:,0])
+    if TFlag:
+        w = 2*np.pi/T
+    else:
+        w = T
+    headings = np.unique(wamit3[:,1])
+    
+    modCol = wamit3[:,3]
+    phaseCol = wamit3[:,4]
+    realCol = wamit3[:,5]
+    imagCol = wamit3[:,6]
+    
+    mod = np.zeros([len(w), len(headings), 6])
+    phase = np.zeros([len(w), len(headings), 6])
+    real = np.zeros([len(w), len(headings), 6])
+    imag = np.zeros([len(w), len(headings), 6])
+    
+    nw = len(w)
+    nh = len(headings)
+    nF = len(modCol)
+    x = int(nF/nh/nw)
+    y = int(nF/nw)
+    
+    for i in range(len(w)):
+        for j in range(len(headings)):
+            for k in range(x):
+                mod[i,j,k] = modCol[k+x*j+y*i]
+                phase[i,j,k] = phaseCol[k+x*j+y*i]
+                real[i,j,k] = realCol[k+x*j+y*i]
+                imag[i,j,k] = imagCol[k+x*j+y*i]
+    
+    M = mod.transpose(1,2,0) # transposes a mod matrix of size (100, 37, 6) to (37, 6, 100)
+    P = phase.transpose(1,2,0)
+    R = real.transpose(1,2,0)
+    I = imag.transpose(1,2,0)
+    
+    return M, P, R, I, w, headings
 
 def run_hams(projectDir):
     '''call the HAMS_x64.exe program in the specified project directory'''

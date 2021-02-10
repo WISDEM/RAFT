@@ -133,7 +133,7 @@ class Member:
             self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape)   # thicknesses [m]
             self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape)   # inner diameter (if it isn't a solid plate) [m]
             self.cap_stations = (cap_stations - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
-
+            
 
         # Drag coefficients
         self.Cd_q   = getFromDict(mi, 'Cd_q' , shape=n, default=0.0 )     # axial drag coefficient
@@ -149,7 +149,8 @@ class Member:
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter of side length pair
-        dlsMax = 5.0                  # maximum node spacing <<< this should be an optional input at some point <<<
+        dlsMax = mi['dlsMax']
+        #dlsMax = 5.0                  # maximum node spacing <<< this should be an optional input at some point <<<
         ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
         dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
         ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
@@ -336,7 +337,7 @@ class Member:
 
 
         # ------- member inertial calculations ---------
-        n = len(self.stations)                          # set n as the number of stations = number of sub-members minus 1
+        n = len(self.stations)                          # set n as the number of stations = number of sub-members plus 1
 
         mass_center = 0                                 # total sum of mass the center of mass of the member [kg-m]
         mshell = 0                                      # total mass of the shell material only of the member [kg]
@@ -382,8 +383,8 @@ class Member:
                     m_shell = v_shell*rho_shell             # mass of hollow frustum [kg]
                     
                     hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of hollow frustum with shell thickness [m]
-                    
-                    dBi_fill = (dBi-dAi)*(l_fill/l) + dAi   # interpolated inner diameter of frustum that ballast is filled to [m] <<<<<<<<<<<< can maybe use the intrp function in getHydrostatics
+                         
+                    dBi_fill = (dBi-dAi)*(l_fill/l) + dAi   # interpolated inner diameter of frustum that ballast is filled to [m] 
                     v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, l_fill)         # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
                     m_fill = v_fill*rho_fill                # mass of the ballast in the submember [kg]
                     
@@ -423,7 +424,7 @@ class Member:
                     m_shell = v_shell*rho_shell                 # mass of hollow frustum [kg]
                     
                     hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of the hollow frustum with shell thickness [m]
-                    
+                                        
                     slBi_fill = (slBi-slAi)*(l_fill/l) + slAi   # interpolated side lengths of frustum that ballast is filled to [m]
                     v_fill, hc_fill = FrustumVCV(slAi, slBi_fill, l_fill)   # volume and center of volume of inner frustum that ballast occupies [m^3]
                     m_fill = v_fill*rho_fill                    # mass of ballast in the submember [kg]
@@ -910,7 +911,7 @@ def getVelocity(r, Xi, ws):
 
 
 ## Get wave velocity and acceleration complex amplitudes based on wave spectrum at a given location
-def getWaveKin(zeta0, w, k, h, r, nw, rho=1025.0, g=9.91):
+def getWaveKin(zeta0, w, k, h, r, nw, rho=1025.0, g=9.81):
 
     # inputs: wave elevation fft, wave freqs, wave numbers, depth, point position
 
@@ -1249,12 +1250,15 @@ class Model():
         
         
         self.potModMaster = getFromDict(design, 'potModMaster', dtype=int, default=0)
-        
+        self.dlsMax = getFromDict(design, 'dlsMax', default=5.0)
         for mi in design['platform']['members']:
+            mi['dlsMax'] = self.dlsMax
             if self.potModMaster==1:
                 mi['potMod'] = False
             elif self.potModMaster==2:
                 mi['potMod'] = True
+            
+        design['turbine']['tower']['dlsMax'] = self.dlsMax
         
         self.XiStart = getFromDict(design, 'XiStart', default=0.1)
         self.nIter = getFromDict(design, 'nIter', default=15)
@@ -1278,7 +1282,7 @@ class Model():
         self.k = np.zeros(self.nw)  # wave number
         for i in range(self.nw):
             self.k[i] = waveNumber(self.w[i], self.depth)
-
+        
         # set up the FOWT here  <<< only set for 1 FOWT for now <<<
         self.fowtList.append(FOWT(design, w=self.w, mpb=self.ms.BodyList[0], depth=depth))
         self.coords.append([0.0,0.0])
@@ -1311,7 +1315,7 @@ class Model():
         self.Fthrust      = Fthrust
 
         for fowt in self.fowtList:
-            fowt.setEnv(Hs=Hs, Tp=Tp, V=V, beta=beta, Fthrust=Fthrust)
+            fowt.setEnv(Hs=Hs, Tp=Tp, V=V, spectrum=spectrum, beta=beta, Fthrust=Fthrust)
 
 
     def calcSystemProps(self):
@@ -1783,6 +1787,7 @@ class FOWT():
                 for heading in headings:
                     mi['heading'] = heading
                     self.memberList.append(Member(mi, self.nw))
+                mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
 
         self.memberList.append(Member(design['turbine']['tower'], self.nw))
 
@@ -2065,7 +2070,9 @@ class FOWT():
             #     - attributes:
             #         - addedMass, damping, fEx coefficients
             ph.create_hams_dirs(meshDir)
+            
             ph.write_hydrostatic_file(meshDir)
+            
             ph.write_control_file(meshDir, waterDepth=self.depth,
                                   numFreqs=-len(self.w), minFreq=self.w[0], dFreq=np.diff(self.w[:2])[0])
             
@@ -2092,7 +2099,7 @@ class FOWT():
             # copy results over to the FOWT's coefficient arrays
             self.A_BEM = self.env.rho * addedMass
             self.B_BEM = self.env.rho * damping
-            self.X_BEM = self.env.rho * (fExReal + 1j*fExImag)  # linear wave excitation coefficients
+            self.X_BEM = self.env.rho * self.env.g * (fExReal + 1j*fExImag)  # linear wave excitation coefficients
             self.F_BEM = self.X_BEM * self.zeta     # wave excitation force
             self.w_BEM = w_HAMS
 

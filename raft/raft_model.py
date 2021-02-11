@@ -10,7 +10,7 @@ import moorpy as mp
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
-import member2pnl
+import raft.member2pnl as pnl
 import hams.pyhams as ph
 
 #import F6T1RNA as structural    # import turbine structural model functions
@@ -18,7 +18,7 @@ import hams.pyhams as ph
 import importlib
 mp   = importlib.reload(mp)
 ph   = importlib.reload(ph)
-member2pnl   = importlib.reload(member2pnl)
+pnl   = importlib.reload(pnl)
 
 
 class Env:
@@ -388,6 +388,9 @@ class Member:
                     v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, l_fill)         # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
                     m_fill = v_fill*rho_fill                # mass of the ballast in the submember [kg]
                     
+                    # <<< The ballast is calculated as if it starts at the same end as the shell, however, if the end of the sub-member has an end cap,
+                    # then the ballast sits on top of the end cap. Depending on the thickness of the end cap, this can affect m_fill, hc_fill, and MoI_fill >>>>>
+                    
                     mass = m_shell + m_fill                 # total mass of the submember [kg]
                     hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass       # total center of mass of the submember from the submember's rA location [m]
                     
@@ -632,7 +635,7 @@ class Member:
             Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
 
             # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
-            self.M_struc += translateMatrix6to6DOF(center, Mmat) # mass matrix of the member about the PRP
+            self.M_struc += translateMatrix6to6DOF(center_cap, Mmat) # mass matrix of the member about the PRP
 
 
 
@@ -1071,7 +1074,9 @@ def translateMatrix3to6DOF(r, Min):
 
 
 def translateMatrix6to6DOF(r, Min):
-    '''Transforms a 6x6 matrix to be about a translated reference point.'''
+    '''Transforms a 6x6 matrix to be about a translated reference point.
+    r is a vector that goes from where you want the reference point to be
+    to where the reference point currently is'''
 
     # sub-matrix definitions are accordint to  | m    J |
     #                                          | J^T  I |
@@ -1610,7 +1615,7 @@ class Model():
         # ----- system properties outputs -----------------------------
         # all values about platform reference point (z=0) unless otherwise noted
         
-        if 'properties' in results:
+        if 'properties' in self.results:
         
             self.results['properties']['tower mass'] = fowt.mtower
             self.results['properties']['tower CG'] = fowt.rCG_tow
@@ -1621,9 +1626,12 @@ class Model():
             self.results['properties']['ballast densities'] = fowt.pb
             self.results['properties']['total mass'] = fowt.M_struc[0,0]
             self.results['properties']['total CG'] = fowt.rCG_TOT
-            self.results['properties']['roll inertia at subCG'] = fowt.I44
-            self.results['properties']['pitch inertia at subCG'] = fowt.I55
-            self.results['properties']['yaw inertia at subCG'] = fowt.I66
+            #self.results['properties']['roll inertia at subCG'] = fowt.I44
+            #self.results['properties']['pitch inertia at subCG'] = fowt.I55
+            #self.results['properties']['yaw inertia at subCG'] = fowt.I66
+            self.results['properties']['roll inertia at subCG'] = fowt.M_struc_subCM[3,3]
+            self.results['properties']['pitch inertia at subCG'] = fowt.M_struc_subCM[4,4]
+            self.results['properties']['yaw inertia at subCG'] = fowt.M_struc_subCM[5,5]
             
             self.results['properties']['Buoyancy (pgV)'] = fowt.env.rho*fowt.env.g*fowt.V
             self.results['properties']['Center of Buoyancy'] = fowt.rCB
@@ -1633,14 +1641,15 @@ class Model():
             self.results['properties']['C_lines0'] = self.C_moor0
                     
             # 6DOF matrices for the support structure (everything but turbine) including mass, hydrostatics, and mooring reactions
-            self.results['properties']['M support structure'] = fowt.M_struc                                # mass matrix
+            self.results['properties']['M support structure'] = fowt.M_struc_subCM                          # mass matrix
             self.results['properties']['A support structure'] = fowt.A_hydro_morison + fowt.A_BEM[:,:,-1]   # hydrodynamic added mass (currently using highest frequency of BEM added mass)
-            self.results['properties']['C support structure'] = fowt.C_struc + fowt.C_hydro + self.C_moor0  # stiffness
+            self.results['properties']['C support structure'] = fowt.C_struc_sub + fowt.C_hydro + self.C_moor0  # stiffness
+
         
         
         # ----- response outputs (always in standard units) ---------------------------------------
         
-        if 'response' in results:
+        if 'response' in self.results:
             
             RAOmag      = abs(self.Xi          /fowt.zeta)  # magnitudes of motion RAO
             
@@ -1855,6 +1864,7 @@ class FOWT():
         self.B_struc = np.zeros([6,6])                # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
         self.C_struc = np.zeros([6,6])                # structure effective stiffness matrix [N/m, N, N-m]
         self.W_struc = np.zeros([6])                  # static weight vector [N, N-m]
+        self.C_struc_sub = np.zeros([6,6])            # substructure effective stiffness matrix [N/m, N, N-m]
 
         # hydrostatic arrays
         self.C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N, N-m]
@@ -1877,16 +1887,17 @@ class FOWT():
         Sum_M_center = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
 
         self.msubstruc = 0          # total mass of just the members that make up the substructure [kg]
+        self.M_struc_subPRP = np.zeros([6,6])  # total mass matrix of just the substructure about the PRP
         msubstruc_sum = 0           # product of each substructure member's mass and CG, to be used to find the total substructure CG [kg-m]
         self.mshell = 0             # total mass of the shells/steel of the members in the substructure [kg]
         mballast = []               # list to store the mass of the ballast in each of the substructure members [kg]
         pballast = []               # list to store the density of ballast in each of the substructure members [kg]
-
+        '''
         I44list = []                # list to store the I44 MoI about the PRP of each substructure member
         I55list = []                # list to store the I55 MoI about the PRP of each substructure member
         I66list = []                # list to store the I66 MoI about the PRP of each substructure member
         masslist = []               # list to store the mass of each substructure member
-
+        '''
         # loop through each member
         for mem in self.memberList:
 
@@ -1911,17 +1922,18 @@ class FOWT():
             # Substructure calculations
             if mem.type > 1:
                 self.msubstruc += mass              # mass of the substructure
+                self.M_struc_subPRP += mem.M_struc     # mass matrix of the substructure about the PRP
                 msubstruc_sum += center*mass        # product sum of the substructure members and their centers of mass [kg-m]
                 self.mshell += mshell               # mass of the substructure shell material [kg]
                 mballast.extend(mfill)              # list of ballast masses in each substructure member (list of lists) [kg]
                 pballast.extend(pfill)              # list of ballast densities in each substructure member (list of lists) [kg/m^3]
+                '''
                 # Store substructure moment of inertia terms
                 I44list.append(mem.M_struc[3,3])
                 I55list.append(mem.M_struc[4,4])
                 I66list.append(mem.M_struc[5,5])
                 masslist.append(mass)
-
-
+                '''
 
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
 
@@ -1966,7 +1978,11 @@ class FOWT():
         self.rCG_TOT = rCG_TOT
 
         self.rCG_sub = msubstruc_sum/self.msubstruc     # solve for just the substructure mass and CG
-
+        
+        self.M_struc_subCM = translateMatrix6to6DOF(-self.rCG_sub, self.M_struc_subPRP) # the mass matrix of the substructure about the substruc's CM
+        # need to make rCG_sub negative here because tM6to6DOF takes a vector that goes from where you want the ref point to be (CM) to the currently ref point (PRP)
+        
+        '''
         self.I44 = 0        # moment of inertia in roll due to roll of the substructure about the substruc's CG [kg-m^2]
         self.I44B = 0       # moment of inertia in roll due to roll of the substructure about the PRP [kg-m^2]
         self.I55 = 0        # moment of inertia in pitch due to pitch of the substructure about the substruc's CG [kg-m^2]
@@ -1983,7 +1999,8 @@ class FOWT():
             self.I55 += I55list[i] - masslist[i]*y**2
             self.I55B += I55list[i]
             self.I66 += I66list[i] - masslist[i]*z**2
-
+        '''
+        
         # Solve for the total mass of each type of ballast in the substructure
         self.pb = []                                                # empty list to store the unique ballast densities
         for i in range(len(pballast)):
@@ -2012,6 +2029,9 @@ class FOWT():
 
         self.C_struc[3,3] = -mTOT*g*rCG_TOT[2]
         self.C_struc[4,4] = -mTOT*g*rCG_TOT[2]
+        
+        self.C_struc_sub[3,3] = -self.msubstruc*g*self.rCG_sub[2]
+        self.C_struc_sub[4,4] = -self.msubstruc*g*self.rCG_sub[2]
 
         # add relevant properties to this turbine's MoorPy Body
         self.body.m = mTOT
@@ -2026,7 +2046,7 @@ class FOWT():
     def calcBEM(self):
         '''This generates a mesh for the platform and runs a BEM analysis on it.
         The mesh is only for non-interesecting members flagged with potMod=1.'''
-
+        
         rho = self.env.rho
         g   = self.env.g
 
@@ -2043,11 +2063,11 @@ class FOWT():
         for mem in self.memberList:
             
             if mem.potMod==True:
-                member2pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
+                pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
                         dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
                         
                 # for GDF output
-                vertices_i = member2pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
                 vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
 
 
@@ -2056,9 +2076,9 @@ class FOWT():
 
             meshDir = 'BEM'
             
-            member2pnl.writeMesh(nodes, panels, oDir=osp.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
+            pnl.writeMesh(nodes, panels, oDir=osp.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
             
-            member2pnl.writeMeshToGDF(vertices)                                # also a GDF for visualization
+            pnl.writeMeshToGDF(vertices)                                # also a GDF for visualization
             
             # TODO: maybe create a 'HAMS Project' class:
             #     - methods:
@@ -2079,13 +2099,11 @@ class FOWT():
             data1 = osp.join(meshDir, f'Output/Wamit_format/Buoy.1')
             data3 = osp.join(meshDir, f'Output/Wamit_format/Buoy.3')
             
-            raftDir = osp.dirname(__file__)
+            #raftDir = osp.dirname(__file__)
             #addedMass, damping = ph.read_wamit1(osp.join(raftDir, data1))
-            addedMass, damping, w_HAMS = ph.read_wamit1B(osp.join(raftDir, data1))
-            fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(osp.join(raftDir, data3))
-            
-            # The above should now work for everyone, including those using Spyder. Keeping the below just in case
-            
+            addedMass, damping, w_HAMS = ph.read_wamit1B(data1)
+            fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)
+                       
             #addedMass, damping = ph.read_wamit1(data1)         # original
             #addedMass, damping = ph.read_wamit1('C:\\Code\\RAFT\\raft\\data\\cylinder\\Output\\Wamit_format\\Buoy.1')
             #addedMass, damping = ph.read_wamit1('C:\\Code\\RAFT\\raft\\BEM\\Output\\Wamit_format\\Buoy.1')

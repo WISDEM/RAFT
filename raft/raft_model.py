@@ -1473,7 +1473,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
 
-    def solveDynamics(self, tol=0.01):
+    def solveDynamics(self, tol=0.01, conv_plot=1, RAO_plot=1):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -1486,9 +1486,10 @@ class Model():
         # total system complex response amplitudes (this gets updated each iteration)
         XiLast = np.zeros([self.nDOF,self.nw], dtype=complex) + XiStart    # displacement and rotation complex amplitudes [m, rad]
         
-        fig, ax = plt.subplots(3,1,sharex=True)
-        c = np.arange(nIter+1)      # adding 1 again here so that there are no RuntimeErrors
-        c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))      # set up colormap to use to plot successive iteration results
+        if conv_plot:
+            fig, ax = plt.subplots(3,1,sharex=True)
+            c = np.arange(nIter+1)      # adding 1 again here so that there are no RuntimeErrors
+            c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))      # set up colormap to use to plot successive iteration results
 
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
@@ -1541,12 +1542,13 @@ class Model():
                 # solve response (complex amplitude)
                 Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
 
-            
-            # Convergence Plotting
-            # plots of surge response at each iteration for observing convergence
-            ax[0].plot(self.w, np.abs(Xi[0,:]) , color=c[iiter], label=f"iteration {iiter}")
-            ax[1].plot(self.w, np.real(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
-            ax[2].plot(self.w, np.imag(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
+
+            if conv_plot:
+                # Convergence Plotting
+                # plots of surge response at each iteration for observing convergence
+                ax[0].plot(self.w, np.abs(Xi[0,:]) , color=c[iiter], label=f"iteration {iiter}")
+                ax[1].plot(self.w, np.real(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
+                ax[2].plot(self.w, np.imag(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
     
             # check for convergence
             tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
@@ -1560,42 +1562,44 @@ class Model():
     
             if iiter == nIter-1:
                 print("WARNING - solveDynamics iteration did not converge to the tolerance.")
-
-        # labels for convergence plots
-        ax[1].legend()
-        ax[0].set_ylabel("response magnitude")
-        ax[1].set_ylabel("response, real")
-        ax[2].set_ylabel("response, imag")
-        ax[2].set_xlabel("frequency (rad/s)")
-        fig.suptitle("Response convergence")
+        
+        if conv_plot:
+            # labels for convergence plots
+            ax[1].legend()
+            ax[0].set_ylabel("response magnitude")
+            ax[1].set_ylabel("response, real")
+            ax[2].set_ylabel("response, imag")
+            ax[2].set_xlabel("frequency (rad/s)")
+            fig.suptitle("Response convergence")
 
 
         # ------------------------------ preliminary plotting of response ---------------------------------
         
-        # RAO plotting
-        fig, ax = plt.subplots(3,1, sharex=True)
-
-        fowt = self.fowtList[0]
-
-        ax[0].plot(self.w, np.abs(Xi[0,:])          , 'b', label="surge")
-        ax[0].plot(self.w, np.abs(Xi[1,:])          , 'g', label="sway")
-        ax[0].plot(self.w, np.abs(Xi[2,:])          , 'r', label="heave")
-        ax[1].plot(self.w, np.abs(Xi[3,:])*180/np.pi, 'b', label="roll")
-        ax[1].plot(self.w, np.abs(Xi[4,:])*180/np.pi, 'g', label="pitch")
-        ax[1].plot(self.w, np.abs(Xi[5,:])*180/np.pi, 'r', label="yaw")
-        ax[2].plot(self.w, fowt.zeta,                 'k', label="wave amplitude (m)")
-
-        ax[0].legend()
-        ax[1].legend()
-        ax[2].legend()
-
-        #ax[0].set_ylim([0, 1e6])
-        #ax[1].set_ylim([0, 1e9])
-
-        ax[0].set_ylabel("response magnitude (m)")
-        ax[1].set_ylabel("response magnitude (deg)")
-        ax[2].set_ylabel("wave amplitude (m)")
-        ax[2].set_xlabel("frequency (rad/s)")
+        if RAO_plot:
+            # RAO plotting
+            fig, ax = plt.subplots(3,1, sharex=True)
+    
+            fowt = self.fowtList[0]
+    
+            ax[0].plot(self.w, np.abs(Xi[0,:])          , 'b', label="surge")
+            ax[0].plot(self.w, np.abs(Xi[1,:])          , 'g', label="sway")
+            ax[0].plot(self.w, np.abs(Xi[2,:])          , 'r', label="heave")
+            ax[1].plot(self.w, np.abs(Xi[3,:])*180/np.pi, 'b', label="roll")
+            ax[1].plot(self.w, np.abs(Xi[4,:])*180/np.pi, 'g', label="pitch")
+            ax[1].plot(self.w, np.abs(Xi[5,:])*180/np.pi, 'r', label="yaw")
+            ax[2].plot(self.w, fowt.zeta,                 'k', label="wave amplitude (m)")
+    
+            ax[0].legend()
+            ax[1].legend()
+            ax[2].legend()
+    
+            #ax[0].set_ylim([0, 1e6])
+            #ax[1].set_ylim([0, 1e9])
+    
+            ax[0].set_ylabel("response magnitude (m)")
+            ax[1].set_ylabel("response magnitude (deg)")
+            ax[2].set_ylabel("wave amplitude (m)")
+            ax[2].set_xlabel("frequency (rad/s)")
 
         
         self.Xi = Xi
@@ -1662,6 +1666,10 @@ class Model():
             self.results['response']['pitch RAO'  ] = RAOmag[3,:]
             self.results['response'][ 'roll RAO'  ] = RAOmag[4,:]
             self.results['response'][  'yaw RAO'  ] = RAOmag[5,:]
+            
+            # save dynamic derived quantities
+            #self.results['response']['mooring tensions'] = ...
+            self.results['response']['nacelle acceleration'] = self.w**2 * (self.Xi[0] + self.Xi[4]*fowt.hHub)
         
     
 
@@ -1720,9 +1728,7 @@ class Model():
          RMSheave(imeto) = sqrt( sum( ((abs(rao{imeto}(:,3))).^2).*S(:,imeto) ) *(w(2)-w(1)) );
         '''
 
-        # save dynamic derived quantities
-        #self.results['response']['mooring tensions'] = ...
-        self.results['response']['nacelle acceleration'] = self.w**2 * (self.Xi[0] + self.Xi[4]*fowt.hHub)
+        
         
         return self.results
         

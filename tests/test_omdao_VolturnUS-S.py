@@ -155,23 +155,23 @@ prob['platform_member4_rho_shell'] = 7850
 # -------------------------
 prob['mooring_water_depth'] = 200
 # connection points
-prob['mooring_point1_name'] = ['line1_anchor']
-prob['mooring_point1_type'] = ['fixed']
+prob['mooring_point1_name'] = 'line1_anchor'
+prob['mooring_point1_type'] = 'fixed'
 prob['mooring_point1_location'] = [-837., 0.0, -200.0]
-prob['mooring_point2_name'] = ['line2_anchor']
-prob['mooring_point2_type'] = ['fixed']
+prob['mooring_point2_name'] = 'line2_anchor'
+prob['mooring_point2_type'] = 'fixed'
 prob['mooring_point2_location'] = [418, 725, -200.0]
-prob['mooring_point3_name'] = ['line3_anchor']
-prob['mooring_point3_type'] = ['fixed']
+prob['mooring_point3_name'] = 'line3_anchor'
+prob['mooring_point3_type'] = 'fixed'
 prob['mooring_point3_location'] = [418, -725, -200.0]
-prob['mooring_point4_name'] = ['line1_vessel']
-prob['mooring_point4_type'] = ['vessel']
+prob['mooring_point4_name'] = 'line1_vessel'
+prob['mooring_point4_type'] = 'vessel'
 prob['mooring_point4_location'] = [-58., 0, -14.0]
-prob['mooring_point5_name'] = ['line2_vessel']
-prob['mooring_point5_type'] = ['vessel']
+prob['mooring_point5_name'] = 'line2_vessel'
+prob['mooring_point5_type'] = 'vessel'
 prob['mooring_point5_location'] = [29, 50, -14.0]
-prob['mooring_point6_name'] = ['line3_vessel']
-prob['mooring_point6_type'] = ['vessel']
+prob['mooring_point6_name'] = 'line3_vessel'
+prob['mooring_point6_type'] = 'vessel'
 prob['mooring_point6_location'] = [29, -50, -14.0]
 # lines
 prob['mooring_line1_endA'] = 'line1_anchor'

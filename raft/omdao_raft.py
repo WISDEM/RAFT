@@ -12,8 +12,10 @@ ndim = 3
 ndof = 6
 
 class RAFT_OMDAO(om.ExplicitComponent):
-    """RAFT OpenMDAO Wrapper API"""
+    """
+    RAFT OpenMDAO Wrapper API
 
+    """
     def initialize(self):
         self.options.declare('modeling_options')
         self.options.declare('turbine_options')
@@ -165,13 +167,14 @@ class RAFT_OMDAO(om.ExplicitComponent):
 
         # outputs
         # properties
+        nballast = np.sum(member_npts_rho_fill)
         self.add_output('properties_tower mass', units='kg', desc='Tower mass')
         self.add_output('properties_tower CG', val=np.zeros(ndim), units='m', desc='Tower center of gravity')
         self.add_output('properties_substructure mass', val=0.0, units='kg', desc='Substructure mass')
         self.add_output('properties_substructure CG', val=np.zeros(ndim), units='m', desc='Substructure center of gravity')
         self.add_output('properties_shell mass', val=0.0, units='kg', desc='Shell mass')
-        self.add_output('properties_ballast mass', val=np.zeros(2), units='m', desc='Ballast mass')
-        self.add_output('properties_ballast densities', val=np.zeros(2), units='kg', desc='Ballast densities')
+        self.add_output('properties_ballast mass', val=np.zeros(nballast), units='m', desc='Ballast mass')
+        self.add_output('properties_ballast densities', val=np.zeros(nballast), units='kg', desc='Ballast densities')
         self.add_output('properties_total mass', val=0.0, units='kg', desc='Total mass of system')
         self.add_output('properties_total CG', val=np.zeros(ndim), units='m', desc='Total system center of gravity')
         self.add_output('properties_roll inertia at subCG', val=np.zeros(ndim), units='kg*m**2', desc='Roll inertia sub CG')
@@ -223,7 +226,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['name'] = ['spiderfloat']
         design['comments'] = ['none']
 
-        # TODO: these float/string conversions are messy
+        # TODO: these float conversions are messy
         design['turbine'] = {}
         design['turbine']['mRNA'] = float(inputs['turbine_mRNA'])
         design['turbine']['IxRNA'] = float(inputs['turbine_IxRNA'])
@@ -307,8 +310,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['mooring']['points'] = [dict() for i in range(nconnections)]
         for i in range(0, nconnections):
             pt_name = f'mooring_point{i+1}_'
-            design['mooring']['points'][i]['name'] = str(discrete_inputs[pt_name+'name'][0])
-            design['mooring']['points'][i]['type'] = str(discrete_inputs[pt_name+'type'])
+            design['mooring']['points'][i]['name'] = discrete_inputs[pt_name+'name']
+            design['mooring']['points'][i]['type'] = discrete_inputs[pt_name+'type']
             design['mooring']['points'][i]['location'] = inputs[pt_name+'location']
 
         design['mooring']['lines'] = [dict() for i in range(nlines)]
@@ -317,12 +320,12 @@ class RAFT_OMDAO(om.ExplicitComponent):
             design['mooring']['lines'][i]['name'] = f'line{i+1}'
             design['mooring']['lines'][i]['endA'] = discrete_inputs[ml_name+'endA']
             design['mooring']['lines'][i]['endB'] = discrete_inputs[ml_name+'endB']
-            design['mooring']['lines'][i]['type'] = str(discrete_inputs[ml_name+'type'])
+            design['mooring']['lines'][i]['type'] = discrete_inputs[ml_name+'type']
             design['mooring']['lines'][i]['length'] = inputs[ml_name+'length']
         design['mooring']['line_types'] = [dict() for i in range(nline_types)]
         for i in range(0, nline_types):
             lt_name = f'mooring_line_type{i+1}_'
-            design['mooring']['line_types'][i]['name'] = str(discrete_inputs[lt_name+'name'])
+            design['mooring']['line_types'][i]['name'] = discrete_inputs[lt_name+'name']
             design['mooring']['line_types'][i]['diameter'] = float(inputs[lt_name+'diameter'])
             design['mooring']['line_types'][i]['mass_density'] = float(inputs[lt_name+'mass_density'])
             design['mooring']['line_types'][i]['stiffness'] = float(inputs[lt_name+'stiffness'])
@@ -355,4 +358,4 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 outputs['properties_'+name] = results['properties'][name]
             elif outs[i][0].startswith('response_'):
                 name = outs[i][0].split('response_')[1]
-                outputs['response_'+name] = results['response'][name].real
+                outputs['response_'+name] = np.abs(results['response'][name])

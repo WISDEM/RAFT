@@ -5,7 +5,7 @@ import openmdao.api as om
 def check(A, B):
 
     if np.iscomplex(B).any():
-        B_check = B.real
+        B_check = np.abs(B)
     else:
         B_check = B
 

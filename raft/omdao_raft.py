@@ -358,4 +358,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 outputs['properties_'+name] = results['properties'][name]
             elif outs[i][0].startswith('response_'):
                 name = outs[i][0].split('response_')[1]
-                outputs['response_'+name] = np.abs(results['response'][name])
+                if np.iscomplex(results['response'][name]).any():
+                    outputs['response_'+name] = np.abs(results['response'][name])
+                else:
+                    outputs['response_'+name] = results['response'][name]

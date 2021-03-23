@@ -57,7 +57,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         self.add_input('turbine_tower_rA', val=np.zeros(ndim), units='m', desc='End A coordinates')
         self.add_input('turbine_tower_rB', val=np.zeros(ndim), units='m', desc='End B coordinates')
         self.add_input('turbine_tower_gamma', val=0.0, units='deg', desc='Twist angle about z-axis')
-        self.add_input('turbine_tower_stations', val=np.zeros(turbine_npts), units='m', desc='Location of stations along axis, will be normalized along rA to rB')
+        self.add_input('turbine_tower_stations', val=np.zeros(turbine_npts), desc='Location of stations along axis, will be normalized along rA to rB')
         if turbine_opt['scalar_diameters']:
             self.add_input('turbine_tower_d', val=0.0, units='m', desc='Diameters if circular or side lengths if rectangular')
         else:
@@ -128,7 +128,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             # optional
             self.add_input(m_name+'l_fill', val=np.zeros(mnpts_lfill), units='m', desc='Fill heights of ballast in each section')
             self.add_input(m_name+'rho_fill', val=np.zeros(mnpts_lfill), units='kg/m**3', desc='Material density of ballast in each section')
-            self.add_input(m_name+'cap_stations', val=np.zeros(mncaps), units='m', desc='Location along member of any inner structures (same scaling as stations')
+            self.add_input(m_name+'cap_stations', val=np.zeros(mncaps), desc='Location along member of any inner structures (same scaling as stations')
             self.add_input(m_name+'cap_t', val=np.zeros(mncaps), units='m', desc='Thickness of any internal structures')
             self.add_input(m_name+'cap_d_in', val=np.zeros(mncaps), units='m', desc='Inner diameter of internal structures')
             self.add_input(m_name+'ring_spacing', val=0.0, desc='Spacing of internal structures placed based on spacing.  Dimension is same as used in stations')
@@ -275,7 +275,6 @@ class RAFT_OMDAO(om.ExplicitComponent):
             mnpts_lfill = member_npts_lfill[i]
             mncaps = member_ncaps[i]
             mnreps = member_nreps[i]
-            m_name = f'platform_member{i}_'
             
             design['platform']['members'][i]['name'] = m_name
             design['platform']['members'][i]['type'] = i + 2

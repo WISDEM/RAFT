@@ -5,7 +5,7 @@ import yaml
 import matplotlib.pyplot as plt
 
 # test local code; consider src layout in future to test installed code
-import raft
+import raft as raft
 import moorpy as mp
 
 
@@ -45,13 +45,13 @@ def runRAFT(fname_design, fname_env):
     model.calcSystemProps()          # get all the setup calculations done within the model
     
     model.solveEigen()
-
+    
     model.calcMooringAndOffsets()    # calculate the offsets for the given loading
 
     model.solveDynamics()            # put everything together and iteratively solve the dynamic response
 
     model.plot()
-
+    
     plt.show()
     
     return model

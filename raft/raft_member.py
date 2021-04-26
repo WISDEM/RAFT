@@ -309,8 +309,7 @@ class Member:
 
 
         # ------- member inertial calculations ---------
-        n = len(self.stations)                          # set n as the number of stations = number of sub-members plus 1
-
+        
         mass_center = 0                                 # total sum of mass the center of mass of the member [kg-m]
         mshell = 0                                      # total mass of the shell material only of the member [kg]
         mfill = []                                      # list of ballast masses in each submember [kg]
@@ -318,7 +317,7 @@ class Member:
         self.M_struc = np.zeros([6,6])                  # member mass/inertia matrix [kg, kg-m, kg-m^2]
 
         # loop through each sub-member
-        for i in range(1,n):                            # start at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
+        for i in range(1,len(self.stations)):                            # start at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
 
             # initialize common variables
             rA = self.rA + self.q*self.stations[i-1]    # lower node position of the submember [m]
@@ -484,7 +483,7 @@ class Member:
                     # this would cause the inner member to stick out beyond the end point based on the following else calcs
                     # not including this for now since the modeler should be aware to not do this
                     raise ValueError('This setup cannot be handled by getIneria yet')
-                elif i < n-1 and L==self.cap_stations[i+1]: # if there's a discontinuity in the member and l=0
+                elif i < len(self.cap_stations)-1 and L==self.cap_stations[i+1]: # if there's a discontinuity in the member and l=0
                     dA = np.interp(L-h, self.stations, d)   # make an end cap going down from the lower member
                     dB = d[i]
                     dBi = d_hole
@@ -548,7 +547,7 @@ class Member:
                     # this would cause the inner member to stick out beyond the end point based on the following else calcs
                     # not including this for now since the modeler should be aware to not do this
                     raise ValueError('This setup cannot be handled by getIneria yet')
-                elif i < n-1 and L==self.cap_stations[i+1]:
+                elif i < len(self.cap_stations)-1 and L==self.cap_stations[i+1]:
                     slA = np.interp(L-h, self.stations, sl)
                     slB = sl[i]
                     slBi = sl_hole

@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 
 import moorpy as mp
-import hams.pyhams     as ph
+import pyhams.pyhams     as ph
 import raft.member2pnl as pnl
 import raft.raft_fowt  as fowt
 from raft.helpers import *

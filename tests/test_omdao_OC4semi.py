@@ -20,6 +20,10 @@ opt = {}
 
 opt['modeling'] = {}
 opt['modeling']['nfreq'] = len(w)
+opt['modeling']['potModMaster'] = True
+opt['modeling']['XiStart'] = False
+opt['modeling']['nIter'] = False
+opt['modeling']['dlsMax'] = False
 
 opt['turbine'] = {}
 opt['turbine']['npts'] = 11
@@ -57,6 +61,7 @@ prob.setup()
 # inputs
 # -------------------------
 prob['frequency_range'] = w
+prob['potModMaster'] = 1
 
 # -------------------------
 # turbine
@@ -88,7 +93,7 @@ prob['turbine_tower_rho_shell'] = 8500.0
 prob['platform_member1_rA'] = [0, 0, -20]
 prob['platform_member1_rB'] = [0, 0, 10]
 prob['platform_member1_gamma'] = 0.0
-prob['platform_member1_potMod'] = False
+prob['platform_member1_potMod'] = True
 prob['platform_member1_stations'] = [-20, 10]
 prob['platform_member1_d'] = [6.5, 6.5]
 prob['platform_member1_t'] = 0.03
@@ -105,7 +110,7 @@ prob['platform_member2_heading'] = [60, 180, 300]
 prob['platform_member2_rA'] = [28.86, 0, -20]
 prob['platform_member2_rB'] = [28.86, 0, 12]
 prob['platform_member2_gamma'] = 0.0
-prob['platform_member2_potMod'] = False
+prob['platform_member2_potMod'] = True
 prob['platform_member2_stations'] = [-20, -14, -14, 12]
 prob['platform_member2_d'] = [24, 24, 12, 12]
 prob['platform_member2_t'] = 0.06
@@ -272,7 +277,7 @@ model.calcMooringAndOffsets()
 model.solveDynamics()
 
 results = model.calcOutputs()
-
+print('-----------------')
 testPass = test(prob, results)
 
 print('Test ' + ('FAILED' if not testPass else 'PASSED'))

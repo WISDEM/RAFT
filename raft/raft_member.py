@@ -102,8 +102,8 @@ class Member:
             self.cap_d_in     = []
             self.cap_stations = []
         else:
-            self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape)   # thicknesses [m]
-            self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape)   # inner diameter (if it isn't a solid plate) [m]
+            self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape[0])   # thicknesses [m]
+            self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape[0])   # inner diameter (if it isn't a solid plate) [m]
             self.cap_stations = (cap_stations - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
             
 

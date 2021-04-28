@@ -20,6 +20,10 @@ opt = {}
 
 opt['modeling'] = {}
 opt['modeling']['nfreq'] = len(w)
+opt['modeling']['potModMaster'] = True
+opt['modeling']['XiStart'] = True
+opt['modeling']['nIter'] = True
+opt['modeling']['dlsMax'] = True
 
 opt['turbine'] = {}
 opt['turbine']['npts'] = 11
@@ -58,6 +62,11 @@ prob.setup()
 # -------------------------
 prob['frequency_range'] = w
 
+prob['potModMaster'] = 1
+prob['XiStart'] = 0
+prob['nIter'] = 0
+prob['dlsMax'] = 5.0
+
 # -------------------------
 # turbine
 # -------------------------
@@ -88,7 +97,7 @@ prob['turbine_tower_rho_shell'] = 8500
 prob['platform_member1_rA'] = [0, 0, -120]
 prob['platform_member1_rB'] = [0, 0, 10]
 prob['platform_member1_gamma'] = 0.0
-prob['platform_member1_potMod'] = False
+prob['platform_member1_potMod'] = True
 prob['platform_member1_stations'] = [-120, -12, -4, 10]
 prob['platform_member1_d'] = [9.4, 9.4, 6.5, 6.5]
 prob['platform_member1_t'] = 0.027
@@ -119,10 +128,10 @@ prob['mooring_point3_type'] = 'fixed'
 prob['mooring_point3_location'] = [-426.935, -739.47311, -320.0]
 prob['mooring_point4_name'] = 'line1_vessel'
 prob['mooring_point4_type'] = 'vessel'
-prob['mooring_point4_location'] = [-5.2, 0, -70.0]
+prob['mooring_point4_location'] = [5.2, 0, -70.0]
 prob['mooring_point5_name'] = 'line2_vessel'
 prob['mooring_point5_type'] = 'vessel'
-prob['mooring_point5_location'] = [2.6, 4.5033, -70.0]
+prob['mooring_point5_location'] = [-2.6, 4.5033, -70.0]
 prob['mooring_point6_name'] = 'line3_vessel'
 prob['mooring_point6_type'] = 'vessel'
 prob['mooring_point6_location'] = [-2.6, -4.5033, -70.0]
@@ -185,7 +194,7 @@ model.calcMooringAndOffsets()
 model.solveDynamics()
 
 results = model.calcOutputs()
-
+print('-----------------')
 testPass = test(prob, results)
 
 print('Test ' + ('FAILED' if not testPass else 'PASSED'))

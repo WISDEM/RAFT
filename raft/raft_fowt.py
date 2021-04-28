@@ -6,6 +6,8 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
+import pyhams.pyhams     as ph
+import raft.member2pnl as pnl
 from raft.helpers import *
 import raft.raft_member as mem
 

@@ -43,7 +43,7 @@ def runRAFT(fname_design, fname_env):
     model.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
 
     model.calcSystemProps()          # get all the setup calculations done within the model
-    
+    '''
     model.solveEigen()
     
     model.calcMooringAndOffsets()    # calculate the offsets for the given loading
@@ -51,7 +51,7 @@ def runRAFT(fname_design, fname_env):
     model.solveDynamics()            # put everything together and iteratively solve the dynamic response
 
     model.plot()
-    
+    '''
     plt.show()
     
     return model

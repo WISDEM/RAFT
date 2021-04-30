@@ -92,11 +92,11 @@ class Model():
             self.k[i] = waveNumber(self.w[i], self.depth)
         
         # set up the FOWT here  <<< only set for 1 FOWT for now <<<
-        self.fowtList.append(FOWT(design, w=self.w, mpb=self.ms.BodyList[0], depth=depth))
+        self.fowtList.append(FOWT(design, w=self.w, mpb=self.ms.bodyList[0], depth=depth))
         self.coords.append([0.0,0.0])
         self.nDOF += 6
 
-        self.ms.BodyList[0].type = -1  # need to make sure it's set to a coupled type
+        self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
 
         self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
 
@@ -134,6 +134,7 @@ class Model():
             fowt.calcBEM()
             fowt.calcStatics()
             fowt.calcHydroConstants()
+            fowt.calcTurbineConstants()
             #fowt.calcDynamicConstants()
 
         ## First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
@@ -164,9 +165,9 @@ class Model():
         i2 = 6
         
         print("Equilibrium'3' platform positions/rotations:")
-        printVec(self.ms.BodyList[0].r6)
+        printVec(self.ms.bodyList[0].r6)
 
-        r6eq = self.ms.BodyList[0].r6
+        r6eq = self.ms.bodyList[0].r6
 
         #self.ms.plot()
 
@@ -540,7 +541,7 @@ class Model():
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
-        self.ms.BodyList[0].setPosition(np.zeros(6))
+        self.ms.bodyList[0].setPosition(np.zeros(6))
         self.ms.initialize()
         fig, ax = self.ms.plot()
         #fig = plt.figure(figsize=(20/2.54,12/2.54))

@@ -7,10 +7,8 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from raft.helpers import *
-import raft.raft_member as mem
-
-from importlib import reload
-Member = reload(mem).Member
+from raft.raft_member import Member
+from raft.raft_rotor import Rotor
 
 try:
     import ccblade         # clone ccblade
@@ -66,6 +64,12 @@ class FOWT():
 
         # mooring system connection
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
+
+
+        # Turbine rotor
+        self.rotor = Rotor()
+        
+        self.rotor.runCCblade()
 
 
         # turbine RNA description
@@ -387,7 +391,15 @@ class FOWT():
 
             # >>> do we want to seperate out infinite-frequency added mass? <<<
             
-            
+    
+    def calcTurbineConstants(self):
+        '''This computes turbine linear terms'''
+        
+        self.rotor.calcAeroContributions(self.nw, np.zeros(self.nw) )
+        
+        
+        
+    
 
     def calcHydroConstants(self):
         '''This computes the linear strip-theory-hydrodynamics terms.'''

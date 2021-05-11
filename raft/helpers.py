@@ -157,9 +157,8 @@ def SmallRotate(r, th):
     rt = np.zeros(3, dtype=complex)    # translated point
 
     rt[0] =              th[2]*r[1] - th[1]*r[2]
-    rt[0] = th[2]*r[0]              - th[0]*r[2]
-    rt[0] = th[1]*r[0] - th[0]*r[1]
-    # shousner: @matthall, should these be rt[0], rt[1], rt[2] ?
+    rt[1] = th[2]*r[0]              - th[0]*r[2]
+    rt[2] = th[1]*r[0] - th[0]*r[1]
     return rt
 
 
@@ -187,9 +186,36 @@ def getH(r):
 
     return H
 
+def rotationMatrix(x3,x2,x1):
+    '''Calculates a rotation matrix based on order-z,y,x instrinsic (tait-bryan?) angles, meaning
+    they are about the ROTATED axes. (rotation about z-axis would be (0,0,theta) )
+    
+    Parameters
+    ----------
+    x3, x2, x1: floats
+        The angles that the rotated axes are from the nonrotated axes. Normally roll,pitch,yaw respectively. [rad]
 
+    Returns
+    -------
+    R : matrix
+        The rotation matrix
+    '''
+    # initialize the sines and cosines
+    s1 = np.sin(x1) 
+    c1 = np.cos(x1)
+    s2 = np.sin(x2) 
+    c2 = np.cos(x2)
+    s3 = np.sin(x3) 
+    c3 = np.cos(x3)
+    
+    # create the rotation matrix
+    R = np.array([[ c1*c2,  c1*s2*s3-c3*s1,  s1*s3+c1*c3*s2],
+                  [ c2*s1,  c1*c3+s1*s2*s3,  c3*s1*s2-c1*s3],
+                  [   -s2,           c2*s3,           c2*c3]])
+    
+    return R    
 
-def translateForce3to6DOF(r, Fin):
+def translateForce3to6DOF(Fin, r):
     '''Takes in a position vector and a force vector (applied at the positon), and calculates
     the resulting 6-DOF force and moment vector.
 
@@ -207,9 +233,53 @@ def translateForce3to6DOF(r, Fin):
     return Fout
 
 
+def transformForce(f_in, offset=[], orientation=[]):
+    '''Transform a size-3 or size-6 force from one reference frame to another
+    
+    Parameters
+    ----------
+    f_in : size 3 or 6 array
+        the input force vector or force and moment vector
+    offset : size-3 array
+        the x,y,z coordinates at which f_in is acting, relative to the reference frame at which the force and moment should be returned
+    orientation : size-3 array
+        The orientation of f_in relative to the reference frame of the results. If size 3: x,y,z Euler angles 
+        describing the rotations around each axis (applied in order z, y, x). If 3-by-3, the rotation matrix.
+    '''
+    
+    # input size checks
+    if not len(f_in) in [3,6]:
+        raise ValueError("f_in input must be size 3 or 6")
+    if not len(offset) in [0,3]:
+        raise ValueError("offset input if provided must be size 3")
+    
+    # prep rotation matrix
+    if len(orientation) > 0:
+        rot = np.array(orientation)
+        if rot.shape == (3,):
+            rotMat = rotationMatrix(*rot)
+        elif rot.shape == (3,3):
+            rotMat = rot
+        else:
+            raise ValueError("orientation input if provided must be size 3 or 3-by-3")
+        
+    # rotation
+    f_in2 = np.array(f_in)
+    f = np.zeros(6)
+    if len(orientation) > 0:
+        f[:3] = np.matmul(rotMat, f_in2[:3])
+        if len(f_in) == 6:
+            f[3:] = np.matmul(rotMat, f_in2[3:])
+       
+    # translation
+    if len(offset) > 0:
+        f[3:] += np.cross(offset, f[:3])  # add moment created by offsetting forces
+    
+    return f
+
 
 # translate mass matrix to make 6DOF mass-inertia matrix
-def translateMatrix3to6DOF(r, Min):
+def translateMatrix3to6DOF(Min, r):
     '''Transforms a 3x3 matrix to be about a translated reference point, resulting in a 6x6 matrix.'''
 
     # sub-matrix definitions are accordint to  | m    J |
@@ -235,7 +305,7 @@ def translateMatrix3to6DOF(r, Min):
     return Mout
 
 
-def translateMatrix6to6DOF(r, Min):
+def translateMatrix6to6DOF(Min, r):
     '''Transforms a 6x6 matrix to be about a translated reference point.
     r is a vector that goes from where you want the reference point to be
     to where the reference point currently is'''
@@ -258,6 +328,45 @@ def translateMatrix6to6DOF(r, Min):
     Mout[3:,3:] = np.matmul(np.matmul(H,Min[:3,:3]), H.T) + np.matmul(Min[3:,:3], H) + np.matmul(H.T, Min[:3,3:]) + Min[3:,3:]
 
     return Mout
+
+
+   
+def rotateMatrix6(Min, rotMat):
+    '''apply a rotation to a 6-by-6 mass/inertia tensor (see Sadeghi and Incecik 2005 for theory)
+    the process for each of the following is to 
+    1. copy out the relevant 3x3 matrix section,
+    2. rotate it, and
+    3. paste it into the output 6x6 matrix
+    
+    PARAMETERS
+    ----------
+    Min : array(6,6) 
+        inputted matrix to be rotated
+    rotMat : array(3,3)  
+        rotation matrix (DCM)
+    '''    
+    outMat = np.zeros([6,6])  # rotated matrix
+
+    outMat[:3,:3] = rotateMatrix3(Min[:3,:3], rotMat)    # mass matrix
+    outMat[:3,3:] = rotateMatrix3(Min[:3,3:], rotMat)    # product of inertia matrix
+    outMat[3:,:3] = outMat[:3,3:].T
+    outMat[3:,3:] = rotateMatrix3(Min[3:,3:], rotMat)    # moment of inertia matrix
+
+    return outMat
+
+
+def rotateMatrix3(Min, rotMat):
+    '''apply a rotation to a 3-by-3 mass matrix or any other second order tensor   
+    overall operation is [m'] = [a]*[m]*[a]^T
+    
+    PARAMETERS
+    ----------
+    Min : array(3,3) 
+        inputted matrix to be rotated
+    rotMat : array(3,3)  
+        rotation matrix (DCM)
+    '''
+    return np.matmul( np.matmul(rotMat, Min), rotMat.T )
 
 
 def JONSWAP(ws, Hs, Tp, Gamma=1.0):

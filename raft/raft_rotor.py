@@ -273,24 +273,24 @@ class Rotor:
         pitch_deg = np.array([0.])
 
 
-        outputs = {}
+        self.outputs = {}
 
         loads, derivs = self.ccblade.evaluate(self.Uhub, Omega_rpm, pitch_deg, coefficients=True)
 
-        outputs["P"] = loads["P"]
-        outputs["Mb"] = loads["Mb"]
-        outputs["CP"] = loads["CP"]
-        outputs["CMb"] = loads["CMb"]
-        outputs["Fhub"] = np.array([loads["T"], loads["Y"], loads["Z"]])
-        outputs["Mhub"] = np.array([loads["Q"], loads["My"], loads["Mz"]])
-        outputs["CFhub"] = np.array([loads["CT"], loads["CY"], loads["CZ"]])
-        outputs["CMhub"] = np.array([loads["CQ"], loads["CMy"], loads["CMz"]])
+        self.outputs["P"] = loads["P"]
+        self.outputs["Mb"] = loads["Mb"]
+        self.outputs["CP"] = loads["CP"]
+        self.outputs["CMb"] = loads["CMb"]
+        self.outputs["Fhub"] = np.array( [loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0]])
+        self.outputs["Mhub"] = np.array( [loads["Q" ][0], loads["My" ][0], loads["Mz" ][0]])
+        self.outputs["CFhub"] = np.array([loads["CT"][0], loads["CY" ][0], loads["CZ" ][0]])
+        self.outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
 
 
         print("Wind speed")
         print(self.Uhub)
         print("Aerodynamic power coefficient")
-        print(outputs["CP"])
+        print(self.outputs["CP"])
 
         self.J={}
         
@@ -338,9 +338,9 @@ class Rotor:
 
 
     def calcAeroContributions(self, nw=0, U_amplitude=[]):
-        '''Calculates stiffness, damping, and added mass contributions to the system matrices
-        from rotor aerodynamics. Results are w.r.t. platform reference point assuming rigid tower,
-        constant rotor speed, and no controls.
+        '''Calculates stiffness, damping, added mass, and excitation coefficients
+        from rotor aerodynamics. Results are w.r.t. nonrotating hub reference frame
+        and assume constant rotor speed and no controls.
         '''
         
         Uinf = 10.  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
@@ -365,27 +365,29 @@ class Rotor:
         F_aero0= np.zeros(6)                            # steady wind forces/moments
         F_aero = np.zeros([6,nw])                       # wind excitation spectra in each DOF
         
-        # calculate contribution to system matrices - assuming rigid body and no control to start with        
+        # calculate hub aero coefficients (in nonrotating hub reference frame) - assuming rigid body and no control to start with        
         B_aero[0,0] += dT_dU                            # surge damping
-        B_aero[0,4] += dT_dU*Hhub                       # 
-        B_aero[4,0] += dT_dU*Hhub                       # 
-        B_aero[4,4] += dT_dU*Hhub**2                    # pitch damping
+        #B_aero[0,4] += dT_dU*Hhub                       # 
+        #B_aero[4,0] += dT_dU*Hhub                       # 
+        #B_aero[4,4] += dT_dU*Hhub**2                    # pitch damping
         
-        # calculate wind excitation force/moment spectra
+        # calculate wind excitation force/moment spectra (in nonrotating hub reference frame)
         for i in range(nw):                             # loop through each frequency component
             F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation
-            F_aero[4,i] = U_amplitude[i]*dT_dU*Hhub        # pitch excitation
+            #F_aero[4,i] = U_amplitude[i]*dT_dU*Hhub        # pitch excitation
             #F_aero[7,i] = U_amplitude*dQ_dU            # rotor torque excitation
         
-        
+        # calculate steady aero forces and moments
+        F_aero0 = np.hstack((self.outputs["Fhub"],self.outputs["Mhub"]))
+                
         return A_aero, B_aero, C_aero, F_aero0, F_aero
         
 
 
     def calcAeroServoContributions(self, nw=0, U_amplitude=[]):
-        '''Calculates stiffness, damping, and added mass contributions to the system matrices
-        from rotor aerodynamics coupled with turbine control system. 
-        Results are w.r.t. platform reference point assuming rigid tower.
+        '''Calculates stiffness, damping, added mass, and excitation coefficients
+        from rotor aerodynamics coupled with turbine controls. 
+        Results are w.r.t. nonrotating hub reference frame.
         '''
         
         Uinf = 10.  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
@@ -406,13 +408,12 @@ class Rotor:
         F_aero0= np.zeros(6)                            # steady wind forces/moments
         F_aero = np.zeros([6,nw])                       # wind excitation spectra in each DOF
         
-        # calculate contribution to system matrices
+        # calculate nonzero matrix entries
         
         #...
         
         # calculate wind excitation force/moment spectra (will this change with control?)
         for i in range(nw):                             # loop through each frequency component
-            F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation
-            F_aero[4,i] = U_amplitude[i]*dT_dU*Hhub        # pitch excitation        
+            F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation    
         
         return A_aero, B_aero, C_aero, F_aero0, F_aero

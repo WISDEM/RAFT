@@ -67,9 +67,9 @@ class FOWT():
 
 
         # Turbine rotor
-        self.rotor = Rotor()
+        self.rotor = Rotor(design['turbine'])
         
-        self.rotor.runCCblade()
+        self.rotor.runCCBlade()   # << eventually should be done after solving mean offsets
 
 
         # turbine RNA description

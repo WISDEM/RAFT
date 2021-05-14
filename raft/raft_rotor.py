@@ -38,7 +38,7 @@ class Rotor:
         fname_input_wt = os.path.join(raft_dir,'designs/rotors', turbine_string+'.yaml')   # <<<<<<<<<< input
         wt_init = sch.load_geometry_yaml(fname_input_wt)
 
-        # Set some turbine params
+        # Set some turbine params, this can come from WEIS/WISDEM or an external input
         if turbine_string == 'IEA-10-198-RWT':
             self.Uhub = np.array([14.])
             self.Omega_rpm = np.array([9.56])

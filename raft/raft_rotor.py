@@ -26,10 +26,12 @@ rpm2radps = 0.1047
 # a class for the rotor structure, aerodynamics, and control in RAFT
 class Rotor:
 
-    def __init__(self, turbine):
+    def __init__(self, turbine, w):
         '''
         >>>> add mean offset parameters add move this to runCCBlade<<<<
         '''
+
+        self.w = np.array(w)
 
         # (not worrying about rotor structure/mass yet, just aero)
         blade   = turbine['blade']
@@ -203,7 +205,7 @@ class Rotor:
 
 
 
-    def calcAeroContributions(self, nw=0, U_amplitude=[]):
+    def calcAeroContributions(self, U_amplitude=[]):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics. Results are w.r.t. nonrotating hub reference frame
         and assume constant rotor speed and no controls.
@@ -227,22 +229,19 @@ class Rotor:
         # ...
 
         # coefficients to be filled in
-        A_aero = np.zeros([6,6])                        # added mass
-        B_aero = np.zeros([6,6])                        # damping
+        nw = len(self.w)
+        A_aero = np.zeros([6,6,nw])                     # added mass
+        B_aero = np.zeros([6,6,nw])                     # damping
         C_aero = np.zeros([6,6])                        # stiffness
         F_aero0= np.zeros(6)                            # steady wind forces/moments
         F_aero = np.zeros([6,nw])                       # wind excitation spectra in each DOF
 
         # calculate hub aero coefficients (in nonrotating hub reference frame) - assuming rigid body and no control to start with
-        B_aero[0,0] += dT_dU                            # surge damping
-        #B_aero[0,4] += dT_dU*Hhub                       #
-        #B_aero[4,0] += dT_dU*Hhub                       #
-        #B_aero[4,4] += dT_dU*Hhub**2                    # pitch damping
+        B_aero[0,0,:] += dT_dU                          # surge damping
 
         # calculate wind excitation force/moment spectra (in nonrotating hub reference frame)
-        for i in range(nw):                             # loop through each frequency component
-            F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation
-            #F_aero[4,i] = U_amplitude[i]*dT_dU*Hhub        # pitch excitation
+        for i in range(len(self.w)):                    # loop through each frequency component
+            F_aero[0,i] = U_amplitude[i]*dT_dU          # surge excitation
             #F_aero[7,i] = U_amplitude*dQ_dU            # rotor torque excitation
 
         # calculate steady aero forces and moments
@@ -264,7 +263,7 @@ class Rotor:
             self.ki_0 = 0.13
             
 
-    def calcAeroServoContributions(self, nw=0, U_amplitude=[]):
+    def calcAeroServoContributions(self, U_amplitude=[]):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
         Results are w.r.t. nonrotating hub reference frame.
@@ -309,9 +308,7 @@ class Rotor:
             dQ_dOm = -3.2e7
             dQ_dPi = -1.6e8
 
-        ww = np.arange(0.05, 0.3, 0.05)
-        ww = np.linspace(0.05, 0.3)
-        # ww = np.logspace(-4,0)
+        ww = self.w
 
         a_aer = np.zeros_like(ww)
         b_aer = np.zeros_like(ww)
@@ -364,42 +361,45 @@ class Rotor:
             ax2[1].plot(ww,np.angle(C))
             ax2[1].set_ylabel('phase(C)')
 
-
-
-
-        plt.show()
+        #plt.show()
         
-        # # coefficients to be filled in
-        # A_aero = np.zeros([6,6])                        # added mass
-        # B_aero = np.zeros([6,6])                        # damping
-        # C_aero = np.zeros([6,6])                        # stiffness
-        # F_aero0= np.zeros(6)                            # steady wind forces/moments
-        # F_aero = np.zeros([6,nw])                       # wind excitation spectra in each DOF
+        # coefficients to be filled in
+        nw = len(self.w)
+        A_aero = np.zeros([6,6,nw])                     # added mass
+        B_aero = np.zeros([6,6,nw])                     # damping
+        C_aero = np.zeros([6,6])                        # stiffness
+        F_aero0= np.zeros(6)                            # steady wind forces/moments
+        F_aero = np.zeros([6,nw])                       # wind excitation spectra in each DOF
         
-        # # calculate contribution to system matrices - assuming rigid body and no control to start with        
-        # B_aero[0,0] += dT_dU                            # surge damping
-        # B_aero[0,4] += dT_dU*Hhub                       # 
-        # B_aero[4,0] += dT_dU*Hhub                       # 
-        # B_aero[4,4] += dT_dU*Hhub**2                    # pitch damping
+        # calculate contribution to system matrices      
+        A_aero[0,0,:] = a_aer
+        B_aero[0,0,:] = b_aer
         
-        # # calculate wind excitation force/moment spectra
-        # for i in range(nw):                             # loop through each frequency component
-        #     F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation
-        #     F_aero[4,i] = U_amplitude[i]*dT_dU*Hhub        # pitch excitation
-        #     #F_aero[7,i] = U_amplitude*dQ_dU            # rotor torque excitation
+        # calculate wind excitation force/moment spectra
+        #for i in range(nw):                             # loop through each frequency component
+        #    F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation
+        #    F_aero[4,i] = U_amplitude[i]*dT_dU*Hhub        # pitch excitation
         
         
-        # return A_aero, B_aero, C_aero, F_aero0, F_aero
+        return A_aero, B_aero, C_aero, F_aero0, F_aero
 
     def control(omega):
         pass
         
 
 if __name__=='__main__':
-    turbine = 'IEA-15-240-RWT'
-    turbine = 'IEA-10-198-RWT'
-    rr = Rotor(turbine)
-    rr.runCCblade()
-    rr.setControlGains(turbine)
+    from runRAFT import loadTurbineYAML
+    ww = np.arange(0.05, 0.3, 0.05)
+    ww = np.linspace(0.05, 0.3)
+    # ww = np.logspace(-4,0)
+    fname_turbine = 'IEA-15-240-RWT'
+    fname_turbine = 'IEA-10-198-RWT'
+    
+    turbine = loadTurbineYAML('../designs/rotors/'+fname_turbine+'.yaml')
+    
+    rr = Rotor(turbine, ww)
+    rr.runCCBlade()
+    rr.setControlGains(fname_turbine)
 
     rr.calcAeroServoContributions()
+    plt.show()

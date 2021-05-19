@@ -67,7 +67,7 @@ class FOWT():
 
 
         # Turbine rotor
-        self.rotor = Rotor(design['turbine'])
+        self.rotor = Rotor(design['turbine'], self.w)
         
         self.rotor.runCCBlade()   # << eventually should be done after solving mean offsets
 
@@ -395,15 +395,19 @@ class FOWT():
     def calcTurbineConstants(self):
         '''This computes turbine linear terms'''
         
-        A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroContributions(self.nw, np.zeros(self.nw) )
+        A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroContributions(np.zeros(self.nw) )
+        #A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroServoContributions(np.zeros(self.nw) )
         
         # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
         rHub = np.array([0,0,100.])
         rotMatHub = rotationMatrix(0, 0.01, 0)
         
-        # convert matrices to platform reference frame        
-        self.A_aero = translateMatrix6to6DOF( rotateMatrix6(A_aero, rotMatHub),  rHub)
-        self.B_aero = translateMatrix6to6DOF( rotateMatrix6(B_aero, rotMatHub),  rHub)
+        # convert matrices to platform reference frame
+        self.A_aero = np.zeros([6,6,self.nw])
+        self.B_aero = np.zeros([6,6,self.nw])
+        for i in range(self.nw):
+            self.A_aero[:,:,i] = translateMatrix6to6DOF( rotateMatrix6(A_aero[:,:,i], rotMatHub),  rHub)
+            self.B_aero[:,:,i] = translateMatrix6to6DOF( rotateMatrix6(B_aero[:,:,i], rotMatHub),  rHub)
         self.C_aero = translateMatrix6to6DOF( rotateMatrix6(C_aero, rotMatHub),  rHub)
         
         # convert forces to platform reference frame

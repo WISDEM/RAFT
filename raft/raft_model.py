@@ -305,10 +305,10 @@ class Model():
         i2 = 6
 
         # sum up all linear (non-varying) matrices up front
-        M_lin = fowt.A_aero[:,:,None] + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
-        B_lin = fowt.B_aero[:,:,None] + fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
-        C_lin = fowt.C_aero           + fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
-        F_lin = fowt.F_aero +                                    fowt.F_BEM + fowt.F_hydro_iner              # excitation
+        M_lin = fowt.A_aero + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
+        B_lin = fowt.B_aero + fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
+        C_lin = fowt.C_aero + fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
+        F_lin = fowt.F_aero +                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
         
         
         # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<

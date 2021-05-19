@@ -20,7 +20,7 @@ raft = importlib.reload(raft)
 
 
 
-def runRAFT(fname_design, fname_env):
+def runRAFT(fname_design, fname_turbine, fname_env):
     '''
     This the main function for running the raft model in standalone form, where inputs are contained in the specified input files.
     '''
@@ -41,7 +41,7 @@ def runRAFT(fname_design, fname_env):
     w = np.arange(0.05, 5, 0.05)  # frequency range (to be set by modeling options yaml)
     
     # read in turbine data and combine it in
-    turbine = loadTurbineYAML("IEA-15-240-RWT.yaml")
+    turbine = loadTurbineYAML(fname_turbine)
     design['turbine'].update(turbine)
     
     
@@ -391,8 +391,8 @@ if __name__ == "__main__":
     
     #model = runRAFT('../designs/OC3spar.yaml', 'env.yaml')
     #model = runRAFT('../designs/OC4semi.yaml', 'env.yaml')
-    #model = runRAFT('../designs/VolturnUS-S.yaml', 'env.yaml')
-    model = runRAFT('../designs/DTU10MW.yaml', 'env.yaml')
+    #model = runRAFT('../designs/VolturnUS-S.yaml','../designs/rotors/IEA-15-240-RWT.yaml','env.yaml')
+    model = runRAFT('../designs/DTU10MW.yaml','../designs/rotors/IEA-10-198-RWT.yaml', 'env.yaml')
     fowt = model.fowtList[0]
     
     

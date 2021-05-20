@@ -5,13 +5,8 @@ import yaml
 import matplotlib.pyplot as plt
 
 # test local code; consider src layout in future to test installed code
-#sys.path.append('..')
-sys.path.insert(1, '../../MoorPy')
-import raft
+import raft as raft
 import moorpy as mp
-
-
-#import Capytaine_placeholder as capy
 
 
 import importlib
@@ -26,61 +21,42 @@ def runRAFT(fname_design, fname_env):
     '''
     
     # open the design YAML file and parse it into a dictionary for passing to raft
-    
+
     with open(fname_design) as file:
         design = yaml.load(file, Loader=yaml.FullLoader)
     
     print("Loading file: "+fname_design)
     print(f"'{design['name']}'")
     
-    
-            
     depth = float(design['mooring']['water_depth'])
-            
     
-    
-    
+    # now off potMod in the design dictionary to avoid BEM analysis
+    for mi in design['platform']['members']:    mi['potMod'] = False
 
-    # --- BEM ---
-    # (preprocessing step:) Generate and load BEM hydro data
-    capyData = []
-    
-    capyTestFile = f'./test_data/mesh_converge_0.750_1.250.nc'
-
-    w = np.arange(0.05, 2.8, 0.05)  # frequency range (to be set by modeling options yaml)
-    
-    '''
-    # load or generate Capytaine data
-    if capyDataExists:
-        wDes, addedMass, damping, fEx = capy.read_capy_nc(capyTestFile, wDes=w)
-    else:
-        wCapy, addedMass, damping, fEx = capy.call_capy(meshFName, w)
-        
-    # package results to send to model
-    capyData = (wCapy, addedMass, damping, fEx)
-    '''
-
+    # set up frequency range
+    w = np.arange(0.05, 5, 0.05)  # frequency range (to be set by modeling options yaml)
     
     # --- Create and run the model ---
 
-    model = raft.Model(design, w=w, depth=depth, BEM=capyData)  # set up model
-
+    model = raft.Model(design, w=w, depth=depth)  # set up model
+    
     model.setEnv(Hs=8, Tp=12, V=10, Fthrust=float(design['turbine']['Fthrust']))  # set basic wave and wind info
 
     model.calcSystemProps()          # get all the setup calculations done within the model
     
     model.solveEigen()
-
+    
     model.calcMooringAndOffsets()    # calculate the offsets for the given loading
-    
+
     model.solveDynamics()            # put everything together and iteratively solve the dynamic response
-    
+
     model.plot()
     
     plt.show()
     
     return model
     
+
     
     
 def runRAFTfromWEIS():    
@@ -211,8 +187,78 @@ def runRAFTfromWEIS():
 
 if __name__ == "__main__":
     
-    model = runRAFT('OC3spar.yaml', 'env.yaml')
-    #model = runRAFT('OC4semi.yaml', 'env.yaml')
-    #model = runRAFT('VolturnUS-S.yaml', 'env.yaml')
     
+    #model = runRAFT('../designs/OC3spar.yaml', 'env.yaml')
+    #model = runRAFT('../designs/OC4semi.yaml', 'env.yaml')
+    #model = runRAFT('../designs/VolturnUS-S.yaml', 'env.yaml')
+    model = runRAFT('../designs/DTU10MW.yaml', 'env.yaml')
+    fowt = model.fowtList[0]
+    
+    
+    
+    
+    """
+    # ----- temporary script for comparing hydro coefficient curves -----
+
+    # load the design
+    with open('OC3spar.yaml') as file:
+        design = yaml.load(file, Loader=yaml.FullLoader)
+        
+    depth = float(design['mooring']['water_depth'])
+    w = np.arange(0.1, 5, 0.1)  # frequency range (to be set by modeling options yaml)
+    
+    # Create the model and compute hydrodynamic constants (with BEM)
+    model1 = raft.Model(design, w=w, depth=depth)  # set up model
+    model1.setEnv(spectrum="unit")  # set basic wave and wind info
+    model1.calcSystemProps()          # get all the setup calculations done within the model
+    
+    # now turn off PotMod in the design dictionary
+    for mi in design['platform']['members']:    mi['potMod'] = False
+        
+    # Create another model and compute hydrodynamic constants (with strip theory only)
+    model2 = raft.Model(design, w=w, depth=depth)  # set up model
+    model2.setEnv(spectrum='unit')
+    model2.calcSystemProps()          # get all the setup calculations done within the model
+    
+    
+    fix, ax = plt.subplots(3,1, sharex=True)
+    for i, j in enumerate([0,2,4]):       # go through surge, heave, and pitch
+        ax[i].plot(model1.w, model1.fowtList[0].F_BEM       [j].real, 'b'  , label="F BEM real")
+        ax[i].plot(model1.w, model1.fowtList[0].F_BEM       [j].imag, 'b--', label="F BEM imag")
+        ax[i].plot(model2.w, model2.fowtList[0].F_hydro_iner[j].real, 'g'  , label="F Froude-Kry real")
+        ax[i].plot(model2.w, model2.fowtList[0].F_hydro_iner[j].imag, 'g--', label="F Froude-Kry imag")
+    ax[-1].legend()
+    
+    ax[0].set_ylabel('surge')
+    ax[1].set_ylabel('heave')
+    ax[2].set_ylabel('pitch')
+    
+    
+    # plot member distributed stuff now
+    
+    f = model2.fowtList[0]
+    
+    n = f.memberList[0].F_exc_iner.shape[0]
+    n3 = int(np.ceil(n/3))
+    
+    fig, ax = plt.subplots(n3,3, sharex=True)
+    for i in range(3):       # go through surge, heave, and pitch
+        for j in range(n3):
+        
+            k = i*n3 + j
+            
+            if k < n:
+                    
+                ax[j,i].axhline(0.0, color='k', lw=0.4)
+                ax[j,i].plot(model2.w, model2.fowtList[0].memberList[0].F_exc_iner[k,0,:].real, 'g'  , label="Fx real")
+                ax[j,i].plot(model2.w, model2.fowtList[0].memberList[0].F_exc_iner[k,0,:].imag, 'g--', label="Fx imag")
+                ax[j,i].plot(model2.w, model2.fowtList[0].memberList[0].F_exc_iner[k,2,:].real, 'r'  , label="Fz real")
+                ax[j,i].plot(model2.w, model2.fowtList[0].memberList[0].F_exc_iner[k,2,:].imag, 'r--', label="Fz imag")
+                ax[j,i].set_ylabel(f"strip {k}")
+        
+    ax[-1,-1].legend()
+    
+    
+    plt.show()
+    """
     

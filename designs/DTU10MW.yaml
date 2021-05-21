@@ -952,7 +952,7 @@ mooring:
 
         - name: line1_connection
           type: connection
-          location: [41.0814, -23.7184, -38.9497]
+          location: [34.641, -20.0, -50.0]
 
         - name: line1_vessel_right
           type: vessel
@@ -969,7 +969,7 @@ mooring:
         
         - name: line2_connection
           type: connection
-          location: [0.0, 47.4367, -38.9497]
+          location: [0.0, 40.0, -50.0]
 
         - name: line2_vessel_right
           type: vessel
@@ -986,7 +986,7 @@ mooring:
 
         - name: line3_connection
           type: connection
-          location: [-41.0814, -23.7184, -38.9497]
+          location: [-34.641, -20.0, -50.0]
 
         - name: line3_vessel_right
           type: vessel

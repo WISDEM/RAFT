@@ -64,6 +64,10 @@ class FOWT():
         # mooring system connection
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
+        if 'yaw stiffness' in design['turbine']:
+            self.yawstiff = design['turbine']['yaw stiffness']       # If you're modeling OC3 spar, for example, import the manual yaw stiffness needed by the bridle config
+        else:
+            self.yawstiff = 0
 
         # Turbine rotor
         self.rotor = Rotor(design['turbine'], self.w)
@@ -626,7 +630,7 @@ class FOWT():
 
             mem.calcOrientation()  # temporary
 
-            mem.plot(ax)
+            mem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R)
 
         # in future should consider ability to animate mode shapes and also to animate response at each frequency
         # including hydro excitation vectors stored in each member

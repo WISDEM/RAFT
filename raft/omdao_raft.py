@@ -103,6 +103,18 @@ class RAFT_OMDAO(om.ExplicitComponent):
             # ADD THIS AS AN OPTION IN WEIS
             self.add_discrete_input(m_name+'potMod', val=False, desc='Whether to model the member with potential flow')
             self.add_input(m_name+'stations', val=np.zeros(mnpts), desc='Location of stations along axis, will be normalized from end A to B')
+            # updated version to better handle 'diameters' between circular and rectangular members
+            if mshape == 'circ' or mshape == 'square':
+                if scalar_d:
+                    self.add_input(m_name+'d', val=0.0, units='m', desc='Constant diameter of the whole member')
+                else:
+                    self.add_input(m_name+'d', val=np.zeros(mnpts), units='m', desc='Diameters at each station along the member')
+            elif mshape == 'rect':
+                if scalar_d:
+                    self.add_input(m_name+'d', val=[0.0, 0.0], units='m', desc='Constant side lengths of the whole member')
+                else:
+                    self.add_input(m_name+'d', val=np.zeros([mnpts,2]), units='m', desc='Side lengths at each station along the member')
+            ''' original version of handling diameters
             if scalar_d:
                 self.add_input(m_name+'d', val=0.0, units='m', desc='Diameters if circular, side lengths if rectangular')
             else:
@@ -110,6 +122,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
                     self.add_input(m_name+'d', val=np.zeros(mnpts), units='m', desc='Diameters if circular, side lengths if rectangular')
                 elif mshape == 'rect':
                     self.add_input(m_name+'d', val=np.zeros(2 * mnpts), units='m', desc='Diameters if circular, side lengths if rectangular')
+            '''
             if scalar_t:
                 self.add_input(m_name+'t', val=0.0, units='m', desc='Wall thicknesses')
             else:
@@ -230,21 +243,19 @@ class RAFT_OMDAO(om.ExplicitComponent):
         mooring_opt = self.options['mooring_options']
         members_opt = self.options['member_options']
         modeling_opt = self.options['modeling_options']
-        nfreq = modeling_opt['nfreq']
 
-        turbine_npts = turbine_opt['npts']
+        #turbine_npts = turbine_opt['npts']
 
         nmembers = members_opt['nmembers']
         member_npts = members_opt['npts']
         member_npts_lfill = members_opt['npts_lfill']
-        member_npts_rho_fill = members_opt['npts_rho_fill']
+        #member_npts_rho_fill = members_opt['npts_rho_fill']
         member_ncaps = members_opt['ncaps']
         member_nreps = members_opt['nreps']
         member_shapes = members_opt['shape']
         member_scalar_t = members_opt['scalar_thicknesses']
         member_scalar_d = members_opt['scalar_diameters']
         member_scalar_coeff = members_opt['scalar_coefficients']
-
         
         nlines = mooring_opt['nlines']
         nline_types = mooring_opt['nline_types']
@@ -255,6 +266,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['type'] = ['input dictionary for RAFT']
         design['name'] = ['spiderfloat']
         design['comments'] = ['none']
+        
+        design['potModMaster'] = int(modeling_opt['potModMaster'])
+        design['XiStart'] = float(modeling_opt['XiStart'])
+        design['nIter'] = int(modeling_opt['nIter'])
+        design['dlsMax'] = float(modeling_opt['dlsMax'])
 
         # TODO: these float conversions are messy
         design['turbine'] = {}
@@ -301,6 +317,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             mnpts_lfill = member_npts_lfill[i]
             mncaps = member_ncaps[i]
             mnreps = member_nreps[i]
+            mnpts = member_npts[i]
             
             design['platform']['members'][i]['name'] = m_name
             design['platform']['members'][i]['type'] = i + 2
@@ -310,10 +327,24 @@ class RAFT_OMDAO(om.ExplicitComponent):
             design['platform']['members'][i]['gamma'] = float(inputs[m_name+'gamma'])
             design['platform']['members'][i]['potMod'] = discrete_inputs[m_name+'potMod']
             design['platform']['members'][i]['stations'] = inputs[m_name+'stations']
+            
+            # updated version to better handle 'diameters' between circular and rectangular members
+            if m_shape == 'circ' or m_shape == 'square':
+                if member_scalar_d[i]:
+                    design['platform']['members'][i]['d'] = [float(inputs[m_name+'d'])]*mnpts
+                else:
+                    design['platform']['members'][i]['d'] = inputs[m_name+'d']
+            elif m_shape == 'rect':
+                if member_scalar_d[i]:
+                    design['platform']['members'][i]['d'] = [inputs[m_name+'d']]*mnpts
+                else:
+                    design['platform']['members'][i]['d'] = inputs[m_name+'d']
+            ''' original version of handling diameters
             if member_scalar_d[i]:
                 design['platform']['members'][i]['d'] = float(inputs[m_name+'d'])
             else:
                 design['platform']['members'][i]['d'] = inputs[m_name+'d']
+            '''
             if member_scalar_t[i]:
                 design['platform']['members'][i]['t'] = float(inputs[m_name+'t'])
             else:
@@ -342,7 +373,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 ring_spacing = inputs[m_name+'ring_spacing']
                 n_stiff = 0 if ring_spacing == 0.0 else int(np.floor(s_height / ring_spacing))
                 s_ring = (np.arange(1, n_stiff + 0.1) - 0.5) * (ring_spacing / s_height)
-                d_ring = np.interp(s_ring, s_grid, inputs[m_name+'d'])
+                d_ring = np.interp(s_ring, s_grid, design['platform']['members'][i]['d'])
+                ''''if ring_spacing == 0.0:     # from Kirana's patch
+                    d_ring = []
+                else:
+                    d_ring = np.interp(s_ring, s_grid, inputs[m_name+'d'])'''
                 # Combine internal structures based on spacing and defined positions
                 s_cap = np.r_[s_ring, inputs[m_name+'cap_stations']]
                 t_cap = np.r_[inputs[m_name+'ring_t']*np.ones(n_stiff), inputs[m_name+'cap_t']]

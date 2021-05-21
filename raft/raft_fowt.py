@@ -6,15 +6,14 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
+import pyhams.pyhams     as ph
+import raft.member2pnl as pnl
 from raft.helpers import *
 from raft.raft_member import Member
 from raft.raft_rotor import Rotor
 
-try:
-    import ccblade         # clone ccblade
-except:
-    import wisdem.ccblade  # via conda install wisdem
-
+# deleted call to ccblade in this file, since it is called in raft_rotor
+# also ignoring changes to solveEquilibrium3 in raft_model and the re-addition of n=len(stations) in raft_member, based on raft_patch
 
 
 
@@ -208,7 +207,7 @@ class FOWT():
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
 
             Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(self.env)  # call to Member method for hydrostatic calculations
-
+            
             # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices <<<<< needs updating (already about PRP)
             self.W_hydro += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # weight vector
             self.C_hydro += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix

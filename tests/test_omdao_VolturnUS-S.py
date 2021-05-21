@@ -20,6 +20,10 @@ opt = {}
 
 opt['modeling'] = {}
 opt['modeling']['nfreq'] = len(w)
+opt['modeling']['potModMaster'] = 1
+opt['modeling']['XiStart'] = 0.1        # default
+opt['modeling']['nIter'] = 15           # default
+opt['modeling']['dlsMax'] = 5.0         # default
 
 opt['turbine'] = {}
 opt['turbine']['npts'] = 20
@@ -37,7 +41,10 @@ opt['members']['npts_rho_fill'] = np.array([0, 1, 1, 0])
 opt['members']['ncaps'] = np.array([1, 1, 0, 0])
 opt['members']['nreps'] = np.array([1, 3, 3, 3])
 opt['members']['shape'] = np.array(['circ', 'circ', 'rect', 'circ']) # can be 'circ', 'rect', or 'square'
-opt['members']['scalar_diameters'] = np.array([True, True, False, True])
+#opt['members']['scalar_diameters'] = np.array([True, True, False, True])
+# leaving above commented line to show that the third member is rectangular, but still has 'scalar diameters' since the side lengths are the same at endA and endB
+# in this sense, 'scalar diameter' refers to either a scalar diameter (circ) or a list of size 2 (rect) that is consistent throughout the member
+opt['members']['scalar_diameters'] = np.array([True, True, True, True])
 opt['members']['scalar_thicknesses'] = np.array([True, True, True, True])
 opt['members']['scalar_coefficients'] = np.array([True, True, True, True])
 
@@ -88,7 +95,7 @@ prob['turbine_tower_rho_shell'] = 7850.0
 prob['platform_member1_rA'] = [0, 0, -20]
 prob['platform_member1_rB'] = [0, 0, 15]
 prob['platform_member1_gamma'] = 0.0
-prob['platform_member1_potMod'] = False
+prob['platform_member1_potMod'] = True
 prob['platform_member1_stations'] = [0, 1]
 prob['platform_member1_d'] = 10.0
 prob['platform_member1_t'] = 0.05
@@ -105,7 +112,7 @@ prob['platform_member2_heading'] = [60, 180, 300]
 prob['platform_member2_rA'] = [51.75, 0, -20.0]
 prob['platform_member2_rB'] = [51.75, 0, 15]
 prob['platform_member2_gamma'] = 0.0
-prob['platform_member2_potMod'] = False
+prob['platform_member2_potMod'] = True
 prob['platform_member2_stations'] = [0, 1]
 prob['platform_member2_d'] = 12.5
 prob['platform_member2_t'] = 0.05
@@ -232,7 +239,7 @@ model.calcMooringAndOffsets()
 model.solveDynamics()
 
 results = model.calcOutputs()
-
+print('-----------------')
 testPass = test(prob, results)
 
 print('Test ' + ('FAILED' if not testPass else 'PASSED'))

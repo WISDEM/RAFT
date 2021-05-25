@@ -45,8 +45,8 @@ class Rotor:
         yaw  = 0        
 
         # Set some turbine params, this can come from WEIS/WISDEM or an external input
-            self.rot_from_  weis = yaml.load(open(os.path.join(raft_dir,'designs/rotors/IEA-15MW_WEIS.yaml'),'r'))
         if True:
+            self.rot_from_weis = yaml.load(open(os.path.join(raft_dir,'designs/rotors/IEA-15MW_WEIS.yaml'),'r'))
             self.Uhub = np.array(self.rot_from_weis['wt_ops']['v'])
             self.Omega_rpm = np.array(self.rot_from_weis['wt_ops']['omega_op']) / rpm2radps
             self.pitch_deg = np.array(self.rot_from_weis['wt_ops']['pitch_op']) * rad2deg
@@ -141,13 +141,13 @@ class Rotor:
         loads, derivs = self.ccblade.evaluate(self.Uhub, self.Omega_rpm, self.pitch_deg, coefficients=True)
 
         self.outputs["P"] = loads["P"]
-        self.outputs["Mb"] = loads["Mb"]
+        # self.outputs["Mb"] = loads["Mb"]
         self.outputs["CP"] = loads["CP"]
-        self.outputs["CMb"] = loads["CMb"]
-        self.outputs["Fhub"] = np.array( [loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0]])
-        self.outputs["Mhub"] = np.array( [loads["Q" ][0], loads["My" ][0], loads["Mz" ][0]])
-        self.outputs["CFhub"] = np.array([loads["CT"][0], loads["CY" ][0], loads["CZ" ][0]])
-        self.outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
+        # self.outputs["CMb"] = loads["CMb"]
+        # self.outputs["Fhub"] = np.array( [loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0]])
+        # self.outputs["Mhub"] = np.array( [loads["Q" ][0], loads["My" ][0], loads["Mz" ][0]])
+        # self.outputs["CFhub"] = np.array([loads["CT"][0], loads["CY" ][0], loads["CZ" ][0]])
+        # self.outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
 
 
         print("Wind speed")
@@ -259,16 +259,11 @@ class Rotor:
         Use flipped sign version of ROSCO
         '''
 
-        if turbine_string == 'IEA-10-198-RWT':
-            self.kp_0 = 0.179
-            self.ki_0 = 0.0165
-            self.k_float = 2
-        elif turbine_string == 'IEA-15-240-RWT':
-            # Convert gain-scheduling wrt pitch to wind speed
-            pc_angles = np.array(self.rot_from_weis['pitch_control']['GS_Angles']) * rad2deg
-            self.kp_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Kp'],left=0,right=0)
-            self.ki_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Ki'],left=0,right=0)
-            self.k_float = 9
+        # Convert gain-scheduling wrt pitch to wind speed
+        pc_angles = np.array(self.rot_from_weis['pitch_control']['GS_Angles']) * rad2deg
+        self.kp_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Kp'],left=0,right=0)
+        self.ki_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Ki'],left=0,right=0)
+        self.k_float = 9
             
 
     def calcAeroServoContributions(self, U_amplitude=[]):
@@ -316,6 +311,10 @@ class Rotor:
 
             # Complex aero damping
             T = 1j * omega * (dT_dU - self.k_float * dT_dPi / Hhub) - (((dT_dOm + kp_U * dT_dPi) * 1j * omega + ki_U * dT_dPi ) * C[iw])
+
+            # Aerodynamic coefficients
+            a_aer[iw] = -(1/omega**2) * np.real(T)
+            b_aer[iw] = (1/omega) * np.imag(T)
         
         # coefficients to be filled in
         nw = len(self.w)
@@ -339,10 +338,11 @@ class Rotor:
         
 
 if __name__=='__main__':
-    turbine = 'IEA-15-240-RWT'
-    # turbine = 'IEA-10-198-RWT'
-    rr = Rotor(turbine)
-    rr.runCCblade()
+    fname_turbine = os.path.join(raft_dir,'designs/rotors/IEA-15-240-RWT.yaml')
+    from raft.runRAFT import loadTurbineYAML
+    turbine = loadTurbineYAML(fname_turbine)
+    rr = Rotor(turbine,np.linspace(0.05,3))
+    rr.runCCBlade()
     rr.setControlGains(turbine)
 
     rr.calcAeroServoContributions()
@@ -353,7 +353,7 @@ if __name__=='__main__':
 
     for iU, Uinf in enumerate(UU):
         rr.V = Uinf
-        _, a_aer, b_aer = rr.calcAeroServoContributions()
+        _,_,_,_,_, a_aer, b_aer = rr.calcAeroServoContributions()
 
         a_aer_U[iU] = np.interp(2 * np.pi / 30, rr.w, a_aer)
         b_aer_U[iU] = np.interp(2 * np.pi / 30, rr.w, b_aer)

@@ -6,15 +6,14 @@ import sys
 import numpy as np
 import matplotlib.pyplot as plt
 
+import pyhams.pyhams     as ph
+import raft.member2pnl as pnl
 from raft.helpers import *
 from raft.raft_member import Member
 from raft.raft_rotor import Rotor
 
-try:
-    import ccblade         # clone ccblade
-except:
-    import wisdem.ccblade  # via conda install wisdem
-
+# deleted call to ccblade in this file, since it is called in raft_rotor
+# also ignoring changes to solveEquilibrium3 in raft_model and the re-addition of n=len(stations) in raft_member, based on raft_patch
 
 
 
@@ -67,9 +66,9 @@ class FOWT():
 
 
         # Turbine rotor
-        self.rotor = Rotor()
+        self.rotor = Rotor(design['turbine'], self.w)
         
-        self.rotor.runCCblade()
+        self.rotor.runCCBlade()   # << eventually should be done after solving mean offsets
 
 
         # turbine RNA description
@@ -208,7 +207,7 @@ class FOWT():
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
 
             Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(self.env)  # call to Member method for hydrostatic calculations
-
+            
             # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices <<<<< needs updating (already about PRP)
             self.W_hydro += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # weight vector
             self.C_hydro += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
@@ -395,15 +394,19 @@ class FOWT():
     def calcTurbineConstants(self):
         '''This computes turbine linear terms'''
         
-        A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroContributions(self.nw, np.zeros(self.nw) )
+        A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroContributions(np.zeros(self.nw) )
+        #A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroServoContributions(np.zeros(self.nw) )
         
         # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
         rHub = np.array([0,0,100.])
         rotMatHub = rotationMatrix(0, 0.01, 0)
         
-        # convert matrices to platform reference frame        
-        self.A_aero = translateMatrix6to6DOF( rotateMatrix6(A_aero, rotMatHub),  rHub)
-        self.B_aero = translateMatrix6to6DOF( rotateMatrix6(B_aero, rotMatHub),  rHub)
+        # convert matrices to platform reference frame
+        self.A_aero = np.zeros([6,6,self.nw])
+        self.B_aero = np.zeros([6,6,self.nw])
+        for i in range(self.nw):
+            self.A_aero[:,:,i] = translateMatrix6to6DOF( rotateMatrix6(A_aero[:,:,i], rotMatHub),  rHub)
+            self.B_aero[:,:,i] = translateMatrix6to6DOF( rotateMatrix6(B_aero[:,:,i], rotMatHub),  rHub)
         self.C_aero = translateMatrix6to6DOF( rotateMatrix6(C_aero, rotMatHub),  rHub)
         
         # convert forces to platform reference frame

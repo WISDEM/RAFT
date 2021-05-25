@@ -102,8 +102,8 @@ class Member:
             self.cap_d_in     = []
             self.cap_stations = []
         else:
-            self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape)   # thicknesses [m]
-            self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape)   # inner diameter (if it isn't a solid plate) [m]
+            self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape[0])   # thicknesses [m]
+            self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape[0])   # inner diameter (if it isn't a solid plate) [m]
             self.cap_stations = (cap_stations - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
             
 
@@ -453,7 +453,7 @@ class Member:
 
             # end of submember for loop
 
-
+        
         # END CAPS/BULKHEADS
         # --------- Add the inertia properties of any end caps ---------
         self.m_cap_list = []
@@ -607,7 +607,6 @@ class Member:
 
             # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
             self.M_struc += translateMatrix6to6DOF(Mmat, center_cap) # mass matrix of the member about the PRP
-
 
 
         mass = self.M_struc[0,0]        # total mass of the entire member [kg]
@@ -768,7 +767,7 @@ class Member:
             r_center = r_centerV/V_UW    # calculate overall member center of buoyancy
         else:
             r_center = np.zeros(3)       # temporary fix for out-of-water members
-
+        
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 

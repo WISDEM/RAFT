@@ -472,7 +472,7 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None):
             else:                                            # must be expecting a multi-D array
                 vala = np.array(val, dtype=dtype)            # make array
 
-                if vala.shape == shape:                      # if provided with the right shape
+                if list(vala.shape) == shape:                      # if provided with the right shape
                     return vala
                 elif len(shape) > 2:
                     raise ValueError("Function getFromDict isn't set up for shapes larger than 2 dimensions")

@@ -98,8 +98,11 @@ class Model():
 
         self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
 
-        self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
-
+        try:
+            self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
+        except Exception as e:
+            raise RuntimeError('An error occured when initializing the mooring system: '+e.message)
+        
         self.results = {}     # dictionary to hold all results from the model
         
 
@@ -137,9 +140,12 @@ class Model():
             fowt.calcTurbineConstants()
             #fowt.calcDynamicConstants()
 
-        ## First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
-        self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
-        self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
+        # First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
+        try: 
+            self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
+            self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
+        except Exception as e:
+            raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
 
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
         
@@ -160,8 +166,12 @@ class Model():
         # (This assumes some loads have been applied)
         #self.ms.display=2
 
-        self.ms.solveEquilibrium3(DOFtype="both", tol=-0.01) #, rmsTol=1.0E-5)     # get the system to its equilibrium
-        
+        try:
+            self.ms.solveEquilibrium3(DOFtype="both", tol=-0.01) #, rmsTol=1.0E-5)     # get the system to its equilibrium
+        except Exception as e:     #mp.MoorPyError
+            print('An error occured when solving system equilibrium: '+e.message)
+            #raise RuntimeError('An error occured when solving unloaded equilibrium: '+error.message)
+            
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
 
@@ -177,9 +187,12 @@ class Model():
         print("Surge: {:.2f}".format(r6eq[0]))
         print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
 
-        C_moor = self.ms.getCoupledStiffness(lines_only=True)
-        F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
-
+        try:
+            C_moor = self.ms.getCoupledStiffness(lines_only=True)
+            F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
+        except Exception as e:
+            raise RuntimeError('An error occured when getting linearized mooring properties in offset state: '+e.message)
+            
         # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
         C_moor[5,5] += self.yawstiff
 
@@ -221,6 +234,9 @@ class Model():
 
         # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
         eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+
+        if any(eigenvals <= 0.0):
+            raise RuntimeError("Error: zero or negative system eigenvalues detected.")
 
         # sort to normal DOF order based on which DOF is largest in each eigenvector
         ind_list = []
@@ -305,10 +321,10 @@ class Model():
         i2 = 6
 
         # sum up all linear (non-varying) matrices up front
-        M_lin = fowt.A_aero[:,:,None] + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
-        B_lin = fowt.B_aero[:,:,None] + fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
-        C_lin = fowt.C_aero           + fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
-        F_lin = fowt.F_aero +                                    fowt.F_BEM + fowt.F_hydro_iner              # excitation
+        M_lin = fowt.A_aero + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
+        B_lin = fowt.B_aero + fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
+        C_lin = fowt.C_aero + fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
+        F_lin = fowt.F_aero +                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
         
         
         # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<

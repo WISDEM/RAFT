@@ -2,7 +2,7 @@
 
 import os
 import os.path as osp
-import sys
+import sys, yaml
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -30,6 +30,9 @@ class Rotor:
     def __init__(self,turbine_string):
         '''
         '''
+        # Should inherit these from raft_model or _env?
+        self.w = np.arange(.05, 3, 0.05)
+        self.V = 14.
         
         # (not worrying about rotor structure/mass yet, just aero)
                
@@ -45,14 +48,23 @@ class Rotor:
             self.pitch_deg = np.array([13.78])
             self.I_drivetrain = 1.6e8
         elif turbine_string == 'IEA-15-240-RWT':
-            self.Uhub = np.array([14.])
-            self.Omega_rpm = np.array([7.56])
-            self.pitch_deg = np.array([13.78])
-            self.I_drivetrain = 3.2e8
+            self.rot_from_weis = yaml.load(open(os.path.join(raft_dir,'designs/rotors/IEA-15MW_WEIS.yaml'),'r'))
+            if True:
+                self.Uhub = np.array(self.rot_from_weis['wt_ops']['v'])
+                self.Omega_rpm = np.array(self.rot_from_weis['wt_ops']['omega_op']) / rpm2radps
+                self.pitch_deg = np.array(self.rot_from_weis['wt_ops']['pitch_op']) * rad2deg
+                self.I_drivetrain = 3.2e8
+            else:
+                self.Uhub = np.array([14.])
+                self.Omega_rpm = np.array([7.56])
+                self.pitch_deg = np.array([13.78])
+                self.I_drivetrain = 3.2e8
+
 
         # Set default control gains
-        self.kp_0 = 0
-        self.ki_0 = 0        
+        self.kp_0 = np.zeros_like(self.Uhub)
+        self.ki_0 = np.zeros_like(self.Uhub)       
+        self.k_float = 0 # np.zeros_like(self.Uhub), right now this is a single value, but this may change
 
 
         # Set CCBlade flags
@@ -309,8 +321,7 @@ class Rotor:
         print(self.outputs["CP"])
 
         self.J={}
-        
-        self.J["T", "Uhub"] = derivs['dT']['dUinf'][0]
+    
         
 
         dP = derivs["dP"]
@@ -333,14 +344,14 @@ class Rotor:
         # self.J["P", "presweepTip"] = dP["dpresweepTip"]
 
         dQ = derivs["dQ"]
-        self.J["Q","Uhub"] = np.atleast_1d(np.squeeze(dQ["dUinf"]))
-        self.J["Q","pitch_deg"] = np.atleast_1d(np.squeeze(dQ["dpitch"]))
-        self.J["Q","Omega_rpm"] = np.atleast_1d(np.squeeze(dQ["dOmega"]))
+        self.J["Q","Uhub"]      = np.atleast_1d(np.diag(dQ["dUinf"]))
+        self.J["Q","pitch_deg"] = np.atleast_1d(np.diag(dQ["dpitch"]))
+        self.J["Q","Omega_rpm"] = np.atleast_1d(np.diag(dQ["dOmega"]))
 
         dT = derivs["dT"]
-        self.J["T","Uhub"] = np.atleast_1d(np.squeeze(dT["dUinf"]))
-        self.J["T","pitch_deg"] = np.atleast_1d(np.squeeze(dT["dpitch"]))
-        self.J["T","Omega_rpm"] = np.atleast_1d(np.squeeze(dT["dOmega"]))
+        self.J["T","Uhub"]      = np.atleast_1d(np.diag(dT["dUinf"]))
+        self.J["T","pitch_deg"] = np.atleast_1d(np.diag(dT["dpitch"]))
+        self.J["T","Omega_rpm"] = np.atleast_1d(np.diag(dT["dOmega"]))
 
         print('here')
 
@@ -421,9 +432,13 @@ class Rotor:
         if turbine_string == 'IEA-10-198-RWT':
             self.kp_0 = 0.179
             self.ki_0 = 0.0165
+            self.k_float = 2
         elif turbine_string == 'IEA-15-240-RWT':
-            self.kp_0 = 0.8
-            self.ki_0 = 0.13
+            # Convert gain-scheduling wrt pitch to wind speed
+            pc_angles = np.array(self.rot_from_weis['pitch_control']['GS_Angles']) * rad2deg
+            self.kp_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Kp'],left=0,right=0)
+            self.ki_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Ki'],left=0,right=0)
+            self.k_float = 9
             
 
     def calcAeroServoContributions(self, nw=0, U_amplitude=[]):
@@ -435,102 +450,45 @@ class Rotor:
         Uinf = 14.  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
         Hhub = 150.
 
-        I_drivetrain = 3.2e8
-
-        # kp_arr = [-0.8, -1.6, -3.2]
-        # ki_arr = [-0.13, -0.26, -0.52 ]
-
-        
-        # kp_arr = np.array([0.8,1.43,2.04])
-        # ki_arr = np.array([0.13,0.33,0.62])
-
-        
-
-        kp_arr = self.kp_0 * np.array([1, 1.25, 1.5])
-        ki_arr = self.ki_0 * np.array([1, 1.25, 1.5])
-
-        self.Uhub = np.array([14])
     
         # extract derivatives of interest, interpolated for the current wind speed
-        if True:
-            dT_dU  = np.interp(Uinf, self.Uhub, self.J["T", "Uhub"     ])
-            dT_dOm = np.interp(Uinf, self.Uhub, self.J["T", "Omega_rpm"]) / rpm2radps
-            dT_dPi = np.interp(Uinf, self.Uhub, self.J["T", "pitch_deg"]) * rad2deg
-            dQ_dU  = np.interp(Uinf, self.Uhub, self.J["Q", "Uhub"     ])
-            dQ_dOm = np.interp(Uinf, self.Uhub, self.J["Q", "Omega_rpm"]) / rpm2radps
-            dQ_dPi = np.interp(Uinf, self.Uhub, self.J["Q", "pitch_deg"]) * rad2deg      
+        dT_dU  = np.interp(self.V, self.Uhub, self.J["T", "Uhub"     ])
+        dT_dOm = np.interp(self.V, self.Uhub, self.J["T", "Omega_rpm"]) / rpm2radps
+        dT_dPi = np.interp(self.V, self.Uhub, self.J["T", "pitch_deg"]) * rad2deg
+        dQ_dU  = np.interp(self.V, self.Uhub, self.J["Q", "Uhub"     ])
+        dQ_dOm = np.interp(self.V, self.Uhub, self.J["Q", "Omega_rpm"]) / rpm2radps
+        dQ_dPi = np.interp(self.V, self.Uhub, self.J["Q", "pitch_deg"]) * rad2deg
+
+        # Pitch control gains at self.V (Uinf), flip sign to translate ROSCO convention to this one
+        kp_U    = -np.interp(self.V, self.Uhub, self.kp_0) 
+        ki_U    = -np.interp(self.V, self.Uhub, self.ki_0) 
         
-        else:
+        a_aer = np.zeros_like(self.w)
+        b_aer = np.zeros_like(self.w)
+        C   = np.zeros_like(self.w,dtype=np.complex_)
+        C2  = np.zeros_like(self.w,dtype=np.complex_)
+        D   = np.zeros_like(self.w,dtype=np.complex_)
 
-            # Hard code at 14 m/s until CCBlade is hooked up
-            # Note: pitch in rad., omega in rad/s
-            dT_dU  = 2.1e5
-            dT_dOm = -1.9e5
-            dT_dPi = -1.1e7
-            dQ_dU  = 4.7e6
-            dQ_dOm = -3.2e7
-            dQ_dPi = -1.6e8
+        # Roots of characteristic equation, helps w/ debugging
+        p = np.array([-self.I_drivetrain, (dQ_dOm + kp_U * dQ_dPi), ki_U* dQ_dPi])
+        r = np.roots(p)
 
-        ww = np.arange(0.05, 0.3, 0.05)
-        ww = np.linspace(0.05, 0.3)
-        # ww = np.logspace(-4,0)
-
-        a_aer = np.zeros_like(ww)
-        b_aer = np.zeros_like(ww)
-        C   = np.zeros_like(ww,dtype=np.complex_)
-        C2   = np.zeros_like(ww,dtype=np.complex_)
-
-        import matplotlib.pyplot as plt
-        fig1, ax1 = plt.subplots(2,1)
-        fig2, ax2 = plt.subplots(2,1)
-
-        
-
-        for kp, ki in zip(kp_arr,ki_arr):
-            # Roots of characteristic equation
-            print('here')
-            p = np.array([-I_drivetrain, (dQ_dOm + kp * dQ_dPi), ki* dQ_dPi])
-            r = np.roots(p)
-
-            for iw, omega in enumerate(ww):
-
-                # control transfer function
-                C[iw] = (1j * omega * dQ_dU) / \
-                    (I_drivetrain * omega**2 + (dQ_dOm + kp * dQ_dPi) * 1j * omega + ki* dQ_dPi)
-
-                # alternative for debugging
-                C2[iw] = C[iw] / (1j * omega)
-
-                # Complex aero damping
-                D = 1j * omega * dT_dU - (((dT_dOm + kp * dT_dPi) * 1j * omega + ki * dT_dPi ) * C[iw])
-
-                a_aer[iw] = -(1/omega**2) * np.real(D)
-                b_aer[iw] = (1/omega) * np.imag(D)
+        for iw, omega in enumerate(self.w):
             
+            # Denominator of control transfer function
+            D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm + kp_U * dQ_dPi) * 1j * omega + ki_U* dQ_dPi
 
-            print('here')
-            
-            ax1[0].plot(ww,a_aer)
-            ax1[0].set_ylabel('a_aer')
+            # control transfer function
+            C[iw] = 1j * omega * (dQ_dU - self.k_float * dQ_dPi / Hhub) / D[iw]
 
-            ax1[1].plot(ww,b_aer)
-            ax1[1].set_ylabel('b_aer')
+            # alternative for debugging
+            C2[iw] = C[iw] / (1j * omega)
 
-            fig1.legend(('baseline gains','gains * 1.25','gains * 1.5'))
+            # Complex aero damping
+            T = 1j * omega * (dT_dU - self.k_float * dT_dPi / Hhub) - (((dT_dOm + kp_U * dT_dPi) * 1j * omega + ki_U * dT_dPi ) * C[iw])
 
-            ax1[1].set_xlabel('frequency (rad/s)')
-
-            ax2[0].plot(ww,np.abs(C))
-            ax2[0].set_ylabel('mag(C)')
-
-            ax2[1].plot(ww,np.angle(C))
-            ax2[1].set_ylabel('phase(C)')
-
-
-
-
-        plt.show()
-        
+            a_aer[iw] = -(1/omega**2) * np.real(T)
+            b_aer[iw] = (1/omega) * np.imag(T)
 
         # wish list       
         # dMy_dU  = np.interp(Uinf, self.Uhub, self.J["My", "Uhub"     ])  # overturning moment about hub
@@ -557,17 +515,60 @@ class Rotor:
         #     #F_aero[7,i] = U_amplitude*dQ_dU            # rotor torque excitation
         
         
-        # return A_aero, B_aero, C_aero, F_aero0, F_aero
-
-    def control(omega):
-        pass
+        return a_aer, b_aer #  B_aero, C_aero, F_aero0, F_aero
         
 
 if __name__=='__main__':
     turbine = 'IEA-15-240-RWT'
-    turbine = 'IEA-10-198-RWT'
+    # turbine = 'IEA-10-198-RWT'
     rr = Rotor(turbine)
     rr.runCCblade()
     rr.setControlGains(turbine)
 
     rr.calcAeroServoContributions()
+
+    UU = np.linspace(4,24)
+    a_aer_U = np.zeros_like(UU)
+    b_aer_U = np.zeros_like(UU)
+
+    for iU, Uinf in enumerate(UU):
+        rr.V = Uinf
+        a_aer, b_aer = rr.calcAeroServoContributions()
+
+        a_aer_U[iU] = np.interp(2 * np.pi / 30, rr.w, a_aer)
+        b_aer_U[iU] = np.interp(2 * np.pi / 30, rr.w, b_aer)
+
+
+    import matplotlib.pyplot as plt
+    fig1, ax1 = plt.subplots(2,1)
+
+
+    ax1[0].plot(UU,a_aer_U)
+    ax1[0].set_ylabel('a_aer @ 30 sec.')
+    ax1[0].grid(True)
+
+    ax1[1].plot(UU,b_aer_U)
+    ax1[1].set_ylabel('b_aer @ 30 sec.')
+    ax1[1].grid(True)
+
+    ax1[1].set_xlabel('U (m/s)')
+
+    plt.show()
+
+
+    # ax1[0].plot(ww,a_aer)
+    # ax1[0].set_ylabel('a_aer')
+
+    # ax1[1].plot(ww,b_aer)
+    # ax1[1].set_ylabel('b_aer')
+
+    # fig1.legend(('gains * 0','gains * 1','gains * 2'))
+
+    # ax1[1].set_xlabel('frequency (rad/s)')
+
+    # ax2[0].plot(ww,np.abs(C))
+    # ax2[0].set_ylabel('mag(C)')
+
+    # ax2[1].plot(ww,np.angle(C))
+    # ax2[1].set_ylabel('phase(C)')
+

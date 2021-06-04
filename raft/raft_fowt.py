@@ -394,8 +394,8 @@ class FOWT():
     def calcTurbineConstants(self):
         '''This computes turbine linear terms'''
         
-        A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroContributions(np.zeros(self.nw) )
-        #A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroServoContributions(np.zeros(self.nw) )
+        #A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroContributions(np.zeros(self.nw) )
+        A_aero, B_aero, C_aero, F_aero0, F_aero, _, _ = self.rotor.calcAeroServoContributions(np.zeros(self.nw) )
         
         # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
         rHub = np.array([0,0,100.])

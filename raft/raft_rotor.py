@@ -144,13 +144,13 @@ class Rotor:
         loads, derivs = self.ccblade.evaluate(self.Uhub, self.Omega_rpm, self.pitch_deg, coefficients=True)
 
         self.outputs["P"] = loads["P"]
-        # self.outputs["Mb"] = loads["Mb"]
+        self.outputs["Mb"] = loads["Mb"]
         self.outputs["CP"] = loads["CP"]
-        # self.outputs["CMb"] = loads["CMb"]
+        self.outputs["CMb"] = loads["CMb"]
         self.outputs["Fhub"] = np.array( [loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0]])
         self.outputs["Mhub"] = np.array( [loads["Q" ][0], loads["My" ][0], loads["Mz" ][0]])
-        # self.outputs["CFhub"] = np.array([loads["CT"][0], loads["CY" ][0], loads["CZ" ][0]])
-        # self.outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
+        self.outputs["CFhub"] = np.array([loads["CT"][0], loads["CY" ][0], loads["CZ" ][0]])
+        self.outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
 
 
         print("Wind speed")

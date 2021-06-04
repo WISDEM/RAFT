@@ -41,6 +41,7 @@ class Model():
 
         self.nDOF = 0  # number of DOFs in system
 
+        self.design = design # save design dictionary for possible later use/reference
 
     # ----- process turbine information -----------------------------------------
     # No processing actually needed yet - we pass the dictionary directly to RAFT.

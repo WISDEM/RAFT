@@ -26,7 +26,7 @@ rpm2radps = 0.1047
 # a class for the rotor structure, aerodynamics, and control in RAFT
 class Rotor:
 
-    def __init__(self, turbine, w):
+    def __init__(self, turbine, w, old=False):
         '''
         >>>> add mean offset parameters add move this to runCCBlade<<<<
         '''
@@ -39,22 +39,25 @@ class Rotor:
         blade   = turbine['blade']
         airfoils= turbine['airfoils']
         env     = turbine['env']
-
+        
         # these should account for mean offsets of platform (and possibly tower bending)
         tilt = 0 + turbine['shaft_tilt']
         yaw  = 0        
 
         # Set some turbine params, this can come from WEIS/WISDEM or an external input
-        if True:
+        if old:
             self.rot_from_weis = yaml.load(open(os.path.join(raft_dir,'designs/rotors/IEA-15MW_WEIS.yaml'),'r'))
             self.Uhub = np.array(self.rot_from_weis['wt_ops']['v'])
             self.Omega_rpm = np.array(self.rot_from_weis['wt_ops']['omega_op']) / rpm2radps
             self.pitch_deg = np.array(self.rot_from_weis['wt_ops']['pitch_op']) * rad2deg
             self.I_drivetrain = 3.2e8
-        else:
-            self.Uhub = np.array([14.])
-            self.Omega_rpm = np.array([7.56])
-            self.pitch_deg = np.array([13.78])
+        else:   # planning on this option going forward
+            #self.Uhub = np.array([14.])
+            #self.Omega_rpm = np.array([7.56])
+            #self.pitch_deg = np.array([13.78])
+            self.Uhub      = np.array(turbine['wt_ops']['v'])
+            self.Omega_rpm = np.array(turbine['wt_ops']['omega_op']) / rpm2radps
+            self.pitch_deg = np.array(turbine['wt_ops']['pitch_op']) * rad2deg
             self.I_drivetrain = 3.2e8
 
 
@@ -341,7 +344,7 @@ if __name__=='__main__':
     fname_turbine = os.path.join(raft_dir,'designs/rotors/IEA-15-240-RWT.yaml')
     from raft.runRAFT import loadTurbineYAML
     turbine = loadTurbineYAML(fname_turbine)
-    rr = Rotor(turbine,np.linspace(0.05,3))
+    rr = Rotor(turbine,np.linspace(0.05,3), old=True)
     rr.runCCBlade()
     rr.setControlGains(turbine)
 

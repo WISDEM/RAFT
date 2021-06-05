@@ -41,6 +41,7 @@ class Model():
 
         self.nDOF = 0  # number of DOFs in system
 
+        self.design = design # save design dictionary for possible later use/reference
 
     # ----- process turbine information -----------------------------------------
     # No processing actually needed yet - we pass the dictionary directly to RAFT.
@@ -132,6 +133,7 @@ class Model():
             fowt.calcBEM()
             fowt.calcStatics()
             fowt.calcHydroConstants()
+            fowt.calcTurbineConstants()
             #fowt.calcDynamicConstants()
 
         # First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
@@ -149,6 +151,11 @@ class Model():
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
         '''
+
+
+        # apply any mean aerodynamic and hydrodynamic loads
+        F_PRP = self.fowtList[0].F_aero0# + self.fowtList[0].F_hydro0   
+        self.ms.bodyList[0].f6Ext = np.array(F_PRP)
 
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
@@ -188,9 +195,10 @@ class Model():
 
         # store results
         self.results['means'] = {}   # signal this data is available by adding a section to the results dictionary
+        self.results['means']['aero force'  ] = self.fowtList[0].F_aero0
         self.results['means']['platform offset'  ] = r6eq
         self.results['means']['mooring force'    ] = F_moor
-        #self.results['means']['fairlead tensions'] = ... # <<<
+        self.results['means']['fairlead tensions'] = np.array([np.linalg.norm(self.ms.pointList[id-1].getForces()) for id in self.ms.bodyList[0].attachedP])
         
     
     
@@ -316,10 +324,10 @@ class Model():
         i2 = 6
 
         # sum up all linear (non-varying) matrices up front
-        M_lin = fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
-        B_lin = fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
-        C_lin = fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
-        F_lin =                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
+        M_lin = fowt.A_aero + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
+        B_lin = fowt.B_aero + fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
+        C_lin = fowt.C_aero + fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
+        F_lin = fowt.F_aero +                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
         
         
         # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<

@@ -448,7 +448,7 @@ class Member:
             Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
 
             # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
-            self.M_struc += translateMatrix6to6DOF(center, Mmat) # mass matrix of the member about the PRP
+            self.M_struc += translateMatrix6to6DOF(Mmat, center) # mass matrix of the member about the PRP
 
 
             # end of submember for loop
@@ -606,8 +606,7 @@ class Member:
             Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
 
             # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
-            self.M_struc += translateMatrix6to6DOF(center_cap, Mmat) # mass matrix of the member about the PRP
-        
+            self.M_struc += translateMatrix6to6DOF(Mmat, center_cap) # mass matrix of the member about the PRP
 
 
         mass = self.M_struc[0,0]        # total mass of the entire member [kg]
@@ -751,7 +750,7 @@ class Member:
                 r_center = rA + self.q*hc             # absolute coordinates of center of volume of this segment[m]
 
                 # buoyancy force (and moment) vector
-                Fvec += translateForce3to6DOF( r_center, np.array([0, 0, env.rho*env.g*V_UWi]) )
+                Fvec += translateForce3to6DOF(np.array([0, 0, env.rho*env.g*V_UWi]), r_center)
 
                 # hydrostatic stiffness matrix (about end A)
                 Cmat[3,3] += env.rho*env.g*V_UWi * r_center[2]

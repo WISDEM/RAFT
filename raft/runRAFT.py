@@ -41,8 +41,8 @@ def runRAFT(fname_design, fname_turbine, fname_env):
     w = np.arange(0.05, 5, 0.05)  # frequency range (to be set by modeling options yaml)
     
     # read in turbine data and combine it in
-    turbine = loadTurbineYAML(fname_turbine)
-    design['turbine'].update(turbine)
+    # turbine = loadTurbineYAML(fname_turbine)
+    # design['turbine'].update(turbine)
     
     
     # --- Create and run the model ---

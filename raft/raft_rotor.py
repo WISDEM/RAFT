@@ -34,11 +34,7 @@ class Rotor:
         # Should inherit these from raft_model or _env?
         self.w = np.array(w)
         self.V = 14.
-        
-        # (not worrying about rotor structure/mass yet, just aero)
-        blade   = turbine['blade']
-        airfoils= turbine['airfoils']
-        env     = turbine['env']
+                
         
         # these should account for mean offsets of platform (and possibly tower bending)
         tilt = 0 + turbine['shaft_tilt']
@@ -77,46 +73,127 @@ class Rotor:
         nSector = 4 # [-] - number of equally spaced azimuthal positions where CCBlade should be interrogated. The results are averaged across the n positions. 4 is a good first guess
         n_span = 30 # [-] - number of blade stations along span
         grid = np.linspace(0., 1., n_span) # equally spaced grid along blade span, root=0 tip=1
-        n_aoa = 200 # [-] - number of angles of attack to discretize airfoil polars
 
 
-        # Atmospheric boundary layer data
-        # rho = wt_init['environment']["air_density"] # [kg/m3] - density of air
-        # mu = wt_init['environment']["air_dyn_viscosity"] # [kg/(ms)] - dynamic viscosity of air
-        # shearExp = wt_init['environment']["shear_exp"] # [-] - shear exponent
+        # ----- AIRFOIL STUFF ------
+        n_aoa = 200 # [-] - number of angles of attack to discretize airfoil polars - MUST BE MULTIPLE OF 4
+        n_af = len(turbine["airfoils"])
+        af_used     = [ b for [a,b] in turbine['blade']["airfoils"] ]
+        af_position = [ a for [a,b] in turbine['blade']["airfoils"] ]
+        #af_used     = turbine['blade']["airfoils"]["labels"]
+        #af_position = turbine['blade']["airfoils"]["grid"]
+        n_af_span = len(af_used)
+        
+        # One fourth of the angles of attack from -pi to -pi/6, half between -pi/6 to pi/6, and one fourth from pi/6 to pi
+        aoa = np.unique(np.hstack([np.linspace(-180, -30, int(n_aoa/4.0 + 1)), 
+                                   np.linspace( -30,  30, int(n_aoa/2.0),),
+                                   np.linspace(  30, 180, int(n_aoa/4.0 + 1))]))
+
+        af_name = n_af * [""]
+        r_thick = np.zeros(n_af)
+        for i in range(n_af):
+            af_name[i] = turbine["airfoils"][i]["name"]
+            r_thick[i] = turbine["airfoils"][i]["relative_thickness"]
+
+        cl = np.zeros((n_af, n_aoa, 1))
+        cd = np.zeros((n_af, n_aoa, 1))
+        cm = np.zeros((n_af, n_aoa, 1))
+
+        # Interp cl-cd-cm along predefined grid of angle of attack
+        for i in range(n_af):
+        
+            #cl[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_l"])
+            #cd[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_d"])
+            #cm[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_m"])
+
+            polar_table = np.array(turbine["airfoils"][i]['data'])
+            
+            cl[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,1])
+            cd[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,2])
+            cm[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,3])
+
+            if abs(cl[i, 0, 0] - cl[i, -1, 0]) > 1.0e-5:
+                print("WARNING: Ai " + af_name[i] + " has the lift coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                cl[i, 0, 0] = cl[i, -1, 0]
+            if abs(cd[i, 0, 0] - cd[i, -1, 0]) > 1.0e-5:
+                print("WARNING: Airfoil " + af_name[i] + " has the drag coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                cd[i, 0, 0] = cd[i, -1, 0]
+            if abs(cm[i, 0, 0] - cm[i, -1, 0]) > 1.0e-5:
+                print("WARNING: Airfoil " + af_name[i] + " has the moment coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                cm[i, 0, 0] = cm[i, -1, 0]
+
+
+        # Interpolate along blade span using a pchip on relative thickness
+        r_thick_used = np.zeros(n_af_span)
+        cl_used = np.zeros((n_af_span, n_aoa, 1))
+        cd_used = np.zeros((n_af_span, n_aoa, 1))
+        cm_used = np.zeros((n_af_span, n_aoa, 1))
+
+        for i in range(n_af_span):
+            for j in range(n_af):
+                if af_used[i] == af_name[j]:
+                    r_thick_used[i] = r_thick[j]
+                    cl_used[i, :, :] = cl[j, :, :]
+                    cd_used[i, :, :] = cd[j, :, :]
+                    cm_used[i, :, :] = cm[j, :, :]
+                    break
+
+        # Pchip does have an associated derivative method built-in:
+        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.derivative.html#scipy.interpolate.PchipInterpolator.derivative
+        spline = PchipInterpolator
+        rthick_spline = spline(af_position, r_thick_used)
+        r_thick_interp = rthick_spline(grid[1:-1])
+
+        # Spanwise interpolation of the airfoil polars with a pchip
+        r_thick_unique, indices = np.unique(r_thick_used, return_index=True)
+        cl_spline = spline(r_thick_unique, cl_used[indices, :, :])
+        self.cl_interp = np.flip(cl_spline(np.flip(r_thick_interp)), axis=0)
+        cd_spline = spline(r_thick_unique, cd_used[indices, :, :])
+        self.cd_interp = np.flip(cd_spline(np.flip(r_thick_interp)), axis=0)
+        cm_spline = spline(r_thick_unique, cm_used[indices, :, :])
+        self.cm_interp = np.flip(cm_spline(np.flip(r_thick_interp)), axis=0)
+                
+        self.aoa = aoa
+        
+        # split out blade geometry info from table 
+        geometry_table = np.array(turbine['blade']['geometry'])
+        blade_r         = geometry_table[:,0]
+        blade_chord     = geometry_table[:,1]
+        blade_theta     = geometry_table[:,2]
+        blade_precurve  = geometry_table[:,3]
+        blade_presweep  = geometry_table[:,4]
+        
         
         
         af = []
-        for i in range(airfoils['cl_interp'].shape[0]):
-            af.append(CCAirfoil(np.rad2deg(airfoils['aoa']), airfoils['Re'], airfoils['cl_interp'][i, :, :, 0], 
-                                                                             airfoils['cd_interp'][i, :, :, 0], 
-                                                                             airfoils['cm_interp'][i, :, :, 0]))
-
+        for i in range(self.cl_interp.shape[0]):
+            af.append(CCAirfoil(np.rad2deg(self.aoa), [], self.cl_interp[i,:,:],self.cd_interp[i,:,:],self.cm_interp[i,:,:]))
+        
         self.ccblade = CCBlade(
-            blade['r'],                # (m) locations defining the blade along z-axis of blade coordinate system
-            blade['chord'],            # (m) corresponding chord length at each section
-            blade['theta'],            # (deg) corresponding :ref:`twist angle <blade_airfoil_coord>` at each section---positive twist decreases angle of attack.
-            af,                        # CCAirfoil object
-            turbine['Rhub'],           # (m) radius of hub
-            blade['Rtip'],             # (m) radius of tip
-            turbine['nBlades'],        # number of blades
-            env['rho'],                # (kg/m^3) freestream fluid density
-            env['mu'],                 # (kg/m/s) dynamic viscosity of fluid
-            turbine['precone'],          # (deg) hub precone angle
-            tilt,                      # (deg) hub tilt angle
-            yaw,                       # (deg) nacelle yaw angle
-            env['shearExp'],           # shear exponent for a power-law wind profile across hub
-            turbine['Zhub'],           # (m) hub height used for power-law wind profile.  U = Uref*(z/hubHt)**shearExp
-            nSector,                   # number of azimuthal sectors to descretize aerodynamic calculation.  automatically set to 1 if tilt, yaw, and shearExp are all 0.0.  Otherwise set to a minimum of 4.
-            blade['precurve'],         # (m) location of blade pitch axis in x-direction of :ref:`blade coordinate system <azimuth_blade_coord>`
-            blade['precurveTip'],      # (m) location of blade pitch axis in x-direction at the tip (analogous to Rtip)
-            blade['presweep'],         # (m) location of blade pitch axis in y-direction of :ref:`blade coordinate system <azimuth_blade_coord>`
-            blade['presweepTip'],      # (m) location of blade pitch axis in y-direction at the tip (analogous to Rtip)
-            tiploss=tiploss,           # if True, include Prandtl tip loss model
-            hubloss=hubloss,           # if True, include Prandtl hub loss model
-            wakerotation=wakerotation, # if True, include effect of wake rotation (i.e., tangential induction factor is nonzero)
-            usecd=usecd,               # If True, use drag coefficient in computing induction factors (always used in evaluating distributed loads from the induction factors).
-            derivatives=True,          # if True, derivatives along with function values will be returned for the various methods
+            blade_r,                        # (m) locations defining the blade along z-axis of blade coordinate system
+            blade_chord,                    # (m) corresponding chord length at each section
+            blade_theta,                    # (deg) corresponding :ref:`twist angle <blade_airfoil_coord>` at each section---positive twist decreases angle of attack.
+            af,                             # CCAirfoil object
+            turbine['Rhub'],                # (m) radius of hub
+            turbine['blade']['Rtip'],       # (m) radius of tip
+            turbine['nBlades'],             # number of blades
+            turbine['env']['rho'],          # (kg/m^3) freestream fluid density
+            turbine['env']['mu'],           # (kg/m/s) dynamic viscosity of fluid
+            turbine['precone'],             # (deg) hub precone angle
+            tilt,                           # (deg) hub tilt angle
+            yaw,                            # (deg) nacelle yaw angle
+            turbine['env']['shearExp'],     # shear exponent for a power-law wind profile across hub
+            turbine['Zhub'],                # (m) hub height used for power-law wind profile.  U = Uref*(z/hubHt)**shearExp
+            nSector,                        # number of azimuthal sectors to descretize aerodynamic calculation.  automatically set to 1 if tilt, yaw, and shearExp are all 0.0.  Otherwise set to a minimum of 4.
+            blade_precurve,                 # (m) location of blade pitch axis in x-direction of :ref:`blade coordinate system <azimuth_blade_coord>`
+            turbine['blade']['precurveTip'],# (m) location of blade pitch axis in x-direction at the tip (analogous to Rtip)
+            blade_presweep,                 # (m) location of blade pitch axis in y-direction of :ref:`blade coordinate system <azimuth_blade_coord>`
+            turbine['blade']['presweepTip'],# (m) location of blade pitch axis in y-direction at the tip (analogous to Rtip)
+            tiploss=tiploss,                # if True, include Prandtl tip loss model
+            hubloss=hubloss,                # if True, include Prandtl hub loss model
+            wakerotation=wakerotation,      # if True, include effect of wake rotation (i.e., tangential induction factor is nonzero)
+            usecd=usecd,                    # If True, use drag coefficient in computing induction factors (always used in evaluating distributed loads from the induction factors).
+            derivatives=True,               # if True, derivatives along with function values will be returned for the various methods
         )
 
 

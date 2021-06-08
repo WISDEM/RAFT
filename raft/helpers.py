@@ -91,11 +91,9 @@ def getVelocity(r, Xi, ws):
 
 
 ## Get wave velocity and acceleration complex amplitudes based on wave spectrum at a given location
-def getWaveKin(zeta0, w, k, h, r, nw, rho=1025.0, g=9.81):
+def getWaveKin(zeta0, beta, w, k, h, r, nw, rho=1025.0, g=9.81):
 
     # inputs: wave elevation fft, wave freqs, wave numbers, depth, point position
-
-    beta = 0  # no wave heading for now
 
     zeta = np.zeros(nw , dtype=complex ) # local wave elevation
     u  = np.zeros([3,nw], dtype=complex) # local wave kinematics velocity
@@ -618,32 +616,36 @@ def convertIEAturbineYAML2RAFT(fname_turbine):
         outfile.write(f"        presweepTip : {d['blade']['presweepTip']}  # \n")
         outfile.write(f"        Rtip        : {d['blade']['Rtip']}         # rotor radius\n\n")
         
-        outfile.write(f"        #    r    chord   theta  precurve  presweep  \n")
-        outfile.write(f"        geometry: \n")
+        outfile.write(f"\n")
+        outfile.write(f"        geometry: #  r     chord    theta  precurve  presweep\n")
+        outfile.write(f"          #         (m)     (m)     (deg)     (m)      (m)\n")
         for i in range(len(d['blade']['r'])):
-            outfile.write("          - [{:10.3f}, {:10.3f}, {:10.3f}, {:10.3f}, {:10.3f} ]\n".format(
+            outfile.write("          - [{:10.3f}, {:7.3f}, {:7.3f}, {:7.3f}, {:7.3f} ]\n".format(
                                       d['blade']['r'       ][i],
                                       d['blade']['chord'   ][i],
                                       d['blade']['theta'   ][i],
                                       d['blade']['precurve'][i],
                                       d['blade']['presweep'][i] ) )
         
-        outfile.write(f"        #    station(rel)      airfoil name \n")
-        outfile.write(f"        airfoils: \n")
+        outfile.write(f"\n")
+        outfile.write(f"        airfoils: # location   name \n")
+        outfile.write(f"          #         (0-1)     (string)     name must match name in airfoils list\n")
         for i in range(len(d['blade']['airfoils']['grid'])):
-            outfile.write("          - [{:10.5f}, {} ]\n".format(d['blade']['airfoils']['grid'][i], d['blade']['airfoils']['labels'][i]) )
+            outfile.write("          - [  {:10.5f}, {:30} ]\n".format(d['blade']['airfoils']['grid'][i], d['blade']['airfoils']['labels'][i]) )
         
         
         
-        outfile.write(f"    airfoils: \n")
+        outfile.write(f"\n    airfoils: \n")
         
         for iaf in range(n_af):
             outfile.write(f"      - name               : {d['airfoils'][iaf]['name']}  # \n")
             outfile.write(f"        relative_thickness : {d['airfoils'][iaf]['relative_thickness']}  # \n")
-            outfile.write(f"        data:  #  alpha    c_l    c_d     c_m   \n")
+            outfile.write(f"        data:  #  alpha      c_l         c_d         c_m   \n")
+            outfile.write(f"          #       (deg)      (-)         (-)         (-)\n")
             for j in range(len(d['airfoils'][iaf]['data'])):
-                outfile.write("          - [{:10.4f}, {:10.5f}, {:10.5f}, {:10.5f} ] \n".format( *d['airfoils'][iaf]['data'][j] ))
+                outfile.write("          - [{:10.2f}, {:10.5f}, {:10.5f}, {:10.5f} ] \n".format( *d['airfoils'][iaf]['data'][j] ))
         
+        print("DIBE")
     
     return d
     

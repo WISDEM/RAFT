@@ -8,6 +8,8 @@ import matplotlib.pyplot as plt
 
 from scipy.interpolate import PchipInterpolator
 
+from helpers import deg2rad
+
 import wisdem.inputs as sch
 from wisdem.ccblade.ccblade import CCBlade, CCAirfoil
 
@@ -33,12 +35,10 @@ class Rotor:
 
         # Should inherit these from raft_model or _env?
         self.w = np.array(w)
-        self.V = 14.
-                
         
-        # these should account for mean offsets of platform (and possibly tower bending)
-        tilt = 0 + turbine['shaft_tilt']
-        yaw  = 0        
+        self.Zhub       = turbine['Zhub']           # [m]
+        self.shaft_tilt = turbine['shaft_tilt']     # [deg]
+        #yaw  = 0        
 
         # Set some turbine params, this can come from WEIS/WISDEM or an external input
         if old:
@@ -54,13 +54,13 @@ class Rotor:
             self.Uhub      = np.array(turbine['wt_ops']['v'])
             self.Omega_rpm = np.array(turbine['wt_ops']['omega_op']) / rpm2radps
             self.pitch_deg = np.array(turbine['wt_ops']['pitch_op']) * rad2deg
-            self.I_drivetrain = 3.2e8
+            self.I_drivetrain = float(turbine['I_drivetrain'])
 
 
         # Set default control gains
         self.kp_0 = np.zeros_like(self.Uhub)
         self.ki_0 = np.zeros_like(self.Uhub)       
-        self.k_float = 0 # np.zeros_like(self.Uhub), right now this is a single value, but this may change
+        self.k_float = 0 # np.zeros_like(self.Uhub), right now this is a single value, but this may change    <<< what is this?
 
 
         # Set CCBlade flags
@@ -177,12 +177,12 @@ class Rotor:
             turbine['Rhub'],                # (m) radius of hub
             turbine['blade']['Rtip'],       # (m) radius of tip
             turbine['nBlades'],             # number of blades
-            turbine['env']['rho'],          # (kg/m^3) freestream fluid density
-            turbine['env']['mu'],           # (kg/m/s) dynamic viscosity of fluid
+            turbine['rho_air'],             # (kg/m^3) freestream fluid density
+            turbine['mu_air'],              # (kg/m/s) dynamic viscosity of fluid
             turbine['precone'],             # (deg) hub precone angle
-            tilt,                           # (deg) hub tilt angle
-            yaw,                            # (deg) nacelle yaw angle
-            turbine['env']['shearExp'],     # shear exponent for a power-law wind profile across hub
+            self.shaft_tilt,                # (deg) hub tilt angle
+            0.0,                            # (deg) nacelle yaw angle
+            turbine['shearExp'],            # shear exponent for a power-law wind profile across hub
             turbine['Zhub'],                # (m) hub height used for power-law wind profile.  U = Uref*(z/hubHt)**shearExp
             nSector,                        # number of azimuthal sectors to descretize aerodynamic calculation.  automatically set to 1 if tilt, yaw, and shearExp are all 0.0.  Otherwise set to a minimum of 4.
             blade_precurve,                 # (m) location of blade pitch axis in x-direction of :ref:`blade coordinate system <azimuth_blade_coord>`
@@ -197,109 +197,103 @@ class Rotor:
         )
 
 
-    def runCCBlade(self):
-        '''
-        '''
-
-        # Set environmental conditions, these must be arrays except for yaw
-        # Uhub = np.array([3.        ,  4.22088938,  5.22742206,  6.0056444 ,  6.54476783,
-        #         6.83731843,  6.87924056,  7.08852808,  7.54612388,  8.24568427,
-        #         9.17751118, 10.32868661, 10.89987023, 13.22242806, 14.9248779 ,
-        #        16.76700002, 18.72325693, 20.76652887, 22.86848978, 25. ]) # m/s
-        # Omega_rpm = np.array([5.        , 5.        , 5.        , 5.        , 5.        ,
-        #        5.        , 5.        , 5.03607599, 5.36117694, 5.8581827 ,
-        #        6.52020323, 7.33806089, 7.49924093, 7.49924093, 7.49924093,
-        #        7.49924093, 7.49924093, 7.49924093, 7.49924093, 7.49924093]) # rpm
-        # pitch_deg = np.array([3.8770757 ,  3.58018171,  2.63824381,  1.62701287,  0.81082407,
-        #         0.32645039,  0.25491167,  0.        ,  0.        ,  0.        ,
-        #         0.        ,  0.        ,  0.        ,  8.14543778, 11.02202702,
-        #        13.61534727, 16.04700926, 18.3599078 , 20.5677456 , 22.67114154]) # deg
-
-
-        self.outputs = {}
-
-        loads, derivs = self.ccblade.evaluate(self.Uhub, self.Omega_rpm, self.pitch_deg, coefficients=True)
-
-        self.outputs["P"] = loads["P"]
-        self.outputs["Mb"] = loads["Mb"]
-        self.outputs["CP"] = loads["CP"]
-        self.outputs["CMb"] = loads["CMb"]
-        self.outputs["Fhub"] = np.array( [loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0]])
-        self.outputs["Mhub"] = np.array( [loads["Q" ][0], loads["My" ][0], loads["Mz" ][0]])
-        self.outputs["CFhub"] = np.array([loads["CT"][0], loads["CY" ][0], loads["CZ" ][0]])
-        self.outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
-
-
-        print("Wind speed")
-        print(self.Uhub)
-        print("Aerodynamic power coefficient")
-        print(self.outputs["CP"])
-
-        self.J={}
-    
+    def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):
+        '''This performs a single CCBlade evaluation at specified conditions.
         
+        ptfm_pitch
+            mean platform pitch angle to be included in rotor tilt angle [rad]
+        yaw_misalign
+            turbine yaw misalignment angle [deg]
+        '''
+        
+        # find turbine operating point at the provided wind speed
+        Omega_rpm = np.interp(Uhub, self.Uhub, self.Omega_rpm)  # rotor speed [rpm]
+        pitch_deg = np.interp(Uhub, self.Uhub, self.pitch_deg)  # blade pitch angle [deg]
+        
+        # adjust rotor angles based on provided info (I think this intervention in CCBlade should work...)
+        self.ccblade.tilt = deg2rad(self.shaft_tilt) + ptfm_pitch
+        self.ccblade.yaw  = deg2rad(yaw_misalign)
+        
+        # evaluate aero loads and derivatives with CCBlade
+        loads, derivs = self.ccblade.evaluate(Uhub, Omega_rpm, pitch_deg, coefficients=True)
+
+        # organize and save the relevant outputs...
+        outputs = {}
+        
+        outputs["P"] = loads["P"]
+        outputs["Mb"] = loads["Mb"]
+        outputs["CP"] = loads["CP"]
+        outputs["CMb"] = loads["CMb"]
+        outputs["Fhub"] = np.array( [loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0]])
+        outputs["Mhub"] = np.array( [loads["Q" ][0], loads["My" ][0], loads["Mz" ][0]])
+        outputs["CFhub"] = np.array([loads["CT"][0], loads["CY" ][0], loads["CZ" ][0]])
+        outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
+
+
+        print(f"Wind speed: {Uhub} m/s, Aerodynamic power coefficient: {loads['CP'][0]:4.3f}")
+
+        J={} # Jacobian/derivatives
 
         dP = derivs["dP"]
-        self.J["P", "r"] = dP["dr"]
-        # self.J["P", "chord"] = dP["dchord"]
-        # self.J["P", "theta"] = dP["dtheta"]
-        # self.J["P", "Rhub"] = np.squeeze(dP["dRhub"])
-        # self.J["P", "Rtip"] = np.squeeze(dP["dRtip"])
-        # self.J["P", "hub_height"] = np.squeeze(dP["dhubHt"])
-        # self.J["P", "precone"] = np.squeeze(dP["dprecone"])
-        # self.J["P", "tilt"] = np.squeeze(dP["dtilt"])
-        # self.J["P", "yaw"] = np.squeeze(dP["dyaw"])
-        # self.J["P", "shearExp"] = np.squeeze(dP["dshear"])
-        # self.J["P", "V_load"] = np.squeeze(dP["dUinf"])
-        # self.J["P", "Omega_load"] = np.squeeze(dP["dOmega"])
-        # self.J["P", "pitch_load"] = np.squeeze(dP["dpitch"])
-        # self.J["P", "precurve"] = dP["dprecurve"]
-        # self.J["P", "precurveTip"] = dP["dprecurveTip"]
-        # self.J["P", "presweep"] = dP["dpresweep"]
-        # self.J["P", "presweepTip"] = dP["dpresweepTip"]
+        J["P", "r"] = dP["dr"]
+        # J["P", "chord"] = dP["dchord"]
+        # J["P", "theta"] = dP["dtheta"]
+        # J["P", "Rhub"] = np.squeeze(dP["dRhub"])
+        # J["P", "Rtip"] = np.squeeze(dP["dRtip"])
+        # J["P", "hub_height"] = np.squeeze(dP["dhubHt"])
+        # J["P", "precone"] = np.squeeze(dP["dprecone"])
+        # J["P", "tilt"] = np.squeeze(dP["dtilt"])
+        # J["P", "yaw"] = np.squeeze(dP["dyaw"])
+        # J["P", "shearExp"] = np.squeeze(dP["dshear"])
+        # J["P", "V_load"] = np.squeeze(dP["dUinf"])
+        # J["P", "Omega_load"] = np.squeeze(dP["dOmega"])
+        # J["P", "pitch_load"] = np.squeeze(dP["dpitch"])
+        # J["P", "precurve"] = dP["dprecurve"]
+        # J["P", "precurveTip"] = dP["dprecurveTip"]
+        # J["P", "presweep"] = dP["dpresweep"]
+        # J["P", "presweepTip"] = dP["dpresweepTip"]
 
         dQ = derivs["dQ"]
-        self.J["Q","Uhub"]      = np.atleast_1d(np.diag(dQ["dUinf"]))
-        self.J["Q","pitch_deg"] = np.atleast_1d(np.diag(dQ["dpitch"]))
-        self.J["Q","Omega_rpm"] = np.atleast_1d(np.diag(dQ["dOmega"]))
+        J["Q","Uhub"]      = np.atleast_1d(np.diag(dQ["dUinf"]))
+        J["Q","pitch_deg"] = np.atleast_1d(np.diag(dQ["dpitch"]))
+        J["Q","Omega_rpm"] = np.atleast_1d(np.diag(dQ["dOmega"]))
 
         dT = derivs["dT"]
-        self.J["T","Uhub"]      = np.atleast_1d(np.diag(dT["dUinf"]))
-        self.J["T","pitch_deg"] = np.atleast_1d(np.diag(dT["dpitch"]))
-        self.J["T","Omega_rpm"] = np.atleast_1d(np.diag(dT["dOmega"]))
+        J["T","Uhub"]      = np.atleast_1d(np.diag(dT["dUinf"]))
+        J["T","pitch_deg"] = np.atleast_1d(np.diag(dT["dpitch"]))
+        J["T","Omega_rpm"] = np.atleast_1d(np.diag(dT["dOmega"]))
 
         # dT = derivs["dT"]
-        # self.J["Fhub", "r"][0,:] = dT["dr"]     # 0 is for thrust force, 1 would be y, 2 z
-        # self.J["Fhub", "chord"][0,:] = dT["dchord"]
-        # self.J["Fhub", "theta"][0,:] = dT["dtheta"]
-        # self.J["Fhub", "Rhub"][0,:] = np.squeeze(dT["dRhub"])
-        # self.J["Fhub", "Rtip"][0,:] = np.squeeze(dT["dRtip"])
-        # self.J["Fhub", "hub_height"][0,:] = np.squeeze(dT["dhubHt"])
-        # self.J["Fhub", "precone"][0,:] = np.squeeze(dT["dprecone"])
-        # self.J["Fhub", "tilt"][0,:] = np.squeeze(dT["dtilt"])
-        # self.J["Fhub", "yaw"][0,:] = np.squeeze(dT["dyaw"])
-        # self.J["Fhub", "shearExp"][0,:] = np.squeeze(dT["dshear"])
-        # self.J["Fhub", "V_load"][0,:] = np.squeeze(dT["dUinf"])
-        # self.J["Fhub", "Omega_load"][0,:] = np.squeeze(dT["dOmega"])
-        # self.J["Fhub", "pitch_load"][0,:] = np.squeeze(dT["dpitch"])
-        # self.J["Fhub", "precurve"][0,:] = dT["dprecurve"]
-        # self.J["Fhub", "precurveTip"][0,:] = dT["dprecurveTip"]
-        # self.J["Fhub", "presweep"][0,:] = dT["dpresweep"]
-        # self.J["Fhub", "presweepTip"][0,:] = dT["dpresweepTip"]
+        # .J["Fhub", "r"][0,:] = dT["dr"]     # 0 is for thrust force, 1 would be y, 2 z
+        # .J["Fhub", "chord"][0,:] = dT["dchord"]
+        # .J["Fhub", "theta"][0,:] = dT["dtheta"]
+        # .J["Fhub", "Rhub"][0,:] = np.squeeze(dT["dRhub"])
+        # .J["Fhub", "Rtip"][0,:] = np.squeeze(dT["dRtip"])
+        # .J["Fhub", "hub_height"][0,:] = np.squeeze(dT["dhubHt"])
+        # .J["Fhub", "precone"][0,:] = np.squeeze(dT["dprecone"])
+        # .J["Fhub", "tilt"][0,:] = np.squeeze(dT["dtilt"])
+        # .J["Fhub", "yaw"][0,:] = np.squeeze(dT["dyaw"])
+        # .J["Fhub", "shearExp"][0,:] = np.squeeze(dT["dshear"])
+        # .J["Fhub", "V_load"][0,:] = np.squeeze(dT["dUinf"])
+        # .J["Fhub", "Omega_load"][0,:] = np.squeeze(dT["dOmega"])
+        # .J["Fhub", "pitch_load"][0,:] = np.squeeze(dT["dpitch"])
+        # .J["Fhub", "precurve"][0,:] = dT["dprecurve"]
+        # .J["Fhub", "precurveTip"][0,:] = dT["dprecurveTip"]
+        # .J["Fhub", "presweep"][0,:] = dT["dpresweep"]
+        # .J["Fhub", "presweepTip"][0,:] = dT["dpresweepTip"]
 
+        self.J = J
 
+        return loads, derivs        
 
-    def calcAeroContributions(self, U_amplitude=[]):
+    def calcAeroContributions(self, case):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics. Results are w.r.t. nonrotating hub reference frame
         and assume constant rotor speed and no controls.
         '''
         
-        Uinf = 14.  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
-        Hhub = 150.
+        Uinf = case['wind_speed']  # inflow wind speed (m/s) 
 
-        I_drivetrain = 3.2e8
-    
         # extract derivatives of interest, interpolated for the current wind speed
         dT_dU  = np.interp(Uinf, self.Uhub, self.J["T", "Uhub"     ])
         #dT_dOm = np.interp(Uinf, self.Uhub, self.J["T", "Omega_rpm"])
@@ -324,9 +318,9 @@ class Rotor:
         B_aero[0,0,:] += dT_dU                          # surge damping
 
         # calculate wind excitation force/moment spectra (in nonrotating hub reference frame)
-        for i in range(len(self.w)):                    # loop through each frequency component
-            F_aero[0,i] = U_amplitude[i]*dT_dU          # surge excitation
-            #F_aero[7,i] = U_amplitude*dQ_dU            # rotor torque excitation
+        #for i in range(len(self.w)):                    # loop through each frequency component
+        #    F_aero[0,i] = U_amplitude[i]*dT_dU          # surge excitation
+        #    F_aero[7,i] = U_amplitude*dQ_dU            # rotor torque excitation
 
         # calculate steady aero forces and moments
         F_aero0 = np.hstack((self.outputs["Fhub"],self.outputs["Mhub"]))
@@ -346,27 +340,33 @@ class Rotor:
         self.k_float = 9
             
 
-    def calcAeroServoContributions(self, U_amplitude=[]):
+
+    def calcAeroServoContributions(self, case, ptfm_pitch=0):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
         Results are w.r.t. nonrotating hub reference frame.
+        
+         ptfm_pitch
+            mean platform pitch angle to be included in rotor tilt angle [rad]
         '''
         
-        Uinf = 14.  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
-        Hhub = 150.
+        loads, derivs = self.runCCBlade(case['wind_speed'], ptfm_pitch=ptfm_pitch, yaw_misalign=case['yaw_misalign'])
+        
+        Uinf = case['wind_speed']  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
+        
+        # >>>> make wind spectrum from info in case <<<<<   
+            
+        # extract derivatives of interest
+        dT_dU  = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))
+        dT_dOm = np.atleast_1d(np.diag(derivs["dT"]["dOmega"])) / rpm2radps
+        dT_dPi = np.atleast_1d(np.diag(derivs["dT"]["dpitch"])) * rad2deg
+        dQ_dU  = np.atleast_1d(np.diag(derivs["dQ"]["dUinf"]))
+        dQ_dOm = np.atleast_1d(np.diag(derivs["dQ"]["dOmega"])) / rpm2radps
+        dQ_dPi = np.atleast_1d(np.diag(derivs["dQ"]["dpitch"])) * rad2deg
 
-    
-        # extract derivatives of interest, interpolated for the current wind speed
-        dT_dU  = np.interp(self.V, self.Uhub, self.J["T", "Uhub"     ])
-        dT_dOm = np.interp(self.V, self.Uhub, self.J["T", "Omega_rpm"]) / rpm2radps
-        dT_dPi = np.interp(self.V, self.Uhub, self.J["T", "pitch_deg"]) * rad2deg
-        dQ_dU  = np.interp(self.V, self.Uhub, self.J["Q", "Uhub"     ])
-        dQ_dOm = np.interp(self.V, self.Uhub, self.J["Q", "Omega_rpm"]) / rpm2radps
-        dQ_dPi = np.interp(self.V, self.Uhub, self.J["Q", "pitch_deg"]) * rad2deg
-
-        # Pitch control gains at self.V (Uinf), flip sign to translate ROSCO convention to this one
-        kp_U    = -np.interp(self.V, self.Uhub, self.kp_0) 
-        ki_U    = -np.interp(self.V, self.Uhub, self.ki_0) 
+        # Pitch control gains at Uinf (Uinf), flip sign to translate ROSCO convention to this one
+        kp_U    = -np.interp(Uinf, self.Uhub, self.kp_0) 
+        ki_U    = -np.interp(Uinf, self.Uhub, self.ki_0) 
         
         a_aer = np.zeros_like(self.w)
         b_aer = np.zeros_like(self.w)
@@ -384,13 +384,13 @@ class Rotor:
             D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm + kp_U * dQ_dPi) * 1j * omega + ki_U* dQ_dPi
 
             # control transfer function
-            C[iw] = 1j * omega * (dQ_dU - self.k_float * dQ_dPi / Hhub) / D[iw]
+            C[iw] = 1j * omega * (dQ_dU - self.k_float * dQ_dPi / self.Zhub) / D[iw]
 
             # alternative for debugging
             C2[iw] = C[iw] / (1j * omega)
 
             # Complex aero damping
-            T = 1j * omega * (dT_dU - self.k_float * dT_dPi / Hhub) - (((dT_dOm + kp_U * dT_dPi) * 1j * omega + ki_U * dT_dPi ) * C[iw])
+            T = 1j * omega * (dT_dU - self.k_float * dT_dPi / self.Zhub) - (((dT_dOm + kp_U * dT_dPi) * 1j * omega + ki_U * dT_dPi ) * C[iw])
 
             # Aerodynamic coefficients
             a_aer[iw] = -(1/omega**2) * np.real(T)
@@ -407,11 +407,15 @@ class Rotor:
         # calculate contribution to system matrices      
         A_aero[0,0,:] = a_aer
         B_aero[0,0,:] = b_aer
-        
+                
+        # calculate steady aero forces and moments
+        F_aero0 = np.array([loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0],
+                            loads["Q" ][0], loads["My" ][0], loads["Mz" ][0] ])
+                            
         # calculate wind excitation force/moment spectra
         #for i in range(nw):                             # loop through each frequency component
         #    F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation
-        #    F_aero[4,i] = U_amplitude[i]*dT_dU*Hhub        # pitch excitation
+        #    F_aero[4,i] = U_amplitude[i]*dT_dU*Zhub        # pitch excitation
         
         
         return A_aero, B_aero, C_aero, F_aero0, F_aero, a_aer, b_aer #  B_aero, C_aero, F_aero0, F_aero

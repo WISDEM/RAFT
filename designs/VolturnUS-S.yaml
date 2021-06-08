@@ -2,6 +2,43 @@ type: input file for RAFT
 name: IEA 15 MW with VolturnUS-S steel semi
 comments: Revised example with "super-member" type inputs, including one for the tower
 
+# global Settings
+settings:
+    min_freq     :  0.01    #  [Hz]       lowest frequency to consider, also the frequency bin width 
+    max_freq     :  1.00    #  [Hz]       highest frequency to consider
+    XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
+    nIter        :   0      # sets how many iterations to perform in Model.solveDynamics()
+    
+site:
+    water_depth : 200        # [m]      uniform water depth
+    rho_water   : 1025.0     # [kg/m^3] water density
+    rho_air     : 1.225      # [kg/m^3] air density
+    mu_air      : 1.81e-05   #          air dynamic viscosity
+    shearExp    : 0.12       #          shear exponent
+    
+cases:
+    #wind_speed          :  [10]     # [m/s]
+    #wind_heading        :  0        # (deg)
+    #
+    #turbulence_intensity:  0.1      # (%)
+    #turbine_class       :  2        # 1-4
+    #turbulence_category :  B        # A-C
+    #turbulence_model    : NTM       # NTM or ETM
+    #
+    #turbine_status      : operating # (Operating, parked, [failures…]?)
+    #yaw_misalignment    :  0        # (deg)
+    #
+    #wave_spectrum       : JONSWAP   # (JONSWAP,Regular)
+    #wave_period         : 10        # (peak) period (s)
+    #wave_height         :  4        # (significant) height (m)
+    #wave_heading        :  0        # (deg)
+
+    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading ]
+    data :  #   m/s        deg    % or e.g. 2B_NTM    string            deg         string          (s)         (m)         (deg)
+        -  [    10,         0,            0.1,       operating,          0,        JONSWAP,          8,          2,           0        ]
+        -  [    12,         0,            0.1,       operating,          0,        unit,          9,          4,           0        ]
+        -  [    14,         0,            0.1,       operating,          0,        JONSWAP,         10,          6,           0        ]
+
 
 turbine:
     
@@ -12,17 +49,15 @@ turbine:
     hHub          :        150.0      #  [m]        hub height above water line [m]
     Fthrust       :       1500.0E3    #  [N]        temporary thrust force to use
     
+    I_drivetrain: 318628138.0   # full rotor + drivetrain inertia as felt on the high-speed shaft
+    
     nBlades     : 3     # number of blades
     Zhub        : 150.0        # hub height [m]
     Rhub        : 3.97        # hub radius [m]
-    precone     : 4.0     # [rad]
-    shaft_tilt  : 6.0  # [rad]
+    precone     : 4.0     # [deg]
+    shaft_tilt  : 6.0     # [deg]
 
-    env: 
-        rho     : 1.225   # air density [kg/m^3]
-        mu      : 1.81e-05   # air dynamic viscosity
-        shearExp: 0.12  # shear exponent
-
+    
     blade: 
         precurveTip : -3.9999999999999964  # 
         presweepTip : 0.0  # 
@@ -1034,6 +1069,8 @@ turbine:
     
     
     tower:  # (could remove some entries that don't apply for the tower)
+        dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
+    
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
         type      :  1                         # [-]    
         rA        :  [ 0, 0,  15]              # [m]    end A coordinates
@@ -1059,6 +1096,9 @@ turbine:
 
 
 platform:
+
+    potModMaster :   0      # [int] master switch for potMod variables; 0=keeps all member potMod vars the same, 1=turns all potMod vars to False (no HAMS), 2=turns all potMod vars to True (no strip)
+    dlsMax       :  5.0     # maximum node splitting section amount for platform members; can't be 0
 
     members:   # list all members here
         

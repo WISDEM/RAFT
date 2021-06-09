@@ -22,11 +22,12 @@ ph     = reload(ph)
 pnl    = reload(pnl)
 FOWT   = reload(fowt).FOWT
 
+raft_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
 class Model():
 
 
-    def __init__(self, design, BEM=None, nTurbines=1, w=[], depth=300):
+    def __init__(self, design, nTurbines=1):
         '''
         Empty frequency domain model initialization function
 
@@ -41,58 +42,34 @@ class Model():
 
         self.nDOF = 0  # number of DOFs in system
 
-
-    # ----- process turbine information -----------------------------------------
-    # No processing actually needed yet - we pass the dictionary directly to RAFT.
+        self.design = design # save design dictionary for possible later use/reference
 
 
-    # ----- process platform information ----------------------------------------
-    # No processing actually needed yet - we pass the dictionary directly to RAFT.
-
-
-        # ----- process mooring information ----------------------------------------------
-
+        # parse settings
+        if not 'settings' in design:    # if settings field not in input data
+            design['settings'] = {}     # make an empty one to avoid errors
+        
+        min_freq     = getFromDict(design['settings'], 'min_freq', default=0.01, dtype=float)  # [Hz] lowest frequency to consider, also the frequency bin width 
+        max_freq     = getFromDict(design['settings'], 'max_freq', default=1.00, dtype=float)  # [Hz] highest frequency to consider
+        self.XiStart = getFromDict(design['settings'], 'XiStart' , default=0.1 , dtype=float)  # sets initial amplitude of each DOF for all frequencies
+        self.nIter   = getFromDict(design['settings'], 'nIter'   , default=15  , dtype=int  )  # sets how many iterations to perform in Model.solveDynamics()
+        
+        self.w = np.arange(min_freq, max_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
+        self.nw = len(self.w)  # number of frequencies
+                
+        
+        # process mooring information 
         self.ms = mp.System()
-
         self.ms.parseYAML(design['mooring'])
         
-        
-        self.potModMaster = getFromDict(design, 'potModMaster', dtype=int, default=0)
-        self.dlsMax = getFromDict(design, 'dlsMax', default=5.0)
-        for mi in design['platform']['members']:
-            mi['dlsMax'] = self.dlsMax
-            if self.potModMaster==1:
-                mi['potMod'] = False
-            elif self.potModMaster==2:
-                mi['potMod'] = True
-            
-        design['turbine']['tower']['dlsMax'] = self.dlsMax
-        
-        self.XiStart = getFromDict(design, 'XiStart', default=0.1)
-        self.nIter = getFromDict(design, 'nIter', default=15)
-        
-
-        self.depth = depth
-
-        # If you're modeling OC3 spar, for example, import the manual yaw stiffness needed by the bridle config
-        if 'yaw stiffness' in design['turbine']:
-            self.yawstiff = design['turbine']['yaw stiffness']
-        else:
-            self.yawstiff = 0
-
-        # analysis frequency array
-        if len(w)==0:
-            w = np.arange(.05, 3, 0.05)  # angular frequencies tp analyze (rad/s)
-
-        self.w = np.array(w)
-        self.nw = len(w)  # number of frequencies
-
+        # depth and wave number        
+        self.depth = getFromDict(design['site'], 'water_depth', dtype=float)
         self.k = np.zeros(self.nw)  # wave number
         for i in range(self.nw):
             self.k[i] = waveNumber(self.w[i], self.depth)
         
         # set up the FOWT here  <<< only set for 1 FOWT for now <<<
-        self.fowtList.append(FOWT(design, w=self.w, mpb=self.ms.bodyList[0], depth=depth))
+        self.fowtList.append(FOWT(design, w=self.w, mpb=self.ms.bodyList[0], depth=self.depth))
         self.coords.append([0.0,0.0])
         self.nDOF += 6
 
@@ -106,8 +83,9 @@ class Model():
         self.results = {}     # dictionary to hold all results from the model
         
 
+
     def addFOWT(self, fowt, xy0=[0,0]):
-        '''adds an already set up FOWT to the frequency domain model solver.'''
+        '''(not used currently) Adds an already set up FOWT to the frequency domain model solver.'''
 
         self.fowtList.append(fowt)
         self.coords.append(xy0)
@@ -116,6 +94,7 @@ class Model():
         # would potentially need to add a mooring system body for it too <<<
 
 
+    """
     def setEnv(self, Hs=8, Tp=12, spectrum='unit', V=10, beta=0, Fthrust=0):
 
         self.env = Env()
@@ -128,16 +107,81 @@ class Model():
 
         for fowt in self.fowtList:
             fowt.setEnv(Hs=Hs, Tp=Tp, V=V, spectrum=spectrum, beta=beta, Fthrust=Fthrust)
+    """
 
 
-    def calcSystemProps(self):
-        '''This gets the various static/constant calculations of each FOWT done.'''
+    def analyzeUnloaded(self):
+        '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.'''
+
+        # calculate the system's constant properties
+        #self.calcSystemConstantProps()
+        for fowt in self.fowtList:
+            fowt.calcStatics()
+            #fowt.calcBEM()
+            
+        # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
+        try: 
+            self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
+            self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
+        except Exception as e:
+            raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
+
+        self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
+            
+        # calculate platform offsets and mooring system equilibrium state
+        self.calcMooringAndOffsets()
+
+
+    
+    def analyzeCases(self):
+        '''This runs through all the specified load cases, building a dictionary of results.'''
+        
+        nCases = len(self.design['cases']['data'])
+        
+        # calculate the system's constant properties
+        #self.calcSystemConstantProps()
+        for fowt in self.fowtList:
+            fowt.calcStatics()
+            fowt.calcBEM()
+            
+        # loop through each case
+        for iCase in range(nCases):
+        
+            print("  Running case")
+            print(self.design['cases']['data'][iCase])
+        
+            # form dictionary of case parameters
+            case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
+    
+            # get initial FOWT values assuming no offset
+            for fowt in self.fowtList:
+                fowt.Xi0 = np.zeros(6)      # zero platform offsets
+                fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
+                fowt.calcHydroConstants(case)
+            
+            # calculate platform offsets and mooring system equilibrium state
+            self.calcMooringAndOffsets()
+            
+            # update values based on offsets if applicable
+            for fowt in self.fowtList:
+                fowt.calcTurbineConstants(case, ptfm_pitch=fowt.Xi0[4])
+                # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
+            
+            # (could solve mooring and offsets a second time, but likely overkill)
+            
+            # solve system dynamics
+            self.solveDynamics(case)
+            
+            # process outputs for each case (TO DO)
+            #self.calcOutputs()
+
+    """
+    def calcSystemConstantProps(self):
+        '''This gets the various static/constant calculations of each FOWT done. (Those that don't depend on load case.)'''
 
         for fowt in self.fowtList:
             fowt.calcBEM()
             fowt.calcStatics()
-            fowt.calcHydroConstants()
-            fowt.calcTurbineConstants()
             #fowt.calcDynamicConstants()
 
         # First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
@@ -148,17 +192,15 @@ class Model():
             raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
 
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
-        
-        
+    """    
     
     def calcMooringAndOffsets(self):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
         '''
 
-
         # apply any mean aerodynamic and hydrodynamic loads
-        F_PRP = self.fowtList[0].F_aero0# + self.fowtList[0].F_hydro0   
+        F_PRP = self.fowtList[0].F_aero0# + self.fowtList[0].F_hydro0 <<< hydro load would be nice here eventually
         self.ms.bodyList[0].f6Ext = np.array(F_PRP)
 
 
@@ -174,13 +216,12 @@ class Model():
             
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
-
-        # range of DOFs for the current turbine ... i1 = 0, i2 = 6
         
         print("Equilibrium'3' platform positions/rotations:")
         printVec(self.ms.bodyList[0].r6)
 
         r6eq = self.ms.bodyList[0].r6
+        fowt.Xi0 = np.array(r6eq)   # save current mean offsets for the FOWT
 
         #self.ms.plot()
 
@@ -193,8 +234,8 @@ class Model():
         except Exception as e:
             raise RuntimeError('An error occured when getting linearized mooring properties in offset state: '+e.message)
             
-        # manually add yaw spring stiffness as compensation until bridle (crow foot) configuration is added
-        C_moor[5,5] += self.yawstiff
+        # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
+        C_moor[5,5] += fowt.yawstiff
 
         self.C_moor = C_moor
         self.F_moor = F_moor
@@ -217,20 +258,29 @@ class Model():
         M_tot = np.zeros([self.nDOF,self.nDOF])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
         C_tot = np.zeros([self.nDOF,self.nDOF])       # total stiffness matrix [N/m, N, N-m]
 
-
         # add in mooring stiffness from MoorPy system
-        C_tot = np.array(self.C_moor0)
+        C_tot += np.array(self.C_moor0)
 
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
 
-        # range of DOFs for the current turbine
-        i1 = 0
-        i2 = 6
+        # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
+        C_tot[5,5] += fowt.yawstiff
 
         # add fowt's terms to system matrices (BEM arrays are not yet included here)
-        M_tot[i1:i2] += fowt.M_struc + fowt.A_hydro_morison   # mass
-        C_tot[i1:i2] += fowt.C_struc + fowt.C_hydro           # stiffness
+        M_tot += fowt.M_struc + fowt.A_hydro_morison   # mass
+        C_tot += fowt.C_struc + fowt.C_hydro           # stiffness
+
+        # check viability of matrices
+        message=''
+        for i in range(self.nDOF):
+            if M_tot[i,i] < 1.0:
+                message += f'Diagonal entry {i} of system mass matrix is less than 1 ({M_tot[i,i]}). '
+            if C_tot[i,i] < 1.0:
+                message += f'Diagonal entry {i} of system stiffness matrix is less than 1 ({C_tot[i,i]}). '
+                
+        if len(message) > 0:
+            raise RuntimeError('System matrices computed by RAFT have one or more small or negative diagonals: '+message)
 
         # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
         eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
@@ -297,7 +347,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
 
-    def solveDynamics(self, tol=0.01, conv_plot=1, RAO_plot=1):
+    def solveDynamics(self, case, tol=0.01, conv_plot=1, RAO_plot=1):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -461,7 +511,7 @@ class Model():
             self.results['properties']['pitch inertia at subCG'] = fowt.M_struc_subCM[4,4]
             self.results['properties']['yaw inertia at subCG'] = fowt.M_struc_subCM[5,5]
             
-            self.results['properties']['Buoyancy (pgV)'] = fowt.env.rho*fowt.env.g*fowt.V
+            self.results['properties']['Buoyancy (pgV)'] = fowt.rho_water*fowt.g*fowt.V
             self.results['properties']['Center of Buoyancy'] = fowt.rCB
             self.results['properties']['C stiffness matrix'] = fowt.C_hydro
             
@@ -561,8 +611,8 @@ class Model():
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
-        self.ms.bodyList[0].setPosition(np.zeros(6))
-        self.ms.initialize()
+        #self.ms.bodyList[0].setPosition(np.zeros(6))
+        #self.ms.initialize()
         fig, ax = self.ms.plot()
         #fig = plt.figure(figsize=(20/2.54,12/2.54))
         #ax = Axes3D(fig)
@@ -581,3 +631,49 @@ class Model():
             plt.grid(b=None)
             ax.axis('off')
             plt.box(False)
+
+
+def runRAFT(input_file, turbine_file=""):
+    '''
+    This will set up and run RAFT based on a YAML input file.
+    '''
+    
+    # open the design YAML file and parse it into a dictionary for passing to raft
+    print("Loading RAFT input file: "+input_file)
+    
+    with open(input_file) as file:
+        design = yaml.load(file, Loader=yaml.FullLoader)
+    
+    print(f"'{design['name']}'")
+    
+    
+    depth = float(design['mooring']['water_depth'])
+    
+    # for now, turn off potMod in the design dictionary to avoid BEM analysis
+    design['platform']['potModMaster'] = 1
+    
+    # read in turbine data and combine it in
+    # if len(turbine_file) > 0:
+    #   turbine = convertIEAturbineYAML2RAFT(turbine_file)
+    #   design['turbine'].update(turbine)
+    
+    # Create and run the model
+    print(" --- making model ---")
+    model = raft.Model(design)  
+    print(" --- analyizing unloaded ---")
+    model.analyzeUnloaded()
+    print(" --- analyzing cases ---")
+    model.analyzeCases()
+    
+    model.plot()
+    
+    plt.show()
+    
+    return model
+    
+    
+if __name__ == "__main__":
+    import raft
+    
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
+    fowt = model.fowtList[0]

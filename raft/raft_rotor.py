@@ -254,7 +254,7 @@ class Rotor:
         return A_aero, B_aero, C_aero, F_aero0, F_aero
 
 
-    def setControlGains(self,turbine_string):
+    def setControlGains(self):
         '''
         Use flipped sign version of ROSCO
         '''
@@ -263,7 +263,12 @@ class Rotor:
         pc_angles = np.array(self.rot_from_weis['pitch_control']['GS_Angles']) * rad2deg
         self.kp_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Kp'],left=0,right=0)
         self.ki_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Ki'],left=0,right=0)
-        self.k_float = 9
+        self.k_float = -self.rot_from_weis['pitch_control']['Fl_Kp']
+
+        # Torque control
+        self.kp_tau = -self.rot_from_weis['torque_control']['VS_KP']
+        self.ki_tau = -self.rot_from_weis['torque_control']['VS_KI']
+        self.Ng     = self.rot_from_weis['gear_ratio']
             
 
     def calcAeroServoContributions(self, U_amplitude=[]):
@@ -287,6 +292,10 @@ class Rotor:
         # Pitch control gains at self.V (Uinf), flip sign to translate ROSCO convention to this one
         kp_U    = -np.interp(self.V, self.Uhub, self.kp_0) 
         ki_U    = -np.interp(self.V, self.Uhub, self.ki_0) 
+
+        # Torque control gains, need to get these from somewhere
+        kp_tau = self.kp_tau * (kp_U == 0)  #     -38609162.66552     ! VS_KP				- Proportional gain for generator PI torque controller [1/(rad/s) Nm]. (Only used in the transitional 2.5 region if VS_ControlMode =/ 2)
+        ki_tau = self.kp_tau  * (kp_U == 0)   #    -4588245.18720      ! VS_KI	
         
         a_aer = np.zeros_like(self.w)
         b_aer = np.zeros_like(self.w)
@@ -295,13 +304,13 @@ class Rotor:
         D   = np.zeros_like(self.w,dtype=np.complex_)
 
         # Roots of characteristic equation, helps w/ debugging
-        p = np.array([-self.I_drivetrain, (dQ_dOm + kp_U * dQ_dPi), ki_U* dQ_dPi])
+        p = np.array([-self.I_drivetrain, (dQ_dOm + kp_U * dQ_dPi - self.Ng * kp_tau), ki_U* dQ_dPi - self.Ng * ki_tau])
         r = np.roots(p)
 
         for iw, omega in enumerate(self.w):
             
             # Denominator of control transfer function
-            D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm + kp_U * dQ_dPi) * 1j * omega + ki_U* dQ_dPi
+            D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm + kp_U * dQ_dPi - self.Ng * kp_tau) * 1j * omega + ki_U* dQ_dPi - self.Ng * ki_tau
 
             # control transfer function
             C[iw] = 1j * omega * (dQ_dU - self.k_float * dQ_dPi / Hhub) / D[iw]
@@ -343,7 +352,7 @@ if __name__=='__main__':
     turbine = loadTurbineYAML(fname_turbine)
     rr = Rotor(turbine,np.linspace(0.05,3))
     rr.runCCBlade()
-    rr.setControlGains(turbine)
+    rr.setControlGains()
 
     rr.calcAeroServoContributions()
 

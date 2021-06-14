@@ -35,7 +35,7 @@ class Rotor:
 
         # Should inherit these from raft_model or _env?
         self.w = np.array(w)
-        
+               
         self.Zhub       = turbine['Zhub']           # [m]
         self.shaft_tilt = turbine['shaft_tilt']     # [deg]        
         self.overhang   = turbine['overhang'] 
@@ -329,16 +329,21 @@ class Rotor:
         return A_aero, B_aero, C_aero, F_aero0, F_aero
 
 
-    def setControlGains(self,turbine_string):
+    def setControlGains(self,design):
         '''
         Use flipped sign version of ROSCO
         '''
 
         # Convert gain-scheduling wrt pitch to wind speed
-        pc_angles = np.array(self.rot_from_weis['pitch_control']['GS_Angles']) * rad2deg
-        self.kp_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Kp'],left=0,right=0)
-        self.ki_0 = np.interp(self.pitch_deg,pc_angles,self.rot_from_weis['pitch_control']['GS_Ki'],left=0,right=0)
-        self.k_float = 9
+        pc_angles = np.array(design['turbine']['pitch_control']['GS_Angles']) * rad2deg
+        self.kp_0 = np.interp(self.pitch_deg,pc_angles,design['turbine']['pitch_control']['GS_Kp'],left=0,right=0)
+        self.ki_0 = np.interp(self.pitch_deg,pc_angles,design['turbine']['pitch_control']['GS_Ki'],left=0,right=0)
+        self.k_float = -design['turbine']['pitch_control']['Fl_Kp']
+
+        # Torque control
+        self.kp_tau = -design['turbine']['torque_control']['VS_KP']
+        self.ki_tau = -design['turbine']['torque_control']['VS_KI']
+        self.Ng     = design['turbine']['gear_ratio']
             
 
 
@@ -368,6 +373,10 @@ class Rotor:
         # Pitch control gains at Uinf (Uinf), flip sign to translate ROSCO convention to this one
         kp_U    = -np.interp(Uinf, self.Uhub, self.kp_0) 
         ki_U    = -np.interp(Uinf, self.Uhub, self.ki_0) 
+
+        # Torque control gains, need to get these from somewhere
+        kp_tau = self.kp_tau * (kp_U == 0)  #     -38609162.66552     ! VS_KP				- Proportional gain for generator PI torque controller [1/(rad/s) Nm]. (Only used in the transitional 2.5 region if VS_ControlMode =/ 2)
+        ki_tau = self.kp_tau  * (kp_U == 0)   #    -4588245.18720      ! VS_KI	
         
         a_aer = np.zeros_like(self.w)
         b_aer = np.zeros_like(self.w)
@@ -376,13 +385,13 @@ class Rotor:
         D   = np.zeros_like(self.w,dtype=np.complex_)
 
         # Roots of characteristic equation, helps w/ debugging
-        p = np.array([-self.I_drivetrain, (dQ_dOm + kp_U * dQ_dPi), ki_U* dQ_dPi])
+        p = np.array([-self.I_drivetrain, (dQ_dOm + kp_U * dQ_dPi - self.Ng * kp_tau), ki_U* dQ_dPi - self.Ng * ki_tau])
         r = np.roots(p)
 
         for iw, omega in enumerate(self.w):
             
             # Denominator of control transfer function
-            D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm + kp_U * dQ_dPi) * 1j * omega + ki_U* dQ_dPi
+            D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm + kp_U * dQ_dPi - self.Ng * kp_tau) * 1j * omega + ki_U* dQ_dPi - self.Ng * ki_tau
 
             # control transfer function
             C[iw] = 1j * omega * (dQ_dU - self.k_float * dQ_dPi / self.Zhub) / D[iw]
@@ -481,22 +490,43 @@ class Rotor:
         
 
 if __name__=='__main__':
-    fname_turbine = os.path.join(raft_dir,'designs/rotors/IEA-15-240-RWT.yaml')
-    from raft.runRAFT import loadTurbineYAML
-    turbine = loadTurbineYAML(fname_turbine)
-    rr = Rotor(turbine,np.linspace(0.05,3), old=True)
-    rr.runCCBlade()
-    rr.setControlGains(turbine)
+    fname_design = os.path.join(raft_dir,'designs/VolturnUS-S.yaml')
+    # from raft.runRAFT import loadTurbineYAML
+    # turbine = loadTurbineYAML(fname_design)
 
-    rr.calcAeroServoContributions()
+    # open the design YAML file and parse it into a dictionary for passing to raft
+    with open(fname_design) as file:
+        design = yaml.load(file, Loader=yaml.FullLoader)
 
-    UU = np.linspace(4,24)
+    # Turbine rotor
+    design['turbine']['rho_air' ] = design['site']['rho_air']
+    design['turbine']['mu_air'  ] = design['site']['mu_air']
+    design['turbine']['shearExp'] = design['site']['shearExp']
+
+    rr = Rotor(design['turbine'],np.linspace(0.05,3)) #, old=True)
+    # rr.runCCBlade()
+    rr.setControlGains(design)
+
+    # loop through each case
+    nCases = len(design['cases']['data'])
+    for iCase in range(nCases):
+    
+        print("  Running case")
+        print(design['cases']['data'][iCase])
+    
+        # form dictionary of case parameters
+        case = dict(zip( design['cases']['keys'], design['cases']['data'][iCase]))   
+
+        rr.calcAeroServoContributions(case)
+
+    UU = np.linspace(14,24)
     a_aer_U = np.zeros_like(UU)
     b_aer_U = np.zeros_like(UU)
 
     for iU, Uinf in enumerate(UU):
-        rr.V = Uinf
-        _,_,_,_,_, a_aer, b_aer = rr.calcAeroServoContributions()
+        # rr.V = Uinf
+        case['wind_speed'] = Uinf
+        _,_,_,_,_, a_aer, b_aer = rr.calcAeroServoContributions(case)
 
         a_aer_U[iU] = np.interp(2 * np.pi / 30, rr.w, a_aer)
         b_aer_U[iU] = np.interp(2 * np.pi / 30, rr.w, b_aer)

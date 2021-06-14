@@ -679,6 +679,7 @@ class FOWT():
     def plot(self, ax):
         '''plots the FOWT...'''
 
+        self.rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R)
 
         # loop through each member and plot it
         for mem in self.memberList:

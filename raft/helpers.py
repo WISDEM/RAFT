@@ -523,6 +523,7 @@ def convertIEAturbineYAML2RAFT(fname_turbine):
     Rhub = 0.5 * wt_init["components"]["hub"]["diameter"] # [m] - hub radius
     d['precone'] = np.rad2deg(wt_init["components"]["hub"]["cone_angle"]) # [deg] - rotor precone angle
     d['shaft_tilt'] = np.rad2deg(wt_init["components"]["nacelle"]["drivetrain"]["uptilt"]) # [deg] -  nacelle uptilt angle
+    d['overhang'] = np.rad2deg(wt_init["components"]["nacelle"]["drivetrain"]["overhang"]) # [m] - distance from tower centerline to blade root location?
     d['nBlades'] = wt_init["assembly"]["number_of_blades"] # [-] - number of blades
 
     # Set discretization parameters
@@ -606,6 +607,7 @@ def convertIEAturbineYAML2RAFT(fname_turbine):
         outfile.write(f"    Rhub        : {d['Rhub']}        # hub radius [m]\n")
         outfile.write(f"    precone     : {d['precone']}     # [rad]\n")
         outfile.write(f"    shaft_tilt  : {d['shaft_tilt']}  # [rad]\n\n")
+        outfile.write(f"    overhang    : {d['overhang']}  # [m]\n\n")
         outfile.write(f"    env: \n")
         outfile.write(f"        rho     : {d['env']['rho']}   # air density [kg/m^3]\n")
         outfile.write(f"        mu      : {d['env']['mu']}   # air dynamic viscosity\n")

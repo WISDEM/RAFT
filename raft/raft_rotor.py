@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 
 from scipy.interpolate import PchipInterpolator
 
-from helpers import deg2rad
+from helpers import deg2rad, rotationMatrix
 
 import wisdem.inputs as sch
 from wisdem.ccblade.ccblade import CCBlade, CCAirfoil
@@ -37,7 +37,8 @@ class Rotor:
         self.w = np.array(w)
                
         self.Zhub       = turbine['Zhub']           # [m]
-        self.shaft_tilt = turbine['shaft_tilt']     # [deg]
+        self.shaft_tilt = turbine['shaft_tilt']     # [deg]        
+        self.overhang   = turbine['overhang'] 
         #yaw  = 0        
 
         # Set some turbine params, this can come from WEIS/WISDEM or an external input
@@ -428,6 +429,64 @@ class Rotor:
         
         
         return A_aero, B_aero, C_aero, F_aero0, F_aero, a_aer, b_aer #  B_aero, C_aero, F_aero0, F_aero
+        
+        
+    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0):
+        '''Draws the rotor on the passed axes, considering optional platform offset and rotation matrix, and rotor azimuth angle'''
+
+        # ----- blade geometry ----------
+
+        m = len(self.ccblade.chord)
+
+        # lists to be filled with coordinates for plotting
+        X = []
+        Y = []
+        Z = []        
+        
+        # generic airfoil for now
+        afx = np.array([ 0.0 , -0.16, 0.0 ,  0.0 ])
+        afy = np.array([-0.25,  0.  , 0.75, -0.25])
+        npts = len(afx)
+        
+        # should add real airfoil shapes, and twist     
+        for i in range(m):
+            for j in range(npts):
+                X.append(self.ccblade.chord[i]*afx[j])
+                Y.append(self.ccblade.chord[i]*afy[j])
+                Z.append(self.ccblade.r[i])            
+                #X.append(self.ccblade.chord[i+1]*afx[j])
+                #Y.append(self.ccblade.chord[i+1]*afy[j])
+                #Z.append(self.ccblade.r[i+1]) 
+                
+        P = np.array([X, Y, Z])
+        
+        # ----- rotation matricse ----- 
+        # (blade pitch would be a -rotation about local z)
+        R_precone = rotationMatrix(0, -self.ccblade.precone, 0)  
+        R_azimuth = [rotationMatrix(azimuth + azi, 0, 0) for azi in 2*np.pi/3.*np.arange(3)]
+        R_tilt    = rotationMatrix(0, deg2rad(self.shaft_tilt), 0)   # # define x as along shaft downwind, y is same as ptfm y
+        
+        # ----- transform coordinates -----
+        for ib in range(3):
+        
+            P2 = np.matmul(R_precone, P)
+            P2 = np.matmul(R_azimuth[ib], P2)
+            P2 = np.matmul(R_tilt, P2)
+            P2 = P2 + np.array([-self.overhang, 0, self.Zhub])[:,None] # PRP to tower-shaft intersection point
+            P2 = np.matmul(R_ptfm, P2) + np.array(r_ptfm)[:,None]
+          
+            # drawing airfoils                            
+            for ii in range(m-1):
+                ax.plot(P2[0, npts*ii:npts*(ii+1)], P2[1, npts*ii:npts*(ii+1)], P2[2, npts*ii:npts*(ii+1)])  
+            # draw outline
+            ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], 'k') # leading edge  
+            ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], 'k')  # trailing edge
+            
+            
+        #for j in range(m):
+        #    linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color='k'))  # station rings
+        #
+        #return linebit
         
 
 if __name__=='__main__':

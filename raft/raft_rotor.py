@@ -197,6 +197,9 @@ class Rotor:
             derivatives=True,               # if True, derivatives along with function values will be returned for the various methods
         )
 
+        # pull control gains out of dictionary
+        self.setControlGains(turbine)
+
 
     def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):
         '''This performs a single CCBlade evaluation at specified conditions.
@@ -329,21 +332,21 @@ class Rotor:
         return A_aero, B_aero, C_aero, F_aero0, F_aero
 
 
-    def setControlGains(self,design):
+    def setControlGains(self,turbine):
         '''
         Use flipped sign version of ROSCO
         '''
 
         # Convert gain-scheduling wrt pitch to wind speed
-        pc_angles = np.array(design['turbine']['pitch_control']['GS_Angles']) * rad2deg
-        self.kp_0 = np.interp(self.pitch_deg,pc_angles,design['turbine']['pitch_control']['GS_Kp'],left=0,right=0)
-        self.ki_0 = np.interp(self.pitch_deg,pc_angles,design['turbine']['pitch_control']['GS_Ki'],left=0,right=0)
-        self.k_float = -design['turbine']['pitch_control']['Fl_Kp']
+        pc_angles = np.array(turbine['pitch_control']['GS_Angles']) * rad2deg
+        self.kp_0 = np.interp(self.pitch_deg,pc_angles,turbine['pitch_control']['GS_Kp'],left=0,right=0)
+        self.ki_0 = np.interp(self.pitch_deg,pc_angles,turbine['pitch_control']['GS_Ki'],left=0,right=0)
+        self.k_float = -turbine['pitch_control']['Fl_Kp']
 
         # Torque control
-        self.kp_tau = -design['turbine']['torque_control']['VS_KP']
-        self.ki_tau = -design['turbine']['torque_control']['VS_KI']
-        self.Ng     = design['turbine']['gear_ratio']
+        self.kp_tau = -turbine['torque_control']['VS_KP']
+        self.ki_tau = -turbine['torque_control']['VS_KI']
+        self.Ng     = turbine['gear_ratio']
             
 
 
@@ -505,7 +508,7 @@ if __name__=='__main__':
 
     rr = Rotor(design['turbine'],np.linspace(0.05,3)) #, old=True)
     # rr.runCCBlade()
-    rr.setControlGains(design)
+    # rr.setControlGains(design['turbine'])  << now called in Rotor init
 
     # loop through each case
     nCases = len(design['cases']['data'])

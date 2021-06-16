@@ -95,6 +95,7 @@ class Rotor:
         for i in range(n_af):
             af_name[i] = turbine["airfoils"][i]["name"]
             r_thick[i] = turbine["airfoils"][i]["relative_thickness"]
+            
 
         cl = np.zeros((n_af, n_aoa, 1))
         cd = np.zeros((n_af, n_aoa, 1))
@@ -113,6 +114,11 @@ class Rotor:
             cd[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,2])
             cm[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,3])
 
+            #plt.figure()
+            #plt.plot(polar_table[:,0], polar_table[:,1])
+            #plt.plot(polar_table[:,0], polar_table[:,2])
+            #plt.title(af_name[i])
+            
             if abs(cl[i, 0, 0] - cl[i, -1, 0]) > 1.0e-5:
                 print("WARNING: Ai " + af_name[i] + " has the lift coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cl[i, 0, 0] = cl[i, -1, 0]
@@ -168,7 +174,8 @@ class Rotor:
         
         af = []
         for i in range(self.cl_interp.shape[0]):
-            af.append(CCAirfoil(np.rad2deg(self.aoa), [], self.cl_interp[i,:,:],self.cd_interp[i,:,:],self.cm_interp[i,:,:]))
+            af.append(CCAirfoil(self.aoa, [], self.cl_interp[i,:,:],self.cd_interp[i,:,:],self.cm_interp[i,:,:]))
+        
         
         self.ccblade = CCBlade(
             blade_r,                        # (m) locations defining the blade along z-axis of blade coordinate system

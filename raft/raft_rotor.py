@@ -95,6 +95,7 @@ class Rotor:
         for i in range(n_af):
             af_name[i] = turbine["airfoils"][i]["name"]
             r_thick[i] = turbine["airfoils"][i]["relative_thickness"]
+            
 
         cl = np.zeros((n_af, n_aoa, 1))
         cd = np.zeros((n_af, n_aoa, 1))
@@ -113,6 +114,11 @@ class Rotor:
             cd[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,2])
             cm[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,3])
 
+            #plt.figure()
+            #plt.plot(polar_table[:,0], polar_table[:,1])
+            #plt.plot(polar_table[:,0], polar_table[:,2])
+            #plt.title(af_name[i])
+            
             if abs(cl[i, 0, 0] - cl[i, -1, 0]) > 1.0e-5:
                 print("WARNING: Ai " + af_name[i] + " has the lift coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cl[i, 0, 0] = cl[i, -1, 0]
@@ -168,7 +174,8 @@ class Rotor:
         
         af = []
         for i in range(self.cl_interp.shape[0]):
-            af.append(CCAirfoil(np.rad2deg(self.aoa), [], self.cl_interp[i,:,:],self.cd_interp[i,:,:],self.cm_interp[i,:,:]))
+            af.append(CCAirfoil(self.aoa, [], self.cl_interp[i,:,:],self.cd_interp[i,:,:],self.cm_interp[i,:,:]))
+        
         
         self.ccblade = CCBlade(
             blade_r,                        # (m) locations defining the blade along z-axis of blade coordinate system
@@ -196,6 +203,9 @@ class Rotor:
             usecd=usecd,                    # If True, use drag coefficient in computing induction factors (always used in evaluating distributed loads from the induction factors).
             derivatives=True,               # if True, derivatives along with function values will be returned for the various methods
         )
+
+        # pull control gains out of dictionary
+        self.setControlGains(turbine)
 
 
     def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):
@@ -329,21 +339,21 @@ class Rotor:
         return A_aero, B_aero, C_aero, F_aero0, F_aero
 
 
-    def setControlGains(self,design):
+    def setControlGains(self,turbine):
         '''
         Use flipped sign version of ROSCO
         '''
 
         # Convert gain-scheduling wrt pitch to wind speed
-        pc_angles = np.array(design['turbine']['pitch_control']['GS_Angles']) * rad2deg
-        self.kp_0 = np.interp(self.pitch_deg,pc_angles,design['turbine']['pitch_control']['GS_Kp'],left=0,right=0)
-        self.ki_0 = np.interp(self.pitch_deg,pc_angles,design['turbine']['pitch_control']['GS_Ki'],left=0,right=0)
-        self.k_float = -design['turbine']['pitch_control']['Fl_Kp']
+        pc_angles = np.array(turbine['pitch_control']['GS_Angles']) * rad2deg
+        self.kp_0 = np.interp(self.pitch_deg,pc_angles,turbine['pitch_control']['GS_Kp'],left=0,right=0)
+        self.ki_0 = np.interp(self.pitch_deg,pc_angles,turbine['pitch_control']['GS_Ki'],left=0,right=0)
+        self.k_float = -turbine['pitch_control']['Fl_Kp']
 
         # Torque control
-        self.kp_tau = -design['turbine']['torque_control']['VS_KP']
-        self.ki_tau = -design['turbine']['torque_control']['VS_KI']
-        self.Ng     = design['turbine']['gear_ratio']
+        self.kp_tau = -turbine['torque_control']['VS_KP']
+        self.ki_tau = -turbine['torque_control']['VS_KI']
+        self.Ng     = turbine['gear_ratio']
             
 
 
@@ -505,7 +515,7 @@ if __name__=='__main__':
 
     rr = Rotor(design['turbine'],np.linspace(0.05,3)) #, old=True)
     # rr.runCCBlade()
-    rr.setControlGains(design)
+    # rr.setControlGains(design['turbine'])  << now called in Rotor init
 
     # loop through each case
     nCases = len(design['cases']['data'])

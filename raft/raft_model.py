@@ -54,7 +54,8 @@ class Model():
         
         self.w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
         self.nw = len(self.w)  # number of frequencies
-                
+        if self.nw == 0:
+            raise ValueError(f"No frequencies to run in RAFT between {min_freq} and {max_freq}")
         
         # process mooring information 
         self.ms = mp.System()

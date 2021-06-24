@@ -483,8 +483,8 @@ class Rotor:
             P2 = np.matmul(R_ptfm, P2) + np.array(r_ptfm)[:,None]
           
             # drawing airfoils                            
-            for ii in range(m-1):
-                ax.plot(P2[0, npts*ii:npts*(ii+1)], P2[1, npts*ii:npts*(ii+1)], P2[2, npts*ii:npts*(ii+1)])  
+            #for ii in range(m-1):
+            #    ax.plot(P2[0, npts*ii:npts*(ii+1)], P2[1, npts*ii:npts*(ii+1)], P2[2, npts*ii:npts*(ii+1)])  
             # draw outline
             ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], 'k') # leading edge  
             ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], 'k')  # trailing edge

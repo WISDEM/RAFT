@@ -612,7 +612,7 @@ class Model():
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
         #self.ms.bodyList[0].setPosition(np.zeros(6))
         #self.ms.initialize()
-        fig, ax = self.ms.plot()
+        fig, ax = self.ms.plot(bounds='rbound')
         #fig = plt.figure(figsize=(20/2.54,12/2.54))
         #ax = Axes3D(fig)
 
@@ -664,7 +664,7 @@ def runRAFT(input_file, turbine_file=""):
     print(" --- analyzing cases ---")
     model.analyzeCases()
     
-    model.plot()
+    model.plot(hideGrid=True)
     
     plt.show()
     
@@ -675,4 +675,6 @@ if __name__ == "__main__":
     import raft
     
     model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
+    #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
+    #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     fowt = model.fowtList[0]

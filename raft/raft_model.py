@@ -1,8 +1,6 @@
 # RAFT's main model class
 
 import os
-import os.path as osp
-import sys
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
@@ -54,9 +52,10 @@ class Model():
         self.XiStart = getFromDict(design['settings'], 'XiStart' , default=0.1 , dtype=float)  # sets initial amplitude of each DOF for all frequencies
         self.nIter   = getFromDict(design['settings'], 'nIter'   , default=15  , dtype=int  )  # sets how many iterations to perform in Model.solveDynamics()
         
-        self.w = np.arange(min_freq, max_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
+        self.w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
         self.nw = len(self.w)  # number of frequencies
-                
+        if self.nw == 0:
+            raise ValueError(f"No frequencies to run in RAFT between {min_freq} and {max_freq}")
         
         # process mooring information 
         self.ms = mp.System()
@@ -152,7 +151,7 @@ class Model():
         
             # form dictionary of case parameters
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
-    
+
             # get initial FOWT values assuming no offset
             for fowt in self.fowtList:
                 fowt.Xi0 = np.zeros(6)      # zero platform offsets

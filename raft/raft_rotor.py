@@ -1,8 +1,7 @@
 # RAFT's rotor class
 
 import os
-import os.path as osp
-import sys, yaml
+import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -17,7 +16,6 @@ from scipy.special          import modstruve, iv
 
 from helpers                import deg2rad, rotationMatrix
 
-import wisdem.inputs as sch
 from wisdem.ccblade.ccblade import CCBlade, CCAirfoil
 
 import pickle
@@ -161,7 +159,9 @@ class Rotor:
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.derivative.html#scipy.interpolate.PchipInterpolator.derivative
         spline = PchipInterpolator
         rthick_spline = spline(af_position, r_thick_used)
-        r_thick_interp = rthick_spline(grid[1:-1])
+        # GB: HAVE TO TALK TO PIETRO ABOUT THIS
+        #r_thick_interp = rthick_spline(grid[1:-1])
+        r_thick_interp = rthick_spline(grid)
 
         # Spanwise interpolation of the airfoil polars with a pchip
         r_thick_unique, indices = np.unique(r_thick_used, return_index=True)
@@ -182,12 +182,9 @@ class Rotor:
         blade_precurve  = geometry_table[:,3]
         blade_presweep  = geometry_table[:,4]
         
-        
-        
         af = []
         for i in range(self.cl_interp.shape[0]):
             af.append(CCAirfoil(self.aoa, [], self.cl_interp[i,:,:],self.cd_interp[i,:,:],self.cm_interp[i,:,:]))
-        
         
         self.ccblade = CCBlade(
             blade_r,                        # (m) locations defining the blade along z-axis of blade coordinate system
@@ -234,8 +231,8 @@ class Rotor:
         pitch_deg = np.interp(Uhub, self.Uhub, self.pitch_deg)  # blade pitch angle [deg]
         
         # adjust rotor angles based on provided info (I think this intervention in CCBlade should work...)
-        self.ccblade.tilt = deg2rad(self.shaft_tilt) + ptfm_pitch
-        self.ccblade.yaw  = deg2rad(yaw_misalign)
+        self.ccblade.tilt = np.deg2rad(self.shaft_tilt) + ptfm_pitch
+        self.ccblade.yaw  = np.deg2rad(yaw_misalign)
         
         # evaluate aero loads and derivatives with CCBlade
         loads, derivs = self.ccblade.evaluate(Uhub, Omega_rpm, pitch_deg, coefficients=True)
@@ -458,8 +455,8 @@ class Rotor:
 
         T_ext = T_w1 + T_w2
 
-        print('here')
-        if True:
+        # print('here')
+        if False:
             plt.plot(self.w, V_w, label = 'S_rot')
             plt.yscale('log')
             plt.xscale('log')
@@ -521,7 +518,7 @@ class Rotor:
         # (blade pitch would be a -rotation about local z)
         R_precone = rotationMatrix(0, -self.ccblade.precone, 0)  
         R_azimuth = [rotationMatrix(azimuth + azi, 0, 0) for azi in 2*np.pi/3.*np.arange(3)]
-        R_tilt    = rotationMatrix(0, deg2rad(self.shaft_tilt), 0)   # # define x as along shaft downwind, y is same as ptfm y
+        R_tilt    = rotationMatrix(0, np.deg2rad(self.shaft_tilt), 0)   # # define x as along shaft downwind, y is same as ptfm y
         
         # ----- transform coordinates -----
         for ib in range(3):
@@ -679,7 +676,7 @@ if __name__=='__main__':
 
             rr.calcAeroServoContributions(case)
 
-    if False:
+    if True:
 
         UU = np.linspace(4,24)
         a_aer_U = np.zeros_like(UU)

@@ -90,11 +90,9 @@ class FOWT():
             self.yawstiff = 0
 
         # Turbine rotor
-        design['turbine']['rho_air' ] = design['site']['rho_air']
-        design['turbine']['mu_air'  ] = design['site']['mu_air']
-        design['turbine']['shearExp'] = design['site']['shearExp']
-        
-        self.rotor = Rotor(design['turbine'], self.w)        
+        self.rotor = Rotor(design['turbine'], self.w)
+
+        self.rotor.runCCBlade()   # << eventually should be done after solving mean offsets
 
         # turbine RNA description
         self.mRNA    = design['turbine']['mRNA']

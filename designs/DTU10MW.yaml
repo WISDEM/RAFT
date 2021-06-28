@@ -44,7 +44,7 @@ turbine:  # note: currently most of these values are for the IEA 10 MW, not DTU 
     IrRNA         :   98668850.0      #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
     xCG_RNA       :         -0.613    #  [m]        x location of RNA center of mass [m] (Actual is ~= -0.27 m)
     hHub          :        118.0      #  [m]        hub height above water line [m]
-    Fthrust       :        800.0E3    #  [N]        temporary thrust force to use
+    Fthrust       :       1500.0E3    #  [N]        temporary thrust force to use
     
     I_drivetrain: 318628138.0   # full rotor + drivetrain inertia as felt on the high-speed shaft <<< not correct! <<<
     

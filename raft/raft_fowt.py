@@ -84,8 +84,8 @@ class FOWT():
         # mooring system connection
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
-        if 'yaw stiffness' in design['turbine']:
-            self.yawstiff = design['turbine']['yaw stiffness']       # If you're modeling OC3 spar, for example, import the manual yaw stiffness needed by the bridle config
+        if 'yaw_stiffness' in design['turbine']:
+            self.yawstiff = design['turbine']['yaw_stiffness']       # If you're modeling OC3 spar, for example, import the manual yaw stiffness needed by the bridle config
         else:
             self.yawstiff = 0
 
@@ -210,9 +210,8 @@ class FOWT():
             # Calculate the mass matrix of the FOWT about the PRP
             self.W_struc += translateForce3to6DOF( np.array([0,0, -g*mass]), center )  # weight vector
             self.M_struc += mem.M_struc     # mass/inertia matrix about the PRP
-
+            
             Sum_M_center += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
-
 
             # Tower calculations
             if mem.type <= 1:   # <<<<<<<<<<<< maybe find a better way to do the if condition

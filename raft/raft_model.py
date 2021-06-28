@@ -183,14 +183,14 @@ class Model():
             fowt.calcBEM()
             fowt.calcStatics()
             #fowt.calcDynamicConstants()
-
+        
         # First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
-        try: 
+        try:
             self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
             self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
         except Exception as e:
             raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
-
+        
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
     """    
     
@@ -265,7 +265,7 @@ class Model():
         fowt = self.fowtList[0]
 
         # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
-        C_tot[5,5] += fowt.yawstiff
+        C_tot[5,5] += fowt.yawstiff     # will need to be put in calcSystemProps() once there is more than 1 fowt in a model
 
         # add fowt's terms to system matrices (BEM arrays are not yet included here)
         M_tot += fowt.M_struc + fowt.A_hydro_morison   # mass
@@ -310,6 +310,7 @@ class Model():
 
         print("natural frequencies from eigen values")
         printVec(fns)
+        print(1/fns)
         print("mode shapes from eigen values")
         printMat(modes)
 
@@ -339,7 +340,7 @@ class Model():
         fn[4] = np.sqrt( (C_tot[4,4] + C_tot[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M_tot[4,4] - M_tot[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
         # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
         printVec(fn)
-
+        print(1/fn)
                 
         # store results
         self.results['eigen'] = {}   # signal this data is available by adding a section to the results dictionary

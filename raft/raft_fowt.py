@@ -110,6 +110,7 @@ class FOWT():
         # initialize BEM arrays, whether or not a BEM sovler is used
         self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
         self.B_BEM = np.zeros([6,6,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
+        self.X_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
         self.F_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
 
 
@@ -416,8 +417,7 @@ class FOWT():
             self.A_BEM = self.rho_water * addedMass
             self.B_BEM = self.rho_water * damping
             self.X_BEM = self.rho_water * self.g * (fExReal + 1j*fExImag)  # linear wave excitation coefficients
-            self.F_BEM = self.X_BEM * self.zeta     # wave excitation force
-            self.w_BEM = w_HAMS
+            self.w_BEM = w_HAMS  # <<< clean this up
 
             # >>> do we want to seperate out infinite-frequency added mass? <<<
             
@@ -481,6 +481,10 @@ class FOWT():
         # >>> what about current? <<<
         # >>> could we also calculate mean viscous drift force here?? <<<
 
+        # ----- calculate potential-flow wave excitation force -----
+
+        self.F_BEM = self.X_BEM * self.zeta     # wave excitation force (will be zero if HAMS wasn't run)
+            
         # --------------------- get constant hydrodynamic values along each member -----------------------------
 
         self.A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]

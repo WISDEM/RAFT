@@ -1,10 +1,7 @@
 # RAFT's floating wind turbine class
 
 import os
-import os.path as osp
-import sys
 import numpy as np
-import matplotlib.pyplot as plt
 
 import pyhams.pyhams     as ph
 import raft.member2pnl as pnl
@@ -348,9 +345,6 @@ class FOWT():
         '''This generates a mesh for the platform and runs a BEM analysis on it.
         The mesh is only for non-interesecting members flagged with potMod=1.'''
         
-        rho = self.rho_water
-        g   = self.g
-
         # desired panel size (longitudinal and azimuthal)
         dz = 3
         da = 2
@@ -375,9 +369,9 @@ class FOWT():
         # only try to save a mesh and run HAMS if some members DO have potMod=True
         if len(panels) > 0:
 
-            meshDir = 'BEM'
+            meshDir = os.path.join(os.getcwd(), 'BEM')
             
-            pnl.writeMesh(nodes, panels, oDir=osp.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
+            pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
             
             pnl.writeMeshToGDF(vertices)                                # also a GDF for visualization
             
@@ -397,11 +391,11 @@ class FOWT():
             
             ph.run_hams(meshDir) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
             
-            data1 = osp.join(meshDir, f'Output/Wamit_format/Buoy.1')
-            data3 = osp.join(meshDir, f'Output/Wamit_format/Buoy.3')
+            data1 = os.path.join(meshDir, 'Output','Wamit_format','Buoy.1')
+            data3 = os.path.join(meshDir, 'Output','Wamit_format','Buoy.3')
             
-            #raftDir = osp.dirname(__file__)
-            #addedMass, damping = ph.read_wamit1(osp.join(raftDir, data1))
+            #raftDir = os.path.dirname(__file__)
+            #addedMass, damping = ph.read_wamit1(os.path.join(raftDir, data1))
             addedMass, damping, w_HAMS = ph.read_wamit1B(data1)
             fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)
                        

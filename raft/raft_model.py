@@ -2,24 +2,14 @@
 
 import os
 import numpy as np
-import yaml
 import matplotlib.pyplot as plt
 from matplotlib import cm
 
 import moorpy as mp
-import pyhams.pyhams     as ph
-import raft.member2pnl as pnl
 import raft.raft_fowt  as fowt
 from raft.helpers import *
 
 #import F6T1RNA as structural    # import turbine structural model functions
-
-# reload the libraries each time in case we make any changes
-from importlib import reload
-mp     = reload(mp)
-ph     = reload(ph)
-pnl    = reload(pnl)
-FOWT   = reload(fowt).FOWT
 
 raft_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
@@ -55,8 +45,7 @@ class Model():
         
         self.w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
         self.nw = len(self.w)  # number of frequencies
-        if self.nw == 0:
-            raise ValueError(f"No frequencies to run in RAFT between {min_freq} and {max_freq}")
+                
         
         # process mooring information 
         self.ms = mp.System()
@@ -69,7 +58,7 @@ class Model():
             self.k[i] = waveNumber(self.w[i], self.depth)
         
         # set up the FOWT here  <<< only set for 1 FOWT for now <<<
-        self.fowtList.append(FOWT(design, w=self.w, mpb=self.ms.bodyList[0], depth=self.depth))
+        self.fowtList.append(fowt.FOWT(design, w=self.w, mpb=self.ms.bodyList[0], depth=self.depth))
         self.coords.append([0.0,0.0])
         self.nDOF += 6
 
@@ -530,7 +519,7 @@ class Model():
         if 'response' in self.results:
             
             RAOmag      = abs(self.Xi          /fowt.zeta)  # magnitudes of motion RAO
-            
+
             self.results['response']['frequencies'] = self.w/2/np.pi         # Hz
             self.results['response']['wave elevation'] = fowt.zeta
             self.results['response']['Xi'         ] = self.Xi
@@ -613,7 +602,7 @@ class Model():
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
         #self.ms.bodyList[0].setPosition(np.zeros(6))
         #self.ms.initialize()
-        fig, ax = self.ms.plot(bounds='rbound')
+        fig, ax = self.ms.plot()
         #fig = plt.figure(figsize=(20/2.54,12/2.54))
         #ax = Axes3D(fig)
 
@@ -665,7 +654,7 @@ def runRAFT(input_file, turbine_file=""):
     print(" --- analyzing cases ---")
     model.analyzeCases()
     
-    model.plot(hideGrid=True)
+    model.plot()
     
     plt.show()
     
@@ -676,6 +665,4 @@ if __name__ == "__main__":
     import raft
     
     model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
-    #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
-    #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     fowt = model.fowtList[0]

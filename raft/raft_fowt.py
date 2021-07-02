@@ -348,7 +348,7 @@ class FOWT():
 
 
 
-    def calcBEM(self, FAST_outname='', dw=0, wMax=0, wInf=10.0, dz=3.0, da=2.0):
+    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=3.0, da=2.0):
         '''This generates a mesh for the platform and runs a BEM analysis on it
         using pyHAMS. It can also write adjusted .1 and .3 output files suitable
         for use with OpenFAST.
@@ -356,10 +356,6 @@ class FOWT():
         
         PARAMETERS
         ----------
-        FAST_outname : string
-            If not empty, OpenFAST/WAMIT-style .1 and .3 files will be written.
-            The provided string should be the full path and file name (minus extension) for 
-            these .1 and .3 files to be written to.
         dw : float
             Optional specification of custom frequency increment (rad/s).
         wMax : float
@@ -398,7 +394,7 @@ class FOWT():
             
             pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
             
-            pnl.writeMeshToGDF(vertices)                                # also a GDF for visualization
+            #pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
             
             ph.create_hams_dirs(meshDir)                #
             
@@ -415,61 +411,14 @@ class FOWT():
             nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
                 
             ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
-                                  numFreqs=-(nw_HAMS+1), minFreq=0.0, dFreq=dw_HAMS)
+                                  numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS)
             
             # execute the HAMS analysis
             ph.run_hams(meshDir) 
             
             # read the HAMS WAMIT-style output files
-            data1 = os.path.join(meshDir, 'Output','Wamit_format','Buoy.1')
-            data3 = os.path.join(meshDir, 'Output','Wamit_format','Buoy.3')
-            
-
-            addedMass, damping, w1 = ph.read_wamit1B(data1, TFlag=True)
-            M, P, R, I, w3, headings = ph.read_wamit3B(data3, TFlag=True)            
-
-            '''
-            # if requested, write hydro files for OpenFAST at whatever frequency resolution HAMS used
-            if len(FAST_outname) > 0:   
-            
-                # do a separate HAMS run to get the zero and near-infinite frequency results
-                ph.write_control_file(meshDir, waterDepth=self.depth, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
-                                  numFreqs=-2, minFreq=0.0, dFreq=wInf)
-                # execute the HAMS analysis
-                ph.run_hams(meshDir) 
-               
-                addedMassInf, dampingInf, w1Inf = ph.read_wamit1B(data1, TFlag=True)
-            
-                # radiation file
-                with open(FAST_outname+'.1', 'w') as f1:
-                
-                    # note: in WAMIT-style output, regardless if the temporal column is period or frequency,
-                    #   a negative value indicates zero-frequency and a zero value indicates infinite frequency.
-                
-                    for i in range(6):   # infinite-frequency added mass (approximated from a large frequency values)
-                        for j in range(6):
-                            #f1.write("{:14.6e}     {:d}    {:d} {:13.6e}\n".format(-1.0, i+1, j+1, addedMass[i,j,-1]))
-                            f1.write("{:14.6e}     {:d}    {:d} {:13.6e}\n".format(-1.0, i+1, j+1, addedMassInf[i,j,1]))
-                                
-                    for i in range(6):   # zero-frequency added mass
-                        for j in range(6):
-                            f1.write("{:14.6e}     {:d}    {:d} {:13.6e}\n".format(0.0, i+1, j+1, addedMass[i,j,0]))
-                                
-                    for iw in range(1,nw_HAMS+1):
-                        for i in range(6):   # finite periods
-                            for j in range(6):
-                                f1.write("{:14.6e}     {:d}    {:d} {:13.6e} {:13.6e}\n".format(
-                                    2.0*np.pi/w1[iw], i+1, j+1, addedMass[i,j,iw], damping[i,j,iw]))
-                                    
-                # excitation file 
-                with open(FAST_outname+'.3', 'w') as f1:
-                
-                    for iw in range(1,nw_HAMS+1):
-                        for i in range(6): 
-                            for j in range(len(headings)):
-                                f1.write("{:14.6e} {:14.6e}     {:d} {:13.6e} {:13.6e} {:13.6e} {:13.6e}\n".format(
-                                    2.0*np.pi/w1[iw], headings[j], i+1, M[j,i,iw], P[j,i,iw], R[j,i,iw], I[j,i,iw]))
-            '''
+            addedMass, damping, w1 = ph.read_wamit1B(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)
+            M, P, R, I, w3, heads  = ph.read_wamit3B(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)   
             
             # interpole to the frequencies RAFT is using
             addedMassInterp = interp1d(w1, addedMass, assume_sorted=False, axis=2)(self.w)
@@ -482,6 +431,7 @@ class FOWT():
             self.B_BEM = self.rho_water * dampingInterp                                 
             self.X_BEM = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
             
+            # TODO: add support for multiple wave headings <<<
             # note: RAFT will only be using finite-frequency potential flow coefficients
             
     

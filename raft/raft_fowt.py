@@ -414,7 +414,7 @@ class FOWT():
             
             nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
                 
-            ph.write_control_file(meshDir, waterDepth=self.depth, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
+            ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
                                   numFreqs=-(nw_HAMS+1), minFreq=0.0, dFreq=dw_HAMS)
             
             # execute the HAMS analysis
@@ -424,10 +424,11 @@ class FOWT():
             data1 = os.path.join(meshDir, 'Output','Wamit_format','Buoy.1')
             data3 = os.path.join(meshDir, 'Output','Wamit_format','Buoy.3')
             
-            addedMass, damping, w1    = ph.read_wamit1B(data1, TFlag=True)
-            M, P, R, I, w3, headings  = ph.read_wamit3B(data3, TFlag=True)
-            
-            
+
+            addedMass, damping, w1 = ph.read_wamit1B(data1, TFlag=True)
+            M, P, R, I, w3, headings = ph.read_wamit3B(data3, TFlag=True)            
+
+            '''
             # if requested, write hydro files for OpenFAST at whatever frequency resolution HAMS used
             if len(FAST_outname) > 0:   
             
@@ -468,7 +469,7 @@ class FOWT():
                             for j in range(len(headings)):
                                 f1.write("{:14.6e} {:14.6e}     {:d} {:13.6e} {:13.6e} {:13.6e} {:13.6e}\n".format(
                                     2.0*np.pi/w1[iw], headings[j], i+1, M[j,i,iw], P[j,i,iw], R[j,i,iw], I[j,i,iw]))
-            
+            '''
             
             # interpole to the frequencies RAFT is using
             addedMassInterp = interp1d(w1, addedMass, assume_sorted=False, axis=2)(self.w)

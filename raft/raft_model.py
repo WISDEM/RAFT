@@ -595,7 +595,7 @@ class Model():
         
         
         return self.results
-        
+
 
     def preprocess_HAMS(self, FAST_outname, dw=0, wMax=0, dz=3.0, da=2.0):
         '''This generates a mesh for the platform, runs a BEM analysis on it

@@ -597,9 +597,11 @@ class Model():
         return self.results
         
 
-    def preprocess_HAMS(self, FAST_outname, dw=0, wMax=0):
+    def preprocess_HAMS(self, FAST_outname, dw=0, wMax=0, dz=3.0, da=2.0):
         '''This generates a mesh for the platform, runs a BEM analysis on it
         using pyHAMS, and writes .1 and .3 output files for use with OpenFAST.
+        The input parameters are useful for multifidelity applications where 
+        different levels have different accuracy demands for the HAMS analysis.
         The mesh is only made for non-interesecting members flagged with potMod=1.
         
         PARAMETERS
@@ -611,6 +613,10 @@ class Model():
         wMax : float
             Optional specification of maximum frequency for BEM analysis (rad/s). Will only be
             used if it is greater than the maximum frequency used in RAFT.
+        dz : float
+            desired longitudinal panel size for potential flow BEM analysis (m)
+        da : float
+            desired azimuthal panel size for potential flow BEM analysis (m)
         '''
         
         self.fowtList[0].calcBEM(FAST_outname=FAST_outname, dw=dw, wMax=wMax)

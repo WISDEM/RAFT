@@ -348,7 +348,7 @@ class FOWT():
 
 
 
-    def calcBEM(self, FAST_outname='', dw=0, wMax=0, wInf=10.0):
+    def calcBEM(self, FAST_outname='', dw=0, wMax=0, wInf=10.0, dz=3.0, da=2.0):
         '''This generates a mesh for the platform and runs a BEM analysis on it
         using pyHAMS. It can also write adjusted .1 and .3 output files suitable
         for use with OpenFAST.
@@ -368,12 +368,12 @@ class FOWT():
         wInf : float
             Optional specification of large frequency to use as approximation for infinite 
             frequency in pyHAMS analysis (rad/s).
+        dz : float
+            desired longitudinal panel size for potential flow BEM analysis (m)
+        da : float
+            desired azimuthal panel size for potential flow BEM analysis (m)
         '''
-        
-        # desired panel size (longitudinal and azimuthal)
-        dz = 3
-        da = 2
-        
+                
         # go through members to be modeled with BEM and calculated their nodes and panels lists
         nodes = []
         panels = []
@@ -408,9 +408,9 @@ class FOWT():
             if dw == 0:
                 dw_HAMS = self.dw_BEM
             else: 
-                dw_HAMS = dw   # allow override of frequency increment if provided
+                dw_HAMS = dw                           # allow override of frequency increment if provided
             
-            wMax_HAMS = max(wMax, max(self.w))
+            wMax_HAMS = max(wMax, max(self.w))         # make sure the HAMS runs includes both RAFT and export frequency extents
             
             nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
                 
@@ -424,8 +424,8 @@ class FOWT():
             data1 = os.path.join(meshDir, 'Output','Wamit_format','Buoy.1')
             data3 = os.path.join(meshDir, 'Output','Wamit_format','Buoy.3')
             
-            addedMass, damping, w1 = ph.read_wamit1B(data1, TFlag=True)
-            M, P, R, I, w3, headings = ph.read_wamit3B(data3, TFlag=True)
+            addedMass, damping, w1    = ph.read_wamit1B(data1, TFlag=True)
+            M, P, R, I, w3, headings  = ph.read_wamit3B(data3, TFlag=True)
             
             
             # if requested, write hydro files for OpenFAST at whatever frequency resolution HAMS used

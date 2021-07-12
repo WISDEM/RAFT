@@ -413,17 +413,24 @@ class FOWT():
                 
             ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
                                   numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS)
+                                  
+            # Note about zero/infinite frequencies from WAMIT-formatted output files (as per WAMIT v7 manual): 
+            # The limiting values of the added-mass coefficients may be evaluated for zero or infinite
+            # period by specifying the values PER= 0:0 and PER< 0:0, respectively.  These special values are always
+            # associated with the wave period, irrespective of the value of IPERIN and the corresponding
+            # interpretation of the positive elements of the array PER
+            
             
             # execute the HAMS analysis
             ph.run_hams(meshDir) 
             
             # read the HAMS WAMIT-style output files
-            addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)
+            addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
             M, P, R, I, w3, heads  = ph.read_wamit3(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)   
             
             # interpole to the frequencies RAFT is using
-            addedMassInterp = interp1d(w1, addedMass, assume_sorted=False, axis=2)(self.w)
-            dampingInterp   = interp1d(w1[:-2],   damping[:,:,:-2], assume_sorted=False, axis=2)(self.w)
+            addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
+            dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
             fExRealInterp   = interp1d(w3,   R      , assume_sorted=False        )(self.w)
             fExImagInterp   = interp1d(w3,   I      , assume_sorted=False        )(self.w)
             
@@ -431,9 +438,7 @@ class FOWT():
             self.A_BEM = self.rho_water * addedMassInterp
             self.B_BEM = self.rho_water * dampingInterp                                 
             self.X_BEM = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
-            
-            breakpoint()
-            
+                        
             # HAMS results error checks  >>> any more we should have? <<<
             if np.isnan(self.A_BEM).any():
                 #print("NaN values detected in HAMS calculations for added mass. Check the geometry.")

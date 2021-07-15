@@ -61,6 +61,7 @@ class FOWT():
         self.dz_BEM  = getFromDict(design['platform'], 'dz_BEM', default=3.0)
         self.da_BEM  = getFromDict(design['platform'], 'da_BEM', default=2.0)
         
+        breakpoint()
         
         # member-based platform description
         self.memberList = []                                         # list of member objects
@@ -714,6 +715,51 @@ class FOWT():
         # return the linearized coefficients
         return B_hydro_drag, F_hydro_drag
 
+
+    def saveTurbineOutputs(self, results, iCase, Xi0, Xi):
+    
+            # platform motions
+            results['surge_avg'][iCase] = Xi0[0]
+            results['surge_std'][iCase] = getRMS(Xi[0,:])
+            results['surge_max'][iCase] = Xi0[0] + 3*results['surge_std'][iCase]
+            
+            results['heave_avg'][iCase] = Xi0[2]
+            results['heave_std'][iCase] = getRMS(Xi[2,:])
+            results['heave_max'][iCase] = Xi0[2] + 3*results['surge_std'][iCase]
+            
+            results['pitch_avg'][iCase] = Xi0[4]
+            results['pitch_std'][iCase] = getRMS(Xi[4,:])
+            results['pitch_max'][iCase] = Xi0[4] + 3*results['surge_std'][iCase]
+            
+            # nacelle acceleration
+            results['AxRNA_std'][iCase] = getRMS( (Xi[0,:] + self.hHub*Xi[4,:])*self.w**2 )
+            '''
+            # tower base bending moment
+            results['Mbase_avg'][iCase]
+            results['Mbase_std'][iCase]
+            results['Mbase_max'][iCase]
+            results['Mbase_DEL'][iCase]
+            
+            # rotor speed
+            results['omega_avg'][iCase]    
+            results['omega_std'][iCase]    
+            results['omega_max'][iCase]      
+            
+            # generator torque
+            results['torque_avg'][iCase]
+            results['torque_std'][iCase] 
+            results['torque_max'][iCase]    
+            
+            # rotor power 
+            results['power_avg'][iCase]
+            results['power_std'][iCase]
+            results['power_max'][iCase]
+            
+            # collective blade pitch
+            results['bPitch_avg'][iCase]
+            results['bPitch_std'][iCase]   
+            results['bPitch_max'][iCase]  
+            '''
 
     def plot(self, ax):
         '''plots the FOWT...'''

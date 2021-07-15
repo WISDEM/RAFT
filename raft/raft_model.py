@@ -120,6 +120,7 @@ class Model():
             
         # calculate platform offsets and mooring system equilibrium state
         self.calcMooringAndOffsets()
+        self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
 
 
     
@@ -127,9 +128,54 @@ class Model():
         '''This runs through all the specified load cases, building a dictionary of results.'''
         
         nCases = len(self.design['cases']['data'])
+        nLines = len(self.ms.lineList)        
+        
+        # set up output arrays for load cases
+        self.results['case_metrics'] = {}
+        self.results['case_metrics']['surge_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['surge_std'] = np.zeros(nCases)
+        self.results['case_metrics']['surge_max'] = np.zeros(nCases)
+        
+        self.results['case_metrics']['heave_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['heave_std'] = np.zeros(nCases)
+        self.results['case_metrics']['heave_max'] = np.zeros(nCases)
+        
+        self.results['case_metrics']['pitch_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['pitch_std'] = np.zeros(nCases)
+        self.results['case_metrics']['pitch_max'] = np.zeros(nCases)
+        # nacelle acceleration
+        self.results['case_metrics']['AxRNA_std'] = np.zeros(nCases)
+        # tower base bending moment
+        self.results['case_metrics']['Mbase_avg'] = np.zeros(nCases) 
+        self.results['case_metrics']['Mbase_std'] = np.zeros(nCases)
+        self.results['case_metrics']['Mbase_max'] = np.zeros(nCases)
+        self.results['case_metrics']['Mbase_DEL'] = np.zeros(nCases)        
+        # rotor speed
+        self.results['case_metrics']['omega_avg'] = np.zeros(nCases)    
+        self.results['case_metrics']['omega_std'] = np.zeros(nCases)    
+        self.results['case_metrics']['omega_max'] = np.zeros(nCases)      
+        # generator torque
+        self.results['case_metrics']['torque_avg'] = np.zeros(nCases) 
+        self.results['case_metrics']['torque_std'] = np.zeros(nCases)    
+        self.results['case_metrics']['torque_max'] = np.zeros(nCases)       
+        # rotor power 
+        self.results['case_metrics']['power_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['power_std'] = np.zeros(nCases)    
+        self.results['case_metrics']['power_max'] = np.zeros(nCases)    
+        # collective blade pitch
+        self.results['case_metrics']['bPitch_avg'] = np.zeros(nCases)   
+        self.results['case_metrics']['bPitch_std'] = np.zeros(nCases)    
+        self.results['case_metrics']['bPitch_max'] = np.zeros(nCases)    
+        # mooring tension
+        self.results['case_metrics']['Tmoor_avg'] = np.zeros([nCases, nLines]) # 2d array, for each line in each case?
+        self.results['case_metrics']['Tmoor_std'] = np.zeros([nCases, nLines])
+        self.results['case_metrics']['Tmoor_max'] = np.zeros([nCases, nLines])
+        self.results['case_metrics']['Tmoor_DEL'] = np.zeros([nCases, nLines])
+        
+        
+        
         
         # calculate the system's constant properties
-        #self.calcSystemConstantProps()
         for fowt in self.fowtList:
             fowt.calcStatics()
             fowt.calcBEM()
@@ -162,8 +208,20 @@ class Model():
             # solve system dynamics
             self.solveDynamics(case)
             
-            # process outputs for each case (TO DO)
-            #self.calcOutputs()
+            # process outputs 
+            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], iCase, fowt.Xi0, self.Xi[0:6])            
+ 
+            # mooring tension
+            '''
+            for i, line in enumerate(self.ms.lineList):
+                self.results['case_metrics']['Tmoor_avg'][iCase,i] = 
+                self.results['case_metrics']['Tmoor_std'][iCase,i] = 
+                self.results['case_metrics']['Tmoor_max'][iCase,i] = 
+                self.results['case_metrics']['Tmoor_DEL'][iCase,i] = 
+            '''
+            
+            
+            
 
     """
     def calcSystemConstantProps(self):
@@ -505,6 +563,8 @@ class Model():
             self.results['properties']['Center of Buoyancy'] = fowt.rCB
             self.results['properties']['C stiffness matrix'] = fowt.C_hydro
             
+            # unloaded equilibrium <<< 
+            
             self.results['properties']['F_lines0'] = self.F_moor0
             self.results['properties']['C_lines0'] = self.C_moor0
                     
@@ -688,6 +748,6 @@ def runRAFT(input_file, turbine_file=""):
 if __name__ == "__main__":
     import raft
     
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
-    #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
+    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
+    model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     fowt = model.fowtList[0]

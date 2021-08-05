@@ -61,7 +61,6 @@ class FOWT():
         self.dz_BEM  = getFromDict(design['platform'], 'dz_BEM', default=3.0)
         self.da_BEM  = getFromDict(design['platform'], 'da_BEM', default=2.0)
         
-        breakpoint()
         
         # member-based platform description
         self.memberList = []                                         # list of member objects
@@ -86,6 +85,7 @@ class FOWT():
                 mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
 
         self.memberList.append(Member(design['turbine']['tower'], self.nw))
+        #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
 
         # mooring system connection
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
@@ -717,49 +717,116 @@ class FOWT():
 
 
     def saveTurbineOutputs(self, results, iCase, Xi0, Xi):
-    
-            # platform motions
-            results['surge_avg'][iCase] = Xi0[0]
-            results['surge_std'][iCase] = getRMS(Xi[0,:])
-            results['surge_max'][iCase] = Xi0[0] + 3*results['surge_std'][iCase]
-            
-            results['heave_avg'][iCase] = Xi0[2]
-            results['heave_std'][iCase] = getRMS(Xi[2,:])
-            results['heave_max'][iCase] = Xi0[2] + 3*results['surge_std'][iCase]
-            
-            results['pitch_avg'][iCase] = Xi0[4]
-            results['pitch_std'][iCase] = getRMS(Xi[4,:])
-            results['pitch_max'][iCase] = Xi0[4] + 3*results['surge_std'][iCase]
-            
-            # nacelle acceleration
-            results['AxRNA_std'][iCase] = getRMS( (Xi[0,:] + self.hHub*Xi[4,:])*self.w**2 )
-            '''
-            # tower base bending moment
-            results['Mbase_avg'][iCase]
-            results['Mbase_std'][iCase]
-            results['Mbase_max'][iCase]
-            results['Mbase_DEL'][iCase]
-            
-            # rotor speed
-            results['omega_avg'][iCase]    
-            results['omega_std'][iCase]    
-            results['omega_max'][iCase]      
-            
-            # generator torque
-            results['torque_avg'][iCase]
-            results['torque_std'][iCase] 
-            results['torque_max'][iCase]    
-            
-            # rotor power 
-            results['power_avg'][iCase]
-            results['power_std'][iCase]
-            results['power_max'][iCase]
-            
-            # collective blade pitch
-            results['bPitch_avg'][iCase]
-            results['bPitch_std'][iCase]   
-            results['bPitch_max'][iCase]  
-            '''
+
+        # platform motions
+        results['surge_avg'][iCase] = Xi0[0]
+        results['surge_std'][iCase] = getRMS(Xi[0,:])
+        results['surge_max'][iCase] = Xi0[0] + 3*results['surge_std'][iCase]
+        
+        results['heave_avg'][iCase] = Xi0[2]
+        results['heave_std'][iCase] = getRMS(Xi[2,:])
+        results['heave_max'][iCase] = Xi0[2] + 3*results['surge_std'][iCase]
+        
+        results['pitch_avg'][iCase] = Xi0[4]
+        results['pitch_std'][iCase] = getRMS(Xi[4,:])
+        results['pitch_max'][iCase] = Xi0[4] + 3*results['surge_std'][iCase]
+        
+        # nacelle acceleration
+        results['AxRNA_std'][iCase] = getRMS( (Xi[0,:] + self.hHub*Xi[4,:])*self.w**2 )
+        
+        # tower base bending moment
+        m_turbine   = self.mtower + self.mRNA # turbine total mass
+        zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine  # turbine center of gravity
+        arm = zCG_turbine - self.memberList[-1].rA[2]   # vertical distance from tower base to turbine CG
+        
+        # was I going to convert aero force ref point here? <<<
+        
+        #dynamic_moment = 
+        results['Mbase_avg'][iCase] = m_turbine*self.g * arm*np.sin(Xi0[4]) + transformForce(self.F_aero0, offset=[0,0,-arm])[4] # mean moment from weight and thrust
+        #results['Mbase_std'][iCase]
+        #results['Mbase_max'][iCase]
+        #results['Mbase_DEL'][iCase]
+        '''
+        # rotor speed
+        results['omega_avg'][iCase]    
+        results['omega_std'][iCase]    
+        results['omega_max'][iCase]      
+        
+        # generator torque
+        results['torque_avg'][iCase]
+        results['torque_std'][iCase] 
+        results['torque_max'][iCase]    
+        
+        # rotor power 
+        results['power_avg'][iCase]
+        results['power_std'][iCase]
+        results['power_max'][iCase]
+        
+        # collective blade pitch
+        results['bPitch_avg'][iCase]
+        results['bPitch_std'][iCase]   
+        results['bPitch_max'][iCase]  
+        '''
+
+        '''
+        Outputs from OpenFAST to consider covering:
+        
+        # Rotor power outputs
+        self.add_output('V_out', val=np.zeros(n_ws_dlc11), units='m/s', desc='wind speed vector from the OF simulations')
+        self.add_output('P_out', val=np.zeros(n_ws_dlc11), units='W', desc='rotor electrical power')
+        self.add_output('Cp_out', val=np.zeros(n_ws_dlc11), desc='rotor aero power coefficient')
+        self.add_output('Omega_out', val=np.zeros(n_ws_dlc11), units='rpm', desc='rotation speeds to run')
+        self.add_output('pitch_out', val=np.zeros(n_ws_dlc11), units='deg', desc='pitch angles to run')
+        self.add_output('AEP', val=0.0, units='kW*h', desc='annual energy production reconstructed from the openfast simulations')
+
+        self.add_output('My_std',      val=0.0,            units='N*m',  desc='standard deviation of blade root flap bending moment in out-of-plane direction')
+        self.add_output('flp1_std',    val=0.0,            units='deg',  desc='standard deviation of trailing-edge flap angle')
+
+        self.add_output('rated_V',     val=0.0,            units='m/s',  desc='rated wind speed')
+        self.add_output('rated_Omega', val=0.0,            units='rpm',  desc='rotor rotation speed at rated')
+        self.add_output('rated_pitch', val=0.0,            units='deg',  desc='pitch setting at rated')
+        self.add_output('rated_T',     val=0.0,            units='N',    desc='rotor aerodynamic thrust at rated')
+        self.add_output('rated_Q',     val=0.0,            units='N*m',  desc='rotor aerodynamic torque at rated')
+
+        self.add_output('loads_r',      val=np.zeros(n_span), units='m', desc='radial positions along blade going toward tip')
+        self.add_output('loads_Px',     val=np.zeros(n_span), units='N/m', desc='distributed loads in blade-aligned x-direction')
+        self.add_output('loads_Py',     val=np.zeros(n_span), units='N/m', desc='distributed loads in blade-aligned y-direction')
+        self.add_output('loads_Pz',     val=np.zeros(n_span), units='N/m', desc='distributed loads in blade-aligned z-direction')
+        self.add_output('loads_Omega',  val=0.0, units='rpm', desc='rotor rotation speed')
+        self.add_output('loads_pitch',  val=0.0, units='deg', desc='pitch angle')
+        self.add_output('loads_azimuth', val=0.0, units='deg', desc='azimuthal angle')
+
+        # Control outputs
+        self.add_output('rotor_overspeed', val=0.0, desc='Maximum percent overspeed of the rotor during an OpenFAST simulation')  # is this over a set of sims?
+
+        # Blade outputs
+        self.add_output('max_TipDxc', val=0.0, units='m', desc='Maximum of channel TipDxc, i.e. out of plane tip deflection. For upwind rotors, the max value is tower the tower')
+        self.add_output('max_RootMyb', val=0.0, units='kN*m', desc='Maximum of the signals RootMyb1, RootMyb2, ... across all n blades representing the maximum blade root flapwise moment')
+        self.add_output('max_RootMyc', val=0.0, units='kN*m', desc='Maximum of the signals RootMyb1, RootMyb2, ... across all n blades representing the maximum blade root out of plane moment')
+        self.add_output('max_RootMzb', val=0.0, units='kN*m', desc='Maximum of the signals RootMzb1, RootMzb2, ... across all n blades representing the maximum blade root torsional moment')
+        self.add_output('DEL_RootMyb', val=0.0, units='kN*m', desc='damage equivalent load of blade root flap bending moment in out-of-plane direction')
+        self.add_output('max_aoa', val=np.zeros(n_span), units='deg', desc='maxima of the angles of attack distributed along blade span')
+        self.add_output('std_aoa', val=np.zeros(n_span), units='deg', desc='standard deviation of the angles of attack distributed along blade span')
+        self.add_output('mean_aoa', val=np.zeros(n_span), units='deg', desc='mean of the angles of attack distributed along blade span')
+        # Blade loads corresponding to maximum blade tip deflection
+        self.add_output('blade_maxTD_Mx', val=np.zeros(n_span), units='kN*m', desc='distributed moment around blade-aligned x-axis corresponding to maximum blade tip deflection')
+        self.add_output('blade_maxTD_My', val=np.zeros(n_span), units='kN*m', desc='distributed moment around blade-aligned y-axis corresponding to maximum blade tip deflection')
+        self.add_output('blade_maxTD_Fz', val=np.zeros(n_span), units='kN', desc='distributed force in blade-aligned z-direction corresponding to maximum blade tip deflection')
+
+        # Hub outputs
+        self.add_output('hub_Fxyz', val=np.zeros(3), units='kN', desc = 'Maximum hub forces in the non rotating frame')
+        self.add_output('hub_Mxyz', val=np.zeros(3), units='kN*m', desc = 'Maximum hub moments in the non rotating frame')
+
+        # Tower outputs
+        self.add_output('max_TwrBsMyt',val=0.0, units='kN*m', desc='maximum of tower base bending moment in fore-aft direction')
+        self.add_output('DEL_TwrBsMyt',val=0.0, units='kN*m', desc='damage equivalent load of tower base bending moment in fore-aft direction')
+        self.add_output('tower_maxMy_Fx', val=np.zeros(n_full_tow-1), units='kN', desc='distributed force in tower-aligned x-direction corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_Fy', val=np.zeros(n_full_tow-1), units='kN', desc='distributed force in tower-aligned y-direction corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_Fz', val=np.zeros(n_full_tow-1), units='kN', desc='distributed force in tower-aligned z-direction corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_Mx', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_My', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
+        '''
 
     def plot(self, ax):
         '''plots the FOWT...'''

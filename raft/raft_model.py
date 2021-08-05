@@ -167,10 +167,10 @@ class Model():
         self.results['case_metrics']['bPitch_std'] = np.zeros(nCases)    
         self.results['case_metrics']['bPitch_max'] = np.zeros(nCases)    
         # mooring tension
-        self.results['case_metrics']['Tmoor_avg'] = np.zeros([nCases, nLines]) # 2d array, for each line in each case?
-        self.results['case_metrics']['Tmoor_std'] = np.zeros([nCases, nLines])
-        self.results['case_metrics']['Tmoor_max'] = np.zeros([nCases, nLines])
-        self.results['case_metrics']['Tmoor_DEL'] = np.zeros([nCases, nLines])
+        self.results['case_metrics']['Tmoor_avg'] = np.zeros([nCases, 2*nLines]) # 2d array, for each line in each case?
+        self.results['case_metrics']['Tmoor_std'] = np.zeros([nCases, 2*nLines])
+        self.results['case_metrics']['Tmoor_max'] = np.zeros([nCases, 2*nLines])
+        self.results['case_metrics']['Tmoor_DEL'] = np.zeros([nCases, 2*nLines])
         
         
         
@@ -208,18 +208,25 @@ class Model():
             # solve system dynamics
             self.solveDynamics(case)
             
-            # process outputs 
-            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], iCase, fowt.Xi0, self.Xi[0:6])            
+            # process outputs             
+            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], iCase, fowt.Xi0, self.Xi[0:6,:])            
  
-            # mooring tension
-            '''
-            for i, line in enumerate(self.ms.lineList):
-                self.results['case_metrics']['Tmoor_avg'][iCase,i] = 
-                self.results['case_metrics']['Tmoor_std'][iCase,i] = 
-                self.results['case_metrics']['Tmoor_max'][iCase,i] = 
-                self.results['case_metrics']['Tmoor_DEL'][iCase,i] = 
-            '''
+            # mooring tension        
+            T_moor_amps = np.zeros([len(self.T_moor), self.nw]) 
+            for iw in range(self.nw):
+                T_moor_amps[:,iw] = np.matmul(self.J_moor, self.Xi[:,iw])
             
+            self.results['case_metrics']['Tmoor_avg'][iCase,:] = self.T_moor
+            for iT in range(len(self.T_moor)):
+                TRMS = getRMS(T_moor_amps[iT,:])
+                self.results['case_metrics']['Tmoor_std'][iCase,iT] = TRMS
+                self.results['case_metrics']['Tmoor_max'][iCase,iT] = self.T_moor[iT] + 3*TRMS
+                #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
+            
+        print("---tensions average ---")
+        printMat(self.results['case_metrics']['Tmoor_avg'])
+        print("---tensions standard deviation ---")
+        printMat(self.results['case_metrics']['Tmoor_std'])
             
             
 
@@ -257,7 +264,7 @@ class Model():
         #self.ms.display=2
 
         try:
-            self.ms.solveEquilibrium3(DOFtype="both", tol=-0.01) #, rmsTol=1.0E-5)     # get the system to its equilibrium
+            self.ms.solveEquilibrium3(DOFtype="both", tol=0.01) #, rmsTol=1.0E-5)     # get the system to its equilibrium
         except Exception as e:     #mp.MoorPyError
             print('An error occured when solving system equilibrium: '+e.message)
             #raise RuntimeError('An error occured when solving unloaded equilibrium: '+error.message)
@@ -276,17 +283,20 @@ class Model():
         print("Surge: {:.2f}".format(r6eq[0]))
         print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
 
-        try:
-            C_moor = self.ms.getCoupledStiffness(lines_only=True)
-            F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
-        except Exception as e:
-            raise RuntimeError('An error occured when getting linearized mooring properties in offset state: '+e.message)
+        #try:
+        C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
+        F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
+        T_moor = self.ms.getTensions()
+        #except Exception as e:
+        #    raise RuntimeError('An error occured when getting linearized mooring properties in offset state: '+e.message)
             
         # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
         C_moor[5,5] += fowt.yawstiff
 
         self.C_moor = C_moor
+        self.J_moor = J_moor        # jacobian of mooring line tensions w.r.t. coupled DOFs
         self.F_moor = F_moor
+        self.T_moor = T_moor
 
         # store results
         self.results['means'] = {}   # signal this data is available by adding a section to the results dictionary
@@ -748,6 +758,6 @@ def runRAFT(input_file, turbine_file=""):
 if __name__ == "__main__":
     import raft
     
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
-    model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
+    #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     fowt = model.fowtList[0]

@@ -2,24 +2,15 @@
 
 import os
 import numpy as np
-import yaml
 import matplotlib.pyplot as plt
 from matplotlib import cm
+import yaml
 
 import moorpy as mp
-import pyhams.pyhams     as ph
-import raft.member2pnl as pnl
 import raft.raft_fowt  as fowt
 from raft.helpers import *
 
 #import F6T1RNA as structural    # import turbine structural model functions
-
-# reload the libraries each time in case we make any changes
-from importlib import reload
-mp     = reload(mp)
-ph     = reload(ph)
-pnl    = reload(pnl)
-FOWT   = reload(fowt).FOWT
 
 raft_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
@@ -55,8 +46,7 @@ class Model():
         
         self.w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
         self.nw = len(self.w)  # number of frequencies
-        if self.nw == 0:
-            raise ValueError(f"No frequencies to run in RAFT between {min_freq} and {max_freq}")
+                
         
         # process mooring information 
         self.ms = mp.System()
@@ -69,7 +59,7 @@ class Model():
             self.k[i] = waveNumber(self.w[i], self.depth)
         
         # set up the FOWT here  <<< only set for 1 FOWT for now <<<
-        self.fowtList.append(FOWT(design, w=self.w, mpb=self.ms.bodyList[0], depth=self.depth))
+        self.fowtList.append(fowt.FOWT(design, self.w, self.ms.bodyList[0], depth=self.depth))
         self.coords.append([0.0,0.0])
         self.nDOF += 6
 
@@ -130,6 +120,7 @@ class Model():
             
         # calculate platform offsets and mooring system equilibrium state
         self.calcMooringAndOffsets()
+        self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
 
 
     
@@ -137,9 +128,54 @@ class Model():
         '''This runs through all the specified load cases, building a dictionary of results.'''
         
         nCases = len(self.design['cases']['data'])
+        nLines = len(self.ms.lineList)        
+        
+        # set up output arrays for load cases
+        self.results['case_metrics'] = {}
+        self.results['case_metrics']['surge_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['surge_std'] = np.zeros(nCases)
+        self.results['case_metrics']['surge_max'] = np.zeros(nCases)
+        
+        self.results['case_metrics']['heave_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['heave_std'] = np.zeros(nCases)
+        self.results['case_metrics']['heave_max'] = np.zeros(nCases)
+        
+        self.results['case_metrics']['pitch_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['pitch_std'] = np.zeros(nCases)
+        self.results['case_metrics']['pitch_max'] = np.zeros(nCases)
+        # nacelle acceleration
+        self.results['case_metrics']['AxRNA_std'] = np.zeros(nCases)
+        # tower base bending moment
+        self.results['case_metrics']['Mbase_avg'] = np.zeros(nCases) 
+        self.results['case_metrics']['Mbase_std'] = np.zeros(nCases)
+        self.results['case_metrics']['Mbase_max'] = np.zeros(nCases)
+        self.results['case_metrics']['Mbase_DEL'] = np.zeros(nCases)        
+        # rotor speed
+        self.results['case_metrics']['omega_avg'] = np.zeros(nCases)    
+        self.results['case_metrics']['omega_std'] = np.zeros(nCases)    
+        self.results['case_metrics']['omega_max'] = np.zeros(nCases)      
+        # generator torque
+        self.results['case_metrics']['torque_avg'] = np.zeros(nCases) 
+        self.results['case_metrics']['torque_std'] = np.zeros(nCases)    
+        self.results['case_metrics']['torque_max'] = np.zeros(nCases)       
+        # rotor power 
+        self.results['case_metrics']['power_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['power_std'] = np.zeros(nCases)    
+        self.results['case_metrics']['power_max'] = np.zeros(nCases)    
+        # collective blade pitch
+        self.results['case_metrics']['bPitch_avg'] = np.zeros(nCases)   
+        self.results['case_metrics']['bPitch_std'] = np.zeros(nCases)    
+        self.results['case_metrics']['bPitch_max'] = np.zeros(nCases)    
+        # mooring tension
+        self.results['case_metrics']['Tmoor_avg'] = np.zeros([nCases, 2*nLines]) # 2d array, for each line in each case?
+        self.results['case_metrics']['Tmoor_std'] = np.zeros([nCases, 2*nLines])
+        self.results['case_metrics']['Tmoor_max'] = np.zeros([nCases, 2*nLines])
+        self.results['case_metrics']['Tmoor_DEL'] = np.zeros([nCases, 2*nLines])
+        
+        
+        
         
         # calculate the system's constant properties
-        #self.calcSystemConstantProps()
         for fowt in self.fowtList:
             fowt.calcStatics()
             fowt.calcBEM()
@@ -172,8 +208,27 @@ class Model():
             # solve system dynamics
             self.solveDynamics(case)
             
-            # process outputs for each case (TO DO)
-            #self.calcOutputs()
+            # process outputs             
+            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], iCase, fowt.Xi0, self.Xi[0:6,:])            
+ 
+            # mooring tension        
+            T_moor_amps = np.zeros([len(self.T_moor), self.nw]) 
+            for iw in range(self.nw):
+                T_moor_amps[:,iw] = np.matmul(self.J_moor, self.Xi[:,iw])
+            
+            self.results['case_metrics']['Tmoor_avg'][iCase,:] = self.T_moor
+            for iT in range(len(self.T_moor)):
+                TRMS = getRMS(T_moor_amps[iT,:])
+                self.results['case_metrics']['Tmoor_std'][iCase,iT] = TRMS
+                self.results['case_metrics']['Tmoor_max'][iCase,iT] = self.T_moor[iT] + 3*TRMS
+                #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
+            
+        print("---tensions average ---")
+        printMat(self.results['case_metrics']['Tmoor_avg'])
+        print("---tensions standard deviation ---")
+        printMat(self.results['case_metrics']['Tmoor_std'])
+            
+            
 
     """
     def calcSystemConstantProps(self):
@@ -209,7 +264,7 @@ class Model():
         #self.ms.display=2
 
         try:
-            self.ms.solveEquilibrium3(DOFtype="both", tol=-0.01) #, rmsTol=1.0E-5)     # get the system to its equilibrium
+            self.ms.solveEquilibrium3(DOFtype="both", tol=0.01) #, rmsTol=1.0E-5)     # get the system to its equilibrium
         except Exception as e:     #mp.MoorPyError
             print('An error occured when solving system equilibrium: '+e.message)
             #raise RuntimeError('An error occured when solving unloaded equilibrium: '+error.message)
@@ -228,17 +283,20 @@ class Model():
         print("Surge: {:.2f}".format(r6eq[0]))
         print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
 
-        try:
-            C_moor = self.ms.getCoupledStiffness(lines_only=True)
-            F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
-        except Exception as e:
-            raise RuntimeError('An error occured when getting linearized mooring properties in offset state: '+e.message)
+        #try:
+        C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
+        F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
+        T_moor = self.ms.getTensions()
+        #except Exception as e:
+        #    raise RuntimeError('An error occured when getting linearized mooring properties in offset state: '+e.message)
             
         # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
         C_moor[5,5] += fowt.yawstiff
 
         self.C_moor = C_moor
+        self.J_moor = J_moor        # jacobian of mooring line tensions w.r.t. coupled DOFs
         self.F_moor = F_moor
+        self.T_moor = T_moor
 
         # store results
         self.results['means'] = {}   # signal this data is available by adding a section to the results dictionary
@@ -516,6 +574,8 @@ class Model():
             self.results['properties']['Center of Buoyancy'] = fowt.rCB
             self.results['properties']['C stiffness matrix'] = fowt.C_hydro
             
+            # unloaded equilibrium <<< 
+            
             self.results['properties']['F_lines0'] = self.F_moor0
             self.results['properties']['C_lines0'] = self.C_moor0
                     
@@ -531,7 +591,7 @@ class Model():
         if 'response' in self.results:
             
             RAOmag      = abs(self.Xi          /fowt.zeta)  # magnitudes of motion RAO
-            
+
             self.results['response']['frequencies'] = self.w/2/np.pi         # Hz
             self.results['response']['wave elevation'] = fowt.zeta
             self.results['response']['Xi'         ] = self.Xi
@@ -602,11 +662,32 @@ class Model():
          RMSsurge(imeto) = sqrt( sum( ((abs(rao{imeto}(:,1))).^2).*S(:,imeto) ) *(w(2)-w(1)) );
          RMSheave(imeto) = sqrt( sum( ((abs(rao{imeto}(:,3))).^2).*S(:,imeto) ) *(w(2)-w(1)) );
         '''
-
-        
         
         return self.results
+
+
+    def preprocess_HAMS(self, dw=0, wMax=0, dz=0, da=0):
+        '''This generates a mesh for the platform, runs a BEM analysis on it
+        using pyHAMS, and writes .1 and .3 output files for use with OpenFAST.
+        The input parameters are useful for multifidelity applications where 
+        different levels have different accuracy demands for the HAMS analysis.
+        The mesh is only made for non-interesecting members flagged with potMod=1.
         
+        PARAMETERS
+        ----------
+        dw : float
+            Optional specification of custom frequency increment (rad/s).
+        wMax : float
+            Optional specification of maximum frequency for BEM analysis (rad/s). Will only be
+            used if it is greater than the maximum frequency used in RAFT.
+        dz : float
+            desired longitudinal panel size for potential flow BEM analysis (m)
+        da : float
+            desired azimuthal panel size for potential flow BEM analysis (m)
+        '''
+        
+        self.fowtList[0].calcBEM(dw=dw, wMax=wMax, dz=dz, da=da)
+
 
     def plot(self, hideGrid=False):
         '''plots the whole model, including FOWTs and mooring system...'''
@@ -614,7 +695,7 @@ class Model():
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
         #self.ms.bodyList[0].setPosition(np.zeros(6))
         #self.ms.initialize()
-        fig, ax = self.ms.plot(bounds='rbound')
+        fig, ax = self.ms.plot()
         #fig = plt.figure(figsize=(20/2.54,12/2.54))
         #ax = Axes3D(fig)
 
@@ -651,7 +732,7 @@ def runRAFT(input_file, turbine_file=""):
     depth = float(design['mooring']['water_depth'])
     
     # for now, turn off potMod in the design dictionary to avoid BEM analysis
-    design['platform']['potModMaster'] = 1
+    #design['platform']['potModMaster'] = 1
     
     # read in turbine data and combine it in
     # if len(turbine_file) > 0:
@@ -666,7 +747,9 @@ def runRAFT(input_file, turbine_file=""):
     print(" --- analyzing cases ---")
     model.analyzeCases()
     
-    model.plot(hideGrid=True)
+    model.plot()
+    
+    #model.preprocess_HAMS("testHAMSoutput", dw=0.1, wMax=10)
     
     plt.show()
     
@@ -677,6 +760,5 @@ if __name__ == "__main__":
     import raft
     
     model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
-    #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     fowt = model.fowtList[0]

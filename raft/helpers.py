@@ -1,8 +1,5 @@
 import os
 import numpy as np
-import wisdem.inputs as sch    # used for loading turbine YAML and using WISDEM validation process
-from wisdem.commonse.utilities import arc_length
-
 
 
 # ---------------------------- misc classes -----------------------------------
@@ -375,6 +372,12 @@ def rotateMatrix3(Min, rotMat):
     return np.matmul( np.matmul(rotMat, Min), rotMat.T )
 
 
+def getRMS(xi):
+    '''Calculates standard deviation or RMS of inputted (complex) response amplitude vector.'''
+    
+    return np.sqrt( np.sum( np.abs(xi)**2 / len(xi) ) )
+
+
 def JONSWAP(ws, Hs, Tp, Gamma=1.0):
     '''Returns the JONSWAP wave spectrum for the given frequencies and parameters.
 
@@ -500,6 +503,9 @@ def convertIEAturbineYAML2RAFT(fname_turbine):
     '''
     This loads data from a standard turbine YAML file and saves to corresponding info in RAFT format YAML.
     '''
+    
+    import wisdem.inputs as sch    # used for loading turbine YAML and using WISDEM validation process
+    from wisdem.commonse.utilities import arc_length
     
     # dictionary to be filled in with turbine data
     d = dict(blade={}, airfoils=[], env={})

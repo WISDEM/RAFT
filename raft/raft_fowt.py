@@ -1,10 +1,8 @@
 # RAFT's floating wind turbine class
 
 import os
-import os.path as osp
-import sys
 import numpy as np
-import matplotlib.pyplot as plt
+from scipy.interpolate import interp1d
 
 import pyhams.pyhams     as ph
 import raft.member2pnl as pnl
@@ -20,7 +18,7 @@ from raft.raft_rotor import Rotor
 class FOWT():
     '''This class comprises the frequency domain model of a single floating wind turbine'''
 
-    def __init__(self, design, w=[], mpb=None, depth=600):
+    def __init__(self, design, w, mpb, depth=600):
         '''This initializes the FOWT object which contains everything for a single turbine's frequency-domain dynamics.
         The initializiation sets up the design description.
 
@@ -29,22 +27,24 @@ class FOWT():
         design : dict
             Dictionary of the design...
         w
-            Array of frequencies to be used in analysis
+            Array of frequencies to be used in analysis (rad/s)
+        mpb
+            A MoorPy Body object that represents this FOWT in MoorPy
+        depth
+            Water depth, positive-down. (m)
         '''
 
         # basic setup
         self.nDOF = 6
         self.Xi0 = np.zeros(6)    # mean offsets of platform, initialized at zero  [m, rad]
 
-        if len(w)==0:
-            w = np.arange(.01, 3, 0.01)                              # angular frequencies tp analyze (rad/s)
-
         self.depth = depth
 
         self.w = np.array(w)
-        self.nw = len(w)                                             # number of frequencies
+        self.nw = len(w)            # number of frequencies
+        self.dw = w[1]-w[0]         # frequency increment [rad/s]    
         
-        self.k = np.array( [ waveNumber(w, self.depth) for w in self.w] )  # wave number
+        self.k = np.array([waveNumber(w, self.depth) for w in self.w])  # wave number [m/rad]
 
         
         self.rho_water = getFromDict(design['site'], 'rho_water', default=1025.0)
@@ -53,13 +53,18 @@ class FOWT():
             
         design['turbine']['tower']['dlsMax'] = getFromDict(design['turbine']['tower'], 'dlsMax', default=5.0)
              
+             
+        potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
+        dlsMax       = getFromDict(design['platform'], 'dlsMax'      , default=5.0)
+        min_freq_BEM = getFromDict(design['platform'], 'min_freq_BEM', default=self.dw/2/np.pi)
+        self.dw_BEM  = 2.0*np.pi*min_freq_BEM
+        self.dz_BEM  = getFromDict(design['platform'], 'dz_BEM', default=3.0)
+        self.da_BEM  = getFromDict(design['platform'], 'da_BEM', default=2.0)
+        
         
         # member-based platform description
         self.memberList = []                                         # list of member objects
 
-        potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
-        dlsMax       = getFromDict(design['platform'], 'dlsMax', default=5.0)
-        
         for mi in design['platform']['members']:
 
             if potModMaster==1:
@@ -80,6 +85,7 @@ class FOWT():
                 mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
 
         self.memberList.append(Member(design['turbine']['tower'], self.nw))
+        #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
 
         # mooring system connection
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
@@ -94,7 +100,7 @@ class FOWT():
         design['turbine']['mu_air'  ] = design['site']['mu_air']
         design['turbine']['shearExp'] = design['site']['shearExp']
         
-        self.rotor = Rotor(design['turbine'], self.w)     
+        self.rotor = Rotor(design['turbine'], self.w)
 
         # turbine RNA description
         self.mRNA    = design['turbine']['mRNA']
@@ -110,6 +116,7 @@ class FOWT():
         # initialize BEM arrays, whether or not a BEM sovler is used
         self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
         self.B_BEM = np.zeros([6,6,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
+        self.X_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
         self.F_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
 
 
@@ -342,22 +349,36 @@ class FOWT():
 
 
 
-    def calcBEM(self):
-        '''This generates a mesh for the platform and runs a BEM analysis on it.
-        The mesh is only for non-interesecting members flagged with potMod=1.'''
+    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0):
+        '''This generates a mesh for the platform and runs a BEM analysis on it
+        using pyHAMS. It can also write adjusted .1 and .3 output files suitable
+        for use with OpenFAST.
+        The mesh is only made for non-interesecting members flagged with potMod=1.
         
-        rho = self.rho_water
-        g   = self.g
-
-        # desired panel size (longitudinal and azimuthal)
-        dz = 3
-        da = 2
-        
+        PARAMETERS
+        ----------
+        dw : float
+            Optional specification of custom frequency increment (rad/s).
+        wMax : float
+            Optional specification of maximum frequency for BEM analysis (rad/s). Will only be
+            used if it is greater than the maximum frequency used in RAFT.
+        wInf : float
+            Optional specification of large frequency to use as approximation for infinite 
+            frequency in pyHAMS analysis (rad/s).
+        dz : float
+            desired longitudinal panel size for potential flow BEM analysis (m)
+        da : float
+            desired azimuthal panel size for potential flow BEM analysis (m)
+        '''
+                
         # go through members to be modeled with BEM and calculated their nodes and panels lists
         nodes = []
         panels = []
         
         vertices = np.zeros([0,3])  # for GDF output
+        
+        dz = self.dz_BEM if dz==0 else dz  # allow override if provided
+        da = self.da_BEM if da==0 else da  
 
         for mem in self.memberList:
             
@@ -373,52 +394,67 @@ class FOWT():
         # only try to save a mesh and run HAMS if some members DO have potMod=True
         if len(panels) > 0:
 
-            meshDir = 'BEM'
+            meshDir = os.path.join(os.getcwd(), 'BEM')
             
-            pnl.writeMesh(nodes, panels, oDir=osp.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
+            pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
             
-            pnl.writeMeshToGDF(vertices)                                # also a GDF for visualization
+            #pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
             
-            # TODO: maybe create a 'HAMS Project' class:
-            #     - methods:
-            #         - create HAMS project structure
-            #         - write HAMS input files
-            #         - call HAMS.exe
-            #     - attributes:
-            #         - addedMass, damping, fEx coefficients
-            ph.create_hams_dirs(meshDir)
+            ph.create_hams_dirs(meshDir)                #
             
-            ph.write_hydrostatic_file(meshDir)
+            ph.write_hydrostatic_file(meshDir)          # HAMS needs a hydrostatics file, but it's unused for .1 and .3, so write a blank one
             
-            ph.write_control_file(meshDir, waterDepth=self.depth,
-                                  numFreqs=-len(self.w), minFreq=self.w[0], dFreq=np.diff(self.w[:2])[0])
+            # prepare frequency settings for HAMS
+            dw_HAMS = self.dw_BEM if dw==0 else dw     # frequency increment - allow override if provided
             
-            ph.run_hams(meshDir) # <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+            wMax_HAMS = max(wMax, max(self.w))         # make sure the HAMS runs includes both RAFT and export frequency extents
             
-            data1 = osp.join(meshDir, f'Output/Wamit_format/Buoy.1')
-            data3 = osp.join(meshDir, f'Output/Wamit_format/Buoy.3')
+            nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
+                
+            ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
+                                  numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS)
+                                  
+            # Note about zero/infinite frequencies from WAMIT-formatted output files (as per WAMIT v7 manual): 
+            # The limiting values of the added-mass coefficients may be evaluated for zero or infinite
+            # period by specifying the values PER= 0:0 and PER< 0:0, respectively.  These special values are always
+            # associated with the wave period, irrespective of the value of IPERIN and the corresponding
+            # interpretation of the positive elements of the array PER
             
-            #raftDir = osp.dirname(__file__)
-            #addedMass, damping = ph.read_wamit1(osp.join(raftDir, data1))
-            addedMass, damping, w_HAMS = ph.read_wamit1B(data1)
-            fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)
-                       
-            #addedMass, damping = ph.read_wamit1(data1)         # original
-            #addedMass, damping = ph.read_wamit1('C:\\Code\\RAFT\\raft\\data\\cylinder\\Output\\Wamit_format\\Buoy.1')
-            #addedMass, damping = ph.read_wamit1('C:\\Code\\RAFT\\raft\\BEM\\Output\\Wamit_format\\Buoy.1')
             
-            #fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3(data3)         # original
-            #fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3('C:\\Code\\RAFT\\raft\\data\\cylinder\\Output\\Wamit_format\\Buoy.3')
-            #fExMod, fExPhase, fExReal, fExImag = ph.read_wamit3('C:\\Code\\RAFT\\raft\\BEM\\Output\\Wamit_format\\Buoy.3')
+            # execute the HAMS analysis
+            ph.run_hams(meshDir) 
+            
+            # read the HAMS WAMIT-style output files
+            addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
+            M, P, R, I, w3, heads  = ph.read_wamit3(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)   
+            
+            # interpole to the frequencies RAFT is using
+            addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
+            dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
+            fExRealInterp   = interp1d(w3,   R      , assume_sorted=False        )(self.w)
+            fExImagInterp   = interp1d(w3,   I      , assume_sorted=False        )(self.w)
             
             # copy results over to the FOWT's coefficient arrays
-            self.A_BEM = self.rho_water * addedMass
-            self.B_BEM = self.rho_water * damping
-            self.X_BEM = self.rho_water * self.g * (fExReal + 1j*fExImag)  # linear wave excitation coefficients
-            self.F_BEM = self.X_BEM * self.zeta     # wave excitation force
-            self.w_BEM = w_HAMS
-
-            # >>> do we want to seperate out infinite-frequency added mass? <<<
+            self.A_BEM = self.rho_water * addedMassInterp
+            self.B_BEM = self.rho_water * dampingInterp                                 
+            self.X_BEM = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
+                        
+            # HAMS results error checks  >>> any more we should have? <<<
+            if np.isnan(self.A_BEM).any():
+                #print("NaN values detected in HAMS calculations for added mass. Check the geometry.")
+                #breakpoint()
+                raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
+            if np.isnan(self.B_BEM).any():
+                #print("NaN values detected in HAMS calculations for damping. Check the geometry.")
+                #breakpoint()
+                raise Exception("NaN values detected in HAMS calculations for damping. Check the geometry.")
+            if np.isnan(self.X_BEM).any():
+                #print("NaN values detected in HAMS calculations for excitation. Check the geometry.")
+                #breakpoint()
+                raise Exception("NaN values detected in HAMS calculations for excitation. Check the geometry.")
+            
+            # TODO: add support for multiple wave headings <<<
+            # note: RAFT will only be using finite-frequency potential flow coefficients
             
     
     def calcTurbineConstants(self, case, ptfm_pitch=0):
@@ -480,6 +516,10 @@ class FOWT():
         # >>> what about current? <<<
         # >>> could we also calculate mean viscous drift force here?? <<<
 
+        # ----- calculate potential-flow wave excitation force -----
+
+        self.F_BEM = self.X_BEM * self.zeta     # wave excitation force (will be zero if HAMS wasn't run)
+            
         # --------------------- get constant hydrodynamic values along each member -----------------------------
 
         self.A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
@@ -674,6 +714,118 @@ class FOWT():
         # return the linearized coefficients
         return B_hydro_drag, F_hydro_drag
 
+
+    def saveTurbineOutputs(self, results, iCase, Xi0, Xi):
+
+        # platform motions
+        results['surge_avg'][iCase] = Xi0[0]
+        results['surge_std'][iCase] = getRMS(Xi[0,:])
+        results['surge_max'][iCase] = Xi0[0] + 3*results['surge_std'][iCase]
+        
+        results['heave_avg'][iCase] = Xi0[2]
+        results['heave_std'][iCase] = getRMS(Xi[2,:])
+        results['heave_max'][iCase] = Xi0[2] + 3*results['surge_std'][iCase]
+        
+        results['pitch_avg'][iCase] = Xi0[4]
+        results['pitch_std'][iCase] = getRMS(Xi[4,:])
+        results['pitch_max'][iCase] = Xi0[4] + 3*results['surge_std'][iCase]
+        
+        # nacelle acceleration
+        results['AxRNA_std'][iCase] = getRMS( (Xi[0,:] + self.hHub*Xi[4,:])*self.w**2 )
+        
+        # tower base bending moment
+        m_turbine   = self.mtower + self.mRNA # turbine total mass
+        zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine  # turbine center of gravity
+        arm = zCG_turbine - self.memberList[-1].rA[2]   # vertical distance from tower base to turbine CG
+        
+        # was I going to convert aero force ref point here? <<<
+        
+        #dynamic_moment = 
+        results['Mbase_avg'][iCase] = m_turbine*self.g * arm*np.sin(Xi0[4]) + transformForce(self.F_aero0, offset=[0,0,-arm])[4] # mean moment from weight and thrust
+        #results['Mbase_std'][iCase]
+        #results['Mbase_max'][iCase]
+        #results['Mbase_DEL'][iCase]
+        '''
+        # rotor speed
+        results['omega_avg'][iCase]    
+        results['omega_std'][iCase]    
+        results['omega_max'][iCase]      
+        
+        # generator torque
+        results['torque_avg'][iCase]
+        results['torque_std'][iCase] 
+        results['torque_max'][iCase]    
+        
+        # rotor power 
+        results['power_avg'][iCase]
+        results['power_std'][iCase]
+        results['power_max'][iCase]
+        
+        # collective blade pitch
+        results['bPitch_avg'][iCase]
+        results['bPitch_std'][iCase]   
+        results['bPitch_max'][iCase]  
+        '''
+
+        '''
+        Outputs from OpenFAST to consider covering:
+        
+        # Rotor power outputs
+        self.add_output('V_out', val=np.zeros(n_ws_dlc11), units='m/s', desc='wind speed vector from the OF simulations')
+        self.add_output('P_out', val=np.zeros(n_ws_dlc11), units='W', desc='rotor electrical power')
+        self.add_output('Cp_out', val=np.zeros(n_ws_dlc11), desc='rotor aero power coefficient')
+        self.add_output('Omega_out', val=np.zeros(n_ws_dlc11), units='rpm', desc='rotation speeds to run')
+        self.add_output('pitch_out', val=np.zeros(n_ws_dlc11), units='deg', desc='pitch angles to run')
+        self.add_output('AEP', val=0.0, units='kW*h', desc='annual energy production reconstructed from the openfast simulations')
+
+        self.add_output('My_std',      val=0.0,            units='N*m',  desc='standard deviation of blade root flap bending moment in out-of-plane direction')
+        self.add_output('flp1_std',    val=0.0,            units='deg',  desc='standard deviation of trailing-edge flap angle')
+
+        self.add_output('rated_V',     val=0.0,            units='m/s',  desc='rated wind speed')
+        self.add_output('rated_Omega', val=0.0,            units='rpm',  desc='rotor rotation speed at rated')
+        self.add_output('rated_pitch', val=0.0,            units='deg',  desc='pitch setting at rated')
+        self.add_output('rated_T',     val=0.0,            units='N',    desc='rotor aerodynamic thrust at rated')
+        self.add_output('rated_Q',     val=0.0,            units='N*m',  desc='rotor aerodynamic torque at rated')
+
+        self.add_output('loads_r',      val=np.zeros(n_span), units='m', desc='radial positions along blade going toward tip')
+        self.add_output('loads_Px',     val=np.zeros(n_span), units='N/m', desc='distributed loads in blade-aligned x-direction')
+        self.add_output('loads_Py',     val=np.zeros(n_span), units='N/m', desc='distributed loads in blade-aligned y-direction')
+        self.add_output('loads_Pz',     val=np.zeros(n_span), units='N/m', desc='distributed loads in blade-aligned z-direction')
+        self.add_output('loads_Omega',  val=0.0, units='rpm', desc='rotor rotation speed')
+        self.add_output('loads_pitch',  val=0.0, units='deg', desc='pitch angle')
+        self.add_output('loads_azimuth', val=0.0, units='deg', desc='azimuthal angle')
+
+        # Control outputs
+        self.add_output('rotor_overspeed', val=0.0, desc='Maximum percent overspeed of the rotor during an OpenFAST simulation')  # is this over a set of sims?
+
+        # Blade outputs
+        self.add_output('max_TipDxc', val=0.0, units='m', desc='Maximum of channel TipDxc, i.e. out of plane tip deflection. For upwind rotors, the max value is tower the tower')
+        self.add_output('max_RootMyb', val=0.0, units='kN*m', desc='Maximum of the signals RootMyb1, RootMyb2, ... across all n blades representing the maximum blade root flapwise moment')
+        self.add_output('max_RootMyc', val=0.0, units='kN*m', desc='Maximum of the signals RootMyb1, RootMyb2, ... across all n blades representing the maximum blade root out of plane moment')
+        self.add_output('max_RootMzb', val=0.0, units='kN*m', desc='Maximum of the signals RootMzb1, RootMzb2, ... across all n blades representing the maximum blade root torsional moment')
+        self.add_output('DEL_RootMyb', val=0.0, units='kN*m', desc='damage equivalent load of blade root flap bending moment in out-of-plane direction')
+        self.add_output('max_aoa', val=np.zeros(n_span), units='deg', desc='maxima of the angles of attack distributed along blade span')
+        self.add_output('std_aoa', val=np.zeros(n_span), units='deg', desc='standard deviation of the angles of attack distributed along blade span')
+        self.add_output('mean_aoa', val=np.zeros(n_span), units='deg', desc='mean of the angles of attack distributed along blade span')
+        # Blade loads corresponding to maximum blade tip deflection
+        self.add_output('blade_maxTD_Mx', val=np.zeros(n_span), units='kN*m', desc='distributed moment around blade-aligned x-axis corresponding to maximum blade tip deflection')
+        self.add_output('blade_maxTD_My', val=np.zeros(n_span), units='kN*m', desc='distributed moment around blade-aligned y-axis corresponding to maximum blade tip deflection')
+        self.add_output('blade_maxTD_Fz', val=np.zeros(n_span), units='kN', desc='distributed force in blade-aligned z-direction corresponding to maximum blade tip deflection')
+
+        # Hub outputs
+        self.add_output('hub_Fxyz', val=np.zeros(3), units='kN', desc = 'Maximum hub forces in the non rotating frame')
+        self.add_output('hub_Mxyz', val=np.zeros(3), units='kN*m', desc = 'Maximum hub moments in the non rotating frame')
+
+        # Tower outputs
+        self.add_output('max_TwrBsMyt',val=0.0, units='kN*m', desc='maximum of tower base bending moment in fore-aft direction')
+        self.add_output('DEL_TwrBsMyt',val=0.0, units='kN*m', desc='damage equivalent load of tower base bending moment in fore-aft direction')
+        self.add_output('tower_maxMy_Fx', val=np.zeros(n_full_tow-1), units='kN', desc='distributed force in tower-aligned x-direction corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_Fy', val=np.zeros(n_full_tow-1), units='kN', desc='distributed force in tower-aligned y-direction corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_Fz', val=np.zeros(n_full_tow-1), units='kN', desc='distributed force in tower-aligned z-direction corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_Mx', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_My', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
+        self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
+        '''
 
     def plot(self, ax):
         '''plots the FOWT...'''

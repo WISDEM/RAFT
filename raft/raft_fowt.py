@@ -471,25 +471,26 @@ class FOWT():
         
         
         #A_aero, B_aero, C_aero, F_aero0, F_aero = self.rotor.calcAeroContributions(case )
-        A_aero, B_aero, C_aero, F_aero0, F_aero, _, _ = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch)
+        F_aero0, f_aero, a_aero, b_aero = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch)  # get values about hub
         
         # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
-        rHub = np.array([0,0,100.])
-        rotMatHub = rotationMatrix(0, 0.01, 0)
+        rHub = np.array([0, 0, self.hHub])
+        #rotMatHub = rotationMatrix(0, 0.01, 0)
         
-        # convert matrices to platform reference frame
+        # convert coefficients to platform reference frame
         self.A_aero = np.zeros([6,6,self.nw])
         self.B_aero = np.zeros([6,6,self.nw])
         for i in range(self.nw):
-            self.A_aero[:,:,i] = translateMatrix6to6DOF( rotateMatrix6(A_aero[:,:,i], rotMatHub),  rHub)
-            self.B_aero[:,:,i] = translateMatrix6to6DOF( rotateMatrix6(B_aero[:,:,i], rotMatHub),  rHub)
-        self.C_aero = translateMatrix6to6DOF( rotateMatrix6(C_aero, rotMatHub),  rHub)
+            self.A_aero[:,:,i] = translateMatrix3to6DOF( np.diag([a_aero[i], 0, 0]),  rHub)
+            self.B_aero[:,:,i] = translateMatrix3to6DOF( np.diag([b_aero[i], 0, 0]),  rHub)
+        #self.C_aero = translateMatrix6to6DOF( rotateMatrix6(C_aero, rotMatHub),  rHub)
         
         # convert forces to platform reference frame
-        self.F_aero0 = transformForce(F_aero0, offset=rHub, orientation=rotMatHub)
-        self.F_aero  = np.zeros(F_aero.shape)
+        self.F_aero0 = transformForce(F_aero0, offset=rHub)         # mean forces and moments
+        self.F_aero  = np.zeros([6, self.nw])                       # dynamice excitation force and moment amplitude spectra
         for iw in range(self.nw):
-            self.F_aero[:,iw] = transformForce(F_aero[:,iw], offset=rHub, orientation=rotMatHub)
+            #self.F_aero[:,iw] = transformForce(F_aero[:,iw], offset=rHub, orientation=rotMatHub)
+            self.F_aero[:,iw] = translateForce3to6DOF(np.array([f_aero[iw], 0, 0]), rHub)
     
 
     def calcHydroConstants(self, case):
@@ -730,19 +731,31 @@ class FOWT():
         results['pitch_std'][iCase] = getRMS(Xi[4,:])
         results['pitch_max'][iCase] = Xi0[4] + 3*results['surge_std'][iCase]
         
+        XiHub = Xi[0,:] + self.hHub*Xi[4,:]  # hub fore-aft displacement amplitude (used as an approximation in a number of outputs)
+        
         # nacelle acceleration
-        results['AxRNA_std'][iCase] = getRMS( (Xi[0,:] + self.hHub*Xi[4,:])*self.w**2 )
+        results['AxRNA_std'][iCase] = getRMS( -XiHub*self.w**2 )
         
         # tower base bending moment
-        m_turbine   = self.mtower + self.mRNA # turbine total mass
-        zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine  # turbine center of gravity
-        arm = zCG_turbine - self.memberList[-1].rA[2]   # vertical distance from tower base to turbine CG
-        
-        # was I going to convert aero force ref point here? <<<
-        
-        #dynamic_moment = 
-        results['Mbase_avg'][iCase] = m_turbine*self.g * arm*np.sin(Xi0[4]) + transformForce(self.F_aero0, offset=[0,0,-arm])[4] # mean moment from weight and thrust
-        #results['Mbase_std'][iCase]
+        m_turbine   = self.mtower + self.mRNA                                       # turbine total mass
+        zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine # turbine center of gravity
+        zBase = self.memberList[-1].rA[2]                                           # tower base elevation [m]
+        hArm = zCG_turbine - zBase                                                  # vertical distance from tower base to turbine CG [m]
+        aCG_turbine = -self.w**2 *( Xi[0,:] + zCG_turbine*self.hHub*Xi[4,:] )       # fore-aft acceleration of turbine CG
+        # turbine pitch moment of inertia about CG [kg-m^2]
+        ICG_turbine = (translateMatrix6to6DOF(self.memberList[-1].M_struc, [0,0,-zCG_turbine])[4,4]     # tower MOI about turbine CG
+                       + self.mRNA*(self.hHub-zCG_turbine)**2 + self.IrRNA   )                          # RNA MOI with parallel axis theorem
+        # moment components and summation
+        M_I      = -m_turbine*aCG_turbine*hArm - ICG_turbine*(-self.w**2 *Xi[4,:] ) # tower base inertial reaction moment
+        M_w      = m_turbine*self.g * hArm*Xi[4]                                    # tower base weight moment
+        M_F_aero = self.F_aero[0,0]*(self.hHub - zBase)                             # tower base moment from turbulent wind excitation    
+        M_X_aero = -(-self.w**2 *self.A_aero[0,0,:]                                 # tower base aero reaction moment
+                     + 1j*self.w *self.B_aero[0,0,:] )*(self.hHub - zBase)          
+        dynamic_moment = M_I + M_w + M_F_aero + M_X_aero                            # total tower base fore-aft bending moment [N-m]
+        dynamic_moment_RMS = getRMS(dynamic_moment)
+        # fill in metrics
+        results['Mbase_avg'][iCase] = m_turbine*self.g * hArm*np.sin(Xi0[4]) + transformForce(self.F_aero0, offset=[0,0,-hArm])[4] # mean moment from weight and thrust
+        results['Mbase_std'][iCase] = dynamic_moment_RMS
         #results['Mbase_max'][iCase]
         #results['Mbase_DEL'][iCase]
         '''

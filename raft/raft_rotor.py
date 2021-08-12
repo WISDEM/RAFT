@@ -371,6 +371,7 @@ class Rotor:
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
         Results are w.r.t. nonrotating hub reference frame.
+        Currently returning 6 DOF mean loads, but other terms are just hub fore-aft scalars.
         
          ptfm_pitch
             mean platform pitch angle to be included in rotor tilt angle [rad]
@@ -430,6 +431,7 @@ class Rotor:
             a_aer[iw] = -(1/omega**2) * np.real(T)
             b_aer[iw] = (1/omega) * np.imag(T)
         
+        '''
         # coefficients to be filled in
         nw = len(self.w)
         A_aero = np.zeros([6,6,nw])                     # added mass
@@ -441,6 +443,7 @@ class Rotor:
         # calculate contribution to system matrices      
         A_aero[0,0,:] = a_aer
         B_aero[0,0,:] = b_aer
+        '''
                 
         # calculate steady aero forces and moments
         F_aero0 = np.array([loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0],
@@ -475,15 +478,14 @@ class Rotor:
 
             plt.show()
 
-
-
-
+        f_aero = T_ext  # wind thrust force excitation spectrum
+        
         #for i in range(nw):                             # loop through each frequency component
         #    F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation
         #    F_aero[4,i] = U_amplitude[i]*dT_dU*Zhub        # pitch excitation
         
         
-        return A_aero, B_aero, C_aero, F_aero0, F_aero, a_aer, b_aer #  B_aero, C_aero, F_aero0, F_aero
+        return F_aero0, f_aero, a_aer, b_aer #  B_aero, C_aero, F_aero0, F_aero
         
         
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0):

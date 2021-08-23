@@ -758,27 +758,38 @@ class FOWT():
         results['Mbase_std'][iCase] = dynamic_moment_RMS
         #results['Mbase_max'][iCase]
         #results['Mbase_DEL'][iCase]
-        '''
-        # rotor speed
-        results['omega_avg'][iCase]    
-        results['omega_std'][iCase]    
-        results['omega_max'][iCase]      
+
+       
+        # rotor speed (rpm)
+        # spectra
+        phi_w   = self.rotor.C * (XiHub - self.rotor.V_w / (1j *self.w))
+        omega_w =  (1j *self.w) * phi_w
+
+        results['omega_avg'][iCase]     = self.rotor.Omega_case
+        results['omega_std'][iCase]     = radps2rpm(getRMS(omega_w))
+        results['omega_max'][iCase]     = results['omega_avg'][iCase] + 2 * results['omega_std'][iCase] # this and other _max values will be based on std (avg + 2 or 3 * std)   (95% or 99% max)
         
-        # generator torque
-        results['torque_avg'][iCase]
-        results['torque_std'][iCase] 
-        results['torque_max'][iCase]    
+        # generator torque (Nm)
+        torque_w = (1j * self.w * self.rotor.kp_tau + self.rotor.ki_tau) * phi_w
+
+        results['torque_avg'][iCase]    = self.rotor.aero_torque / self.rotor.Ng        # Nm
+        results['torque_std'][iCase]    = getRMS(torque_w)
+        # results['torque_max'][iCase]    # skip, nonlinear
         
-        # rotor power 
-        results['power_avg'][iCase]
-        results['power_std'][iCase]
-        results['power_max'][iCase]
         
-        # collective blade pitch
-        results['bPitch_avg'][iCase]
-        results['bPitch_std'][iCase]   
-        results['bPitch_max'][iCase]  
-        '''
+        # rotor power (W)
+        results['power_avg'][iCase]    = self.rotor.aero_power # compute from cc-blade coeffs
+        # results['power_std'][iCase]     # nonlinear near rated, covered by torque_ and omega_std
+        # results['power_max'][iCase]     # skip, nonlinear
+
+        
+        # collective blade pitch (deg)
+        bPitch_w = (1j * self.w * self.rotor.kp_beta + self.rotor.ki_beta) * phi_w
+
+        results['bPitch_avg'][iCase]    = self.rotor.pitch_case
+        results['bPitch_std'][iCase]    = rad2deg(getRMS(bPitch_w))
+        # results['bPitch_max'][iCase]    # skip, not something we'd consider in design
+
 
         '''
         Outputs from OpenFAST to consider covering:

@@ -52,21 +52,10 @@ class Rotor:
         self.R_rot      = turbine['blade']['Rtip']  # rotor radius [m]
         #yaw  = 0        
 
-        # Set some turbine params, this can come from WEIS/WISDEM or an external input
-        if old:
-            self.rot_from_weis = yaml.load(open(os.path.join(raft_dir,'designs/rotors/IEA-15MW_WEIS.yaml'),'r'))
-            self.Uhub = np.array(self.rot_from_weis['wt_ops']['v'])
-            self.Omega_rpm = np.array(self.rot_from_weis['wt_ops']['omega_op']) / rpm2radps
-            self.pitch_deg = np.array(self.rot_from_weis['wt_ops']['pitch_op']) * rad2deg
-            self.I_drivetrain = 3.2e8
-        else:   # planning on this option going forward
-            #self.Uhub = np.array([14.])
-            #self.Omega_rpm = np.array([7.56])
-            #self.pitch_deg = np.array([13.78])
-            self.Uhub      = np.array(turbine['wt_ops']['v'])
-            self.Omega_rpm = np.array(turbine['wt_ops']['omega_op']) / rpm2radps
-            self.pitch_deg = np.array(turbine['wt_ops']['pitch_op']) * rad2deg
-            self.I_drivetrain = float(turbine['I_drivetrain'])
+        self.Uhub      = np.array(turbine['wt_ops']['v'])
+        self.Omega_rpm = np.array(turbine['wt_ops']['omega_op'])
+        self.pitch_deg = np.array(turbine['wt_ops']['pitch_op'])
+        self.I_drivetrain = float(turbine['I_drivetrain'])
 
 
         # Set default control gains

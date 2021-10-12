@@ -433,7 +433,7 @@ class Rotor:
         # calculate steady aero forces and moments
         F_aero0 = np.array([loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0],
                             loads["My" ][0], loads["Q" ][0], loads["Mz" ][0] ])
-                            
+        
         # calculate wind excitation force/moment spectra
         _,_,_,S_rot = self.IECKaimal(case)
 
@@ -473,7 +473,7 @@ class Rotor:
         return F_aero0, f_aero, a_aer, b_aer #  B_aero, C_aero, F_aero0, F_aero
         
         
-    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0):
+    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0, color='k'):
         '''Draws the rotor on the passed axes, considering optional platform offset and rotation matrix, and rotor azimuth angle'''
 
         # ----- blade geometry ----------
@@ -521,8 +521,8 @@ class Rotor:
             #for ii in range(m-1):
             #    ax.plot(P2[0, npts*ii:npts*(ii+1)], P2[1, npts*ii:npts*(ii+1)], P2[2, npts*ii:npts*(ii+1)])  
             # draw outline
-            ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], 'k') # leading edge  
-            ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], 'k')  # trailing edge
+            ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], color=color) # leading edge  
+            ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], color=color)  # trailing edge
             
             
         #for j in range(m):

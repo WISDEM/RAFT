@@ -214,23 +214,23 @@ class Model():
             self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], iCase, fowt.Xi0, self.Xi[0:6,:])            
  
             # process mooring tension outputs
-            T_moor_amps = np.zeros([len(self.T_moor), self.nw]) 
+            T_moor_amps = np.zeros([len(self.T_moor), self.nw], dtype=complex) 
             for iw in range(self.nw):
                 T_moor_amps[:,iw] = np.matmul(self.J_moor, self.Xi[:,iw])
             
             self.results['case_metrics']['Tmoor_avg'][iCase,:] = self.T_moor
             for iT in range(len(self.T_moor)):
-                TRMS = getRMS(T_moor_amps[iT,:]) # estimated mooring line RMS tension [N]
+                TRMS = getRMS(T_moor_amps[iT,:], self.w[0]) # estimated mooring line RMS tension [N]
                 self.results['case_metrics']['Tmoor_std'][iCase,iT] = TRMS
                 self.results['case_metrics']['Tmoor_max'][iCase,iT] = self.T_moor[iT] + 3*TRMS
                 #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
             
-        print("---tensions average ---")
-        printMat(self.results['case_metrics']['Tmoor_avg'])
-        print("---tensions standard deviation ---")
-        printMat(self.results['case_metrics']['Tmoor_std'])
-            
-        print(self.results['case_metrics'])
+        #print("---tensions average ---")
+        #printMat(self.results['case_metrics']['Tmoor_avg'])
+        #print("---tensions standard deviation ---")
+        #printMat(self.results['case_metrics']['Tmoor_std'])
+        #    
+        #print(self.results['case_metrics'])
 
     """
     def calcSystemConstantProps(self):
@@ -690,21 +690,26 @@ class Model():
         self.fowtList[0].calcBEM(dw=dw, wMax=wMax, dz=dz, da=da)
 
 
-    def plot(self, hideGrid=False):
+    def plot(self, ax=None, hideGrid=False, color='k'):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
         #self.ms.bodyList[0].setPosition(np.zeros(6))
         #self.ms.initialize()
-        fig, ax = self.ms.plot()
+        
         #fig = plt.figure(figsize=(20/2.54,12/2.54))
         #ax = Axes3D(fig)
 
-        
+       # if axes not passed in, make a new figure
+        if ax == None:    
+            fig, ax = self.ms.plot(color=color)
+        else:
+            fig = ax.get_figure()
+            self.ms.plot(ax=ax, color=color)
 
         # plot each FOWT
         for fowt in self.fowtList:
-            fowt.plot(ax)
+            fowt.plot(ax, color=color)
             
         if hideGrid:       
             ax.set_xticks([])    # Hide axes ticks
@@ -714,7 +719,8 @@ class Model():
             plt.grid(b=None)
             ax.axis('off')
             plt.box(False)
-
+            
+        return fig, ax
 
 def runRAFT(input_file, turbine_file=""):
     '''
@@ -760,6 +766,7 @@ def runRAFT(input_file, turbine_file=""):
 if __name__ == "__main__":
     import raft
     
+    #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
     model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     fowt = model.fowtList[0]

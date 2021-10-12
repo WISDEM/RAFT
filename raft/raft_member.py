@@ -109,13 +109,21 @@ class Member:
 
         # Drag coefficients
         self.Cd_q   = getFromDict(mi, 'Cd_q' , shape=n, default=0.0 )     # axial drag coefficient
-        self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse1 drag coefficient
-        self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse2 drag coefficient
+        if not np.isscalar(mi['Cd']) and len(mi['Cd'])==2:  # special case for rectangular members with directional coefficients
+            self.Cd_p1 = np.tile(float(mi['Cd'][0]), [n])
+            self.Cd_p2 = np.tile(float(mi['Cd'][1]), [n])
+        else:
+            self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse1 drag coefficient
+            self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse2 drag coefficient
         self.Cd_End = getFromDict(mi, 'CdEnd', shape=n, default=0.6 )     # end drag coefficient
         # Added mass coefficients
         self.Ca_q   = getFromDict(mi, 'Ca_q' , shape=n, default=0.0 )     # axial added mass coefficient
-        self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse1 added mass coefficient
-        self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse2 added mass coefficient
+        if not np.isscalar(mi['Ca']) and len(mi['Ca'])==2:  # special case for rectangular members with directional coefficients
+            self.Ca_p1 = np.tile(float(mi['Ca'][0]), [n])
+            self.Ca_p2 = np.tile(float(mi['Ca'][1]), [n])
+        else:
+            self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse1 added mass coefficient
+            self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse2 added mass coefficient
         self.Ca_End = getFromDict(mi, 'CaEnd', shape=n, default=0.6 )     # end added mass coefficient
 
 
@@ -771,7 +779,7 @@ class Member:
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 
-    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[]):
+    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[], color='k'):
         '''Draws the member on the passed axes, and optional platform offset and rotation matrix'''
 
         # --- get coordinates of member edges in member reference frame -------------------
@@ -828,10 +836,10 @@ class Member:
             #linebit.append(ax.plot(Xs[[2*i,2*i+2]],Ys[[2*i,2*i+2]],Zs[[2*i,2*i+2]]      , color='k'))  # end A edges
             #linebit.append(ax.plot(Xs[[2*i+1,2*i+3]],Ys[[2*i+1,2*i+3]],Zs[[2*i+1,2*i+3]], color='k'))  # end B edges
 
-            linebit.append(ax.plot(Xs[m*i:m*i+m],Ys[m*i:m*i+m],Zs[m*i:m*i+m]            , color='k', lw=0.5))  # side edges
+            linebit.append(ax.plot(Xs[m*i:m*i+m],Ys[m*i:m*i+m],Zs[m*i:m*i+m]            , color=color, lw=0.5))  # side edges
 
         for j in range(m):
-            linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color='k', lw=0.5))  # station rings
+            linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color=color, lw=0.5))  # station rings
 
         return linebit
 

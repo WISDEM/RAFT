@@ -120,44 +120,6 @@ class FOWT():
         self.F_BEM = np.zeros([6,  self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
 
 
-    """
-    def setEnv(self, Hs=8, Tp=12, spectrum='unit', V=10, beta=0, Fthrust=0):
-        '''For now, this is where the environmental conditions acting on the FOWT are set.'''
-
-        print(NoLongerUsed)
-
-        # ------- Wind conditions
-        #Fthrust = 800e3  # peak thrust force, [N]
-        #Mthrust = self.hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
-
-
-        self.env = Env()
-        self.env.Hs       = Hs
-        self.env.Tp       = Tp
-        self.env.spectrum = spectrum
-        self.env.V        = V
-        self.env.beta     = beta
-
-        # calculate wave number
-        for i in range(self.nw):
-            self.k[i] = waveNumber(self.w[i], self.depth)
-            
-        # make wave spectrum
-        if spectrum == 'unit':
-            self.zeta = np.tile(1, self.nw)
-        else:
-            S = JONSWAP(self.w, Hs, Tp)        
-            self.zeta = np.sqrt(S)    # wave elevation amplitudes (these are easiest to use)
-
-        #Fthrust = 0
-        #Fthrust = 800.0e3            # peak thrust force, [N]
-        #Mthrust = self.hHub*Fthrust  # overturning moment from turbine thrust force [N-m]
-
-        # add thrust force and moment to mooring system body
-        self.body.f6Ext = Fthrust*np.array([np.cos(beta),np.sin(beta),0,-self.hHub*np.sin(beta), self.hHub*np.cos(beta), 0])
-    """
-
-
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
         Also adds some dynamic parameters that are constant, e.g. BEM coefficients and steady thrust loads.'''
@@ -487,11 +449,11 @@ class FOWT():
         
         # convert forces to platform reference frame
         self.F_aero0 = transformForce(F_aero0, offset=rHub)         # mean forces and moments
-        self.F_aero  = np.zeros([6, self.nw])                       # dynamice excitation force and moment amplitude spectra
+        self.F_aero  = np.zeros([6, self.nw], dtype=complex)        # dynamice excitation force and moment amplitude spectra
         for iw in range(self.nw):
             #self.F_aero[:,iw] = transformForce(F_aero[:,iw], offset=rHub, orientation=rotMatHub)
             self.F_aero[:,iw] = translateForce3to6DOF(np.array([f_aero[iw], 0, 0]), rHub)
-    
+        
 
     def calcHydroConstants(self, case):
         '''This computes the linear strip-theory-hydrodynamics terms, including wave excitation for a specific case.'''
@@ -513,6 +475,8 @@ class FOWT():
         
         rho = self.rho_water
         g   = self.g
+        
+        print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}")
 
         # >>> what about current? <<<
         # >>> could we also calculate mean viscous drift force here?? <<<
@@ -530,12 +494,15 @@ class FOWT():
         for mem in self.memberList:
 
             circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
+#            print(mem.name)
 
             # loop through each node of the member
             for il in range(mem.ns):
+#                print(il)
 
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
+#                    print("underwater")
 
                     # get wave kinematics spectra given a certain wave spectrum and location
                     mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.beta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
@@ -563,6 +530,7 @@ class FOWT():
                          
                         # added mass
                         Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
+#                        print(f"Member side added mass diagonals are {Amat[0,0]:6.2e} {Amat[1,1]:6.2e} {Amat[2,2]:6.2e}")
 
                         self.A_hydro_morison += translateMatrix3to6DOF(Amat, mem.r[il,:])    # add to global added mass matrix for Morison members
                         
@@ -590,7 +558,8 @@ class FOWT():
 
                         # added mass
                         AmatE = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
-
+#                        print(f"Member END  added mass diagonals are {AmatE[0,0]:6.2e} {AmatE[1,1]:6.2e} {AmatE[2,2]:6.2e}")
+                        
                         self.A_hydro_morison += translateMatrix3to6DOF(AmatE, mem.r[il,:]) # add to global added mass matrix for Morison members
                         
                         # inertial excitation
@@ -664,9 +633,9 @@ class FOWT():
                     vrel_p2 = vrel*mem.p2[:,None]
 
                     # get RMS of relative velocity component magnitudes (real-valued)
-                    vRMS_q  = np.linalg.norm( np.abs(vrel_q ) )                          # equivalent to np.sqrt( np.sum( np.abs(vrel_q )**2) /nw)
-                    vRMS_p1 = np.linalg.norm( np.abs(vrel_p1) )
-                    vRMS_p2 = np.linalg.norm( np.abs(vrel_p2) )
+                    vRMS_q  = getRMS(vrel_q , self.dw)
+                    vRMS_p1 = getRMS(vrel_p1, self.dw)
+                    vRMS_p2 = getRMS(vrel_p2, self.dw)
 
                     # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
                     Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * a_i_q  * Cd_q
@@ -720,39 +689,39 @@ class FOWT():
 
         # platform motions
         results['surge_avg'][iCase] = Xi0[0]
-        results['surge_std'][iCase] = getRMS(Xi[0,:])
+        results['surge_std'][iCase] = getRMS(Xi[0,:], self.dw)
         results['surge_max'][iCase] = Xi0[0] + 3*results['surge_std'][iCase]
         
         results['heave_avg'][iCase] = Xi0[2]
-        results['heave_std'][iCase] = getRMS(Xi[2,:])
+        results['heave_std'][iCase] = getRMS(Xi[2,:], self.dw)
         results['heave_max'][iCase] = Xi0[2] + 3*results['surge_std'][iCase]
         
         results['pitch_avg'][iCase] = Xi0[4]
-        results['pitch_std'][iCase] = getRMS(Xi[4,:])
+        results['pitch_std'][iCase] = getRMS(Xi[4,:], self.dw)
         results['pitch_max'][iCase] = Xi0[4] + 3*results['surge_std'][iCase]
         
         XiHub = Xi[0,:] + self.hHub*Xi[4,:]  # hub fore-aft displacement amplitude (used as an approximation in a number of outputs)
         
         # nacelle acceleration
-        results['AxRNA_std'][iCase] = getRMS( -XiHub*self.w**2 )
+        results['AxRNA_std'][iCase] = getRMS( -XiHub*self.w**2, self.dw)
         
         # tower base bending moment
         m_turbine   = self.mtower + self.mRNA                                       # turbine total mass
         zCG_turbine = (self.rCG_tow[2]*self.mtower + self.hHub*self.mRNA)/m_turbine # turbine center of gravity
         zBase = self.memberList[-1].rA[2]                                           # tower base elevation [m]
         hArm = zCG_turbine - zBase                                                  # vertical distance from tower base to turbine CG [m]
-        aCG_turbine = -self.w**2 *( Xi[0,:] + zCG_turbine*self.hHub*Xi[4,:] )       # fore-aft acceleration of turbine CG
+        aCG_turbine = -self.w**2 *( Xi[0,:] + zCG_turbine*Xi[4,:] )       # fore-aft acceleration of turbine CG
         # turbine pitch moment of inertia about CG [kg-m^2]
         ICG_turbine = (translateMatrix6to6DOF(self.memberList[-1].M_struc, [0,0,-zCG_turbine])[4,4]     # tower MOI about turbine CG
                        + self.mRNA*(self.hHub-zCG_turbine)**2 + self.IrRNA   )                          # RNA MOI with parallel axis theorem
         # moment components and summation
         M_I      = -m_turbine*aCG_turbine*hArm - ICG_turbine*(-self.w**2 *Xi[4,:] ) # tower base inertial reaction moment
         M_w      = m_turbine*self.g * hArm*Xi[4]                                    # tower base weight moment
-        M_F_aero = self.F_aero[0,0]*(self.hHub - zBase)                             # tower base moment from turbulent wind excitation    
+        M_F_aero = 0.0 # <<<<self.F_aero[0,:]*(self.hHub - zBase)                             # tower base moment from turbulent wind excitation    
         M_X_aero = -(-self.w**2 *self.A_aero[0,0,:]                                 # tower base aero reaction moment
-                     + 1j*self.w *self.B_aero[0,0,:] )*(self.hHub - zBase)          
-        dynamic_moment = M_I + M_w + M_F_aero + M_X_aero                            # total tower base fore-aft bending moment [N-m]
-        dynamic_moment_RMS = getRMS(dynamic_moment)
+                     + 1j*self.w *self.B_aero[0,0,:] )*(self.hHub - zBase)**2 *Xi[4,:]        
+        self.dynamic_moment = M_I + M_w + M_F_aero + M_X_aero                            # total tower base fore-aft bending moment [N-m]
+        dynamic_moment_RMS = getRMS(self.dynamic_moment, self.dw)
         # fill in metrics
         results['Mbase_avg'][iCase] = m_turbine*self.g * hArm*np.sin(Xi0[4]) + transformForce(self.F_aero0, offset=[0,0,-hArm])[4] # mean moment from weight and thrust
         results['Mbase_std'][iCase] = dynamic_moment_RMS
@@ -851,17 +820,17 @@ class FOWT():
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
 
-    def plot(self, ax):
+    def plot(self, ax, color='k'):
         '''plots the FOWT...'''
 
-        self.rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R)
+        self.rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
 
         # loop through each member and plot it
         for mem in self.memberList:
 
             mem.calcOrientation()  # temporary
 
-            mem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R)
+            mem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
 
         # in future should consider ability to animate mode shapes and also to animate response at each frequency
         # including hydro excitation vectors stored in each member

@@ -735,14 +735,14 @@ class FOWT():
         omega_w =  (1j *self.w) * phi_w
 
         results['omega_avg'][iCase]     = self.rotor.Omega_case
-        results['omega_std'][iCase]     = radps2rpm(getRMS(omega_w))
+        results['omega_std'][iCase]     = radps2rpm(getRMS(omega_w, self.dw))
         results['omega_max'][iCase]     = results['omega_avg'][iCase] + 2 * results['omega_std'][iCase] # this and other _max values will be based on std (avg + 2 or 3 * std)   (95% or 99% max)
         
         # generator torque (Nm)
         torque_w = (1j * self.w * self.rotor.kp_tau + self.rotor.ki_tau) * phi_w
 
         results['torque_avg'][iCase]    = self.rotor.aero_torque / self.rotor.Ng        # Nm
-        results['torque_std'][iCase]    = getRMS(torque_w)
+        results['torque_std'][iCase]    = getRMS(torque_w, self.dw)
         # results['torque_max'][iCase]    # skip, nonlinear
         
         
@@ -756,7 +756,7 @@ class FOWT():
         bPitch_w = (1j * self.w * self.rotor.kp_beta + self.rotor.ki_beta) * phi_w
 
         results['bPitch_avg'][iCase]    = self.rotor.pitch_case
-        results['bPitch_std'][iCase]    = rad2deg(getRMS(bPitch_w))
+        results['bPitch_std'][iCase]    = rad2deg(getRMS(bPitch_w, self.dw))
         # results['bPitch_max'][iCase]    # skip, not something we'd consider in design
 
 

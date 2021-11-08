@@ -32,8 +32,6 @@ run ```python setup.py``` or ```pip install .``` from the command line in the ma
 Example
 -------
 
-Eventually run tests here
-
 .. code-block:: bash
 
     cd raft

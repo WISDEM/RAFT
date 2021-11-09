@@ -40,6 +40,14 @@ until the positions (X) converge.
 Member Theory
 -------------
 
+.. image:: /images/members1.JPG
+    :align: center
+
+.. image:: /images/members2.JPG
+    :align: center
+    :width: 350px
+    :height: 350px
+
 Mass & Inertia
 ^^^^^^^^^^^^^^
 The 6x6 mass matrix is calculated for each member using the properties given in the input design yaml.

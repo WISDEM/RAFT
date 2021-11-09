@@ -66,11 +66,11 @@ The 6x6 hydrodynamic matrices for each member are calculated in one of two ways:
 Rotor Theory
 ------------
 
-The Rotor uses aerodynamic theory from WISDEM's CCBlade. Check out the `CCBlade documentation <https://github.com/WISDEM/WISDEM>`_ 
+The Rotor uses aerodynamic theory from WISDEM's CCBlade. Check out the `CCBlade documentation <https://wisdem.readthedocs.io/en/latest/wisdem/ccblade/index.html>`_ 
 for more infomation.
 
 Mooring Theory
 --------------
 
-RAFT uses the quasi-static mooring system modeler, MoorPy. Check out `the MoorPy documentation <https://github.com/NREL/MoorPy>`_ 
+RAFT uses the quasi-static mooring system modeler, MoorPy. Check out `the MoorPy documentation <https://moorpy.readthedocs.io/en/latest/>`_ 
 for more information.

@@ -437,16 +437,17 @@ class Rotor:
         # calculate wind excitation force/moment spectra
         _,_,_,S_rot = self.IECKaimal(case)
 
-        self.V_w = S_rot
+        self.V_w = np.sqrt(S_rot)   # <<< confirm this is the fft (amplitudes) rather than a power spectral density?  (IECKaimal lacks commenting to indicate)
         T_0 = loads["T" ][0]
         T_w1 = dT_dU * self.V_w
-        T_w2 = (E * C * self.V_w) / (1j * self.w)
+        T_w2 = (E * C * self.V_w) / (1j * self.w) * (-1)  # mhall: think this needs the sign reversal
 
         T_ext = T_w1 + T_w2
 
         # print('here')
-        if False:
-            plt.plot(self.w, self.V_w, label = 'S_rot')
+        if True:
+            '''
+            plt.plot(self.w/2/np.pi, self.V_w, label = 'S_rot')
             plt.yscale('log')
             plt.xscale('log')
 
@@ -456,14 +457,23 @@ class Rotor:
             plt.xlabel('Freq. (Hz)')
             plt.ylabel('PSD')
 
-
-            plt.plot(thrust_psd.fq_0 * 2 * np.pi,thrust_psd.psd_0)
+            #plt.plot(thrust_psd.fq_0 * 2 * np.pi,thrust_psd.psd_0)
             plt.plot(self.w, np.abs(T_ext))
-            # plt.plot(self.w, abs(T_w2))
+            plt.plot(self.w, abs(T_w2))
+            '''
+            
+            fig,ax = plt.subplots(4,1,sharex=True)
+            ax[0].plot(self.w/2.0/np.pi, self.V_w);  ax[0].set_ylabel('U (m/s)') 
+            ax[1].plot(self.w/2.0/np.pi, T_w1    );  ax[1].set_ylabel('T_w1') 
+            ax[2].plot(self.w/2.0/np.pi, np.real(T_w2),'k')
+            ax[2].plot(self.w/2.0/np.pi, np.imag(T_w2),'k:'); ax[2].set_ylabel('T_w2') 
+            ax[3].plot(self.w/2.0/np.pi, np.real(T_w1+T_w2),'k')
+            ax[3].plot(self.w/2.0/np.pi, np.imag(T_w1+T_w2),'k:'); ax[3].set_ylabel('T_w2+T_w2') 
+            ax[3].set_xlabel('f (Hz)') 
 
-            # plt.show()
 
         f_aero = T_ext  # wind thrust force excitation spectrum
+        
         
         #for i in range(nw):                             # loop through each frequency component
         #    F_aero[0,i] = U_amplitude[i]*dT_dU             # surge excitation

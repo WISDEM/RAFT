@@ -383,6 +383,12 @@ def getRMS(xi, dw):
     return np.sqrt( np.sum( np.abs(xi)**2 )*dw )
 
 
+def getPSD(xi):
+    '''Calculates power spectral density from inputted (complex) response amplitude vector. Units of [unit]^2/(rad/s)'''
+    
+    return np.abs(xi)**2
+
+
 def JONSWAP(ws, Hs, Tp, Gamma=1.0):
     '''Returns the JONSWAP wave spectrum for the given frequencies and parameters.
 

@@ -36,9 +36,6 @@ class Member:
 
         shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
 
-        rAB = self.rB-self.rA                                        # The relative coordinates of upper node from lower node [m]
-        self.l = np.linalg.norm(rAB)                                 # member length [m]
-
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
         
 
@@ -51,6 +48,10 @@ class Member:
             self.rA = np.matmul(rotMat, self.rA)
             self.rB = np.matmul(rotMat, self.rB)
 
+
+        rAB = self.rB-self.rA                                        # The relative coordinates of upper node from lower node [m]
+        self.l = np.linalg.norm(rAB)                                 # member length [m]
+    
 
         # station positions
         n = len(mi['stations'])                                     # number of stations
@@ -128,9 +129,10 @@ class Member:
 
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
-        dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter of side length pair
+        dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair
         dlsMax = mi['dlsMax']
-        #dlsMax = 5.0                  # maximum node spacing <<< this should be an optional input at some point <<<
+        
+        # start things off with the strip for end A
         ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
         dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
         ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
@@ -141,7 +143,7 @@ class Member:
             lstrip = self.stations[i]-self.stations[i-1]             # the axial length of the strip
 
             if lstrip > 0.0:
-                ns= int(np.ceil( (lstrip) / dlsMax ))
+                ns= int(np.ceil( (lstrip) / dlsMax ))             # number of strips to split this segment into
                 dlstrip = lstrip/ns
                 m   = 0.5*(dorsl[i] - dorsl[i-1])/lstrip          # taper ratio
                 ls  += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
@@ -149,14 +151,22 @@ class Member:
                 ds  += [dorsl[i-1] + dlstrip*2*m*(0.5+j) for j in range(ns)]
                 drs += [dlstrip*m]*ns
                 
-            elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions)
-                ns = 1
+            elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions), a single strip for this section
                 dlstrip = 0
                 ls  += [self.stations[i-1]]                          # add node location
                 dls += [dlstrip]
                 ds  += [0.5*(dorsl[i-1] + dorsl[i])]               # set diameter as midpoint diameter
                 drs += [0.5*(dorsl[i] - dorsl[i-1])]
 
+            # finish things off with the strip for end B
+            dlstrip = 0
+            ls  += [self.stations[-1]]         
+            dls += [0.0]
+            ds  += [0.5*dorsl[-1]]
+            drs += [-0.5*dorsl[-1]]
+        
+        # >>> may want to have a way to not have an end strip for members that intersect things <<<
+        
         self.ns  = len(ls)                                           # number of hydrodynamic strip theory nodes per member
         self.ls  = np.array(ls, dtype=float)                          # node locations along member axis
         #self.dl = 0.5*(np.diff([0.]+lh) + np.diff(lh+[lh[-1]]))
@@ -181,6 +191,8 @@ class Member:
         self.ud        = np.zeros([self.ns,3,nw], dtype=complex)            # wave acceleration
         self.pDyn      = np.zeros([self.ns,  nw], dtype=complex)            # dynamic pressure
         self.F_exc_iner= np.zeros([self.ns,3,nw], dtype=complex)            # wave excitation from inertia (Froude-Krylov)
+        self.F_exc_a   = np.zeros([self.ns,3,nw], dtype=complex)            #  component due to wave acceleration
+        self.F_exc_p   = np.zeros([self.ns,3,nw], dtype=complex)            #  component due to dynamic pressure
         self.F_exc_drag= np.zeros([self.ns,3,nw], dtype=complex)            # wave excitation from linearized drag
 
 
@@ -779,7 +791,7 @@ class Member:
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 
-    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[], color='k'):
+    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[], color='k', nodes=0):
         '''Draws the member on the passed axes, and optional platform offset and rotation matrix'''
 
         # --- get coordinates of member edges in member reference frame -------------------
@@ -840,6 +852,11 @@ class Member:
 
         for j in range(m):
             linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color=color, lw=0.5))  # station rings
+
+
+        # plot nodes if asked
+        if nodes > 0:
+            ax.scatter(self.r[:,0], self.r[:,1], self.r[:,2])
 
         return linebit
 

@@ -108,6 +108,7 @@ class Model():
         for fowt in self.fowtList:
             fowt.calcStatics()
             #fowt.calcBEM()
+            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0))
             
         # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
         try: 
@@ -137,45 +138,58 @@ class Model():
         self.results['case_metrics']['surge_avg'] = np.zeros(nCases)
         self.results['case_metrics']['surge_std'] = np.zeros(nCases)
         self.results['case_metrics']['surge_max'] = np.zeros(nCases)
+        self.results['case_metrics']['surge_PSD'] = np.zeros([nCases,self.nw])  # adding PSDs as well. Could put behind an if statement if this slows things down
         
         self.results['case_metrics']['heave_avg'] = np.zeros(nCases)
         self.results['case_metrics']['heave_std'] = np.zeros(nCases)
         self.results['case_metrics']['heave_max'] = np.zeros(nCases)
+        self.results['case_metrics']['heave_PSD'] = np.zeros([nCases,self.nw])
         
         self.results['case_metrics']['pitch_avg'] = np.zeros(nCases)
         self.results['case_metrics']['pitch_std'] = np.zeros(nCases)
         self.results['case_metrics']['pitch_max'] = np.zeros(nCases)
+        self.results['case_metrics']['pitch_PSD'] = np.zeros([nCases,self.nw])
         # nacelle acceleration
+        self.results['case_metrics']['AxRNA_avg'] = np.zeros(nCases)
         self.results['case_metrics']['AxRNA_std'] = np.zeros(nCases)
+        self.results['case_metrics']['AxRNA_max'] = np.zeros(nCases)
+        self.results['case_metrics']['AxRNA_PSD'] = np.zeros([nCases,self.nw])
         # tower base bending moment
         self.results['case_metrics']['Mbase_avg'] = np.zeros(nCases) 
         self.results['case_metrics']['Mbase_std'] = np.zeros(nCases)
         self.results['case_metrics']['Mbase_max'] = np.zeros(nCases)
+        self.results['case_metrics']['Mbase_PSD'] = np.zeros([nCases,self.nw])
         self.results['case_metrics']['Mbase_DEL'] = np.zeros(nCases)        
         # rotor speed
         self.results['case_metrics']['omega_avg'] = np.zeros(nCases)    
         self.results['case_metrics']['omega_std'] = np.zeros(nCases)    
-        self.results['case_metrics']['omega_max'] = np.zeros(nCases)      
+        self.results['case_metrics']['omega_max'] = np.zeros(nCases)   
+        self.results['case_metrics']['omega_PSD'] = np.zeros([nCases,self.nw])        
         # generator torque
         self.results['case_metrics']['torque_avg'] = np.zeros(nCases) 
         self.results['case_metrics']['torque_std'] = np.zeros(nCases)    
-        self.results['case_metrics']['torque_max'] = np.zeros(nCases)       
+        self.results['case_metrics']['torque_max'] = np.zeros(nCases)  
+        self.results['case_metrics']['torque_PSD'] = np.zeros([nCases,self.nw])        
         # rotor power 
         self.results['case_metrics']['power_avg'] = np.zeros(nCases)
         self.results['case_metrics']['power_std'] = np.zeros(nCases)    
-        self.results['case_metrics']['power_max'] = np.zeros(nCases)    
+        self.results['case_metrics']['power_max'] = np.zeros(nCases)   
+        self.results['case_metrics']['power_PSD'] = np.zeros([nCases,self.nw])        
         # collective blade pitch
         self.results['case_metrics']['bPitch_avg'] = np.zeros(nCases)   
         self.results['case_metrics']['bPitch_std'] = np.zeros(nCases)    
-        self.results['case_metrics']['bPitch_max'] = np.zeros(nCases)    
+        self.results['case_metrics']['bPitch_max'] = np.zeros(nCases) 
+        self.results['case_metrics']['bPitch_PSD'] = np.zeros([nCases, self.nw])
         # mooring tension
         self.results['case_metrics']['Tmoor_avg'] = np.zeros([nCases, 2*nLines]) # 2d array, for each line in each case?
         self.results['case_metrics']['Tmoor_std'] = np.zeros([nCases, 2*nLines])
         self.results['case_metrics']['Tmoor_max'] = np.zeros([nCases, 2*nLines])
         self.results['case_metrics']['Tmoor_DEL'] = np.zeros([nCases, 2*nLines])
+        self.results['case_metrics']['Tmoor_PSD'] = np.zeros([nCases, 2*nLines, self.nw])
         
-        
-        
+        # wind and wave spectra for reference
+        self.results['case_metrics']['wind_PSD'] = np.zeros([nCases, self.nw])
+        self.results['case_metrics']['wave_PSD'] = np.zeros([nCases, self.nw])
         
         # calculate the system's constant properties
         for fowt in self.fowtList:
@@ -216,13 +230,14 @@ class Model():
             # process mooring tension outputs
             T_moor_amps = np.zeros([len(self.T_moor), self.nw], dtype=complex) 
             for iw in range(self.nw):
-                T_moor_amps[:,iw] = np.matmul(self.J_moor, self.Xi[:,iw])
+                T_moor_amps[:,iw] = np.matmul(self.J_moor, self.Xi[:,iw])   # FFT of mooring tensions
             
             self.results['case_metrics']['Tmoor_avg'][iCase,:] = self.T_moor
             for iT in range(len(self.T_moor)):
                 TRMS = getRMS(T_moor_amps[iT,:], self.w[0]) # estimated mooring line RMS tension [N]
                 self.results['case_metrics']['Tmoor_std'][iCase,iT] = TRMS
                 self.results['case_metrics']['Tmoor_max'][iCase,iT] = self.T_moor[iT] + 3*TRMS
+                self.results['case_metrics']['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[iT,:]) # PSD in N^2/(rad/s)
                 #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
             
         #print("---tensions average ---")
@@ -274,8 +289,8 @@ class Model():
         # ::: a loop could be added here for an array :::
         fowt = self.fowtList[0]
         
-        print("Equilibrium'3' platform positions/rotations:")
-        printVec(self.ms.bodyList[0].r6)
+        #print("Equilibrium'3' platform positions/rotations:")
+        #printVec(self.ms.bodyList[0].r6)
 
         r6eq = self.ms.bodyList[0].r6
         fowt.Xi0 = np.array(r6eq)   # save current mean offsets for the FOWT
@@ -408,7 +423,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=1, RAO_plot=1):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -430,6 +445,10 @@ class Model():
         fowt = self.fowtList[0]
         i1 = 0                                                # range of DOFs for the current turbine
         i2 = 6
+        
+        # TEMPORARY <<<<
+        #fowt.B_aero[0,4,:] = 0.0
+        #fowt.B_aero[4,0,:] = 0.0
 
         # sum up all linear (non-varying) matrices up front
         M_lin = fowt.A_aero + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
@@ -458,7 +477,7 @@ class Model():
 
             # get linearized terms for the current turbine given latest amplitudes
             B_linearized, F_linearized = fowt.calcLinearizedTerms(XiLast)
-
+            
             # calculate the response based on the latest linearized terms
             Xi = np.zeros([self.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
 
@@ -492,7 +511,7 @@ class Model():
             else:
                 XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
                                                 # (uses hard-coded successive under relaxation for now)
-                print(f" Iteration {iiter}, still going since largest tolCheck is {np.max(tolCheck)} >= {tol}")
+                print(f" Iteration {iiter}, still going since largest tolCheck is {np.max(tolCheck):.5f} >= {tol}")
     
             if iiter == nIter-1:
                 print("WARNING - solveDynamics iteration did not converge to the tolerance.")
@@ -690,7 +709,7 @@ class Model():
         self.fowtList[0].calcBEM(dw=dw, wMax=wMax, dz=dz, da=da)
 
 
-    def plot(self, ax=None, hideGrid=False, color='k'):
+    def plot(self, ax=None, hideGrid=False, color='k', nodes=0):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -709,7 +728,7 @@ class Model():
 
         # plot each FOWT
         for fowt in self.fowtList:
-            fowt.plot(ax, color=color)
+            fowt.plot(ax, color=color, nodes=nodes)
             
         if hideGrid:       
             ax.set_xticks([])    # Hide axes ticks

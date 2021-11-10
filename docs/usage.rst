@@ -7,9 +7,96 @@ Using the input design YAML, RAFT will compute the 6x6 matrices of the frequency
 The primary outputs of RAFT will be the response amplitude operators (RAOs) of the FOWT, which describe the response of the FOWT in reference
 to the input loads.
 
+Running RAFT
+------------
+
+RAFT can be run by following the process in the figure below to compute the 6x6 matrices in the equations of motion
+(equations shown in the Theory page).
+
 .. image:: /images/workflow.JPG
     :align: center
 
+Model Setup
+^^^^^^^^^^^
+
+The input design yaml is loaded into a python design dictionary and used to create and initialize a Model object.
+
+.. code-block::
+    
+    # load the input design yaml
+    with open('VolturnUS-S_example.yaml') as file:
+    design = yaml.load(file, Loader=yaml.FullLoader)
+
+    # Create the RAFT model
+    model = raft.Model(design) 
+
+Unloaded Condition Analysis
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The model can then be analyzed in its equilibrium unloaded position using the method: model.analyzeUnloaded()
+
+.. code-block::
+
+    # calculate the system's constant properties
+    for fowt in self.fowtList:
+        fowt.calcStatics()
+        fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0))
+        
+    # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
+    self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)           # this method accounts for eqiuilibrium of free objects in the system
+    self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
+        
+    # calculate platform offsets and mooring system equilibrium state
+    self.calcMooringAndOffsets()
+    self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
+
+Design Load Case Analysis
+^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The model can also be dynamically analyzed for each design load case as specified by the input design yaml
+using the method: model.analyzeCases()
+
+.. code-block::
+
+    # calculate the system's constant properties
+    for fowt in self.fowtList:
+        fowt.calcStatics()
+        fowt.calcBEM()
+        
+    # loop through each case
+    for iCase in range(nCases):
+    
+        # form dictionary of case parameters
+        case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
+
+        # get initial FOWT values assuming no offset
+        for fowt in self.fowtList:
+            fowt.Xi0 = np.zeros(6)      # zero platform offsets
+            fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
+            fowt.calcHydroConstants(case)
+        
+        # calculate platform offsets and mooring system equilibrium state
+        self.calcMooringAndOffsets()
+        
+        # update values based on offsets if applicable
+        for fowt in self.fowtList:
+            fowt.calcTurbineConstants(case, ptfm_pitch=fowt.Xi0[4])
+            #fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
+        
+        # solve system dynamics
+        self.solveDynamics(case)
+        
+        # process outputs that are specific to the floating unit       
+        self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6,:])            
+
+        # process mooring tension outputs
+        nLine = int(len(self.T_moor)/2)
+        T_moor_amps = np.zeros([2*nLine, self.nw], dtype=complex) 
+        for iw in range(self.nw):
+            T_moor_amps[:,iw] = np.matmul(self.J_moor, self.Xi[:,iw])   # FFT of mooring tensions
+        
+
+Prominent outputs will be saved in the model's "results" variable and can be used for further plotting and visualization purposes.
 
 
 
@@ -378,30 +465,6 @@ Mooring
               cost: 1e4
               max_vertical_load: 0.0
               max_lateral_load: 1e5
-    
-
-Running RAFT
-------------
-
-RAFT can be run by following the example code provided on the Getting Started page, as well as the figure at the top of this page.
-
-- The input design yaml is loaded into a python design dictionary and used to create and initialize a Model object
-
-- The model is analyzed in its equilibrium unloaded position
-
-  - Each FOWT in the model has its static properties and mooring offsets computed
-
-  - The natural frequencies of the model can then be computed
-
-- The model is analyzed in each of its design load cases as specified by the input design yaml
-
-  - Each FOWT in the model has its static properties and hydrodynamics computed
-
-  - The aerodynamics, load-dependent hydrodynamics, and mooring offsets are then computed for each load case
-
-  - After all matrices are computed, the frequency domain equations of motion are solved for to produce the outputs
-
-- The response amplitudes of the model can then be outputted
 
 
 

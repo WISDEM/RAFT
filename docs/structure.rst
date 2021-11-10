@@ -2,20 +2,28 @@ Model Structure
 ===============
 
 
-.. image:: /images/hierarchy.JPG
-    :align: center
 
 
+RAFT Model Objects
+------------------
 
-
-RAFT describes floating offshore wind turbines by using Python objects. One of its unique features is its ability to model an array of 
-floating offshore wind turbines (FOWT objects) through the use of a "Model" object.
+RAFT represents a floating wind turbine system as a collection of different object types, as illustrated below.
 
 .. image:: /images/objects.JPG
     :align: center
+	
+Each of these objects corresponds to a class in python. The Model class contains 
+the full RAFT representation of a floating wind system. Within it, the FOWT class
+describes the floating platform and turbine, while the mooring sytem is handled by
+a separate model, `MoorPy <https://moorpy.readthedocs.io>`_. Within the FOWT class,
+the floating platform and turbine tower are represented as a single rigid body 
+composed of multiple Member objects that describe linear cylindrical or rectangular
+geometries. The turbine rotor-nacelle assembly is represented by a Rotor class that 
+describes lumped mass properties and distributed aerodynamic properties. These RAFT
+objects are further described below.	
 
 Model
------
+^^^^^
 An entire floating offshore wind turbine array can be stored in a "Model" object. A model includes a list of the FOWTs in the array,
 the array-wide mooring system, and various modeling parameters, such as the design load cases (DLCs). These attributes are then run
 to solve for the response amplitude operators (RAOs) of each FOWT in the array. There should only be one Model object per RAFT instance.
@@ -25,8 +33,8 @@ to solve for the response amplitude operators (RAOs) of each FOWT in the array. 
 - the list of (x,y) coordinates for each FOWT in the Model
 - the mooring system
 
-FOWTs
------
+FOWT
+^^^^
 A FOWT object holds all components of a floating wind turbine platform other than the mooring system. This includes the floating substructure, the turbine tower, and the turbine RNA.
 The floating substructure and turbine tower can be described as a list of cylindrical or rectangular Members objects. The RNA is represented as a Rotor object.
 
@@ -42,8 +50,8 @@ The floating substructure and turbine tower can be described as a list of cylind
   - Needs the platform motions as input to calculate the relative velocity at each position 
 
 
-Members
--------
+Member
+^^^^^^
 A Member is any cylindrical or rectangular component of a FOWT. They are assumed to be completely rigid objects with no flexibility.
 RAFT currently does not support structural flexibility
 
@@ -70,7 +78,7 @@ There are many attributes that are used to describe members.
 - meshing variables
 
 Rotor
------
+^^^^^
 A Rotor object is used to describe the aerodynamics and controls of the FOWT. Linearized.
 
 - height of the hub [m]
@@ -93,3 +101,36 @@ from calcAeroContributions and calcAeroServoContributions
 
 - torque and pitch control gains
 - eventually return the aerodynamic forcing (IECKaimal), aerodynamic added mass, and aerodynamic damping
+
+
+
+RAFT Heirarchy and Interfaces
+------------------------------------
+
+Each RAFT object is described by a class in a separate source file, and these classes interact following
+a set heirarchy. Some of the classes also interact with external models. These relationships are 
+outlined below.
+
+.. image:: /images/hierarchy.JPG
+    :align: center
+
+
+`MoorPy <https://moorpy.readthedocs.io/en/latest/>`_ is a quasi-static mooring system modeler 
+that provides the mooring system representation for RAFT. It supports floating platform linear
+hydrostatic properties and constant external loads. For each load case, RAFT provides MoorPy
+the system hydrostatic properties and mean wind loads, and MoorPy calculates the mean floating
+platform offsets for RAFT.
+
+
+`CCBlade <https://wisdem.readthedocs.io/en/latest/wisdem/ccblade/index.html>`_ is a blade-element-momentum 
+theory model that provides the aerodynamic coefficients for RAFT. These coefficients account for the mean
+aerodynamic forces and moments of the wind turbine rotor at each wind speed, as well as the derivatives 
+of those forces and moments with respect to changes in relative wind speed, rotor speed, and blade pitch
+angle. From this information, RAFT can compute the overall aerodynamic effects of the system's rigid-body
+response, including accounting for the impact of turbine control.
+
+`pyHAMS <https://github.com/WISDEM/pyHAMS>`_ is a Python wrapper of the HAMS (Hydrodynamic Analysis of 
+Marine Structures) tool for boundary-element-method solution of the potential flow problem. HAMS is 
+developed by Yingyi Liu and available at https://github.com/YingyiLiu/HAMS. HAMS provides the option
+for RAFT to use potential-flow hydrodynamic coefficients instead of, or in addition to, strip theory.
+

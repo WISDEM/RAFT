@@ -18,8 +18,8 @@
 # -- Project information -----------------------------------------------------
 
 project = 'RAFT'
-copyright = '2021, Matt Hall, Stein Housner'
-author = 'Matt Hall, Stein Housner'
+copyright = '2021, National Renewable Energy Laboratory'
+author = 'The NREL RAFT Team'
 
 # The full version, including alpha/beta/rc tags
 release = '0.0.1'
@@ -49,7 +49,7 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 #
 #html_theme = 'alabaster'
 html_theme = 'sphinx_rtd_theme'
-html_theme_options = {'style_nav_header_background': 'coral'}
+#html_theme_options = {'style_nav_header_background': 'coral'}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,

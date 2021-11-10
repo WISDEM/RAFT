@@ -13,6 +13,7 @@ from raft.helpers import *
 #import F6T1RNA as structural    # import turbine structural model functions
 
 raft_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
+TwoPi = 2.0*np.pi
 
 class Model():
 
@@ -123,9 +124,10 @@ class Model():
         self.calcMooringAndOffsets()
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
 
-
+        # TODO: add printing of summary info here - mass, stiffnesses, etc
+        
     
-    def analyzeCases(self):
+    def analyzeCases(self, display=0):
         '''This runs through all the specified load cases, building a dictionary of results.'''
         
         nCases = len(self.design['cases']['data'])
@@ -140,15 +142,31 @@ class Model():
         self.results['case_metrics']['surge_max'] = np.zeros(nCases)
         self.results['case_metrics']['surge_PSD'] = np.zeros([nCases,self.nw])  # adding PSDs as well. Could put behind an if statement if this slows things down
         
+        self.results['case_metrics']['sway_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['sway_std'] = np.zeros(nCases)
+        self.results['case_metrics']['sway_max'] = np.zeros(nCases)
+        self.results['case_metrics']['sway_PSD'] = np.zeros([nCases,self.nw])
+        
         self.results['case_metrics']['heave_avg'] = np.zeros(nCases)
         self.results['case_metrics']['heave_std'] = np.zeros(nCases)
         self.results['case_metrics']['heave_max'] = np.zeros(nCases)
         self.results['case_metrics']['heave_PSD'] = np.zeros([nCases,self.nw])
         
+        self.results['case_metrics']['roll_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['roll_std'] = np.zeros(nCases)
+        self.results['case_metrics']['roll_max'] = np.zeros(nCases)
+        self.results['case_metrics']['roll_PSD'] = np.zeros([nCases,self.nw])
+        
         self.results['case_metrics']['pitch_avg'] = np.zeros(nCases)
         self.results['case_metrics']['pitch_std'] = np.zeros(nCases)
         self.results['case_metrics']['pitch_max'] = np.zeros(nCases)
         self.results['case_metrics']['pitch_PSD'] = np.zeros([nCases,self.nw])
+        
+        self.results['case_metrics']['yaw_avg'] = np.zeros(nCases)
+        self.results['case_metrics']['yaw_std'] = np.zeros(nCases)
+        self.results['case_metrics']['yaw_max'] = np.zeros(nCases)
+        self.results['case_metrics']['yaw_PSD'] = np.zeros([nCases,self.nw])
+        
         # nacelle acceleration
         self.results['case_metrics']['AxRNA_avg'] = np.zeros(nCases)
         self.results['case_metrics']['AxRNA_std'] = np.zeros(nCases)
@@ -199,7 +217,7 @@ class Model():
         # loop through each case
         for iCase in range(nCases):
         
-            print("  Running case")
+            print(f"\n--------------------- Running Case {iCase+1} ----------------------")
             print(self.design['cases']['data'][iCase])
         
             # form dictionary of case parameters
@@ -225,27 +243,48 @@ class Model():
             self.solveDynamics(case)
             
             # process outputs that are specific to the floating unit       
-            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], iCase, fowt.Xi0, self.Xi[0:6,:])            
+            self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6,:])            
  
             # process mooring tension outputs
-            T_moor_amps = np.zeros([len(self.T_moor), self.nw], dtype=complex) 
+            nLine = int(len(self.T_moor)/2)
+            T_moor_amps = np.zeros([2*nLine, self.nw], dtype=complex) 
             for iw in range(self.nw):
                 T_moor_amps[:,iw] = np.matmul(self.J_moor, self.Xi[:,iw])   # FFT of mooring tensions
             
             self.results['case_metrics']['Tmoor_avg'][iCase,:] = self.T_moor
-            for iT in range(len(self.T_moor)):
+            for iT in range(2*nLine):
                 TRMS = getRMS(T_moor_amps[iT,:], self.w[0]) # estimated mooring line RMS tension [N]
                 self.results['case_metrics']['Tmoor_std'][iCase,iT] = TRMS
                 self.results['case_metrics']['Tmoor_max'][iCase,iT] = self.T_moor[iT] + 3*TRMS
                 self.results['case_metrics']['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[iT,:]) # PSD in N^2/(rad/s)
                 #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
+        
+            if display > 0:
+        
+                metrics = self.results['case_metrics']
             
-        #print("---tensions average ---")
-        #printMat(self.results['case_metrics']['Tmoor_avg'])
-        #print("---tensions standard deviation ---")
-        #printMat(self.results['case_metrics']['Tmoor_std'])
-        #    
-        #print(self.results['case_metrics'])
+                # print statistics table
+                print(f"-------------------- Case {iCase+1} Statistics --------------------")
+                print("Response channel     Average     RMS         Maximum")
+                print(f"surge (m)          {metrics['surge_avg'][iCase] :10.2e}  {metrics['surge_std'][iCase] :10.2e}  {metrics['surge_max'][iCase] :10.2e}")
+                print(f"sway (m)           {metrics['sway_avg' ][iCase] :10.2e}  {metrics['sway_std' ][iCase] :10.2e}  {metrics['sway_max' ][iCase] :10.2e}")
+                print(f"heave (m)          {metrics['heave_avg'][iCase] :10.2e}  {metrics['heave_std'][iCase] :10.2e}  {metrics['heave_max'][iCase] :10.2e}")
+                print(f"roll (deg)         {metrics['roll_avg' ][iCase] :10.2e}  {metrics['roll_std' ][iCase] :10.2e}  {metrics['roll_max' ][iCase] :10.2e}")
+                print(f"pitch (deg)        {metrics['pitch_avg'][iCase] :10.2e}  {metrics['pitch_std'][iCase] :10.2e}  {metrics['pitch_max'][iCase] :10.2e}")
+                print(f"yaw (deg)          {metrics[  'yaw_avg'][iCase] :10.2e}  {metrics[  'yaw_std'][iCase] :10.2e}  {metrics['yaw_max'  ][iCase] :10.2e}")
+                print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][iCase] :10.2e}  {metrics['AxRNA_std'][iCase] :10.2e}  {metrics['AxRNA_max'][iCase] :10.2e}")
+                print(f"tower bending (Nm) {metrics['Mbase_avg'][iCase] :10.2e}  {metrics['Mbase_std'][iCase] :10.2e}  {metrics['Mbase_max'][iCase] :10.2e}")
+                
+                print(f"rotor speed (RPM)  {metrics['omega_avg'][iCase] :10.2e}  {metrics['omega_std'][iCase] :10.2e}  {metrics['omega_max'][iCase] :10.2e}")
+                print(f"blade pitch (deg)  {metrics['bPitch_avg'][iCase] :10.2e}  {metrics['bPitch_std'][iCase] :10.2e} ")
+                print(f"rotor power        {metrics['power_avg'][iCase] :10.2e} ")
+                for i in range(nLine):
+                    j = i+nLine
+                    #print(f"line {i} tension A  {metrics['Tmoor_avg'][iCase,i]:10.2e}  {metrics['Tmoor_std'][iCase,i]:10.2e}  {metrics['Tmoor_max'][iCase,i]:10.2e}")
+                    print(f"line {i} tension (N) {metrics['Tmoor_avg'][iCase,j]:10.2e}  {metrics['Tmoor_std'][iCase,j]:10.2e}  {metrics['Tmoor_max'][iCase,j]:10.2e}")
+                print(f"-----------------------------------------------------------")
+
+        
 
     """
     def calcSystemConstantProps(self):
@@ -297,8 +336,7 @@ class Model():
 
         #self.ms.plot()
 
-        print("Surge: {:.2f}".format(r6eq[0]))
-        print("Pitch: {:.2f}".format(r6eq[4]*180/np.pi))
+        print(f"Found mean offets with with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
 
         try:
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
@@ -383,13 +421,22 @@ class Model():
         fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
         modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
 
+        print("")
+        print("--------- Natural frequencies and mode shapes -------------")
+        print("Mode        1         2         3         4         5         6")
+        print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
+        print("")
+        for i in range(6):
+            print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(6)]))
+        print("-----------------------------------------------------------")
+        
+        '''
         print("natural frequencies from eigen values")
         printVec(fns)
         print(1/fns)
         print("mode shapes from eigen values")
         printMat(modes)
-
-
+        
         # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
         if C_tot[0,0] == 0.0:
             zMoorx = 0.0
@@ -416,6 +463,7 @@ class Model():
         # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
         printVec(fn)
         print(1/fn)
+        '''
                 
         # store results
         self.results['eigen'] = {}   # signal this data is available by adding a section to the results dictionary
@@ -456,12 +504,10 @@ class Model():
         C_lin =               fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
         F_lin = fowt.F_aero +                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
         
-        # start fixed point iteration loop for dynamics   <<< would a secant method solve be possible/better? <<<
+        # start fixed point iteration loop for dynamics
         for iiter in range(nIter):
             
-            # ::: re-zero some things that will be added to :::
-
-            # total system coefficient arrays
+            # initialize/zero total system coefficient arrays
             M_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
             B_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total damping matrix [N-s/m, N-s, N-s-m]
             C_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total stiffness matrix [N/m, N, N-m]
@@ -470,11 +516,9 @@ class Model():
             Z  = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=complex)  # total system impedance matrix
 
 
-            # ::: a loop could be added here for an array :::
+            # a loop could be added here for an array
             fowt = self.fowtList[0]
-            i1 = 0                                                # range of DOFs for the current turbine
-            i2 = 6
-
+            
             # get linearized terms for the current turbine given latest amplitudes
             B_linearized, F_linearized = fowt.calcLinearizedTerms(XiLast)
             
@@ -506,12 +550,12 @@ class Model():
             # check for convergence
             tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
             if (tolCheck < tol).all():
-                print(f" Iteration {iiter}, converged, with largest tolCheck of {np.max(tolCheck)} < {tol}")
+                print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
                 break
             else:
                 XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
                                                 # (uses hard-coded successive under relaxation for now)
-                print(f" Iteration {iiter}, still going since largest tolCheck is {np.max(tolCheck):.5f} >= {tol}")
+                print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
     
             if iiter == nIter-1:
                 print("WARNING - solveDynamics iteration did not converge to the tolerance.")
@@ -627,64 +671,48 @@ class Model():
             self.results['response']['nacelle acceleration'] = self.w**2 * (self.Xi[0] + self.Xi[4]*fowt.hHub)
         
     
-
-        '''
-         # ---------- mooring line fairlead tension RAOs and constraint implementation ----------
-
-
-         for il=1:Platf.Nlines
-
-              #aNacRAO{imeto} = -(w').^2 .* (X{imeto}(:,1) + hNac*X{imeto}(:,5));      # Nacelle Accel RAO
-                #aNac2(imeto) = sum( abs(aNacRAO{imeto}).^2.*S(:,imeto) ) *(w(2)-w(1));     # RMS Nacelle Accel
-
-            TfairRAO{imeto}(il,:) = C_lf(il,:,imeto)*rao{imeto}(:,:)';  # get fairlead tension RAO for each line (multiply by dofs)
-              #RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:))).^2) / length(w) );
-              #figure
-            #plot(w,abs(TfairRAO{imeto}(il,:)))
-              #d=TfairRAO{imeto}(il,:)
-              RMSTfair{imeto}(il) = sqrt( sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)') *(w(2)-w(1)) );
-              #RMSTfair
-              #sumpart = sum( (abs(TfairRAO{imeto}(il,:)).^2).*S(:,imeto)')
-              #dw=(w(2)-w(1))
-         end
-
-         [Tfair, il] = min( T_lf(:,imeto) );
-         if Tfair - 3*RMSTfair{imeto}(il) < 0 && Xm < 1  # taut lines only
-              disp([' REJECTING (mooring line goes slack)'])
-              fitness = -1;
-              return;  # constraint for slack line!!!
-         end
-         if grads
-              disp(['mooring slackness: ' num2str(Tfair - 3*RMSTfair{imeto}(il))])
-         end
-
-         # ----------- dynamic pitch constraint ----------------------
-         #disp('checking dynamic pitch');
-         RMSpitch(imeto) = sqrt( sum( ((abs(rao{imeto}(:,5))).^2).*S(:,imeto) ) *(w(2)-w(1)) ); # fixed April 9th :(
-         RMSpitchdeg = RMSpitch(imeto)*60/pi;
-         if (Platf.spitch + RMSpitch(imeto))*180/pi > 10
-              disp([' REJECTING (static + RMS dynamic pitch > 10)'])
-              fitness = -1;
-              return;
-         end
-         if grads
-              disp(['dynamic pitch: ' num2str((Platf.spitch + RMSpitch(imeto))*180/pi)])
-         end
-
-         #figure(1)
-         #plot(w,S(:,imeto))
-         #hold on
-
-         #figure()
-         #plot(2*pi./w,abs(Xi{imeto}(:,5)))
-         #ylabel('pitch response'); xlabel('T (s)')
-
-         RMSsurge(imeto) = sqrt( sum( ((abs(rao{imeto}(:,1))).^2).*S(:,imeto) ) *(w(2)-w(1)) );
-         RMSheave(imeto) = sqrt( sum( ((abs(rao{imeto}(:,3))).^2).*S(:,imeto) ) *(w(2)-w(1)) );
-        '''
         
         return self.results
 
+
+    def plotResponses(self):
+        '''Plots the power spectral densities of the available response channels for each case.'''
+        
+        fig, ax = plt.subplots(6, 1, sharex=True)
+        
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+        
+        for iCase in range(nCases):
+        
+            ax[0].plot(self.w/TwoPi, TwoPi*metrics['surge_PSD'][iCase,:]    )  # surge
+            ax[1].plot(self.w/TwoPi, TwoPi*metrics['heave_PSD'][iCase,:]    )  # heave
+            ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD'][iCase,:]    )  # pitch [deg]
+            ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD'][iCase,:]    )  # nacelle acceleration
+            ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD'][iCase,:]    )  # tower base bending moment (using FAST's kN-m)
+            ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'case {iCase+1}')  # wave spectrum
+
+            # need a variable number of subplots for the mooring lines
+            #ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
+
+        ax[0].set_ylabel('surge \n'+r'(m$^2$/Hz)')
+        ax[1].set_ylabel('heave \n'+r'(m$^2$/Hz)')
+        ax[2].set_ylabel('pitch \n'+r'(deg$^2$/Hz)')
+        ax[3].set_ylabel('nac. acc. \n'+r'((m/s$^2$)$^2$/Hz)')
+        ax[4].set_ylabel('twr. bend \n'+r'((Nm)$^2$/Hz)')
+        ax[5].set_ylabel('wave elev.\n'+r'(m$^2$/Hz)')
+
+        #ax[0].set_ylim([0.0, 25])
+        #ax[1].set_ylim([0.0, 15])
+        #ax[2].set_ylim([0.0, 4])
+        #ax[-1].set_xlim([0.03, 0.15])
+        ax[-1].set_xlabel('frequency (Hz)')
+        
+        #if nCases > 1:
+        ax[-1].legend()
+        fig.suptitle('RAFT power spectral densities')
+        
+        
 
     def preprocess_HAMS(self, dw=0, wMax=0, dz=0, da=0):
         '''This generates a mesh for the platform, runs a BEM analysis on it

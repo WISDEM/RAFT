@@ -440,7 +440,8 @@ class FOWT():
         self.F_aero  = np.zeros([6, self.nw], dtype=complex)        # dynamice excitation force and moment amplitude spectra
         self.F_aero0 = np.zeros([6])                                # mean aerodynamic forces and moments
         
-        if self.aeroMod > 0:
+        # only compute the aerodynamics if enabled and windspeed is nonzero
+        if self.aeroMod > 0 and case['wind_speed'] > 0.0:
         
             F_aero0, f_aero, a_aero, b_aero = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch)  # get values about hub
             
@@ -484,10 +485,9 @@ class FOWT():
         rho = self.rho_water
         g   = self.g
         
-        print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
+        #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
 
-        # >>> what about current? <<<
-        # >>> could we also calculate mean viscous drift force here?? <<<
+        # TODO: consider current and viscous drift
 
         # ----- calculate potential-flow wave excitation force -----
 
@@ -701,7 +701,7 @@ class FOWT():
         return B_hydro_drag, F_hydro_drag
 
 
-    def saveTurbineOutputs(self, results, iCase, Xi0, Xi):
+    def saveTurbineOutputs(self, results, case, iCase, Xi0, Xi):
 
         # platform motions
         results['surge_avg'][iCase] = Xi0[0]
@@ -709,16 +709,33 @@ class FOWT():
         results['surge_max'][iCase] = Xi0[0] + 3*results['surge_std'][iCase]
         results['surge_PSD'][iCase,:] = getPSD(Xi[0,:])
         
+        results['sway_avg'][iCase] = Xi0[1]
+        results['sway_std'][iCase] = getRMS(Xi[1,:], self.dw)
+        results['sway_max'][iCase] = Xi0[1] + 3*results['heave_std'][iCase]
+        results['sway_PSD'][iCase,:] = getPSD(Xi[1,:])
+        
         results['heave_avg'][iCase] = Xi0[2]
         results['heave_std'][iCase] = getRMS(Xi[2,:], self.dw)
         results['heave_max'][iCase] = Xi0[2] + 3*results['heave_std'][iCase]
         results['heave_PSD'][iCase,:] = getPSD(Xi[2,:])
+        
+        roll_deg = rad2deg(Xi[3,:])
+        results['roll_avg'][iCase] = rad2deg(Xi0[3])
+        results['roll_std'][iCase] = getRMS(roll_deg, self.dw)
+        results['roll_max'][iCase] = rad2deg(Xi0[3]) + 3*results['roll_std'][iCase]
+        results['roll_PSD'][iCase,:] = getPSD(roll_deg)
         
         pitch_deg = rad2deg(Xi[4,:])
         results['pitch_avg'][iCase] = rad2deg(Xi0[4])
         results['pitch_std'][iCase] = getRMS(pitch_deg, self.dw)
         results['pitch_max'][iCase] = rad2deg(Xi0[4]) + 3*results['pitch_std'][iCase]
         results['pitch_PSD'][iCase,:] = getPSD(pitch_deg)
+        
+        yaw_deg = rad2deg(Xi[5,:])
+        results['yaw_avg'][iCase] = rad2deg(Xi0[5])
+        results['yaw_std'][iCase] = getRMS(yaw_deg, self.dw)
+        results['yaw_max'][iCase] = rad2deg(Xi0[5]) + 3*results['yaw_std'][iCase]
+        results['yaw_PSD'][iCase,:] = getPSD(yaw_deg)
         
         XiHub = Xi[0,:] + self.hHub*Xi[4,:]  # hub fore-aft displacement amplitude (used as an approximation in a number of outputs)
         
@@ -773,7 +790,8 @@ class FOWT():
         print(endnow)
         '''
 
-        if self.aeroMod > 0:   # rotor-related outputs are only available if aerodynamics modeling is enabled
+        # rotor-related outputs are only available if aerodynamics modeling is enabled
+        if self.aeroMod > 0 and case['wind_speed'] > 0.0:
             # rotor speed (rpm)
             # spectra
             phi_w   = self.rotor.C * (XiHub - self.rotor.V_w / (1j *self.w))

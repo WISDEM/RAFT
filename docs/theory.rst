@@ -1,11 +1,10 @@
 Theory
 =====================
 
-The theory behind RAFT is in the process of being written up and published. 
-Please check back later or contact us if in need of a specific clarification.
+The theory behind RAFT is in the process of being documented.
 
-Frequency Domain Theory
------------------------
+Frequency Domain Equations of Motion
+------------------------------------
 
 The overall process of RAFT is to use the input design data of a FOWT to fill out the 6x6 matrices of the equations of motion.
 

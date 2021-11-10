@@ -14,11 +14,16 @@ Prerequisites
 - `PyHAMS <https://github.com/WISDEM/pyHAMS>`_
 - `CCBlade <https://github.com/WISDEM/WISDEM>`_ 
 
+Note: RAFT uses CCBlade and currently is set up for the version of CCBlade this is
+part of the larger WISDEM code. We recommend installing WISDEM for the time being.
+
 
 Installation
 ------------
 
-Clone the `RAFT repository <https://github.com/WISDEM/RAFT>`_
+Download/clone and install the `RAFT repository <https://github.com/WISDEM/RAFT>`_ as well as 
+those of MoorPy, pyHAMS, and WISDEM. To install RAFT in development mode, go to its directory 
+and do one of the following from the command line:
 
 To install for development use:
 
@@ -32,8 +37,35 @@ run ```python setup.py``` or ```pip install .``` from the command line in the ma
 Example
 -------
 
-.. code-block:: bash
+An example script for running RAFT and an example YAML input file describing 
+the VolturnUS-S 15 MW floating wind turbine design is included in the examples
+folder of the RAFT repository. The script is shown below, illustrating the main
+function calls involved in running a RAFT analysis.
 
-    cd raft
-    python run_model.py
+.. code-block:: python
+
+	import raft
+	import yaml
+
+	# open the design YAML file and parse it into a dictionary for passing to raft
+	with open('VolturnUS-S_example.yaml') as file:
+		design = yaml.load(file, Loader=yaml.FullLoader)
+
+	# Create the RAFT model (will set up all model objects based on the design dict)
+	model = raft.Model(design)  
+
+	# Evaluate the system properties and equilibrium position before loads are applied
+	model.analyzeUnloaded()
+
+	# Compute natural frequencie
+	model.solveEigen()
+
+	# Simule the different load cases
+	model.analyzeCases(display=1)
+
+	# Plot the power spectral densities from the load cases
+	model.plotResponses()
+
+	# Visualize the system in its most recently evaluated mean offset position
+	model.plot(hideGrid=True)
 

@@ -12,115 +12,52 @@ to the input loads.
 
 
 
-Running RAFT
-------------
-
-The function runRAFT() in raft_model.py creates an initial Model object based on the input design YAML.
-It then analyzes the system in an unloaded condition. Then it analyzes the model in the number of DLCs specficied by the input YAML.
-
-.. code-block:: python
-
-    def runRAFT(input_file, turbine_file=""):
-      '''
-      This will set up and run RAFT based on a YAML input file.
-      '''
-      
-      # open the design YAML file and parse it into a dictionary for passing to raft
-      print("Loading RAFT input file: "+input_file)
-      
-      with open(input_file) as file:
-          design = yaml.load(file, Loader=yaml.FullLoader)
-      
-      print(f"'{design['name']}'")
-      
-      # Create and run the model
-      print(" --- making model ---")
-      model = raft.Model(design)  
-      print(" --- analyizing unloaded ---")
-      model.analyzeUnloaded()
-      print(" --- analyzing cases ---")
-      model.analyzeCases()
-      
-      model.plot()
-      
-      plt.show()
-    
-    return model
-  
-  raft_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
-  model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
-
-
-
-
-analyzeCases
-^^^^^^^^^^^^
-
-.. code-block::
-
-        # calculate the system's constant properties
-        for fowt in self.fowtList:
-            fowt.calcStatics()
-            fowt.calcBEM()
-            
-        # loop through each case
-        for iCase in range(nCases):
-        
-            print("  Running case")
-            print(self.design['cases']['data'][iCase])
-        
-            # form dictionary of case parameters
-            case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
-
-            # get initial FOWT values assuming no offset
-            for fowt in self.fowtList:
-                fowt.Xi0 = np.zeros(6)      # zero platform offsets
-                fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
-                fowt.calcHydroConstants(case)
-            
-            # calculate platform offsets and mooring system equilibrium state
-            self.calcMooringAndOffsets()
-            
-            # update values based on offsets if applicable
-            for fowt in self.fowtList:
-                fowt.calcTurbineConstants(case, ptfm_pitch=fowt.Xi0[4])
-                # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
-            
-            # solve system dynamics
-            self.solveDynamics(case)
-
 
 
 
 Inputs
 ------
 
+The input design YAML can be broken up into multiple parts. The following contains the various sections of an example
+input file for the IEA 15MW turbine with the VolturnUS-S steel semi-submersible platform.
+
+Modeling Settings
+^^^^^^^^^^^^^^^^^
+
 .. code-block:: python
-
-    type: input file for RAFT
-    name: IEA 15 MW with VolturnUS-S steel semi
-    comments: 
-
 
     settings:                   # global Settings
         min_freq     :  0.005   #  [Hz]       lowest frequency to consider, also the frequency bin width 
         max_freq     :  0.40    #  [Hz]       highest frequency to consider
         XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
         nIter        :  10      # sets how many iterations to perform in Model.solveDynamics()
-        
+
+Site Characteristics
+^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
     site:
         water_depth : 200        # [m]      uniform water depth
         rho_water   : 1025.0     # [kg/m^3] water density
         rho_air     : 1.225      # [kg/m^3] air density
         mu_air      : 1.81e-05   #          air dynamic viscosity
         shearExp    : 0.12       #          shear exponent
-        
-    cases:
 
+Design Load Cases
+^^^^^^^^^^^^^^^^^
+
+.. code-block:: python
+
+    cases:
         keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading  ]
         data :  #   m/s        deg    % or e.g. 2B_NTM    string            deg         string          (s)         (m)         (deg)
             -  [    12,         0,            0.01,       operating,          0,        JONSWAP,         13.1,        8.5,           0        ]
 
+Turbine
+^^^^^^^
+
+.. code-block:: python
 
     turbine:
         
@@ -139,7 +76,6 @@ Inputs
         precone     : 4.0     # [deg]
         shaft_tilt  : 6.0     # [deg]
         overhang    : 12.0313 # [m]
-
         
         blade: 
             precurveTip : -3.9999999999999964  # 
@@ -232,8 +168,7 @@ Inputs
               - [ -179.9087,    0.00000,    0.03715,    0.00000 ] 
               - ...
 
-
-            
+   
         pitch_control:
           GS_Angles: [0.06019804, 0.08713416, 0.10844806, 0.12685912, 0.14339822,       0.1586021 , 0.17279614, 0.18618935, 0.19892772, 0.21111989,             0.22285021, 0.23417256, 0.2451469 , 0.25580691, 0.26619545,           0.27632495, 0.28623134, 0.29593266, 0.30544521, 0.314779  ,       0.32395154, 0.33297489, 0.3418577 , 0.35060844, 0.35923641,       0.36774807, 0.37614942, 0.38444655, 0.39264363, 0.40074407]
           GS_Kp: [-0.9394215 , -0.80602855, -0.69555026, -0.60254912, -0.52318192,       -0.45465531, -0.39489024, -0.34230736, -0.29568537, -0.25406506,       -0.2166825 , -0.18292183, -0.15228099, -0.12434663, -0.09877533,       -0.0752794 , -0.05361604, -0.0335789 , -0.01499149,  0.00229803,  0.01842102,  0.03349169,  0.0476098 ,  0.0608629 ,  0.07332812,  0.0850737 ,  0.0961602 ,  0.10664158,  0.11656607,  0.12597691]
@@ -249,7 +184,7 @@ Inputs
             VS_KI: -4588245.18720
         
         
-        tower:  # (could remove some entries that don't apply for the tower)
+        tower:
             dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
         
             name      :  tower                     # [-]    an identifier (no longer has to be number)       
@@ -269,8 +204,11 @@ Inputs
             CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
             CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
             rho_shell :  7850                      # [kg/m3]   material density
-                
 
+Platform
+^^^^^^^^            
+
+.. code-block:: python
 
     platform:
 
@@ -367,6 +305,11 @@ Inputs
             rho_shell :  7850                      # [kg/m3] 
         
 
+Mooring
+^^^^^^^
+
+.. code-block:: python
+
     mooring:
         water_depth: 200                                  # [m]       uniform water depth
         
@@ -436,6 +379,29 @@ Inputs
               max_vertical_load: 0.0
               max_lateral_load: 1e5
     
+
+Running RAFT
+------------
+
+RAFT can be run by following the example code provided on the Getting Started page, as well as the figure at the top of this page.
+
+- The input design yaml is loaded into a python design dictionary and used to create and initialize a Model object
+
+- The model is analyzed in its equilibrium unloaded position
+
+  - Each FOWT in the model has its static properties and mooring offsets computed
+
+  - The natural frequencies of the model can then be computed
+
+- The model is analyzed in each of its design load cases as specified by the input design yaml
+
+  - Each FOWT in the model has its static properties and hydrodynamics computed
+
+  - The aerodynamics, load-dependent hydrodynamics, and mooring offsets are then computed for each load case
+
+  - After all matrices are computed, the frequency domain equations of motion are solved for to produce the outputs
+
+- The response amplitudes of the model can then be outputted
 
 
 

@@ -14,7 +14,7 @@ Prerequisites
 - `PyHAMS <https://github.com/WISDEM/pyHAMS>`_
 - `CCBlade <https://github.com/WISDEM/WISDEM>`_ 
 
-Note: RAFT uses CCBlade and currently is set up for the version of CCBlade this is
+Note: RAFT uses CCBlade and currently is set up for the version of CCBlade that is
 part of the larger WISDEM code. We recommend installing WISDEM for the time being.
 
 
@@ -57,7 +57,7 @@ function calls involved in running a RAFT analysis.
 	# Evaluate the system properties and equilibrium position before loads are applied
 	model.analyzeUnloaded()
 
-	# Compute natural frequencie
+	# Compute natural frequencies
 	model.solveEigen()
 
 	# Simule the different load cases

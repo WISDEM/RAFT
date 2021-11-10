@@ -15,7 +15,7 @@ RAFT represents a floating wind turbine system as a collection of different obje
 Each of these objects corresponds to a class in python. The Model class contains 
 the full RAFT representation of a floating wind system. Within it, the FOWT class
 describes the floating platform and turbine, while the mooring sytem is handled by
-a separate model, `MoorPy <https://moorpy.readthedocs.io>`_. Within the FOWT class,
+a separate model, `MoorPy <https://moorpy.readthedocs.io>`__. Within the FOWT class,
 the floating platform and turbine tower are represented as a single rigid body 
 composed of multiple Member objects that describe linear cylindrical or rectangular
 geometries. The turbine rotor-nacelle assembly is represented by a Rotor class that 
@@ -28,79 +28,41 @@ An entire floating offshore wind turbine array can be stored in a "Model" object
 the array-wide mooring system, and various modeling parameters, such as the design load cases (DLCs). These attributes are then run
 to solve for the response amplitude operators (RAOs) of each FOWT in the array. There should only be one Model object per RAFT instance.
 
-- Modeling frequencies (:math:`\omega`)
-- a list of FOWTs
-- the list of (x,y) coordinates for each FOWT in the Model
-- the mooring system
+
 
 FOWT
 ^^^^
 A FOWT object holds all components of a floating wind turbine platform other than the mooring system. This includes the floating substructure, the turbine tower, and the turbine RNA.
 The floating substructure and turbine tower can be described as a list of cylindrical or rectangular Members objects. The RNA is represented as a Rotor object.
 
-- calcStatics: calculates the static properties of each Member in the FOWT to fill in its 6x6 matrices
-
-  - mass, inertia, ballast, volume, hydrostatics, center of gravity
-
-- calcBEM: generates a mesh for each member to calculate the hydrodynamic properties of each member in the FOWT by running pyHAMS
-- calcTurbineConstants: calculates the aerodynamic added mass, damping, and forcing matrices of the rotor
-- calcHydroConstants: calculates the hydrodynamic added mass and forcing terms of each member using a Morison equation approximation
-- calcLinearizedTerms: calculates the hydrodynamic damping and forcing as a result from nonlinear drag
-
-  - Needs the platform motions as input to calculate the relative velocity at each position 
+A FOWT object has many capabilities. It can compute the static properties of each member in the FOWT to fill in its 6x6 mass and
+hydrostatic matrices. It can generate a mesh for each member to be used calculate the hydrodynamic properties of each member through
+the use of the BEM solver, `pyHAMS <https://github.com/WISDEM/pyHAMS>`_, or it can use a Morison equation approximation for each member.
+It can also calculate the hydrodynamic damping and forcing as a result of nonlinear drag, which is dependent upon the platform positions.
+Lastly, it can calculate the aerodynamic added mass, damping, and forcing matrices of the rotor. 
 
 
 Member
 ^^^^^^
 A Member is any cylindrical or rectangular component of a FOWT. They are assumed to be completely rigid objects with no flexibility.
-RAFT currently does not support structural flexibility
+RAFT currently does not support structural flexibility.
 
-There are many attributes that are used to describe members.
+There are many attributes that are used to describe members: bottom and top node positions, shape, length, diameters (or side lengths),
+thicknesses, ballast properties, end cap and bulkheads, and drag and added mass coeffficients. More details on Members can be found in the
+Theory section.
 
-- bottom node position; top node positions (used to define orientation)
-- shape (circular or rectangular)
-- length
-- potMod (toggle to determine whether to calculate hydrodynamics using BEM or Morison)
-- heading (duplicate members at various headings by rotating about the PRP)
-- stations (a division of the member along its length either in units of length or from 0 to 1)
-- diameters (either a scalar to apply at each station, or a list of len(stations))
 
-  - side lengths (for rectangular members, with two values for each station)
-
-- gamma (the angle of twist about the member's axial axis)
-- thicknesses (either a scalar to apply at each station, or a list of len(stations))
-- height of ballast
-- density of ballast
-- density of shell material (steel is normally 7850 kg/m^3, but can be approximated as 8500 kg/m^3 to account for auxilliary equipment)
-- end caps and bulkheads (positions along the member, thicknesses, inner missing diameter)
-- drag coefficients (axial, transverse1, transverse2, end)
-- added mass coefficients (axial, transverse1, transverse2, end)
-- meshing variables
 
 Rotor
 ^^^^^
-A Rotor object is used to describe the aerodynamics and controls of the FOWT. Linearized.
+The Rotor class is used to describe the turbine rotor-nacelle assembly to calculate the lumped mass and distributed 
+aerodynamic and control properties of the FOWT. It sets up attributes like the hub height, shaft tilt angle, 
+hub wind speeds, rotor RPM, and blade pitch to create CCAirfoil and CCBlade objects
+(`CCBlade documentation <https://wisdem.readthedocs.io/en/latest/wisdem/ccblade/index.html>`_). These objects return 
+the loads and derivatives of the aerodynamics to extract the thrust and torque with respect to wind speed, rotor RPM, and blade pitch, 
+as well as the aerodynamic forcing, added mass, and damping.
 
-- height of the hub [m]
-- shaft tilt [deg]
-- overhang [m]
-- rotor radius [m]
-- wind speeds at hub
-- rotor RPM
-- blade pitch
-- moment of inertia of the drivetrain
-- control gains
-- Airfoil setup
 
-Most of these go into setting up a CCAirfoil and CCBlade object, which is then able to be run and the important parameters puled out
-from calcAeroContributions and calcAeroServoContributions
-
-- CCBlade returns "loads" and "derivs"
-
-  - can extract the derivatives of thrust with respect to wind speed, rotor RPM, and blade pitch, as well as the derivatives of torque with respect to wind speed, rotor RPM, and blade pitch.
-
-- torque and pitch control gains
-- eventually return the aerodynamic forcing (IECKaimal), aerodynamic added mass, and aerodynamic damping
 
 
 
@@ -115,7 +77,7 @@ outlined below.
     :align: center
 
 
-`MoorPy <https://moorpy.readthedocs.io/en/latest/>`_ is a quasi-static mooring system modeler 
+`MoorPy <https://moorpy.readthedocs.io/en/latest/>`__ is a quasi-static mooring system modeler 
 that provides the mooring system representation for RAFT. It supports floating platform linear
 hydrostatic properties and constant external loads. For each load case, RAFT provides MoorPy
 the system hydrostatic properties and mean wind loads, and MoorPy calculates the mean floating

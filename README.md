@@ -9,6 +9,7 @@ RAFT v1.0.0 includes the capabilities described above, and further development i
 
 New users of RAFT as a standalone model are recommended to begin by looking at the input file and script provided in the examples folder, and seeking further information from the [RAFT documentation](https://openraft.readthedocs.io/en/latest/). For use as part of the WEIS toolset, information will be provided once this capability is completed in the [WEIS documentation](https://weis.readthedocs.io/en/latest/).
 
+
 ### Prerequisites
 
 - Python 3
@@ -18,11 +19,13 @@ New users of RAFT as a standalone model are recommended to begin by looking at t
 - YAML
 - MoorPy (available at https://github.com/NREL/MoorPy)
 - pyHams (available at https://github.com/WISDEM/pyHAMS)
-- CCBlade (available as part of WISDEM at https://github.com/WISDEM/WISDEM)
+- CCBlade and WISDEM* (available at https://github.com/WISDEM/WISDEM)
+
+\* RAFT uses CCBlade and currently requires additional related functions from the larger WISDEM code. We recommend installing WISDEM for the time being.
 
 ### Installation
 
-Download or clone this RAFT repository as well as the [MoorPy](https://github.com/NREL/MoorPy)  and [pyHAMS](https://github.com/WISDEM/pyHAMS) repositories. To install each package in development mode, go to its main directory and run ```python setup.py develop``` or ```pip install -e .``` from the command line.
+Download/clone and install this RAFT repository as well as that of [MoorPy](https://github.com/NREL/MoorPy), [pyHAMS](https://github.com/WISDEM/pyHAMS), and [WISDEM](https://github.com/WISDEM/WISDEM). To install RAFT in development mode, go to its directory and run ```python setup.py develop``` or ```pip install -e .``` from the command line.
 
 ## Documentation and Issues
 
@@ -32,3 +35,4 @@ Questions and issues can be posted at <https://github.com/WISDEM/RAFT/issues>.
 
 ## License
 RAFT is licensed under the Apache License, Version 2.0
+

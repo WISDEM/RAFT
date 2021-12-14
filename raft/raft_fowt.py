@@ -78,6 +78,7 @@ class FOWT():
             mi['dlsMax'] = dlsMax
 
             headings = getFromDict(mi, 'heading', shape=-1, default=0.)
+            mi['headings'] = headings   # differentiating the list of headings/copies of a member from the individual member's heading
             if np.isscalar(headings):
                 mi['heading'] = headings
                 self.memberList.append(Member(mi, self.nw))

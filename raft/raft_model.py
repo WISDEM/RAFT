@@ -101,15 +101,9 @@ class Model():
     """
 
 
-    def analyzeUnloaded(self):
+    def analyzeUnloaded(self, ballast=False, rho_fill_adj=100):
         '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.'''
-
-        # calculate the system's constant properties
-        #self.calcSystemConstantProps()
-        for fowt in self.fowtList:
-            fowt.calcStatics()
-            #fowt.calcBEM()
-            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0))
+        
             
         # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
         try: 
@@ -117,7 +111,33 @@ class Model():
             self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
         except Exception as e:
             raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
-
+        
+        # calculate the system's constant properties
+        #self.calcSystemConstantProps()
+        for fowt in self.fowtList:
+            if ballast:
+                fowt.calcStatics()
+                sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+                heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+                while abs(heave) > 0.5:
+                    #print(f'Adjusting ballast since the heave is {heave:6.2f} m')
+                    for i in range(len(fowt.memberList)):
+                        if fowt.memberList[i].rho_fill > 0:     # find the first member in the memberList that has ballast
+                            for j in range(len(fowt.memberList[i].headings)):   # for each copy of the member
+                                fowt.memberList[i+j].rho_fill += rho_fill_adj*(heave/abs(heave))
+                                #print(fowt.memberList[i+j].rho_fill)
+                            break
+                        # >>>>>> fyi there could be an else case where no members have ballast initially <<<<<
+                    fowt.calcStatics()
+                    sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+                    heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+                   
+            # if a ballast adjustment is not desired, carry on normally
+            fowt.calcStatics()
+            #fowt.calcBEM()
+            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0))
+        
+        
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
             
         # calculate platform offsets and mooring system equilibrium state
@@ -337,7 +357,7 @@ class Model():
         #self.ms.plot()
 
         print(f"Found mean offets with with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
-
+        
         try:
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
             F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
@@ -673,7 +693,9 @@ class Model():
     
         
         return self.results
-
+        
+        
+    
 
     def plotResponses(self):
         '''Plots the power spectral densities of the available response channels for each case.'''
@@ -770,7 +792,7 @@ class Model():
         return fig, ax
 
 
-def runRAFT(input_file, turbine_file="", plot=0):
+def runRAFT(input_file, turbine_file="", plot=0, ballast=False, rho_fill_adj=100):
     '''
     This will set up and run RAFT based on a YAML input file.
     '''
@@ -798,8 +820,8 @@ def runRAFT(input_file, turbine_file="", plot=0):
     # Create and run the model
     print(" --- making model ---")
     model = Model(design)  
-    print(" --- analyizing unloaded ---")
-    model.analyzeUnloaded()
+    print(" --- analyzing unloaded ---")
+    model.analyzeUnloaded(ballast=ballast, rho_fill_adj=rho_fill_adj)
     print(" --- analyzing cases ---")
     model.analyzeCases()
     

@@ -40,6 +40,7 @@ class Member:
         
 
         # heading feature for rotation members about the z axis (used for rotated patterns)
+        self.headings = getFromDict(mi, 'headings', shape=-1, default=0.0)
         heading = getFromDict(mi, 'heading', default=0.0)            # rotation about z axis to apply to the member [deg]
         if heading != 0.0:
             c = np.cos(np.deg2rad(heading))

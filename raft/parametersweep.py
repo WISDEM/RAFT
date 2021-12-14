@@ -36,12 +36,14 @@ T   = design['platform']['members'][0]['rA'][2]
 ocR = design['platform']['members'][1]['rA'][0]
 pH  = (design['platform']['members'][2]['rA'][2]-T)*2
 
+lower = 0.75
+upper = 1.25
 
-ccDs = [ccD*0.5, ccD, ccD*1.5]
-ocDs = [ocD*0.5, ocD, ocD*1.5]
-Ts   = [  T*0.5,   T,   T*1.5]
-ocRs = [ocR*0.5, ocR, ocR*1.5]
-pHs  = [ pH*0.5,  pH,  pH*1.5]
+ccDs = [ccD*lower, ccD, ccD*upper]
+ocDs = [ocD*lower, ocD, ocD*upper]
+Ts   = [  T*lower,   T,   T*upper]
+ocRs = [ocR*lower, ocR, ocR*upper]
+pHs  = [ pH*lower,  pH,  pH*upper]
 
 M = np.zeros([3,3,3,3,3])
 pV = np.zeros([3,3,3,3,3])
@@ -72,7 +74,7 @@ for a in ccDs:
                 design['platform']['members'][1]['rB'][0] = d
                 design['platform']['members'][2]['rB'][0] = d - design['platform']['members'][1]['d']/2
                 design['platform']['members'][3]['rB'][0] = d - design['platform']['members'][1]['d']/2
-                design['mooring']['points'][3]['location'][0] = d + design['platform']['members'][1]['d']/2
+                design['mooring']['points'][3]['location'][0] = -d - design['platform']['members'][1]['d']/2
                 design['mooring']['points'][4]['location'][0] = (d + design['platform']['members'][1]['d']/2)*np.cos(np.deg2rad(60))
                 design['mooring']['points'][4]['location'][1] = (d + design['platform']['members'][1]['d']/2)*np.sin(np.deg2rad(60))
                 design['mooring']['points'][5]['location'][0] = (d + design['platform']['members'][1]['d']/2)*np.cos(np.deg2rad(300))
@@ -86,7 +88,8 @@ for a in ccDs:
                     print(f'RUNNING {a}-{b}-{c}-{d}-{e}')
                     print('------')
                     
-                    model = runRAFT(design)
+                    model = runRAFT(design, ballast=True, rho_fill_adj=10)
+                    
                     (mass, displ, gmt, offset, pitch) = getOutputs(model)
                     M[ccDs.index(a),ocDs.index(b),Ts.index(c),ocRs.index(d),pHs.index(e)] = mass
                     pV[ccDs.index(a),ocDs.index(b),Ts.index(c),ocRs.index(d),pHs.index(e)] = displ
@@ -95,15 +98,15 @@ for a in ccDs:
                     P[ccDs.index(a),ocDs.index(b),Ts.index(c),ocRs.index(d),pHs.index(e)] = pitch
 
 #%%
-'''
+
 sweep = dict(mass=M, displ=pV, gmt=GMT, offset=XY, pitch=P)
 
-with open('sweep.pkl', 'wb') as pfile:
+with open(f'sweep-{lower}-{upper}.pkl', 'wb') as pfile:
     pickle.dump(sweep, pfile)
 '''
-with open('sweep.pkl', 'rb') as pfile:
+with open(f'sweep-{lower}-{upper}.pkl', 'rb') as pfile:
     sweep = pickle.load(pfile)
-
+'''
 M = sweep['mass']
 pV = sweep['displ']
 GMT = sweep['gmt']

@@ -51,6 +51,7 @@ GMT = np.zeros([3,3,3,3,3])
 XY = np.zeros([3,3,3,3,3])
 P = np.zeros([3,3,3,3,3])
 
+#%%
 for a in ccDs:
     design['platform']['members'][0]['d'] = a
     design['platform']['members'][2]['rA'][0] = design['platform']['members'][2]['rA'][0]*(a/ccD)
@@ -98,7 +99,7 @@ for a in ccDs:
                     P[ccDs.index(a),ocDs.index(b),Ts.index(c),ocRs.index(d),pHs.index(e)] = pitch
 
 #%%
-
+'''
 sweep = dict(mass=M, displ=pV, gmt=GMT, offset=XY, pitch=P)
 
 with open(f'sweep-{lower}-{upper}.pkl', 'wb') as pfile:
@@ -106,7 +107,7 @@ with open(f'sweep-{lower}-{upper}.pkl', 'wb') as pfile:
 '''
 with open(f'sweep-{lower}-{upper}.pkl', 'rb') as pfile:
     sweep = pickle.load(pfile)
-'''
+
 M = sweep['mass']
 pV = sweep['displ']
 GMT = sweep['gmt']

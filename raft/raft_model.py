@@ -116,6 +116,8 @@ class Model():
         #self.calcSystemConstantProps()
         for fowt in self.fowtList:
             if ballast:
+                #self.adjustBallast(fowt)
+
                 fowt.calcStatics()
                 sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
                 heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
@@ -790,6 +792,79 @@ class Model():
             ax.set_frame_on(False)
             
         return fig, ax
+    
+    
+    
+    def adjustBallast(fowt, conv_tol=0.001):
+        
+        # calculate the difference in theoretical mass and actual mass
+        fowt.calcStatics()
+        mass = (fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2])/fowt.g
+        dmass = mass - fowt.M_struc[0,0]
+        
+        # loop through each member and adjust the l_fill of each to match the volume needed to balance the mass
+        for i,member in enumerate(fowt.memberList):
+            if member.rho_fill > 0:
+                dvol = dmass/member.rho_fill
+                mdvol = dvol/len(member.headings)       # the volume required in each duplicate member
+                err = 1e5
+                l_fill = member.l_fill
+                
+                # depending on the member's shape, do an iterate solve with a while loop to find the l_fill 
+                if member.shape=='circular':
+                    dAi = member.d[0] - 2*member.t[0]
+                    dBi = member.d[-1] - 2*member.t[-1]
+                    while err < 10:
+                        dBi_fill = (dBi-dAi)*(l_fill/member.l) + dAi
+                        V = FrustumVCV(dAi, dBi_fill, l_fill, rtn=1)
+                        err = V-mdvol
+                        if err < 10:
+                            break
+                        else:
+                            if l_fill < 0:
+                                l_fill += 0.1
+                                break
+                            elif l_fill > member.l:
+                                l_fill += -0.1
+                                break
+                            else:
+                                l_fill += -0.1*np.sign(err)
+                elif member.shape=='rectangular':
+                    slAi = self.sl[i-1] - 2*self.t[i-1]
+                    slBi = self.sl[i] - 2*self.t[i]
+                    while err < 10:
+                        slBi_fill = (slBi-slAi)*(l_fill/l) + slAi
+                        V = FrustumVCV(slAi, slBi_fill, l_fill, rtn=1)
+                        err = V-mdvol
+                        if err < 10:
+                            break
+                        else:
+                            if l_fill < 0:
+                                l_fill += 0.1
+                                break
+                            elif l_fill > member.l:
+                                l_fill += -0.1
+                                break
+                            else:
+                                l_fill +=-0.1*np.sign(err)
+                
+                # make that value the new l_fill of the member
+                for j,heading in enumerate(member.headings):
+                    fowt.memberList[i+j].l_fill = l_fill
+                
+                # check if heave equilibrium was reached by only changing this member
+                fowt.calcStatics()
+                mass = (fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2])/fowt.g
+                dmass = mass - fowt.M_struc[0,0]
+                if dmass < conv_tol*fowt.M_struc[0,0]:     # if it did, then break
+                    break                               # if not, then go back to the for loop and find another member to change the l_fill for
+        
+        # if you've gone through all the members in the model that have initial ballast, maybe try adjusting densities
+        # this also does not currently support members with multiple types of ballast, even though RAFT can
+        
+
+
+
 
 
 def runRAFT(input_file, turbine_file="", plot=0, ballast=False, rho_fill_adj=100):

@@ -41,10 +41,10 @@ class Member:
 
         # heading feature for rotation members about the z axis (used for rotated patterns)
         self.headings = getFromDict(mi, 'headings', shape=-1, default=0.0)
-        heading = getFromDict(mi, 'heading', default=0.0)            # rotation about z axis to apply to the member [deg]
-        if heading != 0.0:
-            c = np.cos(np.deg2rad(heading))
-            s = np.sin(np.deg2rad(heading))
+        self.heading = getFromDict(mi, 'heading', default=0.0)            # rotation about z axis to apply to the member [deg]
+        if self.heading != 0.0:
+            c = np.cos(np.deg2rad(self.heading))
+            s = np.sin(np.deg2rad(self.heading))
             rotMat = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
             self.rA = np.matmul(rotMat, self.rA)
             self.rB = np.matmul(rotMat, self.rB)

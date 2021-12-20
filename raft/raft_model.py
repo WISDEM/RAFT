@@ -101,8 +101,10 @@ class Model():
     """
 
 
-    def analyzeUnloaded(self, ballast=False, rho_fill_adj=100):
-        '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.'''
+    def analyzeUnloaded(self, ballast=False):
+        '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.
+        
+        ballast: flag to ballast the FOWTs to achieve a certain heave offset'''
         
             
         # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
@@ -116,24 +118,8 @@ class Model():
         #self.calcSystemConstantProps()
         for fowt in self.fowtList:
             if ballast:
-                #self.adjustBallast(fowt)
-
-                fowt.calcStatics()
-                sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-                heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
-                while abs(heave) > 0.5:
-                    #print(f'Adjusting ballast since the heave is {heave:6.2f} m')
-                    for i in range(len(fowt.memberList)):
-                        if fowt.memberList[i].rho_fill > 0:     # find the first member in the memberList that has ballast
-                            for j in range(len(fowt.memberList[i].headings)):   # for each copy of the member
-                                fowt.memberList[i+j].rho_fill += rho_fill_adj*(heave/abs(heave))
-                                #print(fowt.memberList[i+j].rho_fill)
-                            break
-                        # >>>>>> fyi there could be an else case where no members have ballast initially <<<<<
-                    fowt.calcStatics()
-                    sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-                    heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
-                   
+                self.adjustBallast(fowt)
+                
             # if a ballast adjustment is not desired, carry on normally
             fowt.calcStatics()
             #fowt.calcBEM()
@@ -145,7 +131,7 @@ class Model():
         # calculate platform offsets and mooring system equilibrium state
         self.calcMooringAndOffsets()
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
-
+        
         # TODO: add printing of summary info here - mass, stiffnesses, etc
         
     
@@ -795,73 +781,154 @@ class Model():
     
     
     
-    def adjustBallast(fowt, conv_tol=0.001):
+    def adjustBallast(self, fowt, heave_tol=1.0, l_fill_adj=0.05, rtn=0):
+        '''function to add or subtract the fill level of ballast in a member to get equilibrium heave close to 0
+        fowt: the FOWT object that needs to be ballasted
+        heave_tol: the tolerance acceptable for equilibrium heave [m]
+        l_fill_adj: the amount you want the heave to change by in each iteration of the while loop [m]
+        rtn: flag to output relevant data'''
+        
+        member_break_flag=False
+        data = []
         
         # calculate the difference in theoretical mass and actual mass
         fowt.calcStatics()
         mass = (fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2])/fowt.g
         dmass = mass - fowt.M_struc[0,0]
+        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
         
         # loop through each member and adjust the l_fill of each to match the volume needed to balance the mass
         for i,member in enumerate(fowt.memberList):
-            if member.rho_fill > 0:
-                dvol = dmass/member.rho_fill
-                mdvol = dvol/len(member.headings)       # the volume required in each duplicate member
-                err = 1e5
-                l_fill = member.l_fill
+            
+            # organize the headings to work for this specific function
+            if np.isscalar(member.headings):
+                headings = [member.headings]
+            else:
+                headings = member.headings
+            
+            if member.heading != headings[0]:   # to ensure that only one member in a repeated member list is adjusted
+                pass
+            else:
+                # organize the l_fill and rho_fill variables for this specific function
+                if type(member.l_fill) is float:  # if there is only one section of ballast in the member, make it a list
+                    l_fills = [member.l_fill]    
+                    rho_fills = [member.rho_fill]
+                else:
+                    l_fills = member.l_fill
+                    rho_fills = member.rho_fill
                 
-                # depending on the member's shape, do an iterate solve with a while loop to find the l_fill 
-                if member.shape=='circular':
-                    dAi = member.d[0] - 2*member.t[0]
-                    dBi = member.d[-1] - 2*member.t[-1]
-                    while err < 10:
-                        dBi_fill = (dBi-dAi)*(l_fill/member.l) + dAi
-                        V = FrustumVCV(dAi, dBi_fill, l_fill, rtn=1)
-                        err = V-mdvol
-                        if err < 10:
-                            break
-                        else:
-                            if l_fill < 0:
-                                l_fill += 0.1
-                                break
-                            elif l_fill > member.l:
-                                l_fill += -0.1
-                                break
+                # loop through each section of ballast in the member and adjust its l_fill to balance heave
+                for j,ballast in enumerate(rho_fills):
+                    if ballast > 0:                                         # only adjust the sections with existing ballast
+                        dvol = dmass/ballast                                # the volume required to balance heave
+                        mdvol = dvol/len(headings)                          # the volume required per repeated member
+                        err = 1e5                                           # initialize the error for the l_fill solver
+                        l_fill = l_fills[j]                                 # set the current l_fill value
+                        l = member.stations[j+1]-member.stations[j]         # set the length of the submember with ballast
+                        
+                        if member.shape=='circular':
+                            dAi = member.d[j] - 2*member.t[j]
+                            dBi = member.d[j+1] - 2*member.t[j+1]
+                            # calculate the initial volume in the current submember first
+                            dBi_fill = (dBi-dAi)*(l_fill/l) + dAi           # interpolated diameter of frustum that ballast is filled to
+                            V0 = FrustumVCV(dAi, dBi_fill, l_fill, rtn=1)
+                            
+                            # adjust the l_fill value of the submember by l_fill_adj until the new ballast volume settles on V0+mdvol
+                            while abs(err) > 0.01*V0:
+                                if l_fill >= l and mdvol < 0:       # if l_fill is more than the given submember length and volume needs to decrease
+                                    l_fill += -l_fill_adj
+                                elif l_fill >= l and mdvol > 0:     # if l_fill is more than the given submember length and volume needs to increase
+                                    l_fill = l_fill
+                                    break                           # end the while loop since this is the maximum l_fill can go for this submember
+                                elif l_fill <= 0 and mdvol > 0:     # if l_fill is less than 0 and the volume needs to increase
+                                    l_fill += l_fill_adj
+                                elif l_fill <= 0 and mdvol < 0:     # if l_fill is less than 0 and the volume needs to decrease
+                                    l_fill = l_fill
+                                    break                           # end the whole loop since l_fill can't go below 0
+                                else:
+                                    l_fill += l_fill_adj*np.sign(err)   # otherwise, adjust by l_fill in the correct direction
+                                
+                                dBi_fill = (dBi-dAi)*(l_fill/l) + dAi
+                                V = FrustumVCV(dAi, dBi_fill, l_fill, rtn=1)    # calculate the volume of the ballast with the new l_fill
+                                err = V0+mdvol - V                              # ensure V0+mdvol = V to solve for the correct l_fill
+                            l_fill = np.round(l_fill, 2)
+                        
+                        
+                        elif member.shape=='rectangular':
+                            slAi = member.sl[j] - 2*member.t[j]
+                            slBi = member.sl[j+1] - 2*member.t[j+1]
+                            # calculate the initial volume in the current submember first
+                            slBi_fill = (slBi-slAi)*(l_fill/l) + slAi   # interpolated side lengths of frustum that ballast is filled to
+                            V0 = FrustumVCV(slAi, slBi_fill, l_fill, rtn=1)
+                            
+                            # adjust the l_fill value of the submember by l_fill_adj until the new ballast volume settles on V0+mdvol                            
+                            while abs(err)> 0.01*V0:
+                                if l_fill >= l and mdvol < 0:       # if l_fill is more than the given submember length and volume needs to decrease
+                                    l_fill += -l_fill_adj
+                                elif l_fill >= l and mdvol > 0:     # if l_fill is more than the given submember length and volume needs to increase
+                                    l_fill = l_fill
+                                    break                           # end the while loop since this is the maximum l_fill can go for this submember
+                                elif l_fill <= 0 and mdvol > 0:     # if l_fill is less than 0 and the volume needs to increase
+                                    l_fill += l_fill_adj
+                                elif l_fill <= 0 and mdvol < 0:     # if l_fill is less than 0 and the volume needs to decrease
+                                    l_fill = l_fill
+                                    break                           # end the whole loop since l_fill can't go below 0
+                                else:
+                                    l_fill += l_fill_adj*np.sign(err)   # otherwise, adjust by l_fill in the correct direction
+                                
+                                slBi_fill = (slBi-slAi)*(l_fill/l) + slAi
+                                V = FrustumVCV(slAi, slBi_fill, l_fill, rtn=1)  # calculate the volume of the ballast with the new l_fill
+                                err = V0+mdvol - V                              # ensure V0+mdvol = V to solve for the correct l_fill
+                            l_fill = np.round(l_fill, 2)
+
+                        # replace the solved for l_fill value in each repeated member
+                        for k,heading in enumerate(headings):
+                            if np.isscalar(fowt.memberList[i+k].l_fill):
+                                fowt.memberList[i+k].l_fill = l_fill
                             else:
-                                l_fill += -0.1*np.sign(err)
-                elif member.shape=='rectangular':
-                    slAi = self.sl[i-1] - 2*self.t[i-1]
-                    slBi = self.sl[i] - 2*self.t[i]
-                    while err < 10:
-                        slBi_fill = (slBi-slAi)*(l_fill/l) + slAi
-                        V = FrustumVCV(slAi, slBi_fill, l_fill, rtn=1)
-                        err = V-mdvol
-                        if err < 10:
-                            break
-                        else:
-                            if l_fill < 0:
-                                l_fill += 0.1
-                                break
-                            elif l_fill > member.l:
-                                l_fill += -0.1
-                                break
-                            else:
-                                l_fill +=-0.1*np.sign(err)
-                
-                # make that value the new l_fill of the member
-                for j,heading in enumerate(member.headings):
-                    fowt.memberList[i+j].l_fill = l_fill
-                
-                # check if heave equilibrium was reached by only changing this member
-                fowt.calcStatics()
-                mass = (fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2])/fowt.g
-                dmass = mass - fowt.M_struc[0,0]
-                if dmass < conv_tol*fowt.M_struc[0,0]:     # if it did, then break
-                    break                               # if not, then go back to the for loop and find another member to change the l_fill for
-        
+                                fowt.memberList[i+k].l_fill[j] = l_fill
+                                
+                        
+                        # check if heave equilibrium was reached by only changing this ballast section of the member
+                        fowt.calcStatics()
+                        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+                        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+                        
+                        if abs(heave) < heave_tol:  # congrats, you've ballasted to achieve the given heave tolerance
+                            member_break_flag=True  # break out of the outer member for loop as well
+                            data.append([member.rA, member.l_fill, member.rho_fill, heave])             # save data
+                            break                   # break out of this inner for loop iterating between ballast sections in one member
+                        else:                       # bummer, you have to keep ballasting in other members or sections of the same member
+                            mass = (fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2])/fowt.g
+                            dmass = mass - fowt.M_struc[0,0]                                # newly evaluated change in mass you need
+                            data.append([member.rA.tolist(), member.l_fill, member.rho_fill, heave])    # save data
+                            
+                if member_break_flag:
+                    break
+                        
         # if you've gone through all the members in the model that have initial ballast, maybe try adjusting densities
         # this also does not currently support members with multiple types of ballast, even though RAFT can
+        """
+        fowt.calcStatics()
+        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        while abs(heave) > 0.5:
+            #print(f'Adjusting ballast since the heave is {heave:6.2f} m')
+            for i in range(len(fowt.memberList)):
+                if fowt.memberList[i].rho_fill > 0:     # find the first member in the memberList that has ballast
+                    for j in range(len(fowt.memberList[i].headings)):   # for each copy of the member
+                        fowt.memberList[i+j].rho_fill += rho_fill_adj*(heave/abs(heave))
+                        #print(fowt.memberList[i+j].rho_fill)
+                    break
+                # >>>>>> fyi there could be an else case where no members have ballast initially <<<<<
+            fowt.calcStatics()
+            sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+            heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        """
         
+        if rtn:
+            return data
 
 
 
@@ -918,6 +985,6 @@ if __name__ == "__main__":
     import raft
     
     #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     fowt = model.fowtList[0]

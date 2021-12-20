@@ -1,7 +1,6 @@
 # RAFT's support structure member class
 
 import numpy as np
-import matplotlib.pyplot as plt
 
 from raft.helpers import *
 
@@ -82,10 +81,14 @@ class Member:
 
 
         self.t         = getFromDict(mi, 't', shape=n)               # shell thickness of the nodes [m]
-
+        
         self.l_fill    = getFromDict(mi, 'l_fill'  , shape=-1, default=0.0)   # length of member (from end A to B) filled with ballast [m]
         self.rho_fill  = getFromDict(mi, 'rho_fill', shape=-1, default=0.0)   # density of ballast in member [kg/m^3]
-
+        
+        if isinstance(self.l_fill, np.ndarray):
+            if len(self.l_fill) != n-1 or len(self.rho_fill) != n-1:
+                raise ValueError(f'The number of stations ({n}) should always be 1 greater than the number of ballast sections, l_fill ({len(self.l_fill)}) and rho_fill ({len(self.rho_fill)})')
+            
         self.rho_shell = getFromDict(mi, 'rho_shell', default=8500.) # shell mass density [kg/m^3]
 
 

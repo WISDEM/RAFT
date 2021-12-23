@@ -781,7 +781,7 @@ class Model():
     
     
     
-    def adjustBallast(self, fowt, heave_tol=1.0, l_fill_adj=0.05, rtn=0):
+    def adjustBallast(self, fowt, heave_tol=1.0, l_fill_adj=0.01, rtn=0):
         '''function to add or subtract the fill level of ballast in a member to get equilibrium heave close to 0
         fowt: the FOWT object that needs to be ballasted
         heave_tol: the tolerance acceptable for equilibrium heave [m]
@@ -934,7 +934,7 @@ class Model():
 
 
 
-def runRAFT(input_file, turbine_file="", plot=0, ballast=False, rho_fill_adj=100):
+def runRAFT(input_file, turbine_file="", plot=0, ballast=False):
     '''
     This will set up and run RAFT based on a YAML input file.
     '''
@@ -963,7 +963,7 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, rho_fill_adj=100
     print(" --- making model ---")
     model = Model(design)  
     print(" --- analyzing unloaded ---")
-    model.analyzeUnloaded(ballast=ballast, rho_fill_adj=rho_fill_adj)
+    model.analyzeUnloaded(ballast=ballast)
     print(" --- analyzing cases ---")
     model.analyzeCases()
     
@@ -985,6 +985,10 @@ if __name__ == "__main__":
     import raft
     
     #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True)
+    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S - Copy.yaml'), ballast=False)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     fowt = model.fowtList[0]
+    #print(fowt.M_struc_subPRP[0,0])
+    #print(fowt.rCG_sub[2])
+    #print(fowt.mballast)

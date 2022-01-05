@@ -101,7 +101,7 @@ class Model():
     """
 
 
-    def analyzeUnloaded(self, ballast=False):
+    def analyzeUnloaded(self, ballast=False, heave_tol = 1):
         '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.
         
         ballast: flag to ballast the FOWTs to achieve a certain heave offset'''
@@ -118,7 +118,7 @@ class Model():
         #self.calcSystemConstantProps()
         for fowt in self.fowtList:
             if ballast:
-                self.adjustBallast(fowt)
+                self.adjustBallast(fowt, heave_tol=heave_tol)
                 
             # if a ballast adjustment is not desired, carry on normally
             fowt.calcStatics()
@@ -781,7 +781,7 @@ class Model():
     
     
     
-    def adjustBallast(self, fowt, heave_tol=1.0, l_fill_adj=0.01, rtn=0):
+    def adjustBallast(self, fowt, heave_tol=1, l_fill_adj=1e-2, rtn=0):
         '''function to add or subtract the fill level of ballast in a member to get equilibrium heave close to 0
         fowt: the FOWT object that needs to be ballasted
         heave_tol: the tolerance acceptable for equilibrium heave [m]

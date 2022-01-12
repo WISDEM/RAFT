@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import yaml
+import pickle5 as pickle
 
 import moorpy as mp
 import raft.raft_fowt  as fowt
@@ -133,7 +134,7 @@ class Model():
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
         
         # TODO: add printing of summary info here - mass, stiffnesses, etc
-        
+
     
     def analyzeCases(self, display=0):
         '''This runs through all the specified load cases, building a dictionary of results.'''
@@ -781,7 +782,7 @@ class Model():
     
     
     
-    def adjustBallast(self, fowt, heave_tol=1, l_fill_adj=1e-2, rtn=0):
+    def adjustBallast(self, fowt, heave_tol=1, l_fill_adj=1e-2, rtn=0, display=0):
         '''function to add or subtract the fill level of ballast in a member to get equilibrium heave close to 0
         fowt: the FOWT object that needs to be ballasted
         heave_tol: the tolerance acceptable for equilibrium heave [m]
@@ -797,16 +798,17 @@ class Model():
         dmass = mass - fowt.M_struc[0,0]
         sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
         heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        if display==1: print(mass, dmass, heave)
         
         # loop through each member and adjust the l_fill of each to match the volume needed to balance the mass
         for i,member in enumerate(fowt.memberList):
-            
+            if display==1: print('-------',i,member.rA)
             # organize the headings to work for this specific function
             if np.isscalar(member.headings):
                 headings = [member.headings]
             else:
                 headings = member.headings
-            
+            if display==1: print(headings)
             if member.heading != headings[0]:   # to ensure that only one member in a repeated member list is adjusted
                 pass
             else:
@@ -817,16 +819,18 @@ class Model():
                 else:
                     l_fills = member.l_fill
                     rho_fills = member.rho_fill
+                if display==1: print(l_fills, rho_fills)
                 
                 # loop through each section of ballast in the member and adjust its l_fill to balance heave
                 for j,ballast in enumerate(rho_fills):
                     if ballast > 0:                                         # only adjust the sections with existing ballast
+                        if display==1: print(j, ballast)    
                         dvol = dmass/ballast                                # the volume required to balance heave
                         mdvol = dvol/len(headings)                          # the volume required per repeated member
                         err = 1e5                                           # initialize the error for the l_fill solver
                         l_fill = l_fills[j]                                 # set the current l_fill value
                         l = member.stations[j+1]-member.stations[j]         # set the length of the submember with ballast
-                        
+                        if display==1: print(dvol, mdvol, l_fill, l)
                         if member.shape=='circular':
                             dAi = member.d[j] - 2*member.t[j]
                             dBi = member.d[j+1] - 2*member.t[j+1]
@@ -853,7 +857,7 @@ class Model():
                                 V = FrustumVCV(dAi, dBi_fill, l_fill, rtn=1)    # calculate the volume of the ballast with the new l_fill
                                 err = V0+mdvol - V                              # ensure V0+mdvol = V to solve for the correct l_fill
                             l_fill = np.round(l_fill, 2)
-                        
+                            
                         
                         elif member.shape=='rectangular':
                             slAi = member.sl[j] - 2*member.t[j]
@@ -881,7 +885,8 @@ class Model():
                                 V = FrustumVCV(slAi, slBi_fill, l_fill, rtn=1)  # calculate the volume of the ballast with the new l_fill
                                 err = V0+mdvol - V                              # ensure V0+mdvol = V to solve for the correct l_fill
                             l_fill = np.round(l_fill, 2)
-
+                        
+                        if display==1:  print('solved l_fill = ', l_fill)
                         # replace the solved for l_fill value in each repeated member
                         for k,heading in enumerate(headings):
                             if np.isscalar(fowt.memberList[i+k].l_fill):
@@ -894,7 +899,7 @@ class Model():
                         fowt.calcStatics()
                         sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
                         heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
-                        
+                        if display==1: print('heave', heave, heave_tol)
                         if abs(heave) < heave_tol:  # congrats, you've ballasted to achieve the given heave tolerance
                             member_break_flag=True  # break out of the outer member for loop as well
                             data.append([member.rA, member.l_fill, member.rho_fill, heave])             # save data
@@ -939,7 +944,11 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False):
     This will set up and run RAFT based on a YAML input file.
     '''
     
-    if not isinstance(input_file, dict):
+    
+    if input_file[-3:]=='pkl' or input_file[-6:]=='pickle':
+        with open(input_file, 'rb') as pfile:
+            design = pickle.load(pfile)
+    elif not isinstance(input_file, dict):
         # open the design YAML file and parse it into a dictionary for passing to raft
         print("Loading RAFT input file: "+input_file)
         with open(input_file) as file:
@@ -986,9 +995,7 @@ if __name__ == "__main__":
     
     #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
     #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True)
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S - Copy.yaml'), ballast=False)
+    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S - Copy.yaml'), ballast=False, plot=True)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
+    model = runRAFT(os.path.join(raft_dir,'raft/raft_design.pkl'), ballast=True)
     fowt = model.fowtList[0]
-    #print(fowt.M_struc_subPRP[0,0])
-    #print(fowt.rCG_sub[2])
-    #print(fowt.mballast)

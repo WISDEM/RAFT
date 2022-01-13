@@ -118,8 +118,10 @@ class Model():
         # calculate the system's constant properties
         #self.calcSystemConstantProps()
         for fowt in self.fowtList:
-            if ballast:
-                self.adjustBallast(fowt, heave_tol=heave_tol)
+            if ballast == 1:
+                self.adjustBallast(fowt, heave_tol=heave_tol)  
+            elif ballast == 2:
+                self.adjustBallastDensity(fowt)
                 
             # if a ballast adjustment is not desired, carry on normally
             fowt.calcStatics()
@@ -937,6 +939,47 @@ class Model():
             return data
 
 
+    def adjustBallastDensity(self, fowt):
+        '''Adjusts ballast densities unifromly to trim FOWT in heave.
+        fowt: the FOWT object that needs to be ballasted
+        '''
+        
+        print("Adjusting ballast to trim heave.")
+        
+        # check initial offset
+        fowt.calcStatics()
+        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)        
+        print(f" Original sumFz is {sumFz/1000:.0f} kN and heave is ~{heave:.3f} m")
+        
+        # total up the ballast volume
+        ballast_volume = 0.0        
+        for member in fowt.memberList:
+            if member.rho_fill > 0:     # find the first member in the memberList that has ballast
+                ballast_volume += sum(member.vfill)
+        
+        # ensure there isn't no ballast volume
+        if ballast_volume <= 0:
+            raise Exception("adjustBallastDenity can only be used for platforms that have some ballast volume.")
+        
+        # calculate required change in ballast densities to zero heave offset
+        delta_rho_fill = sumFz/fowt.g/ballast_volume
+        
+        print(f"adjusting fill density by {delta_rho_fill:.3f} kg/m over {ballast_volume:.3f} m3 of ballast")
+        
+        # apply the change to each member's fill densities
+        for member in fowt.memberList:
+            member.rho_fill += delta_rho_fill
+        
+        # check adjusted offset
+        fowt.calcStatics()
+        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        
+        print(f" New sumFz is {sumFz/1000:.0f} kN and heave is ~{heave:.3f} m")
+        
+        # return adjustment
+        return delta_rho_fill
 
 
 
@@ -996,8 +1039,8 @@ if __name__ == "__main__":
     
     #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
     #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True)
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S - Copy.yaml'), ballast=False, plot=True)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S - Copy.yaml'), ballast=2)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     #model = runRAFT(os.path.join(raft_dir,'raft/raft_design.pkl'), ballast=True)
-    model = runRAFT(os.path.join(raft_dir,'raft/raft_design_0.pkl'), ballast=True)
+    #model = runRAFT(os.path.join(raft_dir,'raft/raft_design_0.pkl'), ballast=True)
     fowt = model.fowtList[0]

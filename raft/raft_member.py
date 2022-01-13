@@ -336,6 +336,7 @@ class Member:
         
         mass_center = 0                                 # total sum of mass the center of mass of the member [kg-m]
         mshell = 0                                      # total mass of the shell material only of the member [kg]
+        self.vfill = []                                 # list of ballast volumes in each submember [m^3] - stored in the object for later access
         mfill = []                                      # list of ballast masses in each submember [kg]
         pfill = []                                      # list of ballast densities in each submember [kg]
         self.M_struc = np.zeros([6,6])                  # member mass/inertia matrix [kg, kg-m, kg-m^2]
@@ -350,6 +351,7 @@ class Member:
                 mass = 0
                 center = np.zeros(3)
                 m_shell = 0
+                v_fill = 0
                 m_fill = 0
                 rho_fill = 0
             else:
@@ -459,6 +461,7 @@ class Member:
             # add/append terms
             mass_center += mass*center                  # total sum of mass the center of mass of the member [kg-m]
             mshell += m_shell                           # total mass of the shell material only of the member [kg]
+            self.vfill.append(v_fill)                        # list of ballast volumes in each submember [m^3]
             mfill.append(m_fill)                        # list of ballast masses in each submember [kg]
             pfill.append(rho_fill)                     # list of ballast densities in each submember [kg]
 

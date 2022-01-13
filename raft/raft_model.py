@@ -104,7 +104,7 @@ class Model():
     """
 
 
-    def analyzeUnloaded(self, ballast=False, heave_tol = 1):
+    def analyzeUnloaded(self, ballast=0, heave_tol = 1):
         '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.
         
         ballast: flag to ballast the FOWTs to achieve a certain heave offset'''

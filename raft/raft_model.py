@@ -955,8 +955,7 @@ class Model():
         # total up the ballast volume
         ballast_volume = 0.0        
         for member in fowt.memberList:
-            if member.rho_fill > 0:     # find the first member in the memberList that has ballast
-                ballast_volume += sum(member.vfill)
+            ballast_volume += sum(member.vfill)
         
         # ensure there isn't no ballast volume
         if ballast_volume <= 0:
@@ -965,7 +964,7 @@ class Model():
         # calculate required change in ballast densities to zero heave offset
         delta_rho_fill = sumFz/fowt.g/ballast_volume
         
-        print(f"adjusting fill density by {delta_rho_fill:.3f} kg/m over {ballast_volume:.3f} m3 of ballast")
+        print(f" Adjusting fill density by {delta_rho_fill:.3f} kg/m over {ballast_volume:.3f} m3 of ballast")
         
         # apply the change to each member's fill densities
         for member in fowt.memberList:

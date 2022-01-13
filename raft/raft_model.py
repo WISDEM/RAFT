@@ -5,8 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import yaml
-import pickle5 as pickle
-
+try:
+    import pickle5 as pickle
+except:
+    import pickle
 import moorpy as mp
 import raft.raft_fowt  as fowt
 from raft.helpers import *

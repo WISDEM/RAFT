@@ -829,7 +829,8 @@ class Model():
                         mdvol = dvol/len(headings)                          # the volume required per repeated member
                         err = 1e5                                           # initialize the error for the l_fill solver
                         l_fill = l_fills[j]                                 # set the current l_fill value
-                        l = member.stations[j+1]-member.stations[j]         # set the length of the submember with ballast
+                        #l = member.stations[j+1]-member.stations[j]         # set the length of the submember with ballast
+                        l = member.l        # assume that the sub-member fill level (specified in 'l_fills[j]') can reach the entire height of the member
                         if display==1: print(dvol, mdvol, l_fill, l)
                         if member.shape=='circular':
                             dAi = member.d[j] - 2*member.t[j]
@@ -997,5 +998,6 @@ if __name__ == "__main__":
     #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True)
     #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S - Copy.yaml'), ballast=False, plot=True)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
-    model = runRAFT(os.path.join(raft_dir,'raft/raft_design.pkl'), ballast=True)
+    #model = runRAFT(os.path.join(raft_dir,'raft/raft_design.pkl'), ballast=True)
+    model = runRAFT(os.path.join(raft_dir,'raft/raft_design_0.pkl'), ballast=True)
     fowt = model.fowtList[0]

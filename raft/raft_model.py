@@ -5,7 +5,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import yaml
-import pickle5 as pickle
+import pickle as pickle
 
 import moorpy as mp
 import raft.raft_fowt  as fowt
@@ -235,7 +235,8 @@ class Model():
         
             # form dictionary of case parameters
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
-
+            
+            '''
             # get initial FOWT values assuming no offset
             for fowt in self.fowtList:
                 fowt.Xi0 = np.zeros(6)      # zero platform offsets
@@ -251,6 +252,8 @@ class Model():
                 # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
             
             # (could solve mooring and offsets a second time, but likely overkill)
+            '''            
+            self.solveStatics(case)
             
             # solve system dynamics
             self.solveDynamics(case)
@@ -365,7 +368,7 @@ class Model():
         self.J_moor = J_moor        # jacobian of mooring line tensions w.r.t. coupled DOFs
         self.F_moor = F_moor
         self.T_moor = T_moor
-
+        
         # store results
         self.results['means'] = {}   # signal this data is available by adding a section to the results dictionary
         self.results['means']['aero force'  ] = self.fowtList[0].F_aero0
@@ -483,6 +486,26 @@ class Model():
         self.results['eigen']['frequencies'] = fns
         self.results['eigen']['modes'      ] = modes
   
+    
+    def solveStatics(self, case):
+
+        # get initial FOWT values assuming no offset
+        for fowt in self.fowtList:
+            fowt.Xi0 = np.zeros(6)      # zero platform offsets
+            fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
+            fowt.calcHydroConstants(case)
+        
+        # calculate platform offsets and mooring system equilibrium state
+        self.calcMooringAndOffsets()
+        
+        # update values based on offsets if applicable
+        for fowt in self.fowtList:
+            fowt.calcTurbineConstants(case, ptfm_pitch=fowt.Xi0[4])
+            # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
+        
+        # (could solve mooring and offsets a second time, but likely overkill)
+        # self.calcMooringAndOffsets()
+  
 
     def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
@@ -510,6 +533,7 @@ class Model():
         # TEMPORARY <<<<
         #fowt.B_aero[0,4,:] = 0.0
         #fowt.B_aero[4,0,:] = 0.0
+        fowt.F_aero = fowt.F_aero*0 # <<<< a separate solve needs to be added for wind-driven response <<<< 
 
         # sum up all linear (non-varying) matrices up front
         M_lin = fowt.A_aero + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass

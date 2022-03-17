@@ -59,6 +59,11 @@ class Rotor:
 
         self.aeroServoMod = getFromDict(turbine, 'aeroServoMod', default=1)  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
         
+		# Add parked pitch, rotor speed, assuming fully shut down by 40% above cut-out
+        self.Uhub = np.r_[self.Uhub, self.Uhub.max()*1.4, 100]
+        self.Omega_rpm = np.r_[self.Omega_rpm, 0, 0]
+        self.pitch_deg = np.r_[self.pitch_deg, 90, 90]
+		
         # Set default control gains
         self.kp_0 = np.zeros_like(self.Uhub)
         self.ki_0 = np.zeros_like(self.Uhub)       
@@ -310,7 +315,7 @@ class Rotor:
         Use flipped sign version of ROSCO
         '''
 
-        # Convert gain-scheduling wrt pitch to wind speed
+        # Convert gain-scheduling wrt pitch to wind speed, Add zero gains for parked "control"
         pc_angles = np.array(turbine['pitch_control']['GS_Angles']) * rad2deg
         self.kp_0 = np.interp(self.pitch_deg,pc_angles,turbine['pitch_control']['GS_Kp'],left=0,right=0)
         self.ki_0 = np.interp(self.pitch_deg,pc_angles,turbine['pitch_control']['GS_Ki'],left=0,right=0)
@@ -531,7 +536,7 @@ class Rotor:
                     break
             
             if not Class:
-                raise Exception("Turbulence class must start with I, II, III, or IV, while you wrote " + case['turbulence'])
+                raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {case['turbulence']}")
             else:
                 Categ = char
                 iec_wind.Turbulence_Class = Categ
@@ -539,7 +544,7 @@ class Rotor:
             try:
                 TurbMod = case['turbulence'].split('_')[1]
             except:
-                raise Exception("Error reading the turbulence model. You wrote " + case['turbulence'])
+                raise Exception(f"Error reading the turbulence model: {case['turbulence']}")
 
             iec_wind.Turbine_Class = Class
         
@@ -559,7 +564,7 @@ class Rotor:
         elif TurbMod == 'ETM':
             sigma_1 = iec_wind.ETM(V_ref)
         elif TurbMod == 'EWM':
-            sigma_1 = iec_wind.EWM(V_ref)
+            sigma_1 = iec_wind.EWM(V_ref)[0]
         else:
             raise Exception("Wind model must be either NTM, ETM, or EWM. While you wrote " + TurbMod)
 

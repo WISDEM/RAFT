@@ -5,8 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import yaml
-import pickle5 as pickle
 
+try:
+    import pickle5 as pickle
+except:
+    import pickle
+    
 import moorpy as mp
 import raft.raft_fowt  as fowt
 from raft.helpers import *
@@ -377,7 +381,13 @@ class Model():
         self.results['means']['platform offset'  ] = r6eq
         self.results['means']['mooring force'    ] = F_moor
         self.results['means']['fairlead tensions'] = np.array([np.linalg.norm(self.ms.pointList[id-1].getForces()) for id in self.ms.bodyList[0].attachedP])
-        
+        # tower base bending moment
+        m_turbine   = self.fowtList[0].mtower + self.fowtList[0].mRNA               # turbine total mass
+        zCG_turbine = (self.fowtList[0].rCG_tow[2]*self.fowtList[0].mtower 
+                       + self.fowtList[0].hHub*self.fowtList[0].mRNA)/m_turbine     # turbine center of gravity
+        zBase = self.fowtList[0].memberList[-1].rA[2]                               # tower base elevation [m]
+        hArm = zCG_turbine - zBase                                                  # vertical distance from tower base to turbine CG [m]
+        self.results['means']['Mbase'] = m_turbine*self.fowtList[0].g * hArm*np.sin(r6eq[4]) + transformForce(self.fowtList[0].F_aero0, offset=[0,0,-hArm])[4] # mean moment from weight and thrust
     
     
 

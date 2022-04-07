@@ -788,6 +788,51 @@ class Model():
         #if nCases > 1:
         ax[-1].legend()
         fig.suptitle('RAFT power spectral densities')
+
+    def plotResponses_extended(self):
+        '''Plots more power spectral densities of the available response channels for each case.'''
+
+        fig, ax = plt.subplots(9, 1, sharex=True)
+
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+
+        for iCase in range(nCases):
+            ax[0].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
+            ax[1].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
+            ax[2].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
+            ax[3].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :])  # pitch [deg]
+            ax[4].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :])  # pitch [deg]
+            ax[5].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :])  # pitch [deg]
+            ax[6].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
+            ax[7].plot(self.w / TwoPi,
+                       TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
+            ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD'][iCase, :],
+                       label=f'case {iCase + 1}')  # wave spectrum
+
+            # need a variable number of subplots for the mooring lines
+            # ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
+
+        ax[0].set_ylabel('surge \n' + r'(m$^2$/Hz)')
+        ax[1].set_ylabel('sway \n' + r'(m$^2$/Hz)')
+        ax[2].set_ylabel('heave \n' + r'(m$^2$/Hz)')
+        ax[3].set_ylabel('pitch \n' + r'(deg$^2$/Hz)')
+        ax[4].set_ylabel('roll \n' + r'(deg$^2$/Hz)')
+        ax[5].set_ylabel('yaw \n' + r'(deg$^2$/Hz)')
+        ax[6].set_ylabel('nac. acc. \n' + r'((m/s$^2$)$^2$/Hz)')
+        ax[7].set_ylabel('twr. bend \n' + r'((Nm)$^2$/Hz)')
+        ax[8].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
+
+        # ax[0].set_ylim([0.0, 25])
+        # ax[1].set_ylim([0.0, 15])
+        # ax[2].set_ylim([0.0, 4])
+        # ax[-1].set_xlim([0.03, 0.15])
+        ax[-1].set_xlabel('frequency (Hz)')
+
+        # if nCases > 1:
+        ax[-1].legend()
+        fig.suptitle('RAFT power spectral densities')
+
         
         
 

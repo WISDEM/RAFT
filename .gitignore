@@ -13,4 +13,9 @@ raft/data/cylinder/Output/Hydrostar_format/
 
 .vscode/
 
-.rao
+# BEM meshing processes generated data
+raft/BEM/
+raft/HullMesh.pnl
+raft/platform.gdf
+tests/BEM/
+tests/platform.gdf

@@ -1072,7 +1072,8 @@ fowts:
           
           - name: main
             turbine: main     # the name of the turbine in the "turbines" list that this tower supports
-          
+            type:  1      # 1 to signify that this member is a tower (2 for if it's part of the platform/substructure)
+
             dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
 
             name      :  tower                     # [-]    an identifier (no longer has to be number)       

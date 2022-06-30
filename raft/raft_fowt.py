@@ -315,7 +315,7 @@ class FOWT():
 
 
 
-    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0):
+    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, meshDir=os.path.join(os.getcwd(),'BEM')):
         '''This generates a mesh for the platform and runs a BEM analysis on it
         using pyHAMS. It can also write adjusted .1 and .3 output files suitable
         for use with OpenFAST.
@@ -359,8 +359,6 @@ class FOWT():
 
         # only try to save a mesh and run HAMS if some members DO have potMod=True
         if len(panels) > 0:
-
-            meshDir = os.path.join(os.getcwd(), 'BEM')
             
             pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
             
@@ -767,6 +765,7 @@ class FOWT():
         # fill in metrics
         results['Mbase_avg'][iCase] = m_turbine*self.g * hArm*np.sin(Xi0[4]) + transformForce(self.F_aero0, offset=[0,0,-hArm])[4] # mean moment from weight and thrust
         results['Mbase_std'][iCase] = dynamic_moment_RMS
+        results['Mbase_max'][iCase] = results['Mbase_avg'][iCase] + 3 * results['Mbase_std'][iCase]
         results['Mbase_PSD'][iCase,:] = getPSD(dynamic_moment)
         #results['Mbase_max'][iCase]
         #results['Mbase_DEL'][iCase]

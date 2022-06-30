@@ -106,7 +106,7 @@ class Model():
     """
 
 
-    def analyzeUnloaded(self, ballast=False, heave_tol = 1):
+    def analyzeUnloaded(self, ballast=0, heave_tol = 1):
         '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.
         
         ballast: flag to ballast the FOWTs to achieve a certain heave offset'''
@@ -146,7 +146,7 @@ class Model():
         # TODO: add printing of summary info here - mass, stiffnesses, etc
 
     
-    def analyzeCases(self, display=0):
+    def analyzeCases(self, display=0, runPyHAMS=True, meshDir=os.path.join(os.getcwd(),'BEM')):
         '''This runs through all the specified load cases, building a dictionary of results.'''
         
         nCases = len(self.design['cases']['data'])
@@ -231,7 +231,9 @@ class Model():
         # calculate the system's constant properties
         for fowt in self.fowtList:
             fowt.calcStatics()
-            fowt.calcBEM()
+
+        if runPyHAMS:
+            fowt.calcBEM(meshDir=meshDir)
             
         # loop through each case
         for iCase in range(nCases):
@@ -990,7 +992,7 @@ class Model():
                 if member.rho_fill == 0.0:
                     member.l_fill = 0.0
             else:
-                for i in len(member.l_fill):
+                for i in range(len(member.l_fill)):
                     if member.rho_fill[i] == 0.0:
                         member.l_fill[i] = 0.0
         
@@ -1020,7 +1022,7 @@ class Model():
                 if member.l_fill > 0.0:
                     member.rho_fill += delta_rho_fill
             else:
-                for i in len(member.l_fill):
+                for i in range(len(member.l_fill)):
                     if member.l_fill[i] > 0.0:
                         member.rho_fill[i] += delta_rho_fill
         

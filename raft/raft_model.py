@@ -5,8 +5,12 @@ import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib import cm
 import yaml
-import pickle as pickle
 
+try:
+    import pickle5 as pickle
+except:
+    import pickle
+    
 import moorpy as mp
 import raft.raft_fowt  as fowt
 from raft.helpers import *
@@ -379,7 +383,13 @@ class Model():
         self.results['means']['platform offset'  ] = r6eq
         self.results['means']['mooring force'    ] = F_moor
         self.results['means']['fairlead tensions'] = np.array([np.linalg.norm(self.ms.pointList[id-1].getForces()) for id in self.ms.bodyList[0].attachedP])
-        
+        # tower base bending moment
+        m_turbine   = self.fowtList[0].mtower + self.fowtList[0].mRNA               # turbine total mass
+        zCG_turbine = (self.fowtList[0].rCG_tow[2]*self.fowtList[0].mtower 
+                       + self.fowtList[0].hHub*self.fowtList[0].mRNA)/m_turbine     # turbine center of gravity
+        zBase = self.fowtList[0].memberList[-1].rA[2]                               # tower base elevation [m]
+        hArm = zCG_turbine - zBase                                                  # vertical distance from tower base to turbine CG [m]
+        self.results['means']['Mbase'] = m_turbine*self.fowtList[0].g * hArm*np.sin(r6eq[4]) + transformForce(self.fowtList[0].F_aero0, offset=[0,0,-hArm])[4] # mean moment from weight and thrust
     
     
 
@@ -780,7 +790,7 @@ class Model():
         self.fowtList[0].calcBEM(dw=dw, wMax=wMax, dz=dz, da=da)
 
 
-    def plot(self, ax=None, hideGrid=False, color='k', nodes=0):
+    def plot(self, ax=None, hideGrid=False, draw_body=True, color='k', nodes=0, xbounds=[-500,500], ybounds=[-500,500], zbounds=[-200,200], plot_rotor=True, station_plot=[]):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -792,14 +802,14 @@ class Model():
 
        # if axes not passed in, make a new figure
         if ax == None:    
-            fig, ax = self.ms.plot(color=color, xbounds=[-500,500], ybounds=[-500,500], zbounds=[-200,200])
+            fig, ax = self.ms.plot(color=color, draw_body=draw_body, xbounds=xbounds, ybounds=ybounds, zbounds=zbounds)
         else:
             fig = ax.get_figure()
-            self.ms.plot(ax=ax, color=color)
+            self.ms.plot(ax=ax, color=color, draw_body=draw_body, xbounds=xbounds, ybounds=ybounds, zbounds=zbounds)
 
         # plot each FOWT
         for fowt in self.fowtList:
-            fowt.plot(ax, color=color, nodes=nodes)
+            fowt.plot(ax, color=color, nodes=nodes, plot_rotor=plot_rotor, station_plot=station_plot)
             
         if hideGrid:       
             ax.set_xticks([])    # Hide axes ticks
@@ -1039,7 +1049,7 @@ class Model():
         with open(old_wisdem_file, "r", encoding="utf-8") as f:
             wisdem_design = reader.load(f)
         
-        fowt = model.fowtList[0]
+        fowt = self.fowtList[0]
         membersRAFT = fowt.memberList       # list of members in the RAFT model
         membersWISDEM = wisdem_design['components']['floating_platform']['members']     # list of members in the WISDEM model
         
@@ -1079,7 +1089,7 @@ class Model():
 
 
 
-def runRAFT(input_file, turbine_file="", plot=0, ballast=False):
+def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[]):
     '''
     This will set up and run RAFT based on a YAML input file.
     '''
@@ -1117,7 +1127,7 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False):
     model.analyzeCases()
     
     if plot:
-        model.plot()
+        model.plot(station_plot=station_plot)
         
         #model.plotResponses()
     
@@ -1138,7 +1148,13 @@ if __name__ == "__main__":
     #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S - Copy.yaml'), ballast=2)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
     #model = runRAFT(os.path.join(raft_dir,'raft/raft_design.pkl'), ballast=True)
-    #model = runRAFT(os.path.join(raft_dir,'raft/raft_design_0.pkl'), ballast=True)
-    model = runRAFT(os.path.join(raft_dir,'raft/raft_design_opt_22.pkl'), ballast=True, plot=0)
-    fowt = model.fowtList[0]
-    model.adjustWISDEM('opt_22.yaml', 'opt_22a.yaml')
+    #fowt = model.fowtList[0]
+
+    model1 = runRAFT(os.path.join(raft_dir,'raft/raft_design_0.pkl'), ballast=True, plot=1)
+    #model2 = runRAFT(os.path.join(raft_dir,'raft/raft_design_opt_22.pkl'), ballast=True, plot=1)
+    
+    #model.adjustWISDEM('opt_22.yaml', 'opt_22a.yaml')
+    #fig, ax = model1.plot(zbounds=[-100,200], hideGrid=True, draw_body=False)
+    #model2.plot(ax=ax, color='r', zbounds=[-100,200], draw_body=False)
+    
+    

@@ -444,7 +444,7 @@ class FOWT():
         # only compute the aerodynamics if enabled and windspeed is nonzero
         if self.aeroServoMod > 0 and case['wind_speed'] > 0.0:
         
-            F_aero0, f_aero, a_aero, b_aero = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch)  # get values about hub
+            F_aero0, f_aero, a_aero, b_aero = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, display=2)  # get values about hub
             
             # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
             rHub = np.array([0, 0, self.hHub])
@@ -893,17 +893,18 @@ class FOWT():
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
 
-    def plot(self, ax, color='k', nodes=0):
+    def plot(self, ax, color='k', nodes=0, plot_rotor=True, station_plot=[]):
         '''plots the FOWT...'''
 
-        self.rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
+        if plot_rotor:
+            self.rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
 
         # loop through each member and plot it
         for mem in self.memberList:
 
             mem.calcOrientation()  # temporary
 
-            mem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, nodes=nodes)
+            mem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, nodes=nodes, station_plot=station_plot)
 
         # in future should consider ability to animate mode shapes and also to animate response at each frequency
         # including hydro excitation vectors stored in each member

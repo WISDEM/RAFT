@@ -33,7 +33,7 @@ class Model():
             could in future be used to set up any number of identical turbines
         '''
 
-        self.fowtList = []
+        self.fowtList = []      # assume only 1 FOWT per model - so len(this list) = 1
         self.coords = []
 
         self.nDOF = 0  # number of DOFs in system
@@ -65,10 +65,7 @@ class Model():
             self.k[i] = waveNumber(self.w[i], self.depth)
         
         # set up the FOWT here  <<< only set for 1 FOWT for now <<<
-        if len(self.ms.bodyList) != len(design['fowts']):
-            raise ValueError('The number of bodies specified in the mooring system is not equal to the number of FOWTs')
-        for floater in design['fowts']:
-            self.fowtList.append(fowt.FOWT(floater, self.w, self.ms.bodyList[0], depth=self.depth, site=design['site']))
+        self.fowtList.append(fowt.FOWT(design, self.w, self.ms.bodyList[0], depth=self.depth))
         self.coords.append([0.0,0.0])
         self.nDOF += 6
 
@@ -198,7 +195,7 @@ class Model():
         self.results['case_metrics']['AxRNA_PSD'] = np.zeros([nCases,self.nw, nrotors])    # = np.zeros([nCases,self.nw])
         # tower base bending moment
         self.results['case_metrics']['Mbase_avg'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases) 
-        self.results['case_metrics']['Mbase_std'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases)
+        self.results['case_metrics']['Mbase_std'] = np.zeros([nCases,self.nw, nrotors])    # = np.zeros(nCases)
         self.results['case_metrics']['Mbase_max'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases)
         self.results['case_metrics']['Mbase_PSD'] = np.zeros([nCases,self.nw, nrotors])    # = np.zeros([nCases,self.nw])
         self.results['case_metrics']['Mbase_DEL'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases)       
@@ -1171,6 +1168,6 @@ if __name__ == "__main__":
     #fig, ax = model1.plot(zbounds=[-100,200], hideGrid=True, draw_body=False)
     #model2.plot(ax=ax, color='r', zbounds=[-100,200], draw_body=False)
 
-    model = runRAFT(os.path.join(raft_dir,'designs/test.yaml'))
+    model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'))
     
     

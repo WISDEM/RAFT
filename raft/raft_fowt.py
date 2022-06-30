@@ -18,7 +18,7 @@ from raft.raft_rotor import Rotor
 class FOWT():
     '''This class comprises the frequency domain model of a single floating wind turbine'''
 
-    def __init__(self, design, w, mpb, depth=600, site={}):
+    def __init__(self, design, w, mpb, depth=600):
         '''This initializes the FOWT object which contains everything for a single turbine's frequency-domain dynamics.
         The initializiation sets up the design description.
 
@@ -39,9 +39,9 @@ class FOWT():
         self.Xi0 = np.zeros(6)    # mean offsets of platform, initialized at zero  [m, rad]
         
         # collect numbers of rotors, towers, members, etc.
-        self.ntowers = len(design['towers'])
-        self.nrotors = len(design['turbines'])
-        if self.ntowers != self.nrotors: raise ValueError('One tower is needed per rotor')
+        self.nrotors = getFromDict(design['turbine'], 'nrotors', dtype=int, shape=0, default=1)
+        self.ntowers = len(design['tower'])
+        #if self.ntowers != self.nrotors: raise ValueError('One tower is needed per rotor')
         self.nplatmems = 0
         for platmem in design['platform']['members']:
             if 'heading' in platmem:
@@ -51,7 +51,7 @@ class FOWT():
 
 
         self.rotorList = []
-        self.mRNA = np.zeros(self.nrotors); self.IxRNA = np.zeros(self.nrotors); self.IrRNA = np.zeros(self.nrotors); self.xCG_RNA = np.zeros(self.nrotors); self.hHub = np.zeros(self.nrotors)
+        self.rotorCoords = []
 
         self.depth = depth
 
@@ -61,10 +61,13 @@ class FOWT():
         
         self.k = np.array([waveNumber(w, self.depth) for w in self.w])  # wave number [m/rad]
 
-        self.rho_water = getFromDict(site, 'rho_water', default=1025.0)
-        self.g         = getFromDict(site, 'g'        , default=9.81)
-         
-             
+        self.rho_water = getFromDict(design['site'], 'rho_water', default=1025.0)
+        self.g         = getFromDict(design['site'], 'g'        , default=9.81)
+        
+        # <<<<<<<<<<< do we need this? Should it be something like self.dlsMax?
+        #design['turbine']['tower']['dlsMax'] = getFromDict(design['turbine']['tower'], 'dlsMax', shape=-1, default=5.0)
+        # >>>>>>>>>>>>>>>>>>>>>>>>>>
+
         potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
         dlsMax       = getFromDict(design['platform'], 'dlsMax'      , default=5.0)
         min_freq_BEM = getFromDict(design['platform'], 'min_freq_BEM', default=self.dw/2/np.pi)
@@ -73,9 +76,7 @@ class FOWT():
         self.da_BEM  = getFromDict(design['platform'], 'da_BEM', default=2.0)
         
 
-        #design['towers']['dlsMax'] = getFromDict(design['towers'][0], 'dlsMax', default=5.0)
-        self.aeroServoMod = [turbine['aeroServoMod'] for turbine in design['turbines']]
-        #self.aeroServoMod = getFromDict(design['turbine'], 'aeroServoMod', default=1)  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
+        #self.aeroServoMod = np.atleast_1d(getFromDict(design['turbine'], 'aeroServoMod', default=1))  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
         
         
         # member-based platform description
@@ -101,8 +102,8 @@ class FOWT():
                     self.memberList.append(Member(mi, self.nw))
                 mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
 
-        for ti in design['towers']:
-            self.memberList.append(Member(ti, self.nw))
+        for t,tower in enumerate(design['tower']):
+            self.memberList.append(Member(design['tower'][t], self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
 
         # mooring system connection
@@ -114,28 +115,21 @@ class FOWT():
             self.yawstiff = 0
 
         # Turbine rotor
-        for r in range(len(design['turbines'])):
-            design['turbines'][r]['rho_air'] = site['rho_air']
-            design['turbines'][r]['mu_air'  ] = site['mu_air']
-            design['turbines'][r]['shearExp'] = site['shearExp']
+        design['turbine']['rho_air' ] = design['site']['rho_air']
+        design['turbine']['mu_air'  ] = design['site']['mu_air']
+        design['turbine']['shearExp'] = design['site']['shearExp']
         
-        for t, turbine in enumerate(design['turbines']):
-            self.rotorList.append(Rotor(turbine, self.w))
-
-            # turbine RNA description
-            self.mRNA[t] = turbine['mRNA']
-            self.IxRNA[t] = turbine['IxRNA']
-            self.IrRNA[t] = turbine['IrRNA']
-            self.xCG_RNA[t] = turbine['xCG_RNA']
-            self.hHub[t] = turbine['hHub']
-        '''
+        for ir in range(self.nrotors):
+            self.rotorList.append(Rotor(design['turbine'], self.w, ir))
+            #self.rotorCoords.append(design['turbine']['rotorCoords'])
+        
         # turbine RNA description
-        self.mRNA    = design['turbine']['mRNA']
-        self.IxRNA   = design['turbine']['IxRNA']
-        self.IrRNA   = design['turbine']['IrRNA']
-        self.xCG_RNA = design['turbine']['xCG_RNA']
-        self.hHub    = design['turbine']['hHub']
-        '''
+        self.mRNA    = getFromDict(design['turbine'], 'mRNA', shape=self.nrotors)
+        self.IxRNA   = getFromDict(design['turbine'], 'IxRNA', shape=self.nrotors)
+        self.IrRNA   = getFromDict(design['turbine'], 'IrRNA', shape=self.nrotors)
+        self.xCG_RNA = getFromDict(design['turbine'], 'xCG_RNA', shape=self.nrotors)
+        self.hHub    = getFromDict(design['turbine'], 'hHub', shape=self.nrotors)
+        
         # initialize mean force arrays to zero, so the model can work before we calculate excitation
         self.F_aero0 = np.zeros([6, self.nrotors])
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
@@ -259,6 +253,7 @@ class FOWT():
 
         # below are temporary placeholders
         # for now, turbine RNA is specified by some simple lumped properties
+        
         for i in range(self.nrotors):
             Mmat = np.diag([self.mRNA[i], self.mRNA[i], self.mRNA[i], self.IxRNA[i], self.IrRNA[i], self.IrRNA[i]])            # create mass/inertia matrix
             center = np.array([self.xCG_RNA[i], 0, self.hHub[i]])                                 # RNA center of mass location
@@ -267,11 +262,30 @@ class FOWT():
             self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA[i]]), center )   # weight vector
             self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
             Sum_M_center += center*self.mRNA[i]
+        '''
+        if self.nrotors==1:
+            Mmat = np.diag([self.mRNA, self.mRNA, self.mRNA, self.IxRNA, self.IrRNA, self.IrRNA])            # create mass/inertia matrix
+            center = np.array([self.xCG_RNA, 0, self.hHub])                                 # RNA center of mass location
 
+            # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+            self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA]), center )   # weight vector
+            self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
+            Sum_M_center += center*self.mRNA
+        else:
+            for i in range(self.nrotors):
+                Mmat = np.diag([self.mRNA[i], self.mRNA[i], self.mRNA[i], self.IxRNA[i], self.IrRNA[i], self.IrRNA[i]])            # create mass/inertia matrix
+                center = np.array([self.xCG_RNA[i], 0, self.hHub[i]])                                 # RNA center of mass location
+
+                # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
+                self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA[i]]), center )   # weight vector
+                self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
+                Sum_M_center += center*self.mRNA[i]
+        '''
 
         # ----------- process inertia-related totals ----------------
 
         mTOT = self.M_struc[0,0]                        # total mass of all the members
+        self.mTOT = mTOT
         rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
         self.rCG_TOT = rCG_TOT
 
@@ -472,12 +486,12 @@ class FOWT():
         
         for t in range(self.nrotors):
             # only compute the aerodynamics if enabled and windspeed is nonzero
-            if self.aeroServoMod[t] > 0 and case['wind_speed'] > 0.0:
+            if self.rotorList[t].aeroServoMod > 0 and case['wind_speed'] > 0.0:
             
                 F_aero0, f_aero, a_aero, b_aero = self.rotorList[t].calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, display=2)  # get values about hub
                 
                 # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
-                rHub = np.array([0, 0, self.hHub[t]])
+                rHub = np.array([self.rotorList[t].coords[0], self.rotorList[t].coords[1], self.hHub[t]])
                 #rotMatHub = rotationMatrix(0, 0.01, 0)
                 
                 # convert coefficients to platform reference frame
@@ -813,8 +827,8 @@ class FOWT():
             dynamic_moment_RMS[:,i] = getRMS(dynamic_moment[:,i], self.dw)
             # fill in metrics
             results['Mbase_avg'][iCase,i] = m_turbine[i]*self.g * hArm[i]*np.sin(Xi0[4]) + transformForce(self.F_aero0[:,i], offset=[0,0,-hArm[i]])[4] # mean moment from weight and thrust
-            results['Mbase_std'][iCase,i] = dynamic_moment_RMS[i]
-            results['Mbase_PSD'][iCase,:,i] = getPSD(dynamic_moment[i])
+            results['Mbase_std'][iCase,:,i] = dynamic_moment_RMS[:,i]
+            results['Mbase_PSD'][iCase,:,i] = getPSD(dynamic_moment[:,i])
             #results['Mbase_max'][iCase]
             #results['Mbase_DEL'][iCase]
         
@@ -848,7 +862,7 @@ class FOWT():
 
         for t in range(self.nrotors):
             # rotor-related outputs are only available if aerodynamics modeling is enabled
-            if self.aeroServoMod[t] > 1 and case['wind_speed'] > 0.0:
+            if self.rotorList[t].aeroServoMod > 1 and case['wind_speed'] > 0.0:
                 # rotor speed (rpm)
                 # spectra
                 phi_w[t]   = self.rotorList[t].C * (XiHub[:,t] - self.rotorList[t].V_w / (1j *self.w))

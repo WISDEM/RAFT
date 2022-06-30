@@ -24,16 +24,14 @@ cases:
 
 turbine    :
 
-    nrotors       :          1        #  [-] number of turbines in the FOWT
-    rotorCoords   :   [[0,0],[50,0]]     # x-y coordinates of rotor in space
+    nrotors       :          2        #  [-] number of turbines in the FOWT
+    rotorCoords   :   [[0,0],[0,50]]     # x-y coordinates of rotor in space
 
     mRNA          :     991000        #  [kg]       RNA mass 
     IxRNA         :          0        #  [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
     IrRNA         :          0        #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
     xCG_RNA       :          0        #  [m]        x location of RNA center of mass [m] (Actual is ~= -0.27 m)
-    hHub          :        150.0      #  [m]        hub height above water line [m]
-    hHub          :        [150.0, 120.0, 100.0]      #  [m]        hub height above water line [m]
-
+    hHub          :   [150.0, 100.0]      #  [m]        hub height above water line [m]
     Fthrust       :       1500.0E3    #  [N]        temporary thrust force to use
     
     I_drivetrain: 318628138.0   # full rotor + drivetrain inertia as felt on the high-speed shaft
@@ -47,55 +45,7 @@ turbine    :
     aeroServoMod : 1          # 0 aerodynamics off; 1 aerodynamics on (no control); 2 aerodynamics and control on
 
     blade: 
-      - precurveTip : -3.9999999999999964  # 
-        presweepTip : 0.0  # 
-        Rtip        : 120.96999999936446         # rotor radius
-
-        geometry: #  r     chord    theta  precurve  presweep
-          #         (m)     (m)     (deg)     (m)      (m)
-          - [     8.004,   5.228,  15.474,   0.035,   0.000 ]
-          - [    12.039,   5.321,  14.692,   0.084,   0.000 ]
-          - [    16.073,   5.458,  13.330,   0.139,   0.000 ]
-          - [    20.108,   5.602,  11.644,   0.192,   0.000 ]
-          - [    24.142,   5.718,   9.927,   0.232,   0.000 ]
-          - [    28.177,   5.767,   8.438,   0.250,   0.000 ]
-          - [    32.211,   5.713,   7.301,   0.250,   0.000 ]
-          - [    36.246,   5.536,   6.232,   0.246,   0.000 ]
-          - [    40.280,   5.291,   5.230,   0.240,   0.000 ]
-          - [    44.315,   5.035,   4.348,   0.233,   0.000 ]
-          - [    48.349,   4.815,   3.606,   0.218,   0.000 ]
-          - [    52.384,   4.623,   2.978,   0.178,   0.000 ]
-          - [    56.418,   4.432,   2.423,   0.100,   0.000 ]
-          - [    60.453,   4.245,   1.924,   0.000,   0.000 ]
-          - [    64.487,   4.065,   1.467,  -0.112,   0.000 ]
-          - [    68.522,   3.896,   1.056,  -0.244,   0.000 ]
-          - [    72.556,   3.735,   0.692,  -0.415,   0.000 ]
-          - [    76.591,   3.579,   0.355,  -0.620,   0.000 ]
-          - [    80.625,   3.425,   0.019,  -0.846,   0.000 ]
-          - [    84.660,   3.268,  -0.358,  -1.080,   0.000 ]
-          - [    88.694,   3.112,  -0.834,  -1.330,   0.000 ]
-          - [    92.729,   2.957,  -1.374,  -1.602,   0.000 ]
-          - [    96.763,   2.800,  -1.848,  -1.895,   0.000 ]
-          - [   100.798,   2.637,  -2.136,  -2.202,   0.000 ]
-          - [   104.832,   2.464,  -2.172,  -2.523,   0.000 ]
-          - [   108.867,   2.283,  -2.108,  -2.864,   0.000 ]
-          - [   112.901,   2.096,  -1.953,  -3.224,   0.000 ]
-          - [   116.936,   1.902,  -1.662,  -3.605,   0.000 ]
-
-        airfoils: # location   name 
-          #         (0-1)     (string)     name must match name in airfoils list
-          - [     0.00000, circular                       ]
-          - [     0.02000, circular                       ]
-          - [     0.15000, SNL-FFA-W3-500                 ]
-          - [     0.24517, FFA-W3-360                     ]
-          - [     0.32884, FFA-W3-330blend                ]
-          - [     0.43918, FFA-W3-301                     ]
-          - [     0.53767, FFA-W3-270blend                ]
-          - [     0.63821, FFA-W3-241                     ]
-          - [     0.77174, FFA-W3-211                     ]
-          - [     1.00000, FFA-W3-211                     ]
-
-      - precurveTip : -3.9999999999999964  # 
+        precurveTip : -3.9999999999999964  # 
         presweepTip : 0.0  # 
         Rtip        : 120.96999999936446         # rotor radius
 
@@ -1125,6 +1075,29 @@ tower:  # (could remove some entries that don't apply for the tower)
       type      :  1                         # [-]    
       rA        :  [ 0, 0,  15]              # [m]    end A coordinates
       rB        :  [ 0, 0, 144.582]          # [m]    and B coordinates
+      shape     :  circ                      # [-]    circular or rectangular
+      gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
+      
+      # --- outer shell including hydro---
+      stations  :  [ 15,  28,  28.001,  41,  41.001,  54,  54.001,  67,  67.001,  80,  80.001,  93,  93.001,  106,  106.001,  119,  119.001,  132,  132.001,  144.582 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+      d         :  [ 10,  9.964,  9.964,  9.967,  9.967,  9.927,  9.927,  9.528,  9.528,  9.149,  9.149,  8.945,  8.945,  8.735,  8.735,  8.405,  8.405,  7.321,  7.321,  6.5 ]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+      t         :  [ 0.082954,  0.082954,  0.083073,  0.083073,  0.082799,  0.082799,  0.0299,  0.0299,  0.027842,  0.027842,  0.025567,  0.025567,  0.022854,  0.022854,  0.02025,  0.02025,  0.018339,  0.018339,  0.021211,  0.021211 ]                     # [m]    wall thicknesses (scalar or list of same length as stations)
+      Cd        :  0.0                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+      Ca        :  0.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+      # (neglecting axial coefficients for now)
+      CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+      CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+      rho_shell :  7850                      # [kg/m3]   material density
+
+    - name: main2
+      type:  1      # 1 to signify that this member is a tower (2 for if it's part of the platform/substructure)
+
+      dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
+
+      name      :  tower                     # [-]    an identifier (no longer has to be number)       
+      type      :  1                         # [-]    
+      rA        :  [ 0, 50,  15]              # [m]    end A coordinates
+      rB        :  [ 0, 50, 144.582]          # [m]    and B coordinates
       shape     :  circ                      # [-]    circular or rectangular
       gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
       

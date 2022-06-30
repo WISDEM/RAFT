@@ -1138,7 +1138,7 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     model.analyzeCases()
     
     if plot:
-        model.plot(station_plot=station_plot)
+        model.plot(station_plot=station_plot, hideGrid=True, draw_body=False)
         
         #model.plotResponses()
     
@@ -1168,6 +1168,6 @@ if __name__ == "__main__":
     #fig, ax = model1.plot(zbounds=[-100,200], hideGrid=True, draw_body=False)
     #model2.plot(ax=ax, color='r', zbounds=[-100,200], draw_body=False)
 
-    model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'))
+    model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
     
     

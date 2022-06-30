@@ -40,7 +40,12 @@ class FOWT():
         
         # collect numbers of rotors, towers, members, etc.
         self.nrotors = getFromDict(design['turbine'], 'nrotors', dtype=int, shape=0, default=1)
-        self.ntowers = len(design['tower'])
+        if self.nrotors==1: design['turbine']['nrotors'] = 1
+        
+        if isinstance(design['turbine']['tower'], dict):          # if we use the entire blade dict list approach
+            design['turbine']['tower'] = [design['turbine']['tower']]*self.nrotors
+        
+        self.ntowers = len(design['turbine']['tower'])
         #if self.ntowers != self.nrotors: raise ValueError('One tower is needed per rotor')
         self.nplatmems = 0
         for platmem in design['platform']['members']:
@@ -102,8 +107,8 @@ class FOWT():
                     self.memberList.append(Member(mi, self.nw))
                 mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
 
-        for t,tower in enumerate(design['tower']):
-            self.memberList.append(Member(design['tower'][t], self.nw))
+        for t,tower in enumerate(design['turbine']['tower']):
+            self.memberList.append(Member(design['turbine']['tower'][t], self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
 
         # mooring system connection
@@ -855,18 +860,18 @@ class FOWT():
         print(endnow)
         '''
 
-        phi_w = np.zeros(self.nrotors)
-        omega_w = np.zeros(self.nrotors)
-        torque_w = np.zeros(self.nrotors)
-        bPitch_w = np.zeros(self.nrotors)
+        phi_w = np.zeros([len(self.w), self.nrotors])
+        omega_w = np.zeros_like(phi_w)
+        torque_w = np.zeros_like(phi_w)
+        bPitch_w = np.zeros_like(phi_w)
 
         for t in range(self.nrotors):
             # rotor-related outputs are only available if aerodynamics modeling is enabled
             if self.rotorList[t].aeroServoMod > 1 and case['wind_speed'] > 0.0:
                 # rotor speed (rpm)
                 # spectra
-                phi_w[t]   = self.rotorList[t].C * (XiHub[:,t] - self.rotorList[t].V_w / (1j *self.w))
-                omega_w[t] =  (1j *self.w) * phi_w[t]
+                phi_w[:,t]   = self.rotorList[t].C * (XiHub[:,t] - self.rotorList[t].V_w / (1j *self.w))
+                omega_w[:,t] =  (1j *self.w) * phi_w[:,t]
 
                 results['omega_avg'][iCase,t]     = self.rotorList[t].Omega_case
                 results['omega_std'][iCase,t]     = radps2rpm(getRMS(omega_w[t], self.dw))
@@ -874,7 +879,7 @@ class FOWT():
                 results['omega_PSD'][iCase,t]     = radps2rpm(1)**2 * getPSD(omega_w[t])
                 
                 # generator torque (Nm)
-                torque_w[t] = (1j * self.w * self.rotorList[t].kp_tau + self.rotorList[t].ki_tau) * phi_w[t]
+                torque_w[:,t] = (1j * self.w * self.rotorList[t].kp_tau + self.rotorList[t].ki_tau) * phi_w[:,t]
 
                 results['torque_avg'][iCase,t]    = self.rotorList[t].aero_torque / self.rotorList[t].Ng        # Nm
                 results['torque_std'][iCase,t]    = getRMS(torque_w[t], self.dw)
@@ -889,7 +894,7 @@ class FOWT():
 
                 
                 # collective blade pitch (deg)
-                bPitch_w[t] = (1j * self.w * self.rotorList[t].kp_beta + self.rotorList[t].ki_beta) * phi_w[t]
+                bPitch_w[:,t] = (1j * self.w * self.rotorList[t].kp_beta + self.rotorList[t].ki_beta) * phi_w[:,t]
 
                 results['bPitch_avg'][iCase,t]    = self.rotorList[t].pitch_case
                 results['bPitch_std'][iCase,t]    = rad2deg(getRMS(bPitch_w[t], self.dw))
@@ -965,7 +970,10 @@ class FOWT():
         '''plots the FOWT...'''
 
         if plot_rotor:
-            self.rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
+            for rotor in self.rotorList:
+                coords = np.array([rotor.coords[0], rotor.coords[1], 0])
+                rotor.plot(ax, r_ptfm=coords, R_ptfm=self.body.R, color=color)
+                #rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
 
         # loop through each member and plot it
         for mem in self.memberList:

@@ -25,15 +25,13 @@ cases:
 turbine    :
 
     nrotors       :          1        #  [-] number of turbines in the FOWT
-    rotorCoords   :   [[0,0],[50,0]]     # x-y coordinates of rotor in space
+    rotorCoords   :   [[0,0]]     # x-y coordinates of rotor in space
 
     mRNA          :     991000        #  [kg]       RNA mass 
     IxRNA         :          0        #  [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
     IrRNA         :          0        #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
     xCG_RNA       :          0        #  [m]        x location of RNA center of mass [m] (Actual is ~= -0.27 m)
     hHub          :        150.0      #  [m]        hub height above water line [m]
-    hHub          :        [150.0, 120.0, 100.0]      #  [m]        hub height above water line [m]
-
     Fthrust       :       1500.0E3    #  [N]        temporary thrust force to use
     
     I_drivetrain: 318628138.0   # full rotor + drivetrain inertia as felt on the high-speed shaft
@@ -1114,31 +1112,31 @@ turbine    :
         VS_KI: -4588245.18720
         
   
-tower:  # (could remove some entries that don't apply for the tower)
-    
-    - name: main
-      type:  1      # 1 to signify that this member is a tower (2 for if it's part of the platform/substructure)
+    tower:  # (could remove some entries that don't apply for the tower)
+        
+      - name: main
+        type:  1      # 1 to signify that this member is a tower (2 for if it's part of the platform/substructure)
 
-      dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
+        dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
 
-      name      :  tower                     # [-]    an identifier (no longer has to be number)       
-      type      :  1                         # [-]    
-      rA        :  [ 0, 0,  15]              # [m]    end A coordinates
-      rB        :  [ 0, 0, 144.582]          # [m]    and B coordinates
-      shape     :  circ                      # [-]    circular or rectangular
-      gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
-      
-      # --- outer shell including hydro---
-      stations  :  [ 15,  28,  28.001,  41,  41.001,  54,  54.001,  67,  67.001,  80,  80.001,  93,  93.001,  106,  106.001,  119,  119.001,  132,  132.001,  144.582 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-      d         :  [ 10,  9.964,  9.964,  9.967,  9.967,  9.927,  9.927,  9.528,  9.528,  9.149,  9.149,  8.945,  8.945,  8.735,  8.735,  8.405,  8.405,  7.321,  7.321,  6.5 ]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-      t         :  [ 0.082954,  0.082954,  0.083073,  0.083073,  0.082799,  0.082799,  0.0299,  0.0299,  0.027842,  0.027842,  0.025567,  0.025567,  0.022854,  0.022854,  0.02025,  0.02025,  0.018339,  0.018339,  0.021211,  0.021211 ]                     # [m]    wall thicknesses (scalar or list of same length as stations)
-      Cd        :  0.0                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-      Ca        :  0.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-      # (neglecting axial coefficients for now)
-      CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-      CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-      rho_shell :  7850                      # [kg/m3]   material density
-                
+        name      :  tower                     # [-]    an identifier (no longer has to be number)       
+        type      :  1                         # [-]    
+        rA        :  [ 0, 0,  15]              # [m]    end A coordinates
+        rB        :  [ 0, 0, 144.582]          # [m]    and B coordinates
+        shape     :  circ                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
+        
+        # --- outer shell including hydro---
+        stations  :  [ 15,  28,  28.001,  41,  41.001,  54,  54.001,  67,  67.001,  80,  80.001,  93,  93.001,  106,  106.001,  119,  119.001,  132,  132.001,  144.582 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  [ 10,  9.964,  9.964,  9.967,  9.967,  9.927,  9.927,  9.528,  9.528,  9.149,  9.149,  8.945,  8.945,  8.735,  8.735,  8.405,  8.405,  7.321,  7.321,  6.5 ]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        t         :  [ 0.082954,  0.082954,  0.083073,  0.083073,  0.082799,  0.082799,  0.0299,  0.0299,  0.027842,  0.027842,  0.025567,  0.025567,  0.022854,  0.022854,  0.02025,  0.02025,  0.018339,  0.018339,  0.021211,  0.021211 ]                     # [m]    wall thicknesses (scalar or list of same length as stations)
+        Cd        :  0.0                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  0.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        # (neglecting axial coefficients for now)
+        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell :  7850                      # [kg/m3]   material density
+                  
 
 
 

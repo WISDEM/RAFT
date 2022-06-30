@@ -47,7 +47,7 @@ class Rotor:
         # Should inherit these from raft_model or _env?
         self.w = np.array(w)
 
-        self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'])[ir]
+        self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
         
         self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'])[ir]         # [-]
         self.Zhub       = getFromDict(turbine, 'Zhub', shape=turbine['nrotors'])[ir]            # [m]

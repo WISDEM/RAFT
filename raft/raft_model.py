@@ -426,7 +426,7 @@ class Model():
             raise RuntimeError('System matrices computed by RAFT have one or more small or negative diagonals: '+message)
 
         # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
-        eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+        eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
 
         if any(eigenvals <= 0.0):
             raise RuntimeError("Error: zero or negative system eigenvalues detected.")
@@ -544,9 +544,8 @@ class Model():
         i1 = 0                                                # range of DOFs for the current turbine
         i2 = 6
         
-        # TEMPORARY <<<<
-        #fowt.B_aero[0,4,:] = 0.0
-        #fowt.B_aero[4,0,:] = 0.0
+        # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
+        print('Solving for system response to wave excitation') 
         fowt.F_aero = fowt.F_aero*0 # <<<< a separate solve needs to be added for wind-driven response <<<< 
 
         # sum up all linear (non-varying) matrices up front
@@ -588,7 +587,7 @@ class Model():
                 Z[:,:,ii] = -self.w[ii]**2 * M_tot[:,:,ii] + 1j*self.w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii]
                 
                 # solve response (complex amplitude)
-                Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
+                Xi[:,ii] = np.linalg.solve(Z[:,:,ii], F_tot[:,ii])
 
 
             if conv_plot:
@@ -790,7 +789,7 @@ class Model():
         self.fowtList[0].calcBEM(dw=dw, wMax=wMax, dz=dz, da=da)
 
 
-    def plot(self, ax=None, hideGrid=False, draw_body=True, color='k', nodes=0, xbounds=[-500,500], ybounds=[-500,500], zbounds=[-200,200], plot_rotor=True, station_plot=[]):
+    def plot(self, ax=None, hideGrid=False, draw_body=True, color='k', nodes=0, xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, station_plot=[]):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -1100,7 +1099,7 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
             design = pickle.load(pfile)
     elif not isinstance(input_file, dict):
         # open the design YAML file and parse it into a dictionary for passing to raft
-        print("Loading RAFT input file: "+input_file)
+        print("\n\nLoading RAFT input file: "+input_file)
         with open(input_file) as file:
             design = yaml.load(file, Loader=yaml.FullLoader)
     else:
@@ -1127,13 +1126,10 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     model.analyzeCases()
     
     if plot:
-        model.plot(station_plot=station_plot)
-        
-        #model.plotResponses()
+        model.plot(station_plot=station_plot)        
+        model.plotResponses()
     
     #model.preprocess_HAMS("testHAMSoutput", dw=0.1, wMax=10)
-    
-    plt.show()
     
     return model
     
@@ -1141,20 +1137,10 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     
     
 if __name__ == "__main__":
-    import raft
     
-    #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True)
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S - Copy.yaml'), ballast=2)
-    #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
-    #model = runRAFT(os.path.join(raft_dir,'raft/raft_design.pkl'), ballast=True)
-    #fowt = model.fowtList[0]
-
-    model1 = runRAFT(os.path.join(raft_dir,'raft/raft_design_0.pkl'), ballast=True, plot=1)
-    #model2 = runRAFT(os.path.join(raft_dir,'raft/raft_design_opt_22.pkl'), ballast=True, plot=1)
-    
-    #model.adjustWISDEM('opt_22.yaml', 'opt_22a.yaml')
-    #fig, ax = model1.plot(zbounds=[-100,200], hideGrid=True, draw_body=False)
-    #model2.plot(ax=ax, color='r', zbounds=[-100,200], draw_body=False)
-    
+    model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+   
+    plt.show()
     

@@ -444,7 +444,7 @@ class FOWT():
         # only compute the aerodynamics if enabled and windspeed is nonzero
         if self.aeroServoMod > 0 and case['wind_speed'] > 0.0:
         
-            F_aero0, f_aero, a_aero, b_aero = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, display=2)  # get values about hub
+            F_aero0, f_aero, a_aero, b_aero = self.rotor.calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, display=0)  # get values about hub
             
             # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
             rHub = np.array([0, 0, self.hHub])

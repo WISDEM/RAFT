@@ -6,6 +6,11 @@ import matplotlib.pyplot as plt
 from matplotlib import cm
 import yaml
 
+try:
+    import pickle5 as pickle
+except:
+    import pickle
+    
 import moorpy as mp
 import raft.raft_fowt  as fowt
 from raft.helpers import *
@@ -101,15 +106,11 @@ class Model():
     """
 
 
-    def analyzeUnloaded(self):
-        '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.'''
-
-        # calculate the system's constant properties
-        #self.calcSystemConstantProps()
-        for fowt in self.fowtList:
-            fowt.calcStatics()
-            #fowt.calcBEM()
-            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0))
+    def analyzeUnloaded(self, ballast=0, heave_tol = 1):
+        '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.
+        
+        ballast: flag to ballast the FOWTs to achieve a certain heave offset'''
+        
             
         # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
         try: 
@@ -117,17 +118,35 @@ class Model():
             self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
         except Exception as e:
             raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
-
+        
+        # calculate the system's constant properties
+        #self.calcSystemConstantProps()
+        for fowt in self.fowtList:
+        
+            # apply any ballast adjustment if requested
+            if ballast == 1:
+                print('adjusting ballast fill levels')
+                self.adjustBallast(fowt, heave_tol=heave_tol)  
+            elif ballast == 2:
+                print('adjusting ballast densities')
+                self.adjustBallastDensity(fowt)        
+            
+            # compute FOWT static and constant hydrodynamic properties
+            fowt.calcStatics()
+            #fowt.calcBEM()
+            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0))
+        
+        
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
             
         # calculate platform offsets and mooring system equilibrium state
         self.calcMooringAndOffsets()
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
-
-        # TODO: add printing of summary info here - mass, stiffnesses, etc
         
+        # TODO: add printing of summary info here - mass, stiffnesses, etc
+
     
-    def analyzeCases(self, display=0):
+    def analyzeCases(self, display=0, runPyHAMS=True, meshDir=os.path.join(os.getcwd(),'BEM')):
         '''This runs through all the specified load cases, building a dictionary of results.'''
         
         nCases = len(self.design['cases']['data'])
@@ -212,7 +231,9 @@ class Model():
         # calculate the system's constant properties
         for fowt in self.fowtList:
             fowt.calcStatics()
-            fowt.calcBEM()
+
+        if runPyHAMS:
+            fowt.calcBEM(meshDir=meshDir)
             
         # loop through each case
         for iCase in range(nCases):
@@ -222,7 +243,8 @@ class Model():
         
             # form dictionary of case parameters
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
-
+            
+            '''
             # get initial FOWT values assuming no offset
             for fowt in self.fowtList:
                 fowt.Xi0 = np.zeros(6)      # zero platform offsets
@@ -238,6 +260,8 @@ class Model():
                 # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
             
             # (could solve mooring and offsets a second time, but likely overkill)
+            '''            
+            self.solveStatics(case)
             
             # solve system dynamics
             self.solveDynamics(case)
@@ -337,7 +361,7 @@ class Model():
         #self.ms.plot()
 
         print(f"Found mean offets with with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
-
+        
         try:
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
             F_moor = self.ms.getForces(DOFtype="coupled", lines_only=True)    # get net forces and moments from mooring lines on Body
@@ -352,14 +376,20 @@ class Model():
         self.J_moor = J_moor        # jacobian of mooring line tensions w.r.t. coupled DOFs
         self.F_moor = F_moor
         self.T_moor = T_moor
-
+        
         # store results
         self.results['means'] = {}   # signal this data is available by adding a section to the results dictionary
         self.results['means']['aero force'  ] = self.fowtList[0].F_aero0
         self.results['means']['platform offset'  ] = r6eq
         self.results['means']['mooring force'    ] = F_moor
         self.results['means']['fairlead tensions'] = np.array([np.linalg.norm(self.ms.pointList[id-1].getForces()) for id in self.ms.bodyList[0].attachedP])
-        
+        # tower base bending moment
+        m_turbine   = self.fowtList[0].mtower + self.fowtList[0].mRNA               # turbine total mass
+        zCG_turbine = (self.fowtList[0].rCG_tow[2]*self.fowtList[0].mtower 
+                       + self.fowtList[0].hHub*self.fowtList[0].mRNA)/m_turbine     # turbine center of gravity
+        zBase = self.fowtList[0].memberList[-1].rA[2]                               # tower base elevation [m]
+        hArm = zCG_turbine - zBase                                                  # vertical distance from tower base to turbine CG [m]
+        self.results['means']['Mbase'] = m_turbine*self.fowtList[0].g * hArm*np.sin(r6eq[4]) + transformForce(self.fowtList[0].F_aero0, offset=[0,0,-hArm])[4] # mean moment from weight and thrust
     
     
 
@@ -396,7 +426,7 @@ class Model():
             raise RuntimeError('System matrices computed by RAFT have one or more small or negative diagonals: '+message)
 
         # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
-        eigenvals, eigenvectors = np.linalg.eig(np.matmul(np.linalg.inv(M_tot), C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+        eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
 
         if any(eigenvals <= 0.0):
             raise RuntimeError("Error: zero or negative system eigenvalues detected.")
@@ -470,6 +500,26 @@ class Model():
         self.results['eigen']['frequencies'] = fns
         self.results['eigen']['modes'      ] = modes
   
+    
+    def solveStatics(self, case):
+
+        # get initial FOWT values assuming no offset
+        for fowt in self.fowtList:
+            fowt.Xi0 = np.zeros(6)      # zero platform offsets
+            fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
+            fowt.calcHydroConstants(case)
+        
+        # calculate platform offsets and mooring system equilibrium state
+        self.calcMooringAndOffsets()
+        
+        # update values based on offsets if applicable
+        for fowt in self.fowtList:
+            fowt.calcTurbineConstants(case, ptfm_pitch=fowt.Xi0[4])
+            # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
+        
+        # (could solve mooring and offsets a second time, but likely overkill)
+        # self.calcMooringAndOffsets()
+  
 
     def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
@@ -494,9 +544,9 @@ class Model():
         i1 = 0                                                # range of DOFs for the current turbine
         i2 = 6
         
-        # TEMPORARY <<<<
-        #fowt.B_aero[0,4,:] = 0.0
-        #fowt.B_aero[4,0,:] = 0.0
+        # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
+        print('Solving for system response to wave excitation') 
+        fowt.F_aero = fowt.F_aero*0 # <<<< a separate solve needs to be added for wind-driven response <<<< 
 
         # sum up all linear (non-varying) matrices up front
         M_lin = fowt.A_aero + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
@@ -537,7 +587,7 @@ class Model():
                 Z[:,:,ii] = -self.w[ii]**2 * M_tot[:,:,ii] + 1j*self.w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii]
                 
                 # solve response (complex amplitude)
-                Xi[:,ii] = np.matmul(np.linalg.inv(Z[:,:,ii]),  F_tot[:,ii] )
+                Xi[:,ii] = np.linalg.solve(Z[:,:,ii], F_tot[:,ii])
 
 
             if conv_plot:
@@ -673,7 +723,9 @@ class Model():
     
         
         return self.results
-
+        
+        
+    
 
     def plotResponses(self):
         '''Plots the power spectral densities of the available response channels for each case.'''
@@ -737,7 +789,7 @@ class Model():
         self.fowtList[0].calcBEM(dw=dw, wMax=wMax, dz=dz, da=da)
 
 
-    def plot(self, ax=None, hideGrid=False, color='k', nodes=0):
+    def plot(self, ax=None, hideGrid=False, draw_body=True, color='k', nodes=0, xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, station_plot=[]):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -749,14 +801,14 @@ class Model():
 
        # if axes not passed in, make a new figure
         if ax == None:    
-            fig, ax = self.ms.plot(color=color)
+            fig, ax = self.ms.plot(color=color, draw_body=draw_body, xbounds=xbounds, ybounds=ybounds, zbounds=zbounds)
         else:
             fig = ax.get_figure()
-            self.ms.plot(ax=ax, color=color)
+            self.ms.plot(ax=ax, color=color, draw_body=draw_body, xbounds=xbounds, ybounds=ybounds, zbounds=zbounds)
 
         # plot each FOWT
         for fowt in self.fowtList:
-            fowt.plot(ax, color=color, nodes=nodes)
+            fowt.plot(ax, color=color, nodes=nodes, plot_rotor=plot_rotor, station_plot=station_plot)
             
         if hideGrid:       
             ax.set_xticks([])    # Hide axes ticks
@@ -768,20 +820,291 @@ class Model():
             ax.set_frame_on(False)
             
         return fig, ax
+    
+    
+    
+    def adjustBallast(self, fowt, heave_tol=1, l_fill_adj=1e-2, rtn=0, display=0):
+        '''function to add or subtract the fill level of ballast in a member to get equilibrium heave close to 0
+        fowt: the FOWT object that needs to be ballasted
+        heave_tol: the tolerance acceptable for equilibrium heave [m]
+        l_fill_adj: the amount you want the heave to change by in each iteration of the while loop [m]
+        rtn: flag to output relevant data'''
+        
+        member_break_flag=False
+        data = []
+        
+        # calculate the difference in theoretical mass and actual mass
+        fowt.calcStatics()
+        mass = (fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2])/fowt.g
+        dmass = mass - fowt.M_struc[0,0]
+        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        if display==1: print(mass, dmass, heave)
+        
+        # loop through each member and adjust the l_fill of each to match the volume needed to balance the mass
+        for i,member in enumerate(fowt.memberList):
+            if display==1: print('-------',i,member.rA)
+            # organize the headings to work for this specific function
+            if np.isscalar(member.headings):
+                headings = [member.headings]
+            else:
+                headings = member.headings
+            if display==1: print(headings)
+            if member.heading != headings[0]:   # to ensure that only one member in a repeated member list is adjusted
+                pass
+            else:
+                # organize the l_fill and rho_fill variables for this specific function
+                if type(member.l_fill) is float:  # if there is only one section of ballast in the member, make it a list
+                    l_fills = [member.l_fill]    
+                    rho_fills = [member.rho_fill]
+                else:
+                    l_fills = member.l_fill
+                    rho_fills = member.rho_fill
+                if display==1: print(l_fills, rho_fills)
+                
+                # loop through each section of ballast in the member and adjust its l_fill to balance heave
+                for j,ballast in enumerate(rho_fills):
+                    if ballast > 0:                                         # only adjust the sections with existing ballast
+                        if display==1: print(j, ballast)    
+                        dvol = dmass/ballast                                # the volume required to balance heave
+                        mdvol = dvol/len(headings)                          # the volume required per repeated member
+                        err = 1e5                                           # initialize the error for the l_fill solver
+                        l_fill = l_fills[j]                                 # set the current l_fill value
+                        #l = member.stations[j+1]-member.stations[j]         # set the length of the submember with ballast
+                        l = member.l        # assume that the sub-member fill level (specified in 'l_fills[j]') can reach the entire height of the member
+                        if display==1: print(dvol, mdvol, l_fill, l)
+                        if member.shape=='circular':
+                            dAi = member.d[j] - 2*member.t[j]
+                            dBi = member.d[j+1] - 2*member.t[j+1]
+                            # calculate the initial volume in the current submember first
+                            dBi_fill = (dBi-dAi)*(l_fill/l) + dAi           # interpolated diameter of frustum that ballast is filled to
+                            V0 = FrustumVCV(dAi, dBi_fill, l_fill, rtn=1)
+                            
+                            # adjust the l_fill value of the submember by l_fill_adj until the new ballast volume settles on V0+mdvol
+                            while abs(err) > 0.01*V0:
+                                if l_fill >= l and mdvol < 0:       # if l_fill is more than the given submember length and volume needs to decrease
+                                    l_fill += -l_fill_adj
+                                elif l_fill >= l and mdvol > 0:     # if l_fill is more than the given submember length and volume needs to increase
+                                    l_fill = l_fill
+                                    break                           # end the while loop since this is the maximum l_fill can go for this submember
+                                elif l_fill <= 0 and mdvol > 0:     # if l_fill is less than 0 and the volume needs to increase
+                                    l_fill += l_fill_adj
+                                elif l_fill <= 0 and mdvol < 0:     # if l_fill is less than 0 and the volume needs to decrease
+                                    l_fill = l_fill
+                                    break                           # end the whole loop since l_fill can't go below 0
+                                else:
+                                    l_fill += l_fill_adj*np.sign(err)   # otherwise, adjust by l_fill in the correct direction
+                                
+                                dBi_fill = (dBi-dAi)*(l_fill/l) + dAi
+                                V = FrustumVCV(dAi, dBi_fill, l_fill, rtn=1)    # calculate the volume of the ballast with the new l_fill
+                                err = V0+mdvol - V                              # ensure V0+mdvol = V to solve for the correct l_fill
+                            l_fill = np.round(l_fill, 2)
+                            
+                        
+                        elif member.shape=='rectangular':
+                            slAi = member.sl[j] - 2*member.t[j]
+                            slBi = member.sl[j+1] - 2*member.t[j+1]
+                            # calculate the initial volume in the current submember first
+                            slBi_fill = (slBi-slAi)*(l_fill/l) + slAi   # interpolated side lengths of frustum that ballast is filled to
+                            V0 = FrustumVCV(slAi, slBi_fill, l_fill, rtn=1)
+                            
+                            # adjust the l_fill value of the submember by l_fill_adj until the new ballast volume settles on V0+mdvol                            
+                            while abs(err)> 0.01*V0:
+                                if l_fill >= l and mdvol < 0:       # if l_fill is more than the given submember length and volume needs to decrease
+                                    l_fill += -l_fill_adj
+                                elif l_fill >= l and mdvol > 0:     # if l_fill is more than the given submember length and volume needs to increase
+                                    l_fill = l_fill
+                                    break                           # end the while loop since this is the maximum l_fill can go for this submember
+                                elif l_fill <= 0 and mdvol > 0:     # if l_fill is less than 0 and the volume needs to increase
+                                    l_fill += l_fill_adj
+                                elif l_fill <= 0 and mdvol < 0:     # if l_fill is less than 0 and the volume needs to decrease
+                                    l_fill = l_fill
+                                    break                           # end the whole loop since l_fill can't go below 0
+                                else:
+                                    l_fill += l_fill_adj*np.sign(err)   # otherwise, adjust by l_fill in the correct direction
+                                
+                                slBi_fill = (slBi-slAi)*(l_fill/l) + slAi
+                                V = FrustumVCV(slAi, slBi_fill, l_fill, rtn=1)  # calculate the volume of the ballast with the new l_fill
+                                err = V0+mdvol - V                              # ensure V0+mdvol = V to solve for the correct l_fill
+                            l_fill = np.round(l_fill, 2)
+                        
+                        if display==1:  print('solved l_fill = ', l_fill)
+                        # replace the solved for l_fill value in each repeated member
+                        for k,heading in enumerate(headings):
+                            if np.isscalar(fowt.memberList[i+k].l_fill):
+                                fowt.memberList[i+k].l_fill = l_fill
+                            else:
+                                fowt.memberList[i+k].l_fill[j] = l_fill
+                                
+                        
+                        # check if heave equilibrium was reached by only changing this ballast section of the member
+                        fowt.calcStatics()
+                        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+                        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+                        if display==1: print('heave', heave, heave_tol)
+                        if abs(heave) < heave_tol:  # congrats, you've ballasted to achieve the given heave tolerance
+                            member_break_flag=True  # break out of the outer member for loop as well
+                            data.append([member.rA, member.l_fill, member.rho_fill, heave])             # save data
+                            break                   # break out of this inner for loop iterating between ballast sections in one member
+                        else:                       # bummer, you have to keep ballasting in other members or sections of the same member
+                            mass = (fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2])/fowt.g
+                            dmass = mass - fowt.M_struc[0,0]                                # newly evaluated change in mass you need
+                            data.append([member.rA.tolist(), member.l_fill, member.rho_fill, heave])    # save data
+                            
+                if member_break_flag:
+                    break
+                        
+        # if you've gone through all the members in the model that have initial ballast, maybe try adjusting densities
+        # this also does not currently support members with multiple types of ballast, even though RAFT can
+        """
+        fowt.calcStatics()
+        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        while abs(heave) > 0.5:
+            #print(f'Adjusting ballast since the heave is {heave:6.2f} m')
+            for i in range(len(fowt.memberList)):
+                if fowt.memberList[i].rho_fill > 0:     # find the first member in the memberList that has ballast
+                    for j in range(len(fowt.memberList[i].headings)):   # for each copy of the member
+                        fowt.memberList[i+j].rho_fill += rho_fill_adj*(heave/abs(heave))
+                        #print(fowt.memberList[i+j].rho_fill)
+                    break
+                # >>>>>> fyi there could be an else case where no members have ballast initially <<<<<
+            fowt.calcStatics()
+            sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+            heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        """
+        
+        if rtn:
+            return data
 
 
-def runRAFT(input_file, turbine_file=""):
+    def adjustBallastDensity(self, fowt):
+        '''Adjusts ballast densities unifromly to trim FOWT in heave.
+        fowt: the FOWT object that needs to be ballasted
+        '''
+        
+        print("Adjusting ballast to trim heave.")
+        
+        # check for any instances of zero-density ballast and ensure the corresponding fill length is zero        
+        for member in fowt.memberList:
+            if type(member.l_fill) is float:  # if there is only one section of ballast in the member            
+                if member.rho_fill == 0.0:
+                    member.l_fill = 0.0
+            else:
+                for i in range(len(member.l_fill)):
+                    if member.rho_fill[i] == 0.0:
+                        member.l_fill[i] = 0.0
+        
+        # compute ballast and check initial offset
+        fowt.calcStatics()
+        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)        
+        print(f" Original sumFz is {sumFz/1000:.0f} kN and heave is ~{heave:.3f} m")
+        
+        # total up the ballast volume
+        ballast_volume = 0.0        
+        for member in fowt.memberList:
+            ballast_volume += sum(member.vfill)
+        
+        # ensure there isn't zero ballast volume
+        if ballast_volume <= 0:
+            raise Exception("adjustBallastDenity can only be used for platforms that have some ballast volume.")
+        
+        # calculate required change in ballast densities to zero heave offset
+        delta_rho_fill = sumFz/fowt.g/ballast_volume
+        
+        print(f" Adjusting fill density by {delta_rho_fill:.3f} kg/m over {ballast_volume:.3f} m3 of ballast")
+        
+        # apply the change to each ballasted (sub)member's fill densities
+        for member in fowt.memberList:
+            if type(member.l_fill) is float:  # if there is only one section of ballast in the member            
+                if member.l_fill > 0.0:
+                    member.rho_fill += delta_rho_fill
+            else:
+                for i in range(len(member.l_fill)):
+                    if member.l_fill[i] > 0.0:
+                        member.rho_fill[i] += delta_rho_fill
+        
+        # recompute ballast and check adjusted offset
+        fowt.calcStatics()
+        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        
+        print(f" New sumFz is {sumFz/1000:.0f} kN and heave is ~{heave:.3f} m")
+        
+        # return adjustment
+        return delta_rho_fill
+    
+    
+    def adjustWISDEM(self, old_wisdem_file, new_wisdem_file):
+        '''
+        This loads an existing WISDEM input file and adjusts the ballast in the members in WISDEM based on 
+        a RAFT model that was created based on the original WISDEM model
+        '''
+        
+        # read in the wisdem file that you want to adjust and save it as a wisdem_design dictionary
+        import ruamel_yaml as ry
+        reader = ry.YAML(typ="safe", pure=True)
+        with open(old_wisdem_file, "r", encoding="utf-8") as f:
+            wisdem_design = reader.load(f)
+        
+        fowt = self.fowtList[0]
+        membersRAFT = fowt.memberList       # list of members in the RAFT model
+        membersWISDEM = wisdem_design['components']['floating_platform']['members']     # list of members in the WISDEM model
+        
+        # Main adjuster section:
+        # Loop through each member in WISDEM and make adjustments based on the data in RAFT
+        # For right now, this only changes the ballast fill levels
+        for wisdem_member in membersWISDEM:
+            if 'ballasts' in wisdem_member['internal_structure'].keys():    # skip the wisdem member if there is no ballast section
+                for raft_member in membersRAFT:
+                    # determine if the raft_member is the same type as the current wisdem member (they don't have great identifiers to relate)
+                    # first, find the bottom joint of the current wisdem member
+                    for joint in wisdem_design['components']['floating_platform']['joints']:
+                        if wisdem_member['joint1']==joint['name']:  # find the name of the bottom 
+                            # if that joint's location is the same as the raft member's bottom node location AND both the wisdem member and the raft member have the same diameter
+                            if str(joint['location'][2])[0:5] == str(raft_member.rA[2])[0:5] and wisdem_member['outer_shape']['outer_diameter']['values'][0]==raft_member.d[0]:
+                                # adjust the volume of the wisdem member based on the similar raft member's fill level
+                                
+                                # assume the diameter is constant along the member's length in both WISDEM and RAFT
+                                area = np.pi * ((raft_member.d[0]-2*raft_member.t[0])/2)**2
+                                # update the volume of the wisdem member based on the l_fill value in RAFT
+                                wisdem_member['internal_structure']['ballasts'][0]['volume'] = float(area*raft_member.l_fill[0])
+                                
+                                break   # stop looping through the rest of the joints
+                    break   # stop looping through the rest of the raft members
+        
+        # save the adjusted wisdem design dictionary into a new wisdem yaml file
+        yaml = ry.YAML()
+        yaml.default_flow_style = None
+        yaml.width = float("inf")
+        yaml.indent(mapping=4, sequence=6, offset=3)
+        yaml.allow_unicode = False
+        with open(new_wisdem_file, "w", encoding="utf-8") as f:
+            yaml.dump(wisdem_design, f)
+
+
+
+
+
+
+def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[]):
     '''
     This will set up and run RAFT based on a YAML input file.
     '''
     
-    # open the design YAML file and parse it into a dictionary for passing to raft
-    print("Loading RAFT input file: "+input_file)
     
-    with open(input_file) as file:
-        design = yaml.load(file, Loader=yaml.FullLoader)
-    
-    print(f"'{design['name']}'")
+    if input_file[-3:]=='pkl' or input_file[-6:]=='pickle':
+        with open(input_file, 'rb') as pfile:
+            design = pickle.load(pfile)
+    elif not isinstance(input_file, dict):
+        # open the design YAML file and parse it into a dictionary for passing to raft
+        print("\n\nLoading RAFT input file: "+input_file)
+        with open(input_file) as file:
+            design = yaml.load(file, Loader=yaml.FullLoader)
+    else:
+        design = input_file
+        print(f"'{design['name']}'")
     
     
     depth = float(design['mooring']['water_depth'])
@@ -796,27 +1119,28 @@ def runRAFT(input_file, turbine_file=""):
     
     # Create and run the model
     print(" --- making model ---")
-    model = raft.Model(design)  
-    print(" --- analyizing unloaded ---")
-    model.analyzeUnloaded()
+    model = Model(design)  
+    print(" --- analyzing unloaded ---")
+    model.analyzeUnloaded(ballast=ballast)
     print(" --- analyzing cases ---")
     model.analyzeCases()
     
-    model.plot()
-    
-    model.plotResponses()
+    if plot:
+        model.plot(station_plot=station_plot)        
+        model.plotResponses()
     
     #model.preprocess_HAMS("testHAMSoutput", dw=0.1, wMax=10)
     
-    plt.show()
-    
     return model
+    
+
     
     
 if __name__ == "__main__":
-    import raft
     
-    #model = runRAFT(os.path.join(raft_dir,'designs/DTU10MW.yaml'))
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'))
-    #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'))
-    fowt = model.fowtList[0]
+    model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+   
+    plt.show()
+    

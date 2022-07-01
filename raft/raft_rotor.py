@@ -569,7 +569,7 @@ class Rotor:
     
         # Set inputs (f, V_ref, HH, Class, Categ, TurbMod, R)
         f = self.w / 2 / np.pi    # frequency in Hz
-        HH = self.Zhub
+        HH = abs(self.Zhub)     # <<< Temporary absolute value to avoid NaNs with underwater turbines. Eventually need a new function <<<
         R = self.R_rot
         V_ref = case['wind_speed']
         

@@ -195,7 +195,7 @@ class Model():
         self.results['case_metrics']['AxRNA_PSD'] = np.zeros([nCases,self.nw, nrotors])    # = np.zeros([nCases,self.nw])
         # tower base bending moment
         self.results['case_metrics']['Mbase_avg'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases) 
-        self.results['case_metrics']['Mbase_std'] = np.zeros([nCases,self.nw, nrotors])    # = np.zeros(nCases)
+        self.results['case_metrics']['Mbase_std'] = np.zeros([nCases,self.nw, nrotors], dtype=complex)    # = np.zeros(nCases)
         self.results['case_metrics']['Mbase_max'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases)
         self.results['case_metrics']['Mbase_PSD'] = np.zeros([nCases,self.nw, nrotors])    # = np.zeros([nCases,self.nw])
         self.results['case_metrics']['Mbase_DEL'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases)       
@@ -1151,9 +1151,11 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     
 if __name__ == "__main__":
     
-    model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+
+    model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
    
     plt.show()
     

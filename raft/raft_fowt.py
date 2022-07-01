@@ -69,9 +69,8 @@ class FOWT():
         self.rho_water = getFromDict(design['site'], 'rho_water', default=1025.0)
         self.g         = getFromDict(design['site'], 'g'        , default=9.81)
         
-        # <<<<<<<<<<< do we need this? Should it be something like self.dlsMax?
+        # <<<<<<<<<<< Should it be something like self.dlsMax?
         #design['turbine']['tower']['dlsMax'] = getFromDict(design['turbine']['tower'], 'dlsMax', shape=-1, default=5.0)
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>
 
         potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
         dlsMax       = getFromDict(design['platform'], 'dlsMax'      , default=5.0)
@@ -108,7 +107,8 @@ class FOWT():
                 mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
 
         for t,tower in enumerate(design['turbine']['tower']):
-            self.memberList.append(Member(design['turbine']['tower'][t], self.nw))
+            #tower['dlsMax'] = design['turbine']['tower']['dlsMax']     # for when we want to make a list of tower 'members' and have general inputs like dlsMax first
+            self.memberList.append(Member(tower, self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
 
         # mooring system connection
@@ -787,7 +787,7 @@ class FOWT():
         results['yaw_max'][iCase] = rad2deg(Xi0[5]) + 3*results['yaw_std'][iCase]
         results['yaw_PSD'][iCase,:] = getPSD(yaw_deg)
         
-        XiHub = np.zeros([len(Xi[0,:]), self.ntowers])
+        XiHub = np.zeros([len(Xi[0,:]), self.ntowers], dtype=complex)
         for i in range(self.ntowers):
             XiHub[:,i] = Xi[0,:] + self.hHub[i]*Xi[4,:]  # hub fore-aft displacement amplitude (used as an approximation in a number of outputs)
         
@@ -800,7 +800,7 @@ class FOWT():
         zCG_turbine = np.zeros_like(m_turbine)
         zBase = np.zeros_like(m_turbine)
         hArm = np.zeros_like(m_turbine)
-        aCG_turbine = np.zeros([len(Xi[0,:]), self.ntowers])
+        aCG_turbine = np.zeros([len(Xi[0,:]), self.ntowers], dtype=complex)
         ICG_turbine = np.zeros_like(m_turbine)
         M_I = np.zeros_like(aCG_turbine)
         M_w = np.zeros_like(aCG_turbine)
@@ -969,7 +969,7 @@ class FOWT():
 
         if plot_rotor:
             for rotor in self.rotorList:
-                coords = np.array([rotor.coords[0], rotor.coords[1], 0])
+                coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + np.array(self.body.r6[:3])
                 rotor.plot(ax, r_ptfm=coords, R_ptfm=self.body.R, color=color)
                 #rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
 

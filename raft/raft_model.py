@@ -789,7 +789,8 @@ class Model():
         self.fowtList[0].calcBEM(dw=dw, wMax=wMax, dz=dz, da=da)
 
 
-    def plot(self, ax=None, hideGrid=False, draw_body=True, color='k', nodes=0, xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, station_plot=[]):
+    def plot(self, ax=None, hideGrid=False, draw_body=True, color='k', nodes=0, 
+             xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, airfoils=False, station_plot=[]):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -808,7 +809,7 @@ class Model():
 
         # plot each FOWT
         for fowt in self.fowtList:
-            fowt.plot(ax, color=color, nodes=nodes, plot_rotor=plot_rotor, station_plot=station_plot)
+            fowt.plot(ax, color=color, nodes=nodes, plot_rotor=plot_rotor, station_plot=station_plot, airfoils=airfoils)
             
         if hideGrid:       
             ax.set_xticks([])    # Hide axes ticks

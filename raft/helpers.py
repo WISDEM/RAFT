@@ -513,7 +513,10 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None):
             if shape==0 or shape==-1:
                 return default
             else:
-                return np.tile(default, shape)
+                if np.isscalar(default):
+                    return np.tile(default, shape)
+                else:
+                    return np.tile(default, [shape, 1])
 
 def convertIEAturbineYAML2RAFT(fname_turbine):
     '''

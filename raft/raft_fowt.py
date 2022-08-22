@@ -246,7 +246,71 @@ class FOWT():
             Sum_V_rCB   += r_CB*V_UW
             Sum_AWP_rWP += np.array([xWP, yWP])*AWP
 
+        
+        # ------------- include buoyancy effects of underwater rotors -------------
+        # loop through each blade (sub)member to calculate rotor buoyancy forces (for underwater turbines)
+        for i in range(self.nrotors):       # for each rotor in the fowt
+            rotor = self.rotorList[i]
+            if rotor.Zhub < 0:      # only do this for underwater rotors
+                rHub = np.array([rotor.coords[0], rotor.coords[1], rotor.Zhub])     # save the rotor hub center point for later
+                for j in range(int(rotor.nBlades)):     # for each blade on the rotor
+                    for k,afmem in enumerate(rotor.bladeMemberList):    # for each airfoil member in the bladeMemberList
+                        # store original positions of the airfoil member about the original rotor axis
+                        rA_OG = afmem.rA
+                        rB_OG = afmem.rB
 
+                        # calculate the rotation matrix about the x-axis
+                        afmem.heading = rotor.headings[j]   # rotor blade headings are set arbitrarily in rotor.__init__
+                        
+                        # ensure the blade headings are equally spaced apart (so that the specific heading values are arbitrary)
+                        if all(np.mod(np.diff(rotor.headings, append=rotor.headings[0]),360) != np.mod(np.diff(rotor.headings, append=rotor.headings[0])[0], 360)):
+                            raise ValueError("The headings of the blades need to be equally spaced apart")
+                        
+                        c = np.cos(np.deg2rad(afmem.heading))
+                        s = np.sin(np.deg2rad(afmem.heading))
+                        # create rotation matrix based on the rotor's axis (default axis=[1,0,0])
+                        a = rotor.axis  # each rotor is given a default axis of rotation about the x-direction
+                        R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
+                                      [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
+                                      [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
+                        #rotMatx = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+
+                        # find the new endpoints of the airfoil member wrt the hub center
+                        rA_from_Zhub = np.matmul(R, afmem.rA)
+                        rB_from_Zhub = np.matmul(R, afmem.rB)
+
+                        # find the endpoints of the blade (sub)member wrt global coordinates
+                        afmem.rA = rA_from_Zhub + rHub
+                        afmem.rB = rB_from_Zhub + rHub
+                        
+                        # find the actual orientation vectors of the blade (sub)member
+                        afmem.calcOrientation()
+
+                        # calculate the mass and inertial properties of the blade (sub)members
+                        #mass, center, mshell, mfill, pfill = mem.getInertia()
+                        # >>>>>> can be used later if actual rectangular mass properties are desired other than mRNA <<<<<<<<
+
+                        # calculate hydrostatic properties of the blade (sub)member and add them to the system matrices
+                        Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = afmem.getHydrostatics(self.rho_water, self.g)  # call to Member method for hydrostatic calculations
+                        
+                        # outputs of getHydrostatics should already be about the PRP
+                        self.W_hydro += Fvec # buoyancy vector
+                        self.C_hydro += Cmat # hydrostatic stiffness matrix
+
+                        # >>>>>>>>>> add a check to solve for the volume of just the blade submembers <<<<<<<<<
+
+                        VTOT    += V_UW    # add to total underwater volume of all members combined
+                        AWP_TOT += AWP
+                        IWPx_TOT += IWP + AWP*yWP**2
+                        IWPy_TOT += IWP + AWP*xWP**2
+                        Sum_V_rCB   += r_CB*V_UW
+                        Sum_AWP_rWP += np.array([xWP, yWP])*AWP
+
+                        # reset original rA and rB values of the airfoil member
+                        afmem.rA = rA_OG
+                        afmem.rB = rB_OG
+                        afmem.calcOrientation()
+        
         # ------------------------- include RNA properties -----------------------------
 
         # Here we could initialize first versions of the structure matrix components.
@@ -267,25 +331,6 @@ class FOWT():
             self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA[i]]), center )   # weight vector
             self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
             Sum_M_center += center*self.mRNA[i]
-        '''
-        if self.nrotors==1:
-            Mmat = np.diag([self.mRNA, self.mRNA, self.mRNA, self.IxRNA, self.IrRNA, self.IrRNA])            # create mass/inertia matrix
-            center = np.array([self.xCG_RNA, 0, self.hHub])                                 # RNA center of mass location
-
-            # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-            self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA]), center )   # weight vector
-            self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
-            Sum_M_center += center*self.mRNA
-        else:
-            for i in range(self.nrotors):
-                Mmat = np.diag([self.mRNA[i], self.mRNA[i], self.mRNA[i], self.IxRNA[i], self.IrRNA[i], self.IrRNA[i]])            # create mass/inertia matrix
-                center = np.array([self.xCG_RNA[i], 0, self.hHub[i]])                                 # RNA center of mass location
-
-                # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-                self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA[i]]), center )   # weight vector
-                self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
-                Sum_M_center += center*self.mRNA[i]
-        '''
 
         # ----------- process inertia-related totals ----------------
 
@@ -972,7 +1017,11 @@ class FOWT():
                 coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + np.array(self.body.r6[:3])
                 rotor.plot(ax, r_ptfm=coords, R_ptfm=self.body.R, color=color)
                 #rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
-
+                '''
+                for afmem in rotor.bladeMemberList:
+                    afmem.calcOrientation()
+                    afmem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, nodes=nodes, station_plot=station_plot)
+                '''
         # loop through each member and plot it
         for mem in self.memberList:
 

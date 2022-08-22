@@ -52,6 +52,9 @@ class Rotor:
         self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
         
         self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'])[ir]         # [-]
+        self.headings   = getFromDict(turbine, 'headings', shape=turbine['nrotors'], default=[90,210,330])[ir]  # [deg]
+        self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]       # [-]
+
         self.Zhub       = getFromDict(turbine, 'hHub', shape=turbine['nrotors'])[ir]            # [m]
         self.Rhub       = getFromDict(turbine, 'Rhub', shape=turbine['nrotors'])[ir]            # [m]
         self.precone    = getFromDict(turbine, 'precone', shape=turbine['nrotors'])[ir]         # [m]
@@ -232,14 +235,12 @@ class Rotor:
         # pull control gains out of dictionary
         self.setControlGains(turbine)
 
-        self.blade2Member()
-
-        self.calcRotorBuoyancy()
-
-        #self.calcRotorAddedMass()
+        # create a member list of blade sections
+        self.bladeAirfoil2Member()
+        #self.bladeGeometry2Member()
     
 
-    def blade2Member(self, Ca_edge=0.5, Ca_flap=1.0):
+    def bladeAirfoil2Member(self, Ca_edge=0.5, Ca_flap=1.0):
         '''Method to create members for each airfoil in the turbine blade
         To be used for added mass and buoyancy calculations of underwater turbines'''
         
@@ -254,10 +255,17 @@ class Rotor:
             airfoil = {}        # dictionary to hold properties of blade sub-member = each airfoil
             airfoil['name'] = af+'-'+str(i+1)+'/'+str(len(self.af_used))
             airfoil['type'] = 3
-            airfoil['rA'] = rHub + np.array([0,0,self.Rhub]) + np.array([0,0,(self.af_position[i])*blade_length])
-            airfoil['rB'] = airfoil['rA'] + np.array([0,0, (self.af_position[i+1]-self.af_position[i])*blade_length])
+
+            # started a fancy method to determine the axis that the airfoil blades will have different headings about
+            # ideally, I want to find a vector (r) orthogonal to the rotor axis vector (n), which has infinite solutions (r dot n = 0)
+            # the way I set it up below rotates the rotor axis vector 90 degrees, but breaks down if rotor.axis[2] != 0 since the rotation metrix used here is about the z axis
+            airfoil_zero_heading = np.matmul(np.array([[0, -1, 0],[1, 0, 0],[0, 0, 1]]), self.axis)
+            airfoil['rA'] = np.array(airfoil_zero_heading)*(self.Rhub+(self.af_position[i]*blade_length))
+            airfoil['rB'] = airfoil['rA'] + np.array(airfoil_zero_heading)*((self.af_position[i+1]-self.af_position[i])*blade_length)
+
+            #airfoil['rA'] = rHub + np.array([0,0,self.Rhub]) + np.array([0,0,(self.af_position[i])*blade_length])
+            #airfoil['rB'] = airfoil['rA'] + np.array([0,0, (self.af_position[i+1]-self.af_position[i])*blade_length])
             # >>>>>>>> don't need to specify direction of blade; just assume vertical and then can transform in later operations <<<<<<<<<<<<<
-            
             airfoil['shape'] = 'rect'
             airfoil['stations'] = [0,1]
 
@@ -285,23 +293,7 @@ class Rotor:
             airfoil['rho_shell'] = 1850
 
             self.bladeMemberList.append(Member(airfoil, len(self.w)))
-    
 
-    def calcRotorBuoyancy(self, rho=1025, g=9.81):
-
-        Fb_mem = np.zeros(len(self.bladeMemberList))
-        
-        for i,afmem in enumerate(self.bladeMemberList):
-            A = afmem.sl[0][0]*afmem.sl[0][1]
-            L = afmem.l
-            V = A*L
-            #Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = afmem.getHydrostatics(rho, g)
-            Fb_mem[i] = rho*V*g
-        
-        Fb_blade = sum(Fb_mem)
-        Fb_rotor = Fb_blade*self.nBlades
-        
-        # need to add in a C_hydro and a C_struc
 
 
 
@@ -640,7 +632,7 @@ class Rotor:
         #    linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color='k'))  # station rings
         #
         #return linebit
-    
+
     
     def IECKaimal(self, case):        # 
         '''Calculates rotor-averaged turbulent wind spectrum based on inputted turbulence intensity or class.'''

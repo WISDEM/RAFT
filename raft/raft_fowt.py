@@ -964,7 +964,7 @@ class FOWT():
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
 
-    def plot(self, ax, color='k', nodes=0, plot_rotor=True, station_plot=[]):
+    def plot(self, ax, color='k', nodes=0, plot_rotor=True, station_plot=[], airfoils=False):
         '''plots the FOWT...'''
 
         if plot_rotor:

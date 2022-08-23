@@ -564,7 +564,7 @@ class FOWT():
                     self.F_aero[:,iw,t] = translateForce3to6DOF(np.array([f_aero[iw], 0, 0]), rHub)
         
 
-    def calcHydroConstants(self, case):
+    def calcHydroConstants(self, case, memberList=[], Rotor=None, dgamma=0):
         '''This computes the linear strip-theory-hydrodynamics terms, including wave excitation for a specific case.'''
 
         # set up sea state
@@ -601,18 +601,51 @@ class FOWT():
         self.F_hydro_iner    = np.zeros([6,self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
         # loop through each member
-        for mem in self.memberList:
+        for i,mem in enumerate(memberList):
         
             circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
-#            print(mem.name)
+            
+            # find the proper member node positions (mem.r) if this memberList is a bladeMemberList for underwater rotors. Otherwise, skip
+            if mem.type==3 and Rotor is not None:
+                rotor = Rotor       # save specific rotor variables
+                rHub = np.array([rotor.coords[0], rotor.coords[1], rotor.Zhub])
+                rOG = mem.r         # save original member.r to add back later
+                # without making any changes to the rest of the hydrodynamics calculations below...
+                # the input memberList is the rotor.bladeMemberList multiplied by nBlades (e.g. if len(rotor.bladeMemberList)=10, then this len(memberList)=30 for 3 blade rotor)
+                # adjust the heading/orientation of the each section of blade members by the corresponding heading in rotor.headings based on where in the list you are
+                j = i // int(len(memberList)/rotor.nBlades)
+                heading = rotor.headings[j]
+                
+                c = np.cos(np.deg2rad(heading))
+                s = np.sin(np.deg2rad(heading))
+                a = rotor.axis
+                R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
+                                [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
+                                [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
+                # see calcStatics() for more detailed comments - same process
+
+                # adjust the mem.r variable for changes in position of the blades
+                for il in range(mem.ns):
+                    r_from_Zhub = np.matmul(R, mem.r[il])
+                    mem.r[il] = r_from_Zhub + rHub
+                
+                # add an input twist to every blade member if the blades should be oriented a different way
+                mem.gamma = mem.gamma + dgamma
+
+                # run calcOrientation to ensure the p1 and p2 axes of the members are oriented the way they should be
+                mem.calcOrientation()
+
+                # >>>>>>> TODO (for added mass of underwater rotors) <<<<<<<<<<
+                # - Do we need to adjust any other methods in raft_fowt to account for added mass?
+                # - Do we need to make any changes to the pyHAMS code to account for rotor added mass?
+                # - How should we adjust the inclusion of member end effects of added mass knowing blade members are attached on ends to each other?
+                        
 
             # loop through each node of the member
             for il in range(mem.ns):
-#                print(il)
 
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
-#                    print("underwater")
 
                     # get wave kinematics spectra given a certain wave spectrum and location
                     mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.beta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
@@ -691,6 +724,9 @@ class FOWT():
 
                             self.F_hydro_iner[:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:]) # add to global excitation vector (frequency dependent)
 
+            # reset the member.r variable if underwater blade members were used
+            if mem.type==3 and Rotor is not None:
+                mem.r = rOG
 
 
     def calcLinearizedTerms(self, Xi):

@@ -51,7 +51,7 @@ class Rotor:
 
         self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
         
-        self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'])[ir]         # [-]
+        self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'], dtype=int)[ir]         # [-]
         self.headings   = getFromDict(turbine, 'headings', shape=turbine['nrotors'], default=[90,210,330])[ir]  # [deg]
         self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]       # [-]
 
@@ -252,9 +252,12 @@ class Rotor:
         # pull control gains out of dictionary
         self.setControlGains(turbine)
 
-        # create a member list of blade sections
-        #self.bladeAirfoil2Member()
-        self.bladeGeometry2Member()
+        # create a member list of blade sections, only if rotor is underwater
+        if self.Zhub + self.R_rot < 0:
+            #self.bladeAirfoil2Member()
+            self.bladeGeometry2Member()
+        else:
+            self.bladeMemberList = []
     
 
     def bladeAirfoil2Member(self, Ca_edge=0.5, Ca_flap=1.0):

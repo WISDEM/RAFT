@@ -134,7 +134,9 @@ class Model():
             # compute FOWT static and constant hydrodynamic properties
             fowt.calcStatics()
             #fowt.calcBEM()
-            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0))
+            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0), memberList=fowt.memberList)    # for normal platform members
+            #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater)
+                #fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0), memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)
         
         
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
@@ -520,7 +522,9 @@ class Model():
         for fowt in self.fowtList:
             fowt.Xi0 = np.zeros(6)      # zero platform offsets
             fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
-            fowt.calcHydroConstants(case)
+            fowt.calcHydroConstants(case, memberList=fowt.memberList)
+            #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater)
+                #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)
         
         # calculate platform offsets and mooring system equilibrium state
         self.calcMooringAndOffsets()

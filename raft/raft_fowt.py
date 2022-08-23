@@ -248,9 +248,12 @@ class FOWT():
 
         
         # ------------- include buoyancy effects of underwater rotors -------------
+        rotor_nodes = []
+        rotor_mpc = []
         # loop through each blade (sub)member to calculate rotor buoyancy forces (for underwater turbines)
         for i in range(self.nrotors):       # for each rotor in the fowt
             rotor = self.rotorList[i]
+            nodes = np.zeros([int(rotor.nBlades), len(rotor.bladeMemberList)+1, 3])   # 3 for size 3 position vectors
             if rotor.Zhub < 0:      # only do this for underwater rotors
                 rHub = np.array([rotor.coords[0], rotor.coords[1], rotor.Zhub])     # save the rotor hub center point for later
                 for j in range(int(rotor.nBlades)):     # for each blade on the rotor
@@ -282,7 +285,9 @@ class FOWT():
                         # find the endpoints of the blade (sub)member wrt global coordinates
                         afmem.rA = rA_from_Zhub + rHub
                         afmem.rB = rB_from_Zhub + rHub
-                        
+                        nodes[j,k,:] = afmem.rA
+                        if k==len(rotor.bladeMemberList)-1: nodes[j,k+1,:] = afmem.rB
+
                         # find the actual orientation vectors of the blade (sub)member
                         afmem.calcOrientation()
 
@@ -310,6 +315,9 @@ class FOWT():
                         afmem.rA = rA_OG
                         afmem.rB = rB_OG
                         afmem.calcOrientation()
+
+            rotor_nodes.append(nodes)
+            rotor_mpc.append(rotor.mpc_interp)
         
         # ------------------------- include RNA properties -----------------------------
 

@@ -114,23 +114,30 @@ class Member:
 
         # Drag coefficients
         self.Cd_q   = getFromDict(mi, 'Cd_q' , shape=n, default=0.0 )     # axial drag coefficient
+        self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6, index=0)      # transverse1 drag coefficient
+        self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6, index=1)      # transverse2 drag coefficient
+        self.Cd_End = getFromDict(mi, 'CdEnd', shape=n, default=0.6 )     # end drag coefficient
+        '''
         if not np.isscalar(mi['Cd']) and len(mi['Cd'])==2:  # special case for rectangular members with directional coefficients
             self.Cd_p1 = np.tile(float(mi['Cd'][0]), [n])
             self.Cd_p2 = np.tile(float(mi['Cd'][1]), [n])
         else:
             self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse1 drag coefficient
             self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse2 drag coefficient
-        self.Cd_End = getFromDict(mi, 'CdEnd', shape=n, default=0.6 )     # end drag coefficient
+        '''
         # Added mass coefficients
         self.Ca_q   = getFromDict(mi, 'Ca_q' , shape=n, default=0.0 )     # axial added mass coefficient
+        self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97, index=0)     # transverse1 added mass coefficient
+        self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97, index=1)     # transverse2 added mass coefficient
+        self.Ca_End = getFromDict(mi, 'CaEnd', shape=n, default=0.6 )     # end added mass coefficient
+        '''
         if not np.isscalar(mi['Ca']) and len(mi['Ca'])==2:  # special case for rectangular members with directional coefficients
             self.Ca_p1 = np.tile(float(mi['Ca'][0]), [n])
             self.Ca_p2 = np.tile(float(mi['Ca'][1]), [n])
         else:
             self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse1 added mass coefficient
             self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse2 added mass coefficient
-        self.Ca_End = getFromDict(mi, 'CaEnd', shape=n, default=0.6 )     # end added mass coefficient
-
+        '''
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair

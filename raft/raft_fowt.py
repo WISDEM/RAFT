@@ -249,7 +249,8 @@ class FOWT():
         
         # ------------- include buoyancy effects of underwater rotors -------------
         rotor_nodes = []
-        rotor_mpc = []
+        rotor_cpmin = []
+        rotor_relv = []
         # loop through each blade (sub)member to calculate rotor buoyancy forces (for underwater turbines)
         for i in range(self.nrotors):       # for each rotor in the fowt
             rotor = self.rotorList[i]
@@ -316,9 +317,14 @@ class FOWT():
                         afmem.rB = rB_OG
                         afmem.calcOrientation()
 
-            rotor_nodes.append(nodes)
-            rotor_mpc.append(rotor.mpc_interp)
-        
+            # Parameters for cavitation (can maybe write a new method within FOWT to calcCavitation)
+            rotor_nodes.append(nodes)               # array of size [rotor.nBlades, len(bladeMemberList)+1, 3] to hold the positions of each blade node for each blade
+            rotor_cpmin.append(rotor.cpmin_interp)    # array of size [len(bladeMemberList), len(rotor.aoa), 1] where each row is the cpmin as a function of aoa
+            case = {}
+            case['wind_speed'] = 10 # find a way to sync this with the DLC case
+            #rotor_relv.append(rotor.calcRelativeVelocity(case, azimuth=0))     # array of size [len(bladeMemberList)] with the airfoil relative velocity at each node
+            # >>>>>> might need a better way to adjust the azimuth parameter (for each blade?); can maybe configure this in the blade heading adjustments earlier
+
         # ------------------------- include RNA properties -----------------------------
 
         # Here we could initialize first versions of the structure matrix components.

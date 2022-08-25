@@ -121,22 +121,25 @@ class Rotor:
         af_name = n_af * [""]
         r_thick = np.zeros(n_af)
         Ca = np.zeros([n_af, 2])
-        min_press_coeff = np.zeros(n_af)
         for i in range(n_af):
             af_name[i] = turbine["airfoils"][i]["name"]
             r_thick[i] = turbine["airfoils"][i]["relative_thickness"]
             if 'added_mass_coeff' in turbine["airfoils"][i].keys():
                 Ca[i,:] = turbine["airfoils"][i]["added_mass_coeff"]
             else:
-                Ca[i,:] = [0.5, 1.0]  
-            if 'min_pressure_coeff' in turbine['airfoils'][i].keys():
-                min_press_coeff[i] = turbine["airfoils"][i]["min_pressure_coeff"]
-            else:
-                min_press_coeff[i] = 0.0          
+                Ca[i,:] = [0.5, 1.0]
+
+
+        polar_table = np.array(turbine["airfoils"][i]['data'])
 
         cl = np.zeros((n_af, n_aoa, 1))
         cd = np.zeros((n_af, n_aoa, 1))
         cm = np.zeros((n_af, n_aoa, 1))
+        cpmin = np.zeros((n_af, n_aoa, 1))
+        if len(polar_table[0]) > 4:
+            cpmin_flag = True
+        else:
+            cpmin_flag = False
 
         # Interp cl-cd-cm along predefined grid of angle of attack
         for i in range(n_af):
@@ -145,12 +148,15 @@ class Rotor:
             #cd[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_d"])
             #cm[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_m"])
 
-            polar_table = np.array(turbine["airfoils"][i]['data'])
+            #polar_table = np.array(turbine["airfoils"][i]['data'])
             
             # Note: polar_table[:,0] must be in degrees
             cl[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,1])
             cd[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,2])
             cm[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,3])
+            if cpmin_flag:
+                cpmin[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,4])
+            
 
             #plt.figure()
             #plt.plot(polar_table[:,0], polar_table[:,1])
@@ -166,25 +172,28 @@ class Rotor:
             if abs(cm[i, 0, 0] - cm[i, -1, 0]) > 1.0e-5:
                 print("WARNING: Airfoil " + af_name[i] + " has the moment coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cm[i, 0, 0] = cm[i, -1, 0]
+            if cpmin_flag and abs(cpmin[i, 0, 0] - cpmin[i, -1, 0]) > 1.0e-5:
+                print("WARNING: Airfoil " + af_name[i] + " has the minimum pressure coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                cpmin[i, 0, 0] = cpmin[i, -1, 0]
 
 
         # Interpolate along blade span using a pchip on relative thickness
         r_thick_used = np.zeros(n_af_span)
         Ca_used = np.zeros((n_af_span, 2))
-        mpc_used = np.zeros((n_af_span))
         cl_used = np.zeros((n_af_span, n_aoa, 1))
         cd_used = np.zeros((n_af_span, n_aoa, 1))
         cm_used = np.zeros((n_af_span, n_aoa, 1))
+        cpmin_used = np.zeros((n_af_span, n_aoa, 1))
 
         for i in range(n_af_span):
             for j in range(n_af):
                 if self.af_used[i] == af_name[j]:
                     r_thick_used[i] = r_thick[j]
                     Ca_used[i,:] = Ca[j,:]
-                    mpc_used[i] = min_press_coeff[j]
                     cl_used[i, :, :] = cl[j, :, :]
                     cd_used[i, :, :] = cd[j, :, :]
                     cm_used[i, :, :] = cm[j, :, :]
+                    cpmin_used[i, :, :] = cpmin[j, :, :]
                     break
 
         # Pchip does have an associated derivative method built-in:
@@ -192,12 +201,10 @@ class Rotor:
         spline = PchipInterpolator
         rthick_spline = spline(self.af_position, r_thick_used)
         Ca_spline = spline(self.af_position, Ca_used)
-        mpc_spline = spline(self.af_position, mpc_used)
         # GB: HAVE TO TALK TO PIETRO ABOUT THIS
         #r_thick_interp = rthick_spline(grid[1:-1])
         self.r_thick_interp = rthick_spline(grid)
         self.Ca_interp = Ca_spline(grid)
-        self.mpc_interp = mpc_spline(grid)
 
         # Spanwise interpolation of the airfoil polars with a pchip
         r_thick_unique, indices = np.unique(r_thick_used, return_index=True)
@@ -207,6 +214,8 @@ class Rotor:
         self.cd_interp = np.flip(cd_spline(np.flip(self.r_thick_interp)), axis=0)
         cm_spline = spline(r_thick_unique, cm_used[indices, :, :])
         self.cm_interp = np.flip(cm_spline(np.flip(self.r_thick_interp)), axis=0)
+        cpmin_spline = spline(r_thick_unique, cpmin_used[indices, :, :])
+        self.cpmin_interp = np.flip(cpmin_spline(np.flip(self.r_thick_interp)), axis=0)
                 
         self.aoa = aoa
         
@@ -353,6 +362,18 @@ class Rotor:
 
             self.bladeMemberList.append(Member(blademem, len(self.w)))
 
+    def calcRelativeVelocity(self, case, azimuth=0):
+        '''
+        (wind speed, rotor speed, pitch angle, azimuth)
+        '''
+        Uhub = case['wind_speed']
+        Omega_rpm = np.interp(Uhub, self.Uhub, self.Omega_rpm)  # rotor speed [rpm]
+        pitch_deg = np.interp(Uhub, self.Uhub, self.pitch_deg)  # blade pitch angle [deg]
+
+        loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azimuth)    
+        rel_v = loads['W']      # relative velocity of the airfoils along the blade
+
+        return rel_v
 
 
     def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):

@@ -98,12 +98,12 @@ turbine:
         relative_thickness : 1.0  # 
         added_mass_coeff   : [0.6, 0.7]     # [flapwise, edgewise]
         min_pressure_coeff : 2.0            # for cavitation
-        data:  #  alpha    c_l    c_d     c_m   
-          - [ -179.9087,    0.00010,    0.35000,   -0.00010 ] 
-          - [  179.9087,    0.00010,    0.35000,   -0.00010 ] 
+        data:  #  alpha       c_l         c_d         c_m       cp_min
+          - [ -179.9087,    0.00010,    0.35000,   -0.00010,    0.00000 ] 
+          - [  179.9087,    0.00010,    0.35000,   -0.00010,    0.00001 ] 
       - name               : SNL-FFA-W3-500  # 
         relative_thickness : 0.5  # 
-        data:  #  alpha    c_l    c_d     c_m   
+        data:  #  alpha       c_l         c_d         c_m
           - [ -179.9660,    0.00000,    0.08440,    0.00000 ] 
           - [ -170.0000,    0.44190,    0.08440,    0.31250 ] 
           - [ -160.0002,    0.88370,    0.12680,    0.28310 ] 

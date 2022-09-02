@@ -9,6 +9,7 @@ import pandas as pd
 
 
 from raft.pyIECWind         import pyIECWind_extreme
+from raft.raft_member import Member
 
 from scipy.interpolate      import PchipInterpolator
 from scipy.special          import modstruve, iv
@@ -46,11 +47,15 @@ class Rotor:
 
         # Should inherit these from raft_model or _env?
         self.w = np.array(w)
+        self.turbine = turbine      # store dictionary for later use
 
         self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
         
-        self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'])[ir]         # [-]
-        self.Zhub       = getFromDict(turbine, 'Zhub', shape=turbine['nrotors'])[ir]            # [m]
+        self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'], dtype=int)[ir]         # [-]
+        self.headings   = getFromDict(turbine, 'headings', shape=turbine['nrotors'], default=[90,210,330])[ir]  # [deg]
+        self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]       # [-]
+
+        self.Zhub       = getFromDict(turbine, 'hHub', shape=turbine['nrotors'])[ir]            # [m]
         self.Rhub       = getFromDict(turbine, 'Rhub', shape=turbine['nrotors'])[ir]            # [m]
         self.precone    = getFromDict(turbine, 'precone', shape=turbine['nrotors'])[ir]         # [m]
         self.shaft_tilt = getFromDict(turbine, 'shaft_tilt', shape=turbine['nrotors'])[ir]      # [deg]        
@@ -101,12 +106,12 @@ class Rotor:
         # ----- AIRFOIL STUFF ------
         n_aoa = 200 # [-] - number of angles of attack to discretize airfoil polars - MUST BE MULTIPLE OF 4
         #n_af = len(turbine["airfoils"])
-        af_used     = [ b for [a,b] in turbine['blade'][ir]["airfoils"] ]
-        af_position = [ a for [a,b] in turbine['blade'][ir]["airfoils"] ]
-        n_af = len(np.unique(af_used))
+        self.af_used     = [ b for [a,b] in turbine['blade'][ir]["airfoils"] ]
+        self.af_position = [ a for [a,b] in turbine['blade'][ir]["airfoils"] ]
+        n_af = len(np.unique(self.af_used))
         #af_used     = turbine['blade']["airfoils"]["labels"]
         #af_position = turbine['blade']["airfoils"]["grid"]
-        n_af_span = len(af_used)
+        n_af_span = len(self.af_used)
         
         # One fourth of the angles of attack from -pi to -pi/6, half between -pi/6 to pi/6, and one fourth from pi/6 to pi
         aoa = np.unique(np.hstack([np.linspace(-180, -30, int(n_aoa/4.0 + 1)), 
@@ -115,14 +120,26 @@ class Rotor:
 
         af_name = n_af * [""]
         r_thick = np.zeros(n_af)
+        Ca = np.zeros([n_af, 2])
         for i in range(n_af):
             af_name[i] = turbine["airfoils"][i]["name"]
             r_thick[i] = turbine["airfoils"][i]["relative_thickness"]
-            
+            if 'added_mass_coeff' in turbine["airfoils"][i].keys():
+                Ca[i,:] = turbine["airfoils"][i]["added_mass_coeff"]
+            else:
+                Ca[i,:] = [0.5, 1.0]
+
+
+        polar_table = np.array(turbine["airfoils"][i]['data'])
 
         cl = np.zeros((n_af, n_aoa, 1))
         cd = np.zeros((n_af, n_aoa, 1))
         cm = np.zeros((n_af, n_aoa, 1))
+        cpmin = np.zeros((n_af, n_aoa, 1))
+        if len(polar_table[0]) > 4:
+            cpmin_flag = True
+        else:
+            cpmin_flag = False
 
         # Interp cl-cd-cm along predefined grid of angle of attack
         for i in range(n_af):
@@ -131,12 +148,15 @@ class Rotor:
             #cd[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_d"])
             #cm[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_m"])
 
-            polar_table = np.array(turbine["airfoils"][i]['data'])
+            #polar_table = np.array(turbine["airfoils"][i]['data'])
             
             # Note: polar_table[:,0] must be in degrees
             cl[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,1])
             cd[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,2])
             cm[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,3])
+            if cpmin_flag:
+                cpmin[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,4])
+            
 
             #plt.figure()
             #plt.plot(polar_table[:,0], polar_table[:,1])
@@ -152,47 +172,58 @@ class Rotor:
             if abs(cm[i, 0, 0] - cm[i, -1, 0]) > 1.0e-5:
                 print("WARNING: Airfoil " + af_name[i] + " has the moment coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cm[i, 0, 0] = cm[i, -1, 0]
+            if cpmin_flag and abs(cpmin[i, 0, 0] - cpmin[i, -1, 0]) > 1.0e-5:
+                print("WARNING: Airfoil " + af_name[i] + " has the minimum pressure coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                cpmin[i, 0, 0] = cpmin[i, -1, 0]
 
 
         # Interpolate along blade span using a pchip on relative thickness
         r_thick_used = np.zeros(n_af_span)
+        Ca_used = np.zeros((n_af_span, 2))
         cl_used = np.zeros((n_af_span, n_aoa, 1))
         cd_used = np.zeros((n_af_span, n_aoa, 1))
         cm_used = np.zeros((n_af_span, n_aoa, 1))
+        cpmin_used = np.zeros((n_af_span, n_aoa, 1))
 
         for i in range(n_af_span):
             for j in range(n_af):
-                if af_used[i] == af_name[j]:
+                if self.af_used[i] == af_name[j]:
                     r_thick_used[i] = r_thick[j]
+                    Ca_used[i,:] = Ca[j,:]
                     cl_used[i, :, :] = cl[j, :, :]
                     cd_used[i, :, :] = cd[j, :, :]
                     cm_used[i, :, :] = cm[j, :, :]
+                    cpmin_used[i, :, :] = cpmin[j, :, :]
                     break
 
         # Pchip does have an associated derivative method built-in:
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.derivative.html#scipy.interpolate.PchipInterpolator.derivative
         spline = PchipInterpolator
-        rthick_spline = spline(af_position, r_thick_used)
+        rthick_spline = spline(self.af_position, r_thick_used)
+        Ca_spline = spline(self.af_position, Ca_used)
         # GB: HAVE TO TALK TO PIETRO ABOUT THIS
         #r_thick_interp = rthick_spline(grid[1:-1])
-        r_thick_interp = rthick_spline(grid)
+        self.r_thick_interp = rthick_spline(grid)
+        self.Ca_interp = Ca_spline(grid)
 
         # Spanwise interpolation of the airfoil polars with a pchip
         r_thick_unique, indices = np.unique(r_thick_used, return_index=True)
         cl_spline = spline(r_thick_unique, cl_used[indices, :, :])
-        self.cl_interp = np.flip(cl_spline(np.flip(r_thick_interp)), axis=0)
+        self.cl_interp = np.flip(cl_spline(np.flip(self.r_thick_interp)), axis=0)
         cd_spline = spline(r_thick_unique, cd_used[indices, :, :])
-        self.cd_interp = np.flip(cd_spline(np.flip(r_thick_interp)), axis=0)
+        self.cd_interp = np.flip(cd_spline(np.flip(self.r_thick_interp)), axis=0)
         cm_spline = spline(r_thick_unique, cm_used[indices, :, :])
-        self.cm_interp = np.flip(cm_spline(np.flip(r_thick_interp)), axis=0)
+        self.cm_interp = np.flip(cm_spline(np.flip(self.r_thick_interp)), axis=0)
+        cpmin_spline = spline(r_thick_unique, cpmin_used[indices, :, :])
+        self.cpmin_interp = np.flip(cpmin_spline(np.flip(self.r_thick_interp)), axis=0)
                 
         self.aoa = aoa
         
         # split out blade geometry info from table 
         geometry_table = np.array(turbine['blade'][ir]['geometry'])
-        blade_r         = geometry_table[:,0]
-        blade_chord     = geometry_table[:,1]
-        blade_theta     = geometry_table[:,2]
+        self.blade_r         = geometry_table[:,0]
+        self.blade_chord     = geometry_table[:,1]
+        self.blade_theta     = geometry_table[:,2]
         blade_precurve  = geometry_table[:,3]
         blade_presweep  = geometry_table[:,4]
         
@@ -201,9 +232,9 @@ class Rotor:
             af.append(CCAirfoil(self.aoa, [], self.cl_interp[i,:,:],self.cd_interp[i,:,:],self.cm_interp[i,:,:]))
         
         self.ccblade = CCBlade(
-            blade_r,                        # (m) locations defining the blade along z-axis of blade coordinate system
-            blade_chord,                    # (m) corresponding chord length at each section
-            blade_theta,                    # (deg) corresponding :ref:`twist angle <blade_airfoil_coord>` at each section---positive twist decreases angle of attack.
+            self.blade_r,                        # (m) locations defining the blade along z-axis of blade coordinate system
+            self.blade_chord,                    # (m) corresponding chord length at each section
+            self.blade_theta,                    # (deg) corresponding :ref:`twist angle <blade_airfoil_coord>` at each section---positive twist decreases angle of attack.
             af,                             # CCAirfoil object
             self.Rhub,                      # (m) radius of hub
             turbine['blade'][ir]['Rtip'],   # (m) radius of tip
@@ -229,6 +260,120 @@ class Rotor:
 
         # pull control gains out of dictionary
         self.setControlGains(turbine)
+
+        # create a member list of blade sections, only if rotor is underwater
+        if self.Zhub + self.R_rot < 0:
+            #self.bladeAirfoil2Member()
+            self.bladeGeometry2Member()
+        else:
+            self.bladeMemberList = []
+    
+
+    def bladeAirfoil2Member(self, Ca_edge=0.5, Ca_flap=1.0):
+        '''Method to create members for each airfoil in the turbine blade
+        To be used for added mass and buoyancy calculations of underwater turbines'''
+        
+        self.bladeMemberList = []
+        rHub = np.array([self.coords[0], self.coords[1], self.Zhub])    # rHub = position of hub; Rhub = radius of hub
+        blade_length = self.R_rot-self.Rhub
+        blade_r = np.array(self.af_position)*blade_length
+
+        airfoil_name_dict = [foil['name'] for foil in self.turbine['airfoils']]
+
+        for i,af in enumerate(self.af_used[:-1]):
+            airfoil = {}        # dictionary to hold properties of blade sub-member = each airfoil
+            airfoil['name'] = af+'-'+str(i+1)+'/'+str(len(self.af_used))
+            airfoil['type'] = 3
+
+            # started a fancy method to determine the axis that the airfoil blades will have different headings about
+            # ideally, I want to find a vector (r) orthogonal to the rotor axis vector (n), which has infinite solutions (r dot n = 0)
+            # the way I set it up below rotates the rotor axis vector 90 degrees, but breaks down if rotor.axis[2] != 0 since the rotation metrix used here is about the z axis
+            airfoil_zero_heading = np.matmul(np.array([[0, -1, 0],[1, 0, 0],[0, 0, 1]]), self.axis)
+            airfoil['rA'] = np.array(airfoil_zero_heading)*(self.Rhub+(self.af_position[i]*blade_length))
+            airfoil['rB'] = airfoil['rA'] + np.array(airfoil_zero_heading)*((self.af_position[i+1]-self.af_position[i])*blade_length)
+
+            #airfoil['rA'] = rHub + np.array([0,0,self.Rhub]) + np.array([0,0,(self.af_position[i])*blade_length])
+            #airfoil['rB'] = airfoil['rA'] + np.array([0,0, (self.af_position[i+1]-self.af_position[i])*blade_length])
+            # >>>>>>>> don't need to specify direction of blade; just assume vertical and then can transform in later operations <<<<<<<<<<<<<
+            airfoil['shape'] = 'rect'
+            airfoil['stations'] = [0,1]
+
+            chord = np.interp(blade_r[i], self.blade_r, self.blade_chord)
+            rel_t = self.turbine["airfoils"][airfoil_name_dict.index(af)]["relative_thickness"]
+            A = (np.pi/4)*chord**2 * rel_t
+            sideB = A/chord     # the length of the imaginary side length of the rectange that gives the same area
+
+            airfoil['d'] = [chord, sideB]
+            #airfoil['d'] = np.interp(blade_r[i:i+2], self.blade_r, self.blade_chord)
+            airfoil['gamma'] = np.interp(blade_r[i], self.blade_r, self.blade_theta)
+            airfoil['potMod'] = False
+
+            airfoil['Cd'] = 0.0
+            if 'added_mass_coeff' in self.turbine["airfoils"][airfoil_name_dict.index(af)]:
+                added_mass_coeff = self.turbine["airfoils"][airfoil_name_dict.index(af)]['added_mass_coeff']
+            else:
+                added_mass_coeff = [Ca_edge, Ca_flap]
+            airfoil['Ca'] = added_mass_coeff 
+            #airfoil['Ca'] = self.turbine["airfoils"][airfoil_name_dict.index(af)]["added_mass_coeff"]
+            airfoil['CdEnd'] = 0.0
+            airfoil['CaEnd'] = 0.0
+        
+            airfoil['t'] = 0.01
+            airfoil['rho_shell'] = 1850
+
+            self.bladeMemberList.append(Member(airfoil, len(self.w)))
+
+    def bladeGeometry2Member(self):
+        '''Method to create members for each "node" that is specified in turbine['blade']['geometry']
+        To be used for added mass and buoyancy calculations of underwater turbines'''
+
+        self.bladeMemberList = []
+
+        for i in range(len(self.blade_r)-1):
+            blademem = {}
+            blademem['name'] = i
+            blademem['type'] = 3
+
+            airfoil_zero_heading = np.matmul(np.array([[0, -1, 0],[1, 0, 0],[0, 0, 1]]), self.axis) # see comments in bladeAirfoil2Member()
+            blademem['rA'] = np.array(airfoil_zero_heading) * self.blade_r[i]
+            blademem['rB'] = np.array(airfoil_zero_heading) * self.blade_r[i+1]
+
+            blademem['shape'] = 'rect'
+            blademem['stations'] = [0,1]
+
+            chordA = self.blade_chord[i]; chordB = self.blade_chord[i+1]
+            rel_thickA = self.r_thick_interp[i]; rel_thickB = self.r_thick_interp[i+1]
+            areaA = (np.pi/4)*chordA**2 * rel_thickA; areaB = (np.pi/4)*chordB**2 * rel_thickB
+            sideA = areaA/chordA; sideB = areaB/chordB
+            blademem['d'] = [[chordA, sideA],[chordB, sideB]]
+
+            # how to do gamma? We can't really have a twist of both ends 
+            blademem['gamma'] = np.mean(np.array([self.blade_theta[i], self.blade_theta[i+1]]))
+
+            blademem['potMod'] = False
+
+            blademem['Cd'] = 0.0
+            blademem['Ca'] = self.Ca_interp[i:i+2,:]            
+            blademem['CdEnd'] = 0.0
+            blademem['CaEnd'] = 0.0
+        
+            blademem['t'] = 0.01
+            blademem['rho_shell'] = 1850
+
+            self.bladeMemberList.append(Member(blademem, len(self.w)))
+
+    def calcRelativeVelocity(self, case, azimuth=0):
+        '''
+        (wind speed, rotor speed, pitch angle, azimuth)
+        '''
+        Uhub = case['wind_speed']
+        Omega_rpm = np.interp(Uhub, self.Uhub, self.Omega_rpm)  # rotor speed [rpm]
+        pitch_deg = np.interp(Uhub, self.Uhub, self.pitch_deg)  # blade pitch angle [deg]
+
+        loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azimuth)    
+        rel_v = loads['W']      # relative velocity of the airfoils along the blade
+
+        return rel_v
 
 
     def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):
@@ -567,7 +712,7 @@ class Rotor:
         #    linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color='k'))  # station rings
         #
         #return linebit
-    
+
     
     def IECKaimal(self, case):        # 
         '''Calculates rotor-averaged turbulent wind spectrum based on inputted turbulence intensity or class.'''

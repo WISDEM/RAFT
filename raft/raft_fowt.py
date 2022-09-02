@@ -69,9 +69,8 @@ class FOWT():
         self.rho_water = getFromDict(design['site'], 'rho_water', default=1025.0)
         self.g         = getFromDict(design['site'], 'g'        , default=9.81)
         
-        # <<<<<<<<<<< do we need this? Should it be something like self.dlsMax?
+        # <<<<<<<<<<< Should it be something like self.dlsMax?
         #design['turbine']['tower']['dlsMax'] = getFromDict(design['turbine']['tower'], 'dlsMax', shape=-1, default=5.0)
-        # >>>>>>>>>>>>>>>>>>>>>>>>>>
 
         potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
         dlsMax       = getFromDict(design['platform'], 'dlsMax'      , default=5.0)
@@ -108,7 +107,8 @@ class FOWT():
                 mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
 
         for t,tower in enumerate(design['turbine']['tower']):
-            self.memberList.append(Member(design['turbine']['tower'][t], self.nw))
+            #tower['dlsMax'] = design['turbine']['tower']['dlsMax']     # for when we want to make a list of tower 'members' and have general inputs like dlsMax first
+            self.memberList.append(Member(tower, self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
 
         # mooring system connection
@@ -246,6 +246,84 @@ class FOWT():
             Sum_V_rCB   += r_CB*V_UW
             Sum_AWP_rWP += np.array([xWP, yWP])*AWP
 
+        
+        # ------------- include buoyancy effects of underwater rotors -------------
+        rotor_nodes = []
+        rotor_cpmin = []
+        rotor_relv = []
+        # loop through each blade (sub)member to calculate rotor buoyancy forces (for underwater turbines)
+        for i in range(self.nrotors):       # for each rotor in the fowt
+            rotor = self.rotorList[i]
+            nodes = np.zeros([int(rotor.nBlades), len(rotor.bladeMemberList)+1, 3])   # 3 for size 3 position vectors
+            if rotor.Zhub < 0:      # only do this for underwater rotors
+                rHub = np.array([rotor.coords[0], rotor.coords[1], rotor.Zhub])     # save the rotor hub center point for later
+                for j in range(int(rotor.nBlades)):     # for each blade on the rotor
+                    for k,afmem in enumerate(rotor.bladeMemberList):    # for each airfoil member in the bladeMemberList
+                        # store original positions of the airfoil member about the original rotor axis
+                        rA_OG = afmem.rA
+                        rB_OG = afmem.rB
+
+                        # calculate the rotation matrix about the x-axis
+                        afmem.heading = rotor.headings[j]   # rotor blade headings are set arbitrarily in rotor.__init__
+                        
+                        # ensure the blade headings are equally spaced apart (so that the specific heading values are arbitrary)
+                        if all(np.mod(np.diff(rotor.headings, append=rotor.headings[0]),360) != np.mod(np.diff(rotor.headings, append=rotor.headings[0])[0], 360)):
+                            raise ValueError("The headings of the blades need to be equally spaced apart")
+                        
+                        c = np.cos(np.deg2rad(afmem.heading))
+                        s = np.sin(np.deg2rad(afmem.heading))
+                        # create rotation matrix based on the rotor's axis (default axis=[1,0,0])
+                        a = rotor.axis  # each rotor is given a default axis of rotation about the x-direction
+                        R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
+                                      [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
+                                      [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
+                        #rotMatx = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+
+                        # find the new endpoints of the airfoil member wrt the hub center
+                        rA_from_Zhub = np.matmul(R, afmem.rA)
+                        rB_from_Zhub = np.matmul(R, afmem.rB)
+
+                        # find the endpoints of the blade (sub)member wrt global coordinates
+                        afmem.rA = rA_from_Zhub + rHub
+                        afmem.rB = rB_from_Zhub + rHub
+                        nodes[j,k,:] = afmem.rA
+                        if k==len(rotor.bladeMemberList)-1: nodes[j,k+1,:] = afmem.rB
+
+                        # find the actual orientation vectors of the blade (sub)member
+                        afmem.calcOrientation()
+
+                        # calculate the mass and inertial properties of the blade (sub)members
+                        #mass, center, mshell, mfill, pfill = mem.getInertia()
+                        # >>>>>> can be used later if actual rectangular mass properties are desired other than mRNA <<<<<<<<
+
+                        # calculate hydrostatic properties of the blade (sub)member and add them to the system matrices
+                        Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = afmem.getHydrostatics(self.rho_water, self.g)  # call to Member method for hydrostatic calculations
+                        
+                        # outputs of getHydrostatics should already be about the PRP
+                        self.W_hydro += Fvec # buoyancy vector
+                        self.C_hydro += Cmat # hydrostatic stiffness matrix
+
+                        # >>>>>>>>>> add a check to solve for the volume of just the blade submembers <<<<<<<<<
+
+                        VTOT    += V_UW    # add to total underwater volume of all members combined
+                        AWP_TOT += AWP
+                        IWPx_TOT += IWP + AWP*yWP**2
+                        IWPy_TOT += IWP + AWP*xWP**2
+                        Sum_V_rCB   += r_CB*V_UW
+                        Sum_AWP_rWP += np.array([xWP, yWP])*AWP
+
+                        # reset original rA and rB values of the airfoil member
+                        afmem.rA = rA_OG
+                        afmem.rB = rB_OG
+                        afmem.calcOrientation()
+
+            # Parameters for cavitation (can maybe write a new method within FOWT to calcCavitation)
+            rotor_nodes.append(nodes)               # array of size [rotor.nBlades, len(bladeMemberList)+1, 3] to hold the positions of each blade node for each blade
+            rotor_cpmin.append(rotor.cpmin_interp)    # array of size [len(bladeMemberList), len(rotor.aoa), 1] where each row is the cpmin as a function of aoa
+            case = {}
+            case['wind_speed'] = 10 # find a way to sync this with the DLC case
+            #rotor_relv.append(rotor.calcRelativeVelocity(case, azimuth=0))     # array of size [len(bladeMemberList)] with the airfoil relative velocity at each node
+            # >>>>>> might need a better way to adjust the azimuth parameter (for each blade?); can maybe configure this in the blade heading adjustments earlier
 
         # ------------------------- include RNA properties -----------------------------
 
@@ -267,25 +345,6 @@ class FOWT():
             self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA[i]]), center )   # weight vector
             self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
             Sum_M_center += center*self.mRNA[i]
-        '''
-        if self.nrotors==1:
-            Mmat = np.diag([self.mRNA, self.mRNA, self.mRNA, self.IxRNA, self.IrRNA, self.IrRNA])            # create mass/inertia matrix
-            center = np.array([self.xCG_RNA, 0, self.hHub])                                 # RNA center of mass location
-
-            # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-            self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA]), center )   # weight vector
-            self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
-            Sum_M_center += center*self.mRNA
-        else:
-            for i in range(self.nrotors):
-                Mmat = np.diag([self.mRNA[i], self.mRNA[i], self.mRNA[i], self.IxRNA[i], self.IrRNA[i], self.IrRNA[i]])            # create mass/inertia matrix
-                center = np.array([self.xCG_RNA[i], 0, self.hHub[i]])                                 # RNA center of mass location
-
-                # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-                self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA[i]]), center )   # weight vector
-                self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
-                Sum_M_center += center*self.mRNA[i]
-        '''
 
         # ----------- process inertia-related totals ----------------
 
@@ -511,7 +570,7 @@ class FOWT():
                     self.F_aero[:,iw,t] = translateForce3to6DOF(np.array([f_aero[iw], 0, 0]), rHub)
         
 
-    def calcHydroConstants(self, case):
+    def calcHydroConstants(self, case, memberList=[], Rotor=None, dgamma=0):
         '''This computes the linear strip-theory-hydrodynamics terms, including wave excitation for a specific case.'''
 
         # set up sea state
@@ -548,18 +607,51 @@ class FOWT():
         self.F_hydro_iner    = np.zeros([6,self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
         # loop through each member
-        for mem in self.memberList:
+        for i,mem in enumerate(memberList):
         
             circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
-#            print(mem.name)
+            
+            # find the proper member node positions (mem.r) if this memberList is a bladeMemberList for underwater rotors. Otherwise, skip
+            if mem.type==3 and Rotor is not None:
+                rotor = Rotor       # save specific rotor variables
+                rHub = np.array([rotor.coords[0], rotor.coords[1], rotor.Zhub])
+                rOG = mem.r         # save original member.r to add back later
+                # without making any changes to the rest of the hydrodynamics calculations below...
+                # the input memberList is the rotor.bladeMemberList multiplied by nBlades (e.g. if len(rotor.bladeMemberList)=10, then this len(memberList)=30 for 3 blade rotor)
+                # adjust the heading/orientation of the each section of blade members by the corresponding heading in rotor.headings based on where in the list you are
+                j = i // int(len(memberList)/rotor.nBlades)
+                heading = rotor.headings[j]
+                
+                c = np.cos(np.deg2rad(heading))
+                s = np.sin(np.deg2rad(heading))
+                a = rotor.axis
+                R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
+                                [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
+                                [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
+                # see calcStatics() for more detailed comments - same process
+
+                # adjust the mem.r variable for changes in position of the blades
+                for il in range(mem.ns):
+                    r_from_Zhub = np.matmul(R, mem.r[il])
+                    mem.r[il] = r_from_Zhub + rHub
+                
+                # add an input twist to every blade member if the blades should be oriented a different way
+                mem.gamma = mem.gamma + dgamma
+
+                # run calcOrientation to ensure the p1 and p2 axes of the members are oriented the way they should be
+                mem.calcOrientation()
+
+                # >>>>>>> TODO (for added mass of underwater rotors) <<<<<<<<<<
+                # - Do we need to adjust any other methods in raft_fowt to account for added mass?
+                # - Do we need to make any changes to the pyHAMS code to account for rotor added mass?
+                # - How should we adjust the inclusion of member end effects of added mass knowing blade members are attached on ends to each other?
+                        
 
             # loop through each node of the member
             for il in range(mem.ns):
-#                print(il)
 
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
-#                    print("underwater")
 
                     # get wave kinematics spectra given a certain wave spectrum and location
                     mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.beta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
@@ -638,6 +730,9 @@ class FOWT():
 
                             self.F_hydro_iner[:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:]) # add to global excitation vector (frequency dependent)
 
+            # reset the member.r variable if underwater blade members were used
+            if mem.type==3 and Rotor is not None:
+                mem.r = rOG
 
 
     def calcLinearizedTerms(self, Xi):
@@ -787,7 +882,7 @@ class FOWT():
         results['yaw_max'][iCase] = rad2deg(Xi0[5]) + 3*results['yaw_std'][iCase]
         results['yaw_PSD'][iCase,:] = getPSD(yaw_deg)
         
-        XiHub = np.zeros([len(Xi[0,:]), self.ntowers])
+        XiHub = np.zeros([len(Xi[0,:]), self.ntowers], dtype=complex)
         for i in range(self.ntowers):
             XiHub[:,i] = Xi[0,:] + self.hHub[i]*Xi[4,:]  # hub fore-aft displacement amplitude (used as an approximation in a number of outputs)
         
@@ -800,7 +895,7 @@ class FOWT():
         zCG_turbine = np.zeros_like(m_turbine)
         zBase = np.zeros_like(m_turbine)
         hArm = np.zeros_like(m_turbine)
-        aCG_turbine = np.zeros([len(Xi[0,:]), self.ntowers])
+        aCG_turbine = np.zeros([len(Xi[0,:]), self.ntowers], dtype=complex)
         ICG_turbine = np.zeros_like(m_turbine)
         M_I = np.zeros_like(aCG_turbine)
         M_w = np.zeros_like(aCG_turbine)
@@ -969,10 +1064,14 @@ class FOWT():
 
         if plot_rotor:
             for rotor in self.rotorList:
-                coords = np.array([rotor.coords[0], rotor.coords[1], 0])
+                coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + np.array(self.body.r6[:3])
                 rotor.plot(ax, r_ptfm=coords, R_ptfm=self.body.R, color=color)
                 #rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
-
+                '''
+                for afmem in rotor.bladeMemberList:
+                    afmem.calcOrientation()
+                    afmem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, nodes=nodes, station_plot=station_plot)
+                '''
         # loop through each member and plot it
         for mem in self.memberList:
 

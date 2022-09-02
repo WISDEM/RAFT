@@ -362,18 +362,37 @@ class Rotor:
 
             self.bladeMemberList.append(Member(blademem, len(self.w)))
 
-    def calcRelativeVelocity(self, case, azimuth=0):
+
+    def calcCavitation(self, case, azimuth=0, clearance_margin=1.0):
+        ''' Method to calculate the cavitation number of the rotor
+        (wind speed (m/s), rotor speed (RPM), pitch angle (deg), azimuth (deg))
         '''
-        (wind speed, rotor speed, pitch angle, azimuth)
-        '''
+        # calculate the worst-case scenario depth below the free surface where cavitation can occur
+        if self.Zhub < 0:
+            clearance = self.Zhub + self.R_rot
+        else:
+            raise ValueError("Hub Depth must be below the water surface to calculate cavitation")
+        
+        # add a margin to the depth clearance (either by user input or based on platform motions)
+        clearance = clearance*clearance_margin
+
+        # collect minimum pressure coefficient values
+        cpmin = self.cpmin_interp       # array of size [len(bladeMemberList), len(self.aoa), 1] where each row is the cpmin as a function of aoa (columns)
+        
+        # set wind speed, rotor speed, and blade pitch angle based on wind speed an turbine inputs
         Uhub = case['wind_speed']
         Omega_rpm = np.interp(Uhub, self.Uhub, self.Omega_rpm)  # rotor speed [rpm]
         pitch_deg = np.interp(Uhub, self.Uhub, self.pitch_deg)  # blade pitch angle [deg]
 
-        loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azimuth)    
-        rel_v = loads['W']      # relative velocity of the airfoils along the blade
+        # calculate the relative velocity of each node along the blade using CCBlade, for each blade azimuth angle
+        for azi in self.headings:
+            loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azi)
+            rel_v = loads["W"]
+        
+        # >>>>>>>>> calculate cavitation as a function of these other inputs <<<<<<<<<<<<
+        cav = rel_v*cpmin*clearance
 
-        return rel_v
+        return cav
 
 
     def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):

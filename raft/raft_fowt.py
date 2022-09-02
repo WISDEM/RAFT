@@ -317,13 +317,9 @@ class FOWT():
                         afmem.rB = rB_OG
                         afmem.calcOrientation()
 
-            # Parameters for cavitation (can maybe write a new method within FOWT to calcCavitation)
+            # Store the node positions for potential use in the future
             rotor_nodes.append(nodes)               # array of size [rotor.nBlades, len(bladeMemberList)+1, 3] to hold the positions of each blade node for each blade
-            rotor_cpmin.append(rotor.cpmin_interp)    # array of size [len(bladeMemberList), len(rotor.aoa), 1] where each row is the cpmin as a function of aoa
-            case = {}
-            case['wind_speed'] = 10 # find a way to sync this with the DLC case
-            #rotor_relv.append(rotor.calcRelativeVelocity(case, azimuth=0))     # array of size [len(bladeMemberList)] with the airfoil relative velocity at each node
-            # >>>>>> might need a better way to adjust the azimuth parameter (for each blade?); can maybe configure this in the blade heading adjustments earlier
+
 
         # ------------------------- include RNA properties -----------------------------
 
@@ -545,6 +541,7 @@ class FOWT():
         self.B_aero  = np.zeros([6,6,self.nw,self.nrotors])                      # frequency-dependent aero-servo damping matrix
         self.F_aero  = np.zeros([6,  self.nw,self.nrotors], dtype=complex)       # dynamice excitation force and moment amplitude spectra
         self.F_aero0 = np.zeros([6,          self.nrotors])                      # mean aerodynamic forces and moments
+        self.cav     = np.zeros(self.nrotors)                                    # cavitation number
         
         for t in range(self.nrotors):
             # only compute the aerodynamics if enabled and windspeed is nonzero
@@ -568,6 +565,10 @@ class FOWT():
                 for iw in range(self.nw):
                     #self.F_aero[:,iw] = transformForce(F_aero[:,iw], offset=rHub, orientation=rotMatHub)
                     self.F_aero[:,iw,t] = translateForce3to6DOF(np.array([f_aero[iw], 0, 0]), rHub)
+                
+                # calculate cavitation of the rotor (platform motions should already be accounted for in the CCBlade object after running calcAeroServoContributions)
+                self.cav[t] = rotor.calcCavitation(case)
+                # >>>>>>>> what do we do with this, now that we have it? Raise an Error, raise a Warning? <<<<<<<<<<<<<<<
         
 
     def calcHydroConstants(self, case, memberList=[], Rotor=None, dgamma=0):

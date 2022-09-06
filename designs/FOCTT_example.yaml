@@ -14,13 +14,15 @@ site:
     rho_water   : 1025.0     # [kg/m^3] water density
     rho_air     : 1.225      # [kg/m^3] air density
     mu_air      : 1.81e-05   #          air dynamic viscosity
-    shearExp    : 0.12       #          shear exponent
+    shearExp_air: 0.12       #          shear exponent
+    mu_water    : 1.00e-03   # [kg/ms]  water dynamic viscosity
+    shearExp_water : 0.12
     
 cases:
 
-    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading  ]
-    data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)
-        -  [     0,         0,            0,     operating,          0,        JONSWAP,         12,         1,           0        ]
+    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, current_speed, current_heading, current_turbulence, current_yaw_misalign  ]
+    data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)         (m/s)           (deg)        % or e.g. IIB_NTM         (deg)
+        -  [     0,         0,            0,         operating,           0,        JONSWAP,         12,          1,           0,            1,              0,                 0,                  0            ]
         #-  [     1,         0,            0,     operating,          0,        JONSWAP,         12,         1,           0        ]
     
 

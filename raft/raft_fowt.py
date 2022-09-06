@@ -120,9 +120,12 @@ class FOWT():
             self.yawstiff = 0
 
         # Turbine rotor
-        design['turbine']['rho_air' ] = design['site']['rho_air']
-        design['turbine']['mu_air'  ] = design['site']['mu_air']
-        design['turbine']['shearExp'] = design['site']['shearExp']
+        design['turbine']['rho_air'       ] = getFromDict(design['site'], 'rho_air', shape=0, default=1.225)
+        design['turbine']['mu_air'        ] = getFromDict(design['site'], 'mu_air', shape=0, default=1.81e-05)
+        design['turbine']['shearExp_air'  ] = getFromDict(design['site'], 'shearExp_air', shape=0, default=0.12)
+        design['turbine']['rho_water'     ] = getFromDict(design['site'], 'rho_water', shape=0, default=1025.0)
+        design['turbine']['mu_water'      ] = getFromDict(design['site'], 'mu_water', shape=0, default=1.0e-03)
+        design['turbine']['shearExp_water'] = getFromDict(design['site'], 'shearExp_water', shape=0, default=0.12)
         
         for ir in range(self.nrotors):
             self.rotorList.append(Rotor(design['turbine'], self.w, ir))
@@ -524,7 +527,7 @@ class FOWT():
             # note: RAFT will only be using finite-frequency potential flow coefficients
             
     
-    def calcTurbineConstants(self, case, ptfm_pitch=0):
+    def calcTurbineConstants(self, case, ptfm_pitch=0, current=False):
         '''This computes turbine linear terms
         
         case
@@ -546,8 +549,10 @@ class FOWT():
         for t in range(self.nrotors):
             # only compute the aerodynamics if enabled and windspeed is nonzero
             if self.rotorList[t].aeroServoMod > 0 and case['wind_speed'] > 0.0:
+
+                if self.rotorList[t].Zhub < 0: current=True
             
-                F_aero0, f_aero, a_aero, b_aero = self.rotorList[t].calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, display=2)  # get values about hub
+                F_aero0, f_aero, a_aero, b_aero = self.rotorList[t].calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, current=current, display=2)  # get values about hub
                 
                 # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
                 rHub = np.array([self.rotorList[t].coords[0], self.rotorList[t].coords[1], self.hHub[t]])
@@ -567,7 +572,7 @@ class FOWT():
                     self.F_aero[:,iw,t] = translateForce3to6DOF(np.array([f_aero[iw], 0, 0]), rHub)
                 
                 # calculate cavitation of the rotor (platform motions should already be accounted for in the CCBlade object after running calcAeroServoContributions)
-                self.cav[t] = rotor.calcCavitation(case)
+                self.cav[t] = self.rotorList[t].calcCavitation(case)
                 # >>>>>>>> what do we do with this, now that we have it? Raise an Error, raise a Warning? <<<<<<<<<<<<<<<
         
 

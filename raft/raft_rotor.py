@@ -226,6 +226,15 @@ class Rotor:
         self.blade_theta     = geometry_table[:,2]
         blade_precurve  = geometry_table[:,3]
         blade_presweep  = geometry_table[:,4]
+
+        if self.Zhub < 0:
+            self.rho = turbine['rho_water']
+            self.mu = turbine['mu_water']
+            self.shearExp = turbine['shearExp_water']
+        else:
+            self.rho = turbine['rho_air']
+            self.mu = turbine['mu_air']
+            self.shearExp = turbine['shearExp_air']
         
         af = []
         for i in range(self.cl_interp.shape[0]):
@@ -239,12 +248,12 @@ class Rotor:
             self.Rhub,                      # (m) radius of hub
             turbine['blade'][ir]['Rtip'],   # (m) radius of tip
             self.nBlades,                   # number of blades
-            turbine['rho_air'],             # (kg/m^3) freestream fluid density
-            turbine['mu_air'],              # (kg/m/s) dynamic viscosity of fluid
+            self.rho,                       # (kg/m^3) freestream fluid density
+            self.mu,                        # (kg/m/s) dynamic viscosity of fluid
             self.precone,                   # (deg) hub precone angle
             self.shaft_tilt,                # (deg) hub tilt angle
             0.0,                            # (deg) nacelle yaw angle
-            turbine['shearExp'],            # shear exponent for a power-law wind profile across hub
+            self.shearExp,                  # shear exponent for a power-law wind profile across hub
             self.Zhub,                      # (m) hub height used for power-law wind profile.  U = Uref*(z/hubHt)**shearExp
             nSector,                        # number of azimuthal sectors to descretize aerodynamic calculation.  automatically set to 1 if tilt, yaw, and shearExp are all 0.0.  Otherwise set to a minimum of 4.
             blade_precurve,                 # (m) location of blade pitch axis in x-direction of :ref:`blade coordinate system <azimuth_blade_coord>`
@@ -390,7 +399,8 @@ class Rotor:
             rel_v = loads["W"]
         
         # >>>>>>>>> calculate cavitation as a function of these other inputs <<<<<<<<<<<<
-        cav = rel_v*cpmin*clearance
+        #cav = rel_v*cpmin*clearance
+        cav = 0
 
         return cav
 
@@ -509,7 +519,7 @@ class Rotor:
             
 
 
-    def calcAeroServoContributions(self, case, ptfm_pitch=0, display=0):
+    def calcAeroServoContributions(self, case, ptfm_pitch=0, current=False, display=0):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
         Results are w.r.t. nonrotating hub reference frame.
@@ -519,9 +529,20 @@ class Rotor:
             mean platform pitch angle to be included in rotor tilt angle [rad]
         '''
         
-        loads, derivs = self.runCCBlade(case['wind_speed'], ptfm_pitch=ptfm_pitch, yaw_misalign=case['yaw_misalign'])
+        if current:
+            speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+            heading = getFromDict(case, 'current_heading', shape=0, default=0.0)
+            yaw_misalign = getFromDict(case, 'current_yaw_misalign', shape=0, default=0.0)
+        else:
+            speed = getFromDict(case, 'wind_speed', shape=0, default=10)
+            heading = getFromDict(case, 'wind_heading', shape=0, default=0.0)
+            yaw_misalign = getFromDict(case, 'yaw_misalign', shape=0, default=0.0)
+
+
+        loads, derivs = self.runCCBlade(speed, ptfm_pitch=ptfm_pitch, yaw_misalign=yaw_misalign)
         
-        Uinf = case['wind_speed']  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
+        #Uinf = case['wind_speed']  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
+        Uinf = speed
         
         # extract derivatives of interest
         dT_dU  = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))
@@ -534,9 +555,10 @@ class Rotor:
         # calculate steady aero forces and moments
         F_aero0 = np.array([loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0],
                             loads["My" ][0], loads["Q" ][0], loads["Mz" ][0] ])
+        # >>>>>>>>>>> probably room here to account for wind heading <<<<<<<<<<<<
 
         # calculate rotor-averaged turbulent wind spectrum
-        _,_,_,S_rot = self.IECKaimal(case)   # PSD [(m/s)^2/rad]
+        _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD [(m/s)^2/rad]
         self.V_w = np.sqrt(S_rot)   # convert from power spectral density to complex amplitudes (FFT)
 
 
@@ -732,40 +754,47 @@ class Rotor:
         #return linebit
 
     
-    def IECKaimal(self, case):        # 
+    def IECKaimal(self, case, current=False):        # 
         '''Calculates rotor-averaged turbulent wind spectrum based on inputted turbulence intensity or class.'''
         
         #TODO: expand commenting, confirm that Rot is power spectrum, skip V,W calcs if not used
-    
+
+        if current:
+            speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+            turbulence = getFromDict(case, 'current_turbulence', shape=0, default=0.0)
+        else:
+            speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
+            turbulence = getFromDict(case, 'turbulence', shape=0, default=0.0)
+
         # Set inputs (f, V_ref, HH, Class, Categ, TurbMod, R)
         f = self.w / 2 / np.pi    # frequency in Hz
         HH = abs(self.Zhub)     # <<< Temporary absolute value to avoid NaNs with underwater turbines. Eventually need a new function <<<
         R = self.R_rot
-        V_ref = case['wind_speed']
+        V_ref = speed
         
         ###### Initialize IEC Wind parameters #######
         iec_wind = pyIECWind_extreme()
         iec_wind.z_hub = HH
         
-        if isinstance(case['turbulence'],str):
+        if isinstance(turbulence,str):
             # If a string, the options are I, II, III, IV
             Class = ''
-            for char in case['turbulence']:
+            for char in turbulence:
                 if char == 'I' or char == 'V':
                     Class += char
                 else:
                     break
             
             if not Class:
-                raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {case['turbulence']}")
+                raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {turbulence}")
             else:
                 Categ = char
                 iec_wind.Turbulence_Class = Categ
 
             try:
-                TurbMod = case['turbulence'].split('_')[1]
+                TurbMod = turbulence.split('_')[1]
             except:
-                raise Exception(f"Error reading the turbulence model: {case['turbulence']}")
+                raise Exception(f"Error reading the turbulence model: {turbulence}")
 
             iec_wind.Turbine_Class = Class
         
@@ -773,10 +802,10 @@ class Rotor:
         iec_wind.setup()
         
         # Can set iec_wind.I_ref here if wanted, NTM used then
-        if isinstance(case['turbulence'],int):
-            case['turbulence'] = float(case['turbulence'])
-        if isinstance(case['turbulence'],float):
-            iec_wind.I_ref = case['turbulence']    # this overwrites the value set in setup method
+        if isinstance(turbulence,int):
+            turbulence = float(turbulence)
+        if isinstance(turbulence,float):
+            iec_wind.I_ref = turbulence    # this overwrites the value set in setup method
             TurbMod = 'NTM'
 
         # Compute wind turbulence standard deviation (invariant with height)

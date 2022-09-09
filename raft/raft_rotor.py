@@ -52,7 +52,9 @@ class Rotor:
         self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
         
         self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'], dtype=int)[ir]         # [-]
-        self.headings   = getFromDict(turbine, 'headings', shape=turbine['nrotors'], default=[90,210,330])[ir]  # [deg]
+        self.headings   = getFromDict(turbine, 'headings', shape=-1, default=[90,210,330])  # [deg]
+        self.nBlades    = len(self.headings)
+
         self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]       # [-]
 
         self.Zhub       = getFromDict(turbine, 'hHub', shape=turbine['nrotors'])[ir]            # [m]
@@ -370,39 +372,88 @@ class Rotor:
             blademem['rho_shell'] = 1850
 
             self.bladeMemberList.append(Member(blademem, len(self.w)))
+        
+        self.nodes = np.zeros([int(self.nBlades), len(self.bladeMemberList)+1, 3])      # array to hold xyz positions of each node along a blade for each blade (filled in later)
 
 
-    def calcCavitation(self, case, azimuth=0, clearance_margin=1.0):
+    def getBladeMemberPositions(self, azimuth, r_OG):
+        ''' Returns the node positions of blade members as it is rotated by an azimuth angle about the rotor's axis.
+        rOG is a matrix of n number of rows and 3 columns, where each row is a position vector that needs rotating'''
+
+        rHub = np.array([self.coords[0], self.coords[1], self.Zhub])     # save the rotor hub center point for later
+
+        # create rotation matrix based on the rotor's axis (default axis=[1,0,0])
+        c = np.cos(np.deg2rad(azimuth))
+        s = np.sin(np.deg2rad(azimuth))
+        a = self.axis  # each rotor is given a default axis of rotation about the x-direction
+        R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
+                        [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
+                        [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
+        #rotMatx = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+
+        # find the new node positions of the blade member
+        r_new = np.zeros_like(r_OG)
+        for i in range(len(r_OG)):
+            r_from_Zhub = np.matmul(R, r_OG[i,:])   # wrt to the hub center
+            r_new[i,:] = r_from_Zhub + rHub         # wrt to the global coordinates
+
+        return r_new
+
+
+
+    def calcCavitation(self, case, azimuth=0, clearance_margin=1.0, Patm=101325, Pvap=2500):
         ''' Method to calculate the cavitation number of the rotor
         (wind speed (m/s), rotor speed (RPM), pitch angle (deg), azimuth (deg))
+
+        Can later move Patm and Pvap to some kind of input file
         '''
+        # -------------- calculate worst case clearance below waterline (less precise) ---------------
         # calculate the worst-case scenario depth below the free surface where cavitation can occur
         if self.Zhub < 0:
             clearance = self.Zhub + self.R_rot
         else:
             raise ValueError("Hub Depth must be below the water surface to calculate cavitation")
-        
         # add a margin to the depth clearance (either by user input or based on platform motions)
         clearance = clearance*clearance_margin
-
+        
+        #--------------- calculate clearance (depth) of each node of each blade (more precise) --------------
         # collect minimum pressure coefficient values
         cpmin = self.cpmin_interp       # array of size [len(bladeMemberList), len(self.aoa), 1] where each row is the cpmin as a function of aoa (columns)
         
         # set wind speed, rotor speed, and blade pitch angle based on wind speed an turbine inputs
-        Uhub = case['wind_speed']
+        Uhub = case['current_speed']
         Omega_rpm = np.interp(Uhub, self.Uhub, self.Omega_rpm)  # rotor speed [rpm]
         pitch_deg = np.interp(Uhub, self.Uhub, self.pitch_deg)  # blade pitch angle [deg]
 
-        # calculate the relative velocity of each node along the blade using CCBlade, for each blade azimuth angle
-        for azi in self.headings:
-            loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azi)
-            rel_v = loads["W"]
-        
-        # >>>>>>>>> calculate cavitation as a function of these other inputs <<<<<<<<<<<<
-        #cav = rel_v*cpmin*clearance
-        cav = 0
+        # create array to store cavitation values for each node for each blade
+        cav_check = np.zeros([len(self.headings), len(self.blade_r)])
 
-        return cav
+        # calculate the critial sigma caviatation parameter for each blade node and compare to the sigma_l caviatation parameter to determine if cavitation occurs
+        for a,azi in enumerate(self.headings):      # do this for each blade (aoa and relative velocity change for different blade azimuth angles)
+
+            loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azi)  # run CCBlade with variable azimuth angles
+            vrel = loads["W"]       # pull out the relative velocity at each node along the blade at that azimuth angle
+            aoa = loads["alpha"]    # pull out the angle of attack at each node along the blade at that azimuth angle
+
+            for n in range(len(vrel)):      # for each blade node
+
+                # find the minimum pressure coefficient at that node at the given angle of attack
+                cpmin_node = np.interp(aoa[n], self.aoa, cpmin[n,:,0])
+
+                # extract the depth of the node using the node position array
+                clearance = self.nodes[a, n, 2]     # a=which blade, n=which node, 2=z-position=depth
+                
+                # calculate the critial sigma cavitation parameter
+                sigma_crit = (Patm + self.ccblade.rho*9.81*abs(clearance) - Pvap)/(0.5*self.ccblade.rho*vrel[n]**2)
+
+                # if sigma_crit is less than sigma_l (sigma_l = -cpmin), then cavitation occurs
+                if sigma_crit < -cpmin_node:
+                    raise ValueError(f"Cavitation occured at node {n} (first node = 0)")
+                
+                cav_check[a,n] = sigma_crit + cpmin_node         # if this value is negative, then cavitation occurs (sigma_crit - sigma_l < 0 -> cav occurs; sigma_l = -cpmin_node)
+
+
+        return cav_check
 
 
     def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):

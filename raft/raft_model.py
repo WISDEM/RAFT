@@ -343,7 +343,8 @@ class Model():
         #F_PRP = self.fowtList[0].F_aero0
         F_PRP = np.sum(self.fowtList[0].F_aero0, axis=1)
         # + self.fowtList[0].F_hydro0 <<< hydro load would be nice here eventually
-        self.ms.bodyList[0].f6Ext = np.array(F_PRP)
+        D_hydro = self.fowtList[0].D_hydro
+        self.ms.bodyList[0].f6Ext = np.array(F_PRP + D_hydro)
 
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
@@ -525,6 +526,7 @@ class Model():
             fowt.calcHydroConstants(case, memberList=fowt.memberList)
             #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater)
                 #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)
+            fowt.calcCurrentLoads(case)
         
         # calculate platform offsets and mooring system equilibrium state
         self.calcMooringAndOffsets()

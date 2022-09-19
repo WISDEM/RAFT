@@ -588,7 +588,8 @@ class Rotor:
             speed = getFromDict(case, 'wind_speed', shape=0, default=10)
             heading = getFromDict(case, 'wind_heading', shape=0, default=0.0)
             yaw_misalign = getFromDict(case, 'yaw_misalign', shape=0, default=0.0)
-
+        # >>>>> not sure where the inflow heading angle should be applied: to CCBlade (internal), or F_aero0 (external) <<<<<<
+        
 
         loads, derivs = self.runCCBlade(speed, ptfm_pitch=ptfm_pitch, yaw_misalign=yaw_misalign)
         

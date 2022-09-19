@@ -68,6 +68,7 @@ class FOWT():
 
         self.rho_water = getFromDict(design['site'], 'rho_water', default=1025.0)
         self.g         = getFromDict(design['site'], 'g'        , default=9.81)
+        self.shearExp_water = getFromDict(design['site'], 'shearExp_water', default=0.12)
         
         # <<<<<<<<<<< Should it be something like self.dlsMax?
         #design['turbine']['tower']['dlsMax'] = getFromDict(design['turbine']['tower'], 'dlsMax', shape=-1, default=5.0)
@@ -141,6 +142,7 @@ class FOWT():
         # initialize mean force arrays to zero, so the model can work before we calculate excitation
         self.F_aero0 = np.zeros([6, self.nrotors])
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
+        self.D_hydro = np.zeros(6)      # initialize mean drag force from current - acts as a "static" force, like F_aero0
 
         # initialize BEM arrays, whether or not a BEM sovler is used
         self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
@@ -836,6 +838,69 @@ class FOWT():
 
         # return the linearized coefficients
         return B_hydro_drag, F_hydro_drag
+
+    
+    def calcCurrentLoads(self, case):
+        '''method to calculate the "static" current loads on each member and save as a current force
+        Uses a simple power law relationship to calculate the current velocity as a function of member node depth'''
+
+        rho = self.rho_water
+        g   = self.g
+
+        D_hydro = np.zeros(6)      # create variable to hold the total drag force
+
+        # extract current variables out of the case dictionary
+        speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+        heading = getFromDict(case, 'current_heading', shape=0, default=0)
+
+        # loop through each member
+        for mem in self.memberList:
+
+            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
+
+            # loop through each node of the member
+            for il in range(mem.ns):
+
+                # only process hydrodynamics if this node is submerged
+                if mem.r[il,2] < 0:
+
+                    # calculate current velocity as a function of node depth [x,y,z] (assumes no vertical current velocity)
+                    v = speed * ((self.depth-abs(mem.r[il,2]))/self.depth)**self.shearExp_water
+                    vcur = np.array([v*np.cos(np.deg2rad(heading)), v*np.sin(np.deg2rad(heading)), 0])
+
+                    # interpolate coefficients for the current strip
+                    Cd_q   = np.interp( mem.ls[il], mem.stations, mem.Cd_q  )
+                    Cd_p1  = np.interp( mem.ls[il], mem.stations, mem.Cd_p1 )
+                    Cd_p2  = np.interp( mem.ls[il], mem.stations, mem.Cd_p2 )
+                    Cd_End = np.interp( mem.ls[il], mem.stations, mem.Cd_End)
+
+                    # ----- compute side effects ------------------------
+
+                    # member acting area assigned to this node in each direction
+                    a_i_q  = np.pi*mem.ds[il]*mem.dls[il]  if circ else  2*(mem.ds[il,0]+mem.ds[il,0])*mem.dls[il]
+                    a_i_p1 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,0]      *mem.dls[il]
+                    a_i_p2 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,1]      *mem.dls[il]
+
+                    vrel = np.array(vcur)    # current (relative) velocity over node (no complex numbers bc not function of frequency)
+
+                    # break out velocity components in each direction relative to member orientation
+                    vrel_q  = vrel*mem.q[:]
+                    vrel_p1 = vrel*mem.p1[:]
+                    vrel_p2 = vrel*mem.p2[:]
+
+                    # calculate drag force wrt to each orientation using simple Morison's drag equation
+                    Dq = 0.5 * rho * a_i_q * Cd_q * np.linalg.norm(vrel_q) * vrel_q
+                    Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * np.linalg.norm(vrel_p1) * vrel_p1
+                    Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * np.linalg.norm(vrel_p2) * vrel_p2
+
+                    D = Dq + Dp1 + Dp2      # sum up drag forces in all directions
+
+                    D_hydro += translateForce3to6DOF(D, mem.r[il,:])       # reorient as a len=6 vector wrt the node position
+
+                    self.D_hydro = D_hydro
+
+
+        return D_hydro
 
 
     def saveTurbineOutputs(self, results, case, iCase, Xi0, Xi):

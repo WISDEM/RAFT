@@ -52,7 +52,9 @@ class Rotor:
         self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
         
         self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'], dtype=int)[ir]         # [-]
-        self.headings   = getFromDict(turbine, 'headings', shape=turbine['nrotors'], default=[90,210,330])[ir]  # [deg]
+        self.headings   = getFromDict(turbine, 'headings', shape=-1, default=[90,210,330])  # [deg]
+        self.nBlades    = len(self.headings)
+
         self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]       # [-]
 
         self.Zhub       = getFromDict(turbine, 'hHub', shape=turbine['nrotors'])[ir]            # [m]
@@ -226,6 +228,15 @@ class Rotor:
         self.blade_theta     = geometry_table[:,2]
         blade_precurve  = geometry_table[:,3]
         blade_presweep  = geometry_table[:,4]
+
+        if self.Zhub < 0:
+            self.rho = turbine['rho_water']
+            self.mu = turbine['mu_water']
+            self.shearExp = turbine['shearExp_water']
+        else:
+            self.rho = turbine['rho_air']
+            self.mu = turbine['mu_air']
+            self.shearExp = turbine['shearExp_air']
         
         af = []
         for i in range(self.cl_interp.shape[0]):
@@ -239,12 +250,12 @@ class Rotor:
             self.Rhub,                      # (m) radius of hub
             turbine['blade'][ir]['Rtip'],   # (m) radius of tip
             self.nBlades,                   # number of blades
-            turbine['rho_air'],             # (kg/m^3) freestream fluid density
-            turbine['mu_air'],              # (kg/m/s) dynamic viscosity of fluid
+            self.rho,                       # (kg/m^3) freestream fluid density
+            self.mu,                        # (kg/m/s) dynamic viscosity of fluid
             self.precone,                   # (deg) hub precone angle
             self.shaft_tilt,                # (deg) hub tilt angle
             0.0,                            # (deg) nacelle yaw angle
-            turbine['shearExp'],            # shear exponent for a power-law wind profile across hub
+            self.shearExp,                  # shear exponent for a power-law wind profile across hub
             self.Zhub,                      # (m) hub height used for power-law wind profile.  U = Uref*(z/hubHt)**shearExp
             nSector,                        # number of azimuthal sectors to descretize aerodynamic calculation.  automatically set to 1 if tilt, yaw, and shearExp are all 0.0.  Otherwise set to a minimum of 4.
             blade_precurve,                 # (m) location of blade pitch axis in x-direction of :ref:`blade coordinate system <azimuth_blade_coord>`
@@ -361,19 +372,88 @@ class Rotor:
             blademem['rho_shell'] = 1850
 
             self.bladeMemberList.append(Member(blademem, len(self.w)))
+        
+        self.nodes = np.zeros([int(self.nBlades), len(self.bladeMemberList)+1, 3])      # array to hold xyz positions of each node along a blade for each blade (filled in later)
 
-    def calcRelativeVelocity(self, case, azimuth=0):
+
+    def getBladeMemberPositions(self, azimuth, r_OG):
+        ''' Returns the node positions of blade members as it is rotated by an azimuth angle about the rotor's axis.
+        rOG is a matrix of n number of rows and 3 columns, where each row is a position vector that needs rotating'''
+
+        rHub = np.array([self.coords[0], self.coords[1], self.Zhub])     # save the rotor hub center point for later
+
+        # create rotation matrix based on the rotor's axis (default axis=[1,0,0])
+        c = np.cos(np.deg2rad(azimuth))
+        s = np.sin(np.deg2rad(azimuth))
+        a = self.axis  # each rotor is given a default axis of rotation about the x-direction
+        R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
+                        [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
+                        [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
+        #rotMatx = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+
+        # find the new node positions of the blade member
+        r_new = np.zeros_like(r_OG)
+        for i in range(len(r_OG)):
+            r_from_Zhub = np.matmul(R, r_OG[i,:])   # wrt to the hub center
+            r_new[i,:] = r_from_Zhub + rHub         # wrt to the global coordinates
+
+        return r_new
+
+
+
+    def calcCavitation(self, case, azimuth=0, clearance_margin=1.0, Patm=101325, Pvap=2500):
+        ''' Method to calculate the cavitation number of the rotor
+        (wind speed (m/s), rotor speed (RPM), pitch angle (deg), azimuth (deg))
+
+        Can later move Patm and Pvap to some kind of input file
         '''
-        (wind speed, rotor speed, pitch angle, azimuth)
-        '''
-        Uhub = case['wind_speed']
+        # -------------- calculate worst case clearance below waterline (less precise) ---------------
+        # calculate the worst-case scenario depth below the free surface where cavitation can occur
+        if self.Zhub < 0:
+            clearance = self.Zhub + self.R_rot
+        else:
+            raise ValueError("Hub Depth must be below the water surface to calculate cavitation")
+        # add a margin to the depth clearance (either by user input or based on platform motions)
+        clearance = clearance*clearance_margin
+        
+        #--------------- calculate clearance (depth) of each node of each blade (more precise) --------------
+        # collect minimum pressure coefficient values
+        cpmin = self.cpmin_interp       # array of size [len(bladeMemberList), len(self.aoa), 1] where each row is the cpmin as a function of aoa (columns)
+        
+        # set wind speed, rotor speed, and blade pitch angle based on wind speed an turbine inputs
+        Uhub = case['current_speed']
         Omega_rpm = np.interp(Uhub, self.Uhub, self.Omega_rpm)  # rotor speed [rpm]
         pitch_deg = np.interp(Uhub, self.Uhub, self.pitch_deg)  # blade pitch angle [deg]
 
-        loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azimuth)    
-        rel_v = loads['W']      # relative velocity of the airfoils along the blade
+        # create array to store cavitation values for each node for each blade
+        cav_check = np.zeros([len(self.headings), len(self.blade_r)])
 
-        return rel_v
+        # calculate the critial sigma caviatation parameter for each blade node and compare to the sigma_l caviatation parameter to determine if cavitation occurs
+        for a,azi in enumerate(self.headings):      # do this for each blade (aoa and relative velocity change for different blade azimuth angles)
+
+            loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azi)  # run CCBlade with variable azimuth angles
+            vrel = loads["W"]       # pull out the relative velocity at each node along the blade at that azimuth angle
+            aoa = loads["alpha"]    # pull out the angle of attack at each node along the blade at that azimuth angle
+
+            for n in range(len(vrel)):      # for each blade node
+
+                # find the minimum pressure coefficient at that node at the given angle of attack
+                cpmin_node = np.interp(aoa[n], self.aoa, cpmin[n,:,0])
+
+                # extract the depth of the node using the node position array
+                clearance = self.nodes[a, n, 2]     # a=which blade, n=which node, 2=z-position=depth
+                
+                # calculate the critial sigma cavitation parameter
+                sigma_crit = (Patm + self.ccblade.rho*9.81*abs(clearance) - Pvap)/(0.5*self.ccblade.rho*vrel[n]**2)
+
+                # if sigma_crit is less than sigma_l (sigma_l = -cpmin), then cavitation occurs
+                if sigma_crit < -cpmin_node:
+                    raise ValueError(f"Cavitation occured at node {n} (first node = 0)")
+                
+                cav_check[a,n] = sigma_crit + cpmin_node         # if this value is negative, then cavitation occurs (sigma_crit - sigma_l < 0 -> cav occurs; sigma_l = -cpmin_node)
+
+
+        return cav_check
 
 
     def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):
@@ -490,7 +570,7 @@ class Rotor:
             
 
 
-    def calcAeroServoContributions(self, case, ptfm_pitch=0, display=0):
+    def calcAeroServoContributions(self, case, ptfm_pitch=0, current=False, display=0):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
         Results are w.r.t. nonrotating hub reference frame.
@@ -500,9 +580,21 @@ class Rotor:
             mean platform pitch angle to be included in rotor tilt angle [rad]
         '''
         
-        loads, derivs = self.runCCBlade(case['wind_speed'], ptfm_pitch=ptfm_pitch, yaw_misalign=case['yaw_misalign'])
+        if current:
+            speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+            heading = getFromDict(case, 'current_heading', shape=0, default=0.0)
+            yaw_misalign = getFromDict(case, 'current_yaw_misalign', shape=0, default=0.0)
+        else:
+            speed = getFromDict(case, 'wind_speed', shape=0, default=10)
+            heading = getFromDict(case, 'wind_heading', shape=0, default=0.0)
+            yaw_misalign = getFromDict(case, 'yaw_misalign', shape=0, default=0.0)
+        # >>>>> not sure where the inflow heading angle should be applied: to CCBlade (internal), or F_aero0 (external) <<<<<<
         
-        Uinf = case['wind_speed']  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
+
+        loads, derivs = self.runCCBlade(speed, ptfm_pitch=ptfm_pitch, yaw_misalign=yaw_misalign)
+        
+        #Uinf = case['wind_speed']  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
+        Uinf = speed
         
         # extract derivatives of interest
         dT_dU  = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))
@@ -515,9 +607,10 @@ class Rotor:
         # calculate steady aero forces and moments
         F_aero0 = np.array([loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0],
                             loads["My" ][0], loads["Q" ][0], loads["Mz" ][0] ])
+        # >>>>>>>>>>> probably room here to account for wind heading <<<<<<<<<<<<
 
         # calculate rotor-averaged turbulent wind spectrum
-        _,_,_,S_rot = self.IECKaimal(case)   # PSD [(m/s)^2/rad]
+        _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD [(m/s)^2/rad]
         self.V_w = np.sqrt(S_rot)   # convert from power spectral density to complex amplitudes (FFT)
 
 
@@ -714,40 +807,47 @@ class Rotor:
         #return linebit
 
     
-    def IECKaimal(self, case):        # 
+    def IECKaimal(self, case, current=False):        # 
         '''Calculates rotor-averaged turbulent wind spectrum based on inputted turbulence intensity or class.'''
         
         #TODO: expand commenting, confirm that Rot is power spectrum, skip V,W calcs if not used
-    
+
+        if current:
+            speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+            turbulence = getFromDict(case, 'current_turbulence', shape=0, default=0.0)
+        else:
+            speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
+            turbulence = getFromDict(case, 'turbulence', shape=0, default=0.0)
+
         # Set inputs (f, V_ref, HH, Class, Categ, TurbMod, R)
         f = self.w / 2 / np.pi    # frequency in Hz
         HH = abs(self.Zhub)     # <<< Temporary absolute value to avoid NaNs with underwater turbines. Eventually need a new function <<<
         R = self.R_rot
-        V_ref = case['wind_speed']
+        V_ref = speed
         
         ###### Initialize IEC Wind parameters #######
         iec_wind = pyIECWind_extreme()
         iec_wind.z_hub = HH
         
-        if isinstance(case['turbulence'],str):
+        if isinstance(turbulence,str):
             # If a string, the options are I, II, III, IV
             Class = ''
-            for char in case['turbulence']:
+            for char in turbulence:
                 if char == 'I' or char == 'V':
                     Class += char
                 else:
                     break
             
             if not Class:
-                raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {case['turbulence']}")
+                raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {turbulence}")
             else:
                 Categ = char
                 iec_wind.Turbulence_Class = Categ
 
             try:
-                TurbMod = case['turbulence'].split('_')[1]
+                TurbMod = turbulence.split('_')[1]
             except:
-                raise Exception(f"Error reading the turbulence model: {case['turbulence']}")
+                raise Exception(f"Error reading the turbulence model: {turbulence}")
 
             iec_wind.Turbine_Class = Class
         
@@ -755,10 +855,10 @@ class Rotor:
         iec_wind.setup()
         
         # Can set iec_wind.I_ref here if wanted, NTM used then
-        if isinstance(case['turbulence'],int):
-            case['turbulence'] = float(case['turbulence'])
-        if isinstance(case['turbulence'],float):
-            iec_wind.I_ref = case['turbulence']    # this overwrites the value set in setup method
+        if isinstance(turbulence,int):
+            turbulence = float(turbulence)
+        if isinstance(turbulence,float):
+            iec_wind.I_ref = turbulence    # this overwrites the value set in setup method
             TurbMod = 'NTM'
 
         # Compute wind turbulence standard deviation (invariant with height)

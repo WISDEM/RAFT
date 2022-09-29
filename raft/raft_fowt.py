@@ -68,6 +68,7 @@ class FOWT():
 
         self.rho_water = getFromDict(design['site'], 'rho_water', default=1025.0)
         self.g         = getFromDict(design['site'], 'g'        , default=9.81)
+        self.shearExp_water = getFromDict(design['site'], 'shearExp_water', default=0.12)
         
         # <<<<<<<<<<< Should it be something like self.dlsMax?
         #design['turbine']['tower']['dlsMax'] = getFromDict(design['turbine']['tower'], 'dlsMax', shape=-1, default=5.0)
@@ -120,9 +121,12 @@ class FOWT():
             self.yawstiff = 0
 
         # Turbine rotor
-        design['turbine']['rho_air' ] = design['site']['rho_air']
-        design['turbine']['mu_air'  ] = design['site']['mu_air']
-        design['turbine']['shearExp'] = design['site']['shearExp']
+        design['turbine']['rho_air'       ] = getFromDict(design['site'], 'rho_air', shape=0, default=1.225)
+        design['turbine']['mu_air'        ] = getFromDict(design['site'], 'mu_air', shape=0, default=1.81e-05)
+        design['turbine']['shearExp_air'  ] = getFromDict(design['site'], 'shearExp_air', shape=0, default=0.12)
+        design['turbine']['rho_water'     ] = getFromDict(design['site'], 'rho_water', shape=0, default=1025.0)
+        design['turbine']['mu_water'      ] = getFromDict(design['site'], 'mu_water', shape=0, default=1.0e-03)
+        design['turbine']['shearExp_water'] = getFromDict(design['site'], 'shearExp_water', shape=0, default=0.12)
         
         for ir in range(self.nrotors):
             self.rotorList.append(Rotor(design['turbine'], self.w, ir))
@@ -138,6 +142,7 @@ class FOWT():
         # initialize mean force arrays to zero, so the model can work before we calculate excitation
         self.F_aero0 = np.zeros([6, self.nrotors])
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
+        self.D_hydro = np.zeros(6)      # initialize mean drag force from current - acts as a "static" force, like F_aero0
 
         # initialize BEM arrays, whether or not a BEM sovler is used
         self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
@@ -248,52 +253,46 @@ class FOWT():
 
         
         # ------------- include buoyancy effects of underwater rotors -------------
-        rotor_nodes = []
-        rotor_cpmin = []
-        rotor_relv = []
-        # loop through each blade (sub)member to calculate rotor buoyancy forces (for underwater turbines)
+        # loop through each blade member to calculate rotor buoyancy forces (for underwater turbines)
         for i in range(self.nrotors):       # for each rotor in the fowt
+
             rotor = self.rotorList[i]
-            nodes = np.zeros([int(rotor.nBlades), len(rotor.bladeMemberList)+1, 3])   # 3 for size 3 position vectors
+
             if rotor.Zhub < 0:      # only do this for underwater rotors
-                rHub = np.array([rotor.coords[0], rotor.coords[1], rotor.Zhub])     # save the rotor hub center point for later
+                
                 for j in range(int(rotor.nBlades)):     # for each blade on the rotor
+
+                    # ensure the blade headings are equally spaced apart (so that the specific heading values are arbitrary)
+                    if all(np.mod(np.diff(rotor.headings, append=rotor.headings[0]),360) != np.mod(np.diff(rotor.headings, append=rotor.headings[0])[0], 360)):
+                        raise ValueError("The headings of the blades need to be equally spaced apart")
+
                     for k,afmem in enumerate(rotor.bladeMemberList):    # for each airfoil member in the bladeMemberList
+
                         # store original positions of the airfoil member about the original rotor axis
                         rA_OG = afmem.rA
                         rB_OG = afmem.rB
+                        rOG = np.vstack([rA_OG, rB_OG])
 
-                        # calculate the rotation matrix about the x-axis
-                        afmem.heading = rotor.headings[j]   # rotor blade headings are set arbitrarily in rotor.__init__
-                        
-                        # ensure the blade headings are equally spaced apart (so that the specific heading values are arbitrary)
-                        if all(np.mod(np.diff(rotor.headings, append=rotor.headings[0]),360) != np.mod(np.diff(rotor.headings, append=rotor.headings[0])[0], 360)):
-                            raise ValueError("The headings of the blades need to be equally spaced apart")
-                        
-                        c = np.cos(np.deg2rad(afmem.heading))
-                        s = np.sin(np.deg2rad(afmem.heading))
-                        # create rotation matrix based on the rotor's axis (default axis=[1,0,0])
-                        a = rotor.axis  # each rotor is given a default axis of rotation about the x-direction
-                        R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
-                                      [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
-                                      [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
-                        #rotMatx = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
+                        # set the heading, or azimuth angle, of the blade member
+                        afmem.heading = rotor.headings[j]
 
-                        # find the new endpoints of the airfoil member wrt the hub center
-                        rA_from_Zhub = np.matmul(R, afmem.rA)
-                        rB_from_Zhub = np.matmul(R, afmem.rB)
+                        # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
+                        r_new = rotor.getBladeMemberPositions(rotor.headings[j], rOG)
 
-                        # find the endpoints of the blade (sub)member wrt global coordinates
-                        afmem.rA = rA_from_Zhub + rHub
-                        afmem.rB = rB_from_Zhub + rHub
-                        nodes[j,k,:] = afmem.rA
-                        if k==len(rotor.bladeMemberList)-1: nodes[j,k+1,:] = afmem.rB
+                        # save these end node positions in the blade member
+                        afmem.rA = r_new[0,:]
+                        afmem.rB = r_new[1,:]
 
-                        # find the actual orientation vectors of the blade (sub)member
+                        # save the positions of the nodes for each blade at each heading/azimuth
+                        rotor.nodes[j,k,:] = afmem.rA
+                        if k==len(rotor.bladeMemberList)-1:     # if it's the last blade member, save it's rB position to the last position in the nodes array
+                            rotor.nodes[j,k+1,:] = afmem.rB
+
+                        # find the actual orientation vectors of the blade member
                         afmem.calcOrientation()
 
-                        # calculate the mass and inertial properties of the blade (sub)members
-                        #mass, center, mshell, mfill, pfill = mem.getInertia()
+                        # calculate the mass and inertial properties of the blade members
+                        #mass, center, mshell, mfill, pfill = afmem.getInertia()
                         # >>>>>> can be used later if actual rectangular mass properties are desired other than mRNA <<<<<<<<
 
                         # calculate hydrostatic properties of the blade (sub)member and add them to the system matrices
@@ -302,8 +301,6 @@ class FOWT():
                         # outputs of getHydrostatics should already be about the PRP
                         self.W_hydro += Fvec # buoyancy vector
                         self.C_hydro += Cmat # hydrostatic stiffness matrix
-
-                        # >>>>>>>>>> add a check to solve for the volume of just the blade submembers <<<<<<<<<
 
                         VTOT    += V_UW    # add to total underwater volume of all members combined
                         AWP_TOT += AWP
@@ -317,13 +314,7 @@ class FOWT():
                         afmem.rB = rB_OG
                         afmem.calcOrientation()
 
-            # Parameters for cavitation (can maybe write a new method within FOWT to calcCavitation)
-            rotor_nodes.append(nodes)               # array of size [rotor.nBlades, len(bladeMemberList)+1, 3] to hold the positions of each blade node for each blade
-            rotor_cpmin.append(rotor.cpmin_interp)    # array of size [len(bladeMemberList), len(rotor.aoa), 1] where each row is the cpmin as a function of aoa
-            case = {}
-            case['wind_speed'] = 10 # find a way to sync this with the DLC case
-            #rotor_relv.append(rotor.calcRelativeVelocity(case, azimuth=0))     # array of size [len(bladeMemberList)] with the airfoil relative velocity at each node
-            # >>>>>> might need a better way to adjust the azimuth parameter (for each blade?); can maybe configure this in the blade heading adjustments earlier
+
 
         # ------------------------- include RNA properties -----------------------------
 
@@ -528,7 +519,7 @@ class FOWT():
             # note: RAFT will only be using finite-frequency potential flow coefficients
             
     
-    def calcTurbineConstants(self, case, ptfm_pitch=0):
+    def calcTurbineConstants(self, case, ptfm_pitch=0, current=False):
         '''This computes turbine linear terms
         
         case
@@ -548,9 +539,17 @@ class FOWT():
         
         for t in range(self.nrotors):
             # only compute the aerodynamics if enabled and windspeed is nonzero
-            if self.rotorList[t].aeroServoMod > 0 and case['wind_speed'] > 0.0:
+
+            if self.rotorList[t].Zhub < 0:
+                current = True
+                speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+            else:
+                current = False
+                speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
+
+            if self.rotorList[t].aeroServoMod > 0 and speed > 0.0:
             
-                F_aero0, f_aero, a_aero, b_aero = self.rotorList[t].calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, display=2)  # get values about hub
+                F_aero0, f_aero, a_aero, b_aero = self.rotorList[t].calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, current=current, display=2)  # get values about hub
                 
                 # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
                 rHub = np.array([self.rotorList[t].coords[0], self.rotorList[t].coords[1], self.hHub[t]])
@@ -568,6 +567,10 @@ class FOWT():
                 for iw in range(self.nw):
                     #self.F_aero[:,iw] = transformForce(F_aero[:,iw], offset=rHub, orientation=rotMatHub)
                     self.F_aero[:,iw,t] = translateForce3to6DOF(np.array([f_aero[iw], 0, 0]), rHub)
+                
+                # calculate cavitation of the rotor (platform motions should already be accounted for in the CCBlade object after running calcAeroServoContributions)
+                cav = self.rotorList[t].calcCavitation(case)
+                # >>>>>>>> what do we do with this, now that we have it? Error is raised internal to calcCavitation <<<<<<<<<<<<<<<
         
 
     def calcHydroConstants(self, case, memberList=[], Rotor=None, dgamma=0):
@@ -613,27 +616,18 @@ class FOWT():
             
             # find the proper member node positions (mem.r) if this memberList is a bladeMemberList for underwater rotors. Otherwise, skip
             if mem.type==3 and Rotor is not None:
-                rotor = Rotor       # save specific rotor variables
-                rHub = np.array([rotor.coords[0], rotor.coords[1], rotor.Zhub])
-                rOG = mem.r         # save original member.r to add back later
-                # without making any changes to the rest of the hydrodynamics calculations below...
+                
+                # save specific rotor variables and original positions of the blade member nodes
+                rotor = Rotor
+                rOG = mem.r
+
+                # (without making any changes to the rest of the hydrodynamics calculations below)
                 # the input memberList is the rotor.bladeMemberList multiplied by nBlades (e.g. if len(rotor.bladeMemberList)=10, then this len(memberList)=30 for 3 blade rotor)
                 # adjust the heading/orientation of the each section of blade members by the corresponding heading in rotor.headings based on where in the list you are
-                j = i // int(len(memberList)/rotor.nBlades)
-                heading = rotor.headings[j]
-                
-                c = np.cos(np.deg2rad(heading))
-                s = np.sin(np.deg2rad(heading))
-                a = rotor.axis
-                R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
-                                [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
-                                [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
-                # see calcStatics() for more detailed comments - same process
+                j = i // int(len(memberList)/rotor.nBlades)     # i (from 0 to 30) // 10, which results in either j = 1, 2, or 3, for each blade heading
 
-                # adjust the mem.r variable for changes in position of the blades
-                for il in range(mem.ns):
-                    r_from_Zhub = np.matmul(R, mem.r[il])
-                    mem.r[il] = r_from_Zhub + rHub
+                # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
+                mem.r = rotor.getBladeMemberPositions(rotor.headings[j], rOG)
                 
                 # add an input twist to every blade member if the blades should be oriented a different way
                 mem.gamma = mem.gamma + dgamma
@@ -844,6 +838,69 @@ class FOWT():
 
         # return the linearized coefficients
         return B_hydro_drag, F_hydro_drag
+
+    
+    def calcCurrentLoads(self, case):
+        '''method to calculate the "static" current loads on each member and save as a current force
+        Uses a simple power law relationship to calculate the current velocity as a function of member node depth'''
+
+        rho = self.rho_water
+        g   = self.g
+
+        D_hydro = np.zeros(6)      # create variable to hold the total drag force
+
+        # extract current variables out of the case dictionary
+        speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+        heading = getFromDict(case, 'current_heading', shape=0, default=0)
+
+        # loop through each member
+        for mem in self.memberList:
+
+            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
+
+            # loop through each node of the member
+            for il in range(mem.ns):
+
+                # only process hydrodynamics if this node is submerged
+                if mem.r[il,2] < 0:
+
+                    # calculate current velocity as a function of node depth [x,y,z] (assumes no vertical current velocity)
+                    v = speed * ((self.depth-abs(mem.r[il,2]))/self.depth)**self.shearExp_water
+                    vcur = np.array([v*np.cos(np.deg2rad(heading)), v*np.sin(np.deg2rad(heading)), 0])
+
+                    # interpolate coefficients for the current strip
+                    Cd_q   = np.interp( mem.ls[il], mem.stations, mem.Cd_q  )
+                    Cd_p1  = np.interp( mem.ls[il], mem.stations, mem.Cd_p1 )
+                    Cd_p2  = np.interp( mem.ls[il], mem.stations, mem.Cd_p2 )
+                    Cd_End = np.interp( mem.ls[il], mem.stations, mem.Cd_End)
+
+                    # ----- compute side effects ------------------------
+
+                    # member acting area assigned to this node in each direction
+                    a_i_q  = np.pi*mem.ds[il]*mem.dls[il]  if circ else  2*(mem.ds[il,0]+mem.ds[il,0])*mem.dls[il]
+                    a_i_p1 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,0]      *mem.dls[il]
+                    a_i_p2 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,1]      *mem.dls[il]
+
+                    vrel = np.array(vcur)    # current (relative) velocity over node (no complex numbers bc not function of frequency)
+
+                    # break out velocity components in each direction relative to member orientation
+                    vrel_q  = vrel*mem.q[:]
+                    vrel_p1 = vrel*mem.p1[:]
+                    vrel_p2 = vrel*mem.p2[:]
+
+                    # calculate drag force wrt to each orientation using simple Morison's drag equation
+                    Dq = 0.5 * rho * a_i_q * Cd_q * np.linalg.norm(vrel_q) * vrel_q
+                    Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * np.linalg.norm(vrel_p1) * vrel_p1
+                    Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * np.linalg.norm(vrel_p2) * vrel_p2
+
+                    D = Dq + Dp1 + Dp2      # sum up drag forces in all directions
+
+                    D_hydro += translateForce3to6DOF(D, mem.r[il,:])       # reorient as a len=6 vector wrt the node position
+
+                    self.D_hydro = D_hydro
+
+
+        return D_hydro
 
 
     def saveTurbineOutputs(self, results, case, iCase, Xi0, Xi):

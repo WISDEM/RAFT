@@ -42,7 +42,7 @@ turbine:
     precone     : 4.0        # [deg]
     shaft_tilt  : 6.0        # [deg]
     overhang    : 2    # [m]
-    aeroMod     : 0          # 0 aerodynamics off; 1 aerodynamics on
+    aeroServoMod : 2          # 0 aerodynamics off; 1 aerodynamics on (no control); 2 aerodynamics and control on
 
     
     blade: 

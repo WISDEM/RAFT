@@ -539,6 +539,8 @@ class FOWT():
         self.F_aero  = np.zeros([6,  self.nw,self.nrotors], dtype=complex)       # dynamice excitation force and moment amplitude spectra
         self.F_aero0 = np.zeros([6,          self.nrotors])                      # mean aerodynamic forces and moments
         
+        self.B_gyro  = np.zeros([6,6,self.nrotors])  # rotor gyroscopic damping matrix
+        
         for t in range(self.nrotors):
             # only compute the aerodynamics if enabled and windspeed is nonzero
 
@@ -552,13 +554,13 @@ class FOWT():
             if self.rotorList[t].aeroServoMod > 0 and speed > 0.0:
             
                 # get mean aero forces and fore-aft coefficients (these are about hub coordinate in nacelle reference frame)
-                F_aero0, f_aero, a_aero, b_aero = self.rotorList[t].calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, current=current, display=2)  # get values about hub
+                F_aero0, f_aero, a_aero, b_aero = self.rotorList[t].calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, current=current)  # get values about hub
                 
                 # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
                 rHub = np.array([self.rotorList[t].coords[0], self.rotorList[t].coords[1], self.hHub[t]])
                 #rotMatHub = rotationMatrix(0, 0.01, 0)
                 
-                # convert coefficients to platform reference frame
+                # convert coefficients to platform reference frame and populate tensor slice for this rotor
                 for i in range(self.nw):
                     self.A_aero[:,:,i,t] = translateMatrix3to6DOF( np.diag([a_aero[i], 0, 0]),  rHub)
                     self.B_aero[:,:,i,t] = translateMatrix3to6DOF( np.diag([b_aero[i], 0, 0]),  rHub)
@@ -578,6 +580,23 @@ class FOWT():
                 cav = self.rotorList[t].calcCavitation(case)
                 # >>>>>>>> what do we do with this, now that we have it? Error is raised internal to calcCavitation <<<<<<<<<<<<<<<
         
+                # ----- calculate rotor gyroscopic effects -----
+                # rotor speed [rpm]
+                Omega_rpm = np.interp(speed, self.rotorList[t].Uhub, self.rotorList[t].Omega_rpm)
+                
+                rotMat = rotationMatrix(0, self.rotorList[t].shaft_tilt, 0) # rotation matrix for shaft tilt 
+                # should also add rotatoin matrix for device orientation
+                Omega_rotor = np.matmul(rotMat, [Omega_rpm*2*np.pi/60, 0, 0]) # rotor angular velocity vector
+                
+                # rotating inertia vector - approximation of matmul(I_rotor,Omega_rotor)
+                IO_rotor = self.rotorList[t].I_drivetrain*Omega_rotor   # note units: kg-m^2 * rad/s = N-m-s
+                
+                GyroDampingMatrix = getH(IO_rotor)
+                
+                self.B_gyro[3:, 3:, t] = GyroDampingMatrix  
+                
+                # note, gyroscopic effect is purely rotational so no translation adjustment needed
+
 
     def calcHydroConstants(self, case, memberList=[], Rotor=None, dgamma=0):
         '''This computes the linear strip-theory-hydrodynamics terms, including wave excitation for a specific case.'''
@@ -983,7 +1002,7 @@ class FOWT():
         M_w = np.zeros_like(aCG_turbine)
         M_X_aero = np.zeros_like(aCG_turbine)
         dynamic_moment = np.zeros_like(aCG_turbine)
-        dynamic_moment_RMS = np.zeros_like(aCG_turbine)
+        dynamic_moment_RMS = np.zeros(self.ntowers)
 
         for i in range(len(self.mtower)):
             m_turbine[i] = self.mtower[i] + self.mRNA[i]                        # total masses of each turbine
@@ -1004,14 +1023,13 @@ class FOWT():
             M_X_aero[:,i] = -(-self.w**2 *self.A_aero[0,0,:,i]                                 # tower base aero reaction moment
                         + 1j*self.w *self.B_aero[0,0,:,i] )*(self.hHub[i] - zBase[i])**2 *Xi[4,:]        
             dynamic_moment[:,i] = M_I[:,i] + M_w[:,i] + M_F_aero + M_X_aero[:,i]                            # total tower base fore-aft bending moment [N-m]
-            dynamic_moment_RMS[:,i] = getRMS(dynamic_moment[:,i], self.dw)
+            dynamic_moment_RMS[i] = getRMS(dynamic_moment[:,i], self.dw)
             # fill in metrics
             results['Mbase_avg'][iCase,i] = m_turbine[i]*self.g * hArm[i]*np.sin(Xi0[4]) + transformForce(self.F_aero0[:,i], offset=[0,0,-hArm[i]])[4] # mean moment from weight and thrust
-            results['Mbase_std'][iCase,:,i] = dynamic_moment_RMS[:,i]
+            results['Mbase_std'][iCase,i] = dynamic_moment_RMS[i]
             results['Mbase_PSD'][iCase,:,i] = getPSD(dynamic_moment[:,i])
             #results['Mbase_max'][iCase]
             #results['Mbase_DEL'][iCase]
-        
         
         # wave PSD for reference
         results['wave_PSD'][iCase,:] = getPSD(self.zeta)        # wave elevation spectrum
@@ -1041,8 +1059,15 @@ class FOWT():
         bPitch_w = np.zeros_like(phi_w)
 
         for t in range(self.nrotors):
+        
+            # get inflow speed for wind or current turbine
+            if self.rotorList[t].Zhub < 0:
+                speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+            else:
+                speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
+        
             # rotor-related outputs are only available if aerodynamics modeling is enabled
-            if self.rotorList[t].aeroServoMod > 1 and case['wind_speed'] > 0.0:
+            if self.rotorList[t].aeroServoMod > 1 and speed > 0.0:
                 # rotor speed (rpm)
                 # spectra
                 phi_w[:,t]   = self.rotorList[t].C * (XiHub[:,t] - self.rotorList[t].V_w / (1j *self.w))

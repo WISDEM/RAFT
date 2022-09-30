@@ -197,7 +197,7 @@ class Model():
         self.results['case_metrics']['AxRNA_PSD'] = np.zeros([nCases,self.nw, nrotors])    # = np.zeros([nCases,self.nw])
         # tower base bending moment
         self.results['case_metrics']['Mbase_avg'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases) 
-        self.results['case_metrics']['Mbase_std'] = np.zeros([nCases,self.nw, nrotors], dtype=complex)    # = np.zeros(nCases)
+        self.results['case_metrics']['Mbase_std'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases)
         self.results['case_metrics']['Mbase_max'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases)
         self.results['case_metrics']['Mbase_PSD'] = np.zeros([nCases,self.nw, nrotors])    # = np.zeros([nCases,self.nw])
         self.results['case_metrics']['Mbase_DEL'] = np.zeros([nCases,nrotors])    # = np.zeros(nCases)       
@@ -273,6 +273,8 @@ class Model():
             
             # process outputs that are specific to the floating unit       
             self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6,:])            
+            nTowers = self.fowtList[0].ntowers    
+            nRotors = self.fowtList[0].nrotors    
  
             # process mooring tension outputs
             nLine = int(len(self.T_moor)/2)
@@ -301,12 +303,16 @@ class Model():
                 print(f"roll (deg)         {metrics['roll_avg' ][iCase] :10.2e}  {metrics['roll_std' ][iCase] :10.2e}  {metrics['roll_max' ][iCase] :10.2e}")
                 print(f"pitch (deg)        {metrics['pitch_avg'][iCase] :10.2e}  {metrics['pitch_std'][iCase] :10.2e}  {metrics['pitch_max'][iCase] :10.2e}")
                 print(f"yaw (deg)          {metrics[  'yaw_avg'][iCase] :10.2e}  {metrics[  'yaw_std'][iCase] :10.2e}  {metrics['yaw_max'  ][iCase] :10.2e}")
-                print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][iCase] :10.2e}  {metrics['AxRNA_std'][iCase] :10.2e}  {metrics['AxRNA_max'][iCase] :10.2e}")
-                print(f"tower bending (Nm) {metrics['Mbase_avg'][iCase] :10.2e}  {metrics['Mbase_std'][iCase] :10.2e}  {metrics['Mbase_max'][iCase] :10.2e}")
-                
-                print(f"rotor speed (RPM)  {metrics['omega_avg'][iCase] :10.2e}  {metrics['omega_std'][iCase] :10.2e}  {metrics['omega_max'][iCase] :10.2e}")
-                print(f"blade pitch (deg)  {metrics['bPitch_avg'][iCase] :10.2e}  {metrics['bPitch_std'][iCase] :10.2e} ")
-                print(f"rotor power        {metrics['power_avg'][iCase] :10.2e} ")
+                for i in range(nTowers):
+                    print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][iCase,i] :10.2e}  {metrics['AxRNA_std'][iCase,i] :10.2e}  {metrics['AxRNA_max'][iCase,i] :10.2e}")
+                for i in range(nTowers):
+                    print(f"tower bending (Nm) {metrics['Mbase_avg'][iCase,i] :10.2e}  {metrics['Mbase_std'][iCase,i] :10.2e}  {metrics['Mbase_max'][iCase,i] :10.2e}")
+                for i in range(nRotors):
+                    print(f"rotor speed (RPM)  {metrics['omega_avg'][iCase,i] :10.2e}  {metrics['omega_std'][iCase,i] :10.2e}  {metrics['omega_max'][iCase,i] :10.2e}")
+                for i in range(nRotors):
+                    print(f"blade pitch (deg)  {metrics['bPitch_avg'][iCase,i] :10.2e}  {metrics['bPitch_std'][iCase,i] :10.2e} ")
+                for i in range(nRotors):
+                    print(f"rotor power        {metrics['power_avg'][iCase,i] :10.2e} ")
                 for i in range(nLine):
                     j = i+nLine
                     #print(f"line {i} tension A  {metrics['Tmoor_avg'][iCase,i]:10.2e}  {metrics['Tmoor_std'][iCase,i]:10.2e}  {metrics['Tmoor_max'][iCase,i]:10.2e}")
@@ -567,9 +573,9 @@ class Model():
         print('Solving for system response to wave excitation') 
         fowt.F_aero = fowt.F_aero*0 # <<<< a separate solve needs to be added for wind-driven response <<<< 
 
-        # sum up all linear (non-varying) matrices up front
+        # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
         M_lin = np.sum(fowt.A_aero, axis=3) + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
-        B_lin = np.sum(fowt.B_aero, axis=3) + fowt.B_struc[:,:,None] + fowt.B_BEM                                  # damping
+        B_lin = np.sum(fowt.B_aero, axis=3) + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None]  # damping
         C_lin =                               fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
         F_lin = np.sum(fowt.F_aero, axis=2) +                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
         
@@ -1143,7 +1149,7 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     print(" --- analyzing unloaded ---")
     model.analyzeUnloaded(ballast=ballast)
     print(" --- analyzing cases ---")
-    model.analyzeCases()
+    model.analyzeCases(display=1)
     
     if plot:
         model.plot(station_plot=station_plot)        

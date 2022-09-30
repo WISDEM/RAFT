@@ -453,7 +453,7 @@ def printVec(vec):
     print( "\t".join(["{:+8.3e}"]*len(vec)).format( *vec ))
 
 
-def getFromDict(dict, key, shape=0, dtype=float, default=None, index=0):
+def getFromDict(dict, key, shape=0, dtype=float, default=None, index=None):
     '''
     Function to streamline getting values from design dictionary from YAML file, including error checking.
 

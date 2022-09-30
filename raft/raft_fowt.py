@@ -153,7 +153,7 @@ class FOWT():
 
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
-        Also adds some dynamic parameters that are constant, e.g. BEM coefficients and steady thrust loads.'''
+        '''
 
         rho = self.rho_water
         g   = self.g
@@ -519,7 +519,7 @@ class FOWT():
             # note: RAFT will only be using finite-frequency potential flow coefficients
             
     
-    def calcTurbineConstants(self, case, ptfm_pitch=0, current=False):
+    def calcTurbineConstants(self, case, ptfm_pitch=0):
         '''This computes turbine linear terms
         
         case
@@ -530,6 +530,8 @@ class FOWT():
         '''
         
         #self.rotor.runCCBlade(case['wind_speed'], ptfm_pitch=ptfm_pitch, yaw_misalign=case['yaw_misalign'])
+        
+        turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
         
         # initialize arrays (can remain zero if aerodynamics are disabled)
         self.A_aero  = np.zeros([6,6,self.nw,self.nrotors])                      # frequency-dependent aero-servo added mass matrix    
@@ -546,9 +548,10 @@ class FOWT():
             else:
                 current = False
                 speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
-
+            
             if self.rotorList[t].aeroServoMod > 0 and speed > 0.0:
             
+                # get mean aero forces and fore-aft coefficients (these are about hub coordinate in nacelle reference frame)
                 F_aero0, f_aero, a_aero, b_aero = self.rotorList[t].calcAeroServoContributions(case, ptfm_pitch=ptfm_pitch, current=current, display=2)  # get values about hub
                 
                 # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
@@ -563,6 +566,9 @@ class FOWT():
                 
                 # convert forces to platform reference frame
                 self.F_aero0[:,t] = transformForce(F_aero0, offset=rHub)         # mean forces and moments
+                # >>> TO ADD to above:  F_aero0 = transformForce(F_aero0, orientation=[0, 0, np.radians(turbine_heading)]) # rotate to put forces on rotor in global oriention (if yawed)
+                if not turbine_heading == 0:
+                    print("WARNING: yawed turbine features are not yet implemented but a nonzero turbine_heading was given")
 
                 for iw in range(self.nw):
                     #self.F_aero[:,iw] = transformForce(F_aero[:,iw], offset=rHub, orientation=rotMatHub)
@@ -674,7 +680,7 @@ class FOWT():
                         # added mass (axial term explicitly excluded here - we aren't dealing with chains)
                         Amat = rho*v_i *( Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
                         #Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
-#                        print(f"Member side added mass diagonals are {Amat[0,0]:6.2e} {Amat[1,1]:6.2e} {Amat[2,2]:6.2e}")
+                        # print(f"Member side added mass diagonals are {Amat[0,0]:6.2e} {Amat[1,1]:6.2e} {Amat[2,2]:6.2e}")
 
                         self.A_hydro_morison += translateMatrix3to6DOF(Amat, mem.r[il,:])    # add to global added mass matrix for Morison members
                         
@@ -702,7 +708,7 @@ class FOWT():
 
                         # added mass
                         AmatE = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
-#                        print(f"Member END  added mass diagonals are {AmatE[0,0]:6.2e} {AmatE[1,1]:6.2e} {AmatE[2,2]:6.2e}")
+                        # print(f"Member END  added mass diagonals are {AmatE[0,0]:6.2e} {AmatE[1,1]:6.2e} {AmatE[2,2]:6.2e}")
                         
                         self.A_hydro_morison += translateMatrix3to6DOF(AmatE, mem.r[il,:]) # add to global added mass matrix for Morison members
                         
@@ -780,10 +786,13 @@ class FOWT():
                     vrel = mem.u[il,:] - vnode
 
                     # break out velocity components in each direction relative to member orientation [nw]
-                    vrel_q  = vrel*mem.q[ :,None]     # (the ,None is for broadcasting q across all frequencies in vrel)
-                    vrel_p1 = vrel*mem.p1[:,None]
-                    vrel_p2 = vrel*mem.p2[:,None]
-
+                    #vrel_q  = vrel*mem.q[ :,None]     # (the ,None is for broadcasting q across all frequencies in vrel)
+                    #vrel_p1 = vrel*mem.p1[:,None]
+                    #vrel_p2 = vrel*mem.p2[:,None]  
+                    vrel_q  = np.sum(vrel*mem.q[ :,None], axis=0)*mem.q[ :,None]     # (the ,None is for broadcasting q across all frequencies in vrel)
+                    vrel_p1 = np.sum(vrel*mem.p1[:,None], axis=0)*mem.p1[:,None]
+                    vrel_p2 = np.sum(vrel*mem.p2[:,None], axis=0)*mem.p2[:,None]
+                    
                     # get RMS of relative velocity component magnitudes (real-valued)
                     vRMS_q  = getRMS(vrel_q , self.dw)
                     vRMS_p1 = getRMS(vrel_p1, self.dw)
@@ -807,7 +816,7 @@ class FOWT():
                         F_hydro_drag[:,i] += translateForce3to6DOF(mem.F_exc_drag[il,:,i], mem.r[il,:])   # add to global excitation vector (frequency dependent)
 
 
-                    # ----- add end/axial effects for added mass, and excitation including dynamic pressure ------
+                    # ----- add end/axial effects for added mass, drag, and excitation including dynamic pressure ------
                     # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
 
                     # end/axial area (removing sign for use as drag)
@@ -838,7 +847,7 @@ class FOWT():
 
         # return the linearized coefficients
         return B_hydro_drag, F_hydro_drag
-
+    
     
     def calcCurrentLoads(self, case):
         '''method to calculate the "static" current loads on each member and save as a current force
@@ -853,6 +862,12 @@ class FOWT():
         speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
         heading = getFromDict(case, 'current_heading', shape=0, default=0)
 
+        # if no submerged rotor, assume current ref elevation is sea surface rather than hub height
+        if self.rotorList[0].Zhub < 0:
+            Zref = self.rotorList[0].Zhub
+        else:
+            Zref = 0.0
+
         # loop through each member
         for mem in self.memberList:
 
@@ -865,7 +880,7 @@ class FOWT():
                 if mem.r[il,2] < 0:
 
                     # calculate current velocity as a function of node depth [x,y,z] (assumes no vertical current velocity)
-                    v = speed * ((self.depth-abs(mem.r[il,2]))/self.depth)**self.shearExp_water
+                    v = speed * (((self.depth + Zref) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water
                     vcur = np.array([v*np.cos(np.deg2rad(heading)), v*np.sin(np.deg2rad(heading)), 0])
 
                     # interpolate coefficients for the current strip
@@ -874,6 +889,13 @@ class FOWT():
                     Cd_p2  = np.interp( mem.ls[il], mem.stations, mem.Cd_p2 )
                     Cd_End = np.interp( mem.ls[il], mem.stations, mem.Cd_End)
 
+                    # current (relative) velocity over node (no complex numbers bc not function of frequency)
+                    vrel = np.array(vcur)
+                    # break out velocity components in each direction relative to member orientation
+                    vrel_q  = np.sum(vrel*mem.q[:] )*mem.q[:] 
+                    vrel_p1 = np.sum(vrel*mem.p1[:])*mem.p1[:]
+                    vrel_p2 = np.sum(vrel*mem.p2[:])*mem.p2[:]
+                    
                     # ----- compute side effects ------------------------
 
                     # member acting area assigned to this node in each direction
@@ -881,24 +903,27 @@ class FOWT():
                     a_i_p1 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,0]      *mem.dls[il]
                     a_i_p2 =       mem.ds[il]*mem.dls[il]  if circ else             mem.ds[il,1]      *mem.dls[il]
 
-                    vrel = np.array(vcur)    # current (relative) velocity over node (no complex numbers bc not function of frequency)
-
-                    # break out velocity components in each direction relative to member orientation
-                    vrel_q  = vrel*mem.q[:]
-                    vrel_p1 = vrel*mem.p1[:]
-                    vrel_p2 = vrel*mem.p2[:]
-
                     # calculate drag force wrt to each orientation using simple Morison's drag equation
                     Dq = 0.5 * rho * a_i_q * Cd_q * np.linalg.norm(vrel_q) * vrel_q
                     Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * np.linalg.norm(vrel_p1) * vrel_p1
                     Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * np.linalg.norm(vrel_p2) * vrel_p2
+                    
+                    # ----- end/axial effects drag ------
 
-                    D = Dq + Dp1 + Dp2      # sum up drag forces in all directions
+                    # end/axial area (removing sign for use as drag)
+                    if circ:
+                        a_i_End = np.abs(np.pi*mem.ds[il]*mem.drs[il])
+                    else:
+                        a_i_End = np.abs((mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1]))
+                    
+                    Dq_End = 0.5 * rho * a_i_End * Cd_End * np.linalg.norm(vrel_q) * vrel_q
+
+                    # ----- sum forces and add to total mean drag load about PRP ------
+                    D = Dq + Dp1 + Dp2 + Dq_End     # sum drag forces at node in member's local orientation frame
 
                     D_hydro += translateForce3to6DOF(D, mem.r[il,:])       # reorient as a len=6 vector wrt the node position
-
+                    
                     self.D_hydro = D_hydro
-
 
         return D_hydro
 

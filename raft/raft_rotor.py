@@ -39,7 +39,7 @@ rpm2radps = 0.1047
 # a class for the rotor structure, aerodynamics, and control in RAFT
 class Rotor:
 
-    def __init__(self, turbine, w, ir, old=False):
+    def __init__(self, turbine, w, ir):
         '''
         >>>> add mean offset parameters add move this to runCCBlade<<<<
         ir = the index of the values in the arrays of the input file for multiple rotors
@@ -64,6 +64,8 @@ class Rotor:
         self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]        # [m]
         self.aeroServoMod = getFromDict(turbine, 'aeroServoMod', shape=turbine['nrotors'], default=1)[ir]  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
 
+        # support if blade and wt_ops are each a single dictionary or a list of dictionaries for each rotor
+        # note: this would only be done on the first turbine  >>> we may want to move this stuff up a level, outside of each Rotor object
         if isinstance(turbine['blade'], dict):          # if we use the entire blade dict list approach
             turbine['blade'] = [turbine['blade']]*turbine['nrotors']
         if isinstance(turbine['wt_ops'], dict):
@@ -107,12 +109,9 @@ class Rotor:
 
         # ----- AIRFOIL STUFF ------
         n_aoa = 200 # [-] - number of angles of attack to discretize airfoil polars - MUST BE MULTIPLE OF 4
-        #n_af = len(turbine["airfoils"])
-        self.af_used     = [ b for [a,b] in turbine['blade'][ir]["airfoils"] ]
-        self.af_position = [ a for [a,b] in turbine['blade'][ir]["airfoils"] ]
-        n_af = len(np.unique(self.af_used))
-        #af_used     = turbine['blade']["airfoils"]["labels"]
-        #af_position = turbine['blade']["airfoils"]["grid"]
+        self.af_used     = [ b for [a,b] in turbine['blade'][ir]["airfoils"] ]  # airfoil name
+        self.af_position = [ a for [a,b] in turbine['blade'][ir]["airfoils"] ]  # airfoil relative position along blade [0-1]
+        n_af = len(np.unique(self.af_used))  # number of airfoils that are used in the rotor
         n_af_span = len(self.af_used)
         
         # One fourth of the angles of attack from -pi to -pi/6, half between -pi/6 to pi/6, and one fourth from pi/6 to pi
@@ -129,16 +128,14 @@ class Rotor:
             if 'added_mass_coeff' in turbine["airfoils"][i].keys():
                 Ca[i,:] = turbine["airfoils"][i]["added_mass_coeff"]
             else:
-                Ca[i,:] = [0.5, 1.0]
+                Ca[i,:] = [0.5, 1.0]  # default added mass coefficients if not supplied
 
-
-        polar_table = np.array(turbine["airfoils"][i]['data'])
 
         cl = np.zeros((n_af, n_aoa, 1))
         cd = np.zeros((n_af, n_aoa, 1))
         cm = np.zeros((n_af, n_aoa, 1))
         cpmin = np.zeros((n_af, n_aoa, 1))
-        if len(polar_table[0]) > 4:
+        if len(np.array(turbine["airfoils"][i]['data'])[0]) > 4:
             cpmin_flag = True
         else:
             cpmin_flag = False
@@ -150,7 +147,7 @@ class Rotor:
             #cd[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_d"])
             #cm[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_m"])
 
-            #polar_table = np.array(turbine["airfoils"][i]['data'])
+            polar_table = np.array(turbine["airfoils"][i]['data'])
             
             # Note: polar_table[:,0] must be in degrees
             cl[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,1])
@@ -179,7 +176,8 @@ class Rotor:
                 cpmin[i, 0, 0] = cpmin[i, -1, 0]
 
 
-        # Interpolate along blade span using a pchip on relative thickness
+        # ----- Interpolate airfoil coefficients blade span using a pchip on relative thickness -----
+        
         r_thick_used = np.zeros(n_af_span)
         Ca_used = np.zeros((n_af_span, 2))
         cl_used = np.zeros((n_af_span, n_aoa, 1))
@@ -187,6 +185,7 @@ class Rotor:
         cm_used = np.zeros((n_af_span, n_aoa, 1))
         cpmin_used = np.zeros((n_af_span, n_aoa, 1))
 
+        # copy-paste coefficient values from airfoil database to each station point along the blade
         for i in range(n_af_span):
             for j in range(n_af):
                 if self.af_used[i] == af_name[j]:
@@ -198,18 +197,15 @@ class Rotor:
                     cpmin_used[i, :, :] = cpmin[j, :, :]
                     break
 
-        # Pchip does have an associated derivative method built-in:
-        # https://docs.scipy.org/doc/scipy/reference/generated/scipy.interpolate.PchipInterpolator.derivative.html#scipy.interpolate.PchipInterpolator.derivative
+        # Spanwise interpolation of the airfoil polars with a pchip
         spline = PchipInterpolator
         rthick_spline = spline(self.af_position, r_thick_used)
+        self.r_thick_interp = rthick_spline(grid)  # or rthick_spline(grid[1:-1]) <<< must confirm how to handle ends
+        
+        r_thick_unique, indices = np.unique(r_thick_used, return_index=True)  # <<< check if this is redundant
+        
         Ca_spline = spline(self.af_position, Ca_used)
-        # GB: HAVE TO TALK TO PIETRO ABOUT THIS
-        #r_thick_interp = rthick_spline(grid[1:-1])
-        self.r_thick_interp = rthick_spline(grid)
         self.Ca_interp = Ca_spline(grid)
-
-        # Spanwise interpolation of the airfoil polars with a pchip
-        r_thick_unique, indices = np.unique(r_thick_used, return_index=True)
         cl_spline = spline(r_thick_unique, cl_used[indices, :, :])
         self.cl_interp = np.flip(cl_spline(np.flip(self.r_thick_interp)), axis=0)
         cd_spline = spline(r_thick_unique, cd_used[indices, :, :])
@@ -241,6 +237,8 @@ class Rotor:
         af = []
         for i in range(self.cl_interp.shape[0]):
             af.append(CCAirfoil(self.aoa, [], self.cl_interp[i,:,:],self.cd_interp[i,:,:],self.cm_interp[i,:,:]))
+        
+        # >>> There is an inconsistency between the geometric and airfoil inputs that needs to be corrected! <<<
         
         self.ccblade = CCBlade(
             self.blade_r,                        # (m) locations defining the blade along z-axis of blade coordinate system
@@ -416,6 +414,8 @@ class Rotor:
         # add a margin to the depth clearance (either by user input or based on platform motions)
         clearance = clearance*clearance_margin
         
+        # >>> note: above currently not used <<<
+        
         #--------------- calculate clearance (depth) of each node of each blade (more precise) --------------
         # collect minimum pressure coefficient values
         cpmin = self.cpmin_interp       # array of size [len(bladeMemberList), len(self.aoa), 1] where each row is the cpmin as a function of aoa (columns)
@@ -434,7 +434,7 @@ class Rotor:
             loads, derivs = self.ccblade.distributedAeroLoads(Uhub, Omega_rpm, pitch_deg, azi)  # run CCBlade with variable azimuth angles
             vrel = loads["W"]       # pull out the relative velocity at each node along the blade at that azimuth angle
             aoa = loads["alpha"]    # pull out the angle of attack at each node along the blade at that azimuth angle
-
+            
             for n in range(len(vrel)):      # for each blade node
 
                 # find the minimum pressure coefficient at that node at the given angle of attack
@@ -475,7 +475,7 @@ class Rotor:
         
         # evaluate aero loads and derivatives with CCBlade
         loads, derivs = self.ccblade.evaluate(Uhub, Omega_rpm, pitch_deg, coefficients=True)
-
+        
         # organize and save the relevant outputs...
         self.U_case         = Uhub
         self.Omega_case     = Omega_rpm
@@ -496,7 +496,7 @@ class Rotor:
 
 
         print(f"Wind speed: {Uhub} m/s, Aerodynamic power coefficient: {loads['CP'][0]:4.3f}")
-
+        
         J={} # Jacobian/derivatives
 
         dP = derivs["dP"]
@@ -573,24 +573,25 @@ class Rotor:
     def calcAeroServoContributions(self, case, ptfm_pitch=0, current=False, display=0):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
-        Results are w.r.t. nonrotating hub reference frame.
+        Results are w.r.t. the hub coordinate on the nacelle reference frame (may be yawed)
         Currently returning 6 DOF mean loads, but other terms are just hub fore-aft scalars.
         
          ptfm_pitch
             mean platform pitch angle to be included in rotor tilt angle [rad]
         '''
         
+        # get relative inflow angle
         if current:
             speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
             heading = getFromDict(case, 'current_heading', shape=0, default=0.0)
-            yaw_misalign = getFromDict(case, 'current_yaw_misalign', shape=0, default=0.0)
         else:
             speed = getFromDict(case, 'wind_speed', shape=0, default=10)
             heading = getFromDict(case, 'wind_heading', shape=0, default=0.0)
-            yaw_misalign = getFromDict(case, 'yaw_misalign', shape=0, default=0.0)
-        # >>>>> not sure where the inflow heading angle should be applied: to CCBlade (internal), or F_aero0 (external) <<<<<<
-        
+            
+        turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
+        yaw_misalign = heading - turbine_heading  # inflow misalignment heading relative to turbine heading [deg]
 
+        # call CCBlade
         loads, derivs = self.runCCBlade(speed, ptfm_pitch=ptfm_pitch, yaw_misalign=yaw_misalign)
         
         #Uinf = case['wind_speed']  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
@@ -607,8 +608,7 @@ class Rotor:
         # calculate steady aero forces and moments
         F_aero0 = np.array([loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0],
                             loads["My" ][0], loads["Q" ][0], loads["Mz" ][0] ])
-        # >>>>>>>>>>> probably room here to account for wind heading <<<<<<<<<<<<
-
+        
         # calculate rotor-averaged turbulent wind spectrum
         _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD [(m/s)^2/rad]
         self.V_w = np.sqrt(S_rot)   # convert from power spectral density to complex amplitudes (FFT)

@@ -577,9 +577,9 @@ class FOWT():
                     self.F_aero[:,iw,t] = translateForce3to6DOF(np.array([f_aero[iw], 0, 0]), rHub)
                 
                 # calculate cavitation of the rotor (platform motions should already be accounted for in the CCBlade object after running calcAeroServoContributions)
-                cav = self.rotorList[t].calcCavitation(case)
-                # >>>>>>>> what do we do with this, now that we have it? Error is raised internal to calcCavitation <<<<<<<<<<<<<<<
-        
+                # if rotor is submerged...
+                # cav = self.rotorList[t].calcCavitation(case)  # TO-DO: wire this to be a result/output, then uncomment <<<
+                
                 # ----- calculate rotor gyroscopic effects -----
                 # rotor speed [rpm]
                 Omega_rpm = np.interp(speed, self.rotorList[t].Uhub, self.rotorList[t].Omega_rpm)

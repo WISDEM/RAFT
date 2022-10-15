@@ -1166,10 +1166,10 @@ if __name__ == "__main__":
     
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
 
     #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
+    #odel = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
    
     plt.show()
     

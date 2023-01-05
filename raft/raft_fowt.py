@@ -282,7 +282,7 @@ class FOWT():
         self.mballast = np.zeros(len(self.pb))                      # make an empty mballast list with len=len(pb)
         for i in range(len(self.pb)):                               # for each ballast density
             for j in range(len(mballast)):                          # loop through each ballast mass
-                if np.float(pballast[j]) == np.float(self.pb[i]):   # but only if the index of the ballast mass (density) matches the value of pb
+                if float(pballast[j]) == float(self.pb[i]):   # but only if the index of the ballast mass (density) matches the value of pb
                     self.mballast[i] += mballast[j]                 # add that ballast mass to the correct index of mballast
 
 

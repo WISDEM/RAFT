@@ -5,7 +5,6 @@ import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 
-
 from raft.pyIECWind         import pyIECWind_extreme
 from raft.raft_member import Member
 
@@ -116,7 +115,7 @@ class Rotor:
                                    np.linspace(  30, 180, int(n_aoa/4.0 + 1))]))
 
         af_name = n_af * [""]
-        r_thick = np.zeros(n_af)
+        r_thick = np.zeros(n_af)    # <<<<< rename all the r_thicks to more clearly denote relative thickness!
         Ca = np.zeros([n_af, 2])
         for i in range(n_af):
             af_name[i] = turbine["airfoils"][i]["name"]
@@ -196,12 +195,14 @@ class Rotor:
         # Spanwise interpolation of the airfoil polars with a pchip
         spline = PchipInterpolator
         rthick_spline = spline(self.af_position, r_thick_used)
-        self.r_thick_interp = rthick_spline(grid)  # or rthick_spline(grid[1:-1]) <<< must confirm how to handle ends
+        # self.r_thick_interp = rthick_spline(grid)  # or rthick_spline(grid[1:-1]) <<< must confirm how to handle ends
+        self.r_thick_interp = rthick_spline(grid[1:-1]) 
         
         r_thick_unique, indices = np.unique(r_thick_used, return_index=True)  # <<< check if this is redundant
         
         Ca_spline = spline(self.af_position, Ca_used)
-        self.Ca_interp = Ca_spline(grid)
+        #self.Ca_interp = Ca_spline(grid)
+        self.Ca_interp = Ca_spline(grid[1:-1])
         cl_spline = spline(r_thick_unique, cl_used[indices, :, :])
         self.cl_interp = np.flip(cl_spline(np.flip(self.r_thick_interp)), axis=0)
         cd_spline = spline(r_thick_unique, cd_used[indices, :, :])
@@ -220,6 +221,7 @@ class Rotor:
         self.blade_theta     = geometry_table[:,2]
         blade_precurve  = geometry_table[:,3]
         blade_presweep  = geometry_table[:,4]
+        #  <<<<<< move this to beginning, then do some interpolating to unify grid and blade_r <<<<<<< and go from above 0 to below 1
 
         if self.Zhub < 0:
             self.rho = turbine['rho_water']
@@ -395,7 +397,7 @@ class Rotor:
 
 
 
-    def calcCavitation(self, case, azimuth=0, clearance_margin=1.0, Patm=101325, Pvap=2500):
+    def calcCavitation(self, case, azimuth=0, clearance_margin=1.0, Patm=101325, Pvap=2500, error_on_cavitation=False):
         ''' Method to calculate the cavitation number of the rotor
         (wind speed (m/s), rotor speed (RPM), pitch angle (deg), azimuth (deg))
 
@@ -443,8 +445,9 @@ class Rotor:
                 sigma_crit = (Patm + self.ccblade.rho*9.81*abs(clearance) - Pvap)/(0.5*self.ccblade.rho*vrel[n]**2)
 
                 # if sigma_crit is less than sigma_l (sigma_l = -cpmin), then cavitation occurs
-                if sigma_crit < -cpmin_node:
-                    raise ValueError(f"Cavitation occured at node {n} (first node = 0)")
+                if error_on_cavitation:
+                    if sigma_crit < -cpmin_node:
+                        raise ValueError(f"Cavitation occured at node {n} (first node = 0)")
                 
                 cav_check[a,n] = sigma_crit + cpmin_node         # if this value is negative, then cavitation occurs (sigma_crit - sigma_l < 0 -> cav occurs; sigma_l = -cpmin_node)
 

@@ -194,11 +194,14 @@ class Member:
 
         #self.slh[i,0] = np.interp(lh[i], self.stations, self.sl1)
         #self.slh[i,1] = np.interp(lh[i], self.stations, self.sl2)
-
+        
+        # ----- initialize arrays used later for hydro calculations -----
+        self.a_i       = np.zeros([self.ns])            # signed axial area vector that dynamic pressure will act on [m2]
         # complex frequency-dependent amplitudes of quantities at each node along member (to be filled in later)
         self.dr        = np.zeros([self.ns,3,nw], dtype=complex)            # displacement
         self.v         = np.zeros([self.ns,3,nw], dtype=complex)            # velocity
         self.a         = np.zeros([self.ns,3,nw], dtype=complex)            # acceleration
+        # note: wave quantities below will be the summed values if there is more than one sea state heading
         self.u         = np.zeros([self.ns,3,nw], dtype=complex)            # wave velocity
         self.ud        = np.zeros([self.ns,3,nw], dtype=complex)            # wave acceleration
         self.pDyn      = np.zeros([self.ns,  nw], dtype=complex)            # dynamic pressure
@@ -206,6 +209,12 @@ class Member:
         self.F_exc_a   = np.zeros([self.ns,3,nw], dtype=complex)            #  component due to wave acceleration
         self.F_exc_p   = np.zeros([self.ns,3,nw], dtype=complex)            #  component due to dynamic pressure
         self.F_exc_drag= np.zeros([self.ns,3,nw], dtype=complex)            # wave excitation from linearized drag
+        
+        
+        # new hydro matrices that are now used?
+        self.Amat = np.zeros([self.ns,3,3])
+        self.Bmat = np.zeros([self.ns,3,3])
+        self.Imat = np.zeros([self.ns,3,3])
 
 
 

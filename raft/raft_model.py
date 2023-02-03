@@ -111,6 +111,11 @@ class Model():
         
         ballast: flag to ballast the FOWTs to achieve a certain heave offset'''
         
+        
+        # need to zero out external loads >>>
+        self.fowtList[0].D_hydr0 = np.zeros(6)
+        self.fowtList[0].F_aero0 = np.zeros([6,1])
+        
             
         # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
         try: 
@@ -155,7 +160,7 @@ class Model():
         nLines = len(self.ms.lineList)        
         
         
-        # set up output arrays for load cases
+        # set up output arrays for load cases >>> put these into an initialization function <<<
         
         self.results['case_metrics'] = {}
         self.results['case_metrics']['surge_avg'] = np.zeros(nCases)
@@ -249,45 +254,37 @@ class Model():
             # form dictionary of case parameters
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
             
-            '''
-            # get initial FOWT values assuming no offset
-            for fowt in self.fowtList:
-                fowt.Xi0 = np.zeros(6)      # zero platform offsets
-                fowt.calcTurbineConstants(case, ptfm_pitch=0.0)
-                fowt.calcHydroConstants(case)
+            if np.isscalar(case['wave_heading']):  # deal with the typical case of just one set of waves specified
+                nWaves = 1
+            else:
+                nWaves = len(case['wave_heading'])
             
-            # calculate platform offsets and mooring system equilibrium state
-            self.calcMooringAndOffsets()
-            
-            # update values based on offsets if applicable
-            for fowt in self.fowtList:
-                fowt.calcTurbineConstants(case, ptfm_pitch=fowt.Xi0[4])
-                # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
-            
-            # (could solve mooring and offsets a second time, but likely overkill)
-            '''            
+            # solve system operating point / mean offsets for this load case
             self.solveStatics(case)
-            
+          
             # solve system dynamics
             self.solveDynamics(case)
             
+            # >>> need to device if I want to store Xi0 and Xi in the FOWTs or work with them directly here. <<<
+            
             # process outputs that are specific to the floating unit       
             self.fowtList[0].saveTurbineOutputs(self.results['case_metrics'], case, iCase, fowt.Xi0, self.Xi[0:6,:])            
-            nTowers = self.fowtList[0].ntowers    
-            nRotors = self.fowtList[0].nrotors    
+            nTowers = self.fowtList[0].ntowers
+            nRotors = self.fowtList[0].nrotors
  
             # process mooring tension outputs
             nLine = int(len(self.T_moor)/2)
-            T_moor_amps = np.zeros([2*nLine, self.nw], dtype=complex) 
-            for iw in range(self.nw):
-                T_moor_amps[:,iw] = np.matmul(self.J_moor, self.Xi[:,iw])   # FFT of mooring tensions
+            T_moor_amps = np.zeros_like(self.Xi, dtype=complex)    # mooring tension amplitude spectra for each excitation source and line end
+            for ih in range(nWaves+1):
+                for iw in range(self.nw):
+                    T_moor_amps[ih,:,iw] = np.matmul(self.J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
             
             self.results['case_metrics']['Tmoor_avg'][iCase,:] = self.T_moor
             for iT in range(2*nLine):
-                TRMS = getRMS(T_moor_amps[iT,:], self.w[0]) # estimated mooring line RMS tension [N]
+                TRMS = getRMS(T_moor_amps[:,iT,:], self.w[0]) # estimated mooring line RMS tension [N]
                 self.results['case_metrics']['Tmoor_std'][iCase,iT] = TRMS
                 self.results['case_metrics']['Tmoor_max'][iCase,iT] = self.T_moor[iT] + 3*TRMS
-                self.results['case_metrics']['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[iT,:]) # PSD in N^2/(rad/s)
+                self.results['case_metrics']['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[:,iT,:]) # PSD in N^2/(rad/s)
                 #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
         
             if display > 0:
@@ -343,6 +340,7 @@ class Model():
     def calcMooringAndOffsets(self):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
+        Mean offsets are saved in the FOWT object.
         '''
 
         # apply any mean aerodynamic and hydrodynamic loads
@@ -370,7 +368,7 @@ class Model():
         #printVec(self.ms.bodyList[0].r6)
 
         r6eq = self.ms.bodyList[0].r6
-        fowt.Xi0 = np.array(r6eq)   # save current mean offsets for the FOWT
+        fowt.Xi0 = np.array(r6eq[0:6])   # save current mean offsets for the FOWT
 
         #self.ms.plot()
 
@@ -398,7 +396,7 @@ class Model():
         self.results['means']['mooring force'    ] = F_moor
         self.results['means']['fairlead tensions'] = np.array([np.linalg.norm(self.ms.pointList[id-1].getForces()) for id in self.ms.bodyList[0].attachedP])
         
-        # tower base bending moment
+        # mean tower base bending moment
         m_turbine = np.zeros([len(self.fowtList), max([len(self.fowtList[j].mtower) for j in range(len(self.fowtList))])])
         zCG_turbine = np.zeros_like(m_turbine)
         zBase = np.zeros_like(m_turbine)
@@ -540,7 +538,8 @@ class Model():
         # update values based on offsets if applicable
         for fowt in self.fowtList:
             fowt.calcTurbineConstants(case, ptfm_pitch=fowt.Xi0[4])
-            # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far)
+            # fowt.calcHydroConstants(case)  (hydrodynamics don't account for offset, so far) 
+            # <<<<< can change the above once we support nonlinear hydrostatics
         
         # (could solve mooring and offsets a second time, but likely overkill)
         # self.calcMooringAndOffsets()
@@ -569,15 +568,28 @@ class Model():
         i1 = 0                                                # range of DOFs for the current turbine
         i2 = 6
         
+        # calculate linear wave excitation forces for this case  (THIS IS A NEW WAY OF DOING THIS)<<<
+        fowt.calcHydroExcitation(case, memberList=fowt.memberList)
+        
+        # add up coefficients for any number of turbines
+        if fowt.nrotors> 0:
+            M_turb = np.sum(fowt.A_aero, axis=3)
+            B_turb = np.sum(fowt.B_aero, axis=3)
+        else:
+            M_turb = np.zeros([6,6,self.nw])
+            B_turb = np.zeros([6,6,self.nw])
+            
         # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
-        print('Solving for system response to wave excitation') 
-        fowt.F_aero = fowt.F_aero*0 # <<<< a separate solve needs to be added for wind-driven response <<<< 
+        print('Solving for system response to wave excitation in primary wave direction') 
 
         # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
-        M_lin = np.sum(fowt.A_aero, axis=3) + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None] # mass
-        B_lin = np.sum(fowt.B_aero, axis=3) + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None]  # damping
-        C_lin =                               fowt.C_struc   + self.C_moor        + fowt.C_hydro                   # stiffness
-        F_lin = np.sum(fowt.F_aero, axis=2) +                          fowt.F_BEM + fowt.F_hydro_iner              # excitation
+        M_lin = M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]         # mass
+        B_lin = B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None]  # damping
+        C_lin =          fowt.C_struc   + self.C_moor        + fowt.C_hydro                           # stiffness
+        # consider only excitation from the primary sea state in the load case for now
+        F_lin = fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:]
+        
+        #F_lin = np.sum(fowt.F_aero, axis=2) + fowt.F_BEM + np.sum(fowt.F_hydro_iner, axis=0) # excitation
         
         # start fixed point iteration loop for dynamics
         for iiter in range(nIter):
@@ -595,7 +607,8 @@ class Model():
             fowt = self.fowtList[0]
             
             # get linearized terms for the current turbine given latest amplitudes
-            B_linearized, F_linearized = fowt.calcLinearizedTerms(XiLast)
+            B_linearized = fowt.calcHydroLinearization(XiLast)
+            F_linearized = fowt.calcDragExcitation(0)  # just looking at first sea state (wave heading) for the sake of linearization
             
             # calculate the response based on the latest linearized terms
             Xi = np.zeros([self.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
@@ -635,6 +648,7 @@ class Model():
             if iiter == nIter-1:
                 print("WARNING - solveDynamics iteration did not converge to the tolerance.")
         
+        
         if conv_plot:
             # labels for convergence plots
             ax[1].legend()
@@ -643,22 +657,62 @@ class Model():
             ax[2].set_ylabel("response, imag")
             ax[2].set_xlabel("frequency (rad/s)")
             fig.suptitle("Response convergence")
+        
+        
+        
+        # >>> above iterative solve should be just with wave excitation
+        # next, should add inflow excitation as well as potentially drift loads >>>
+        
+        # >>> For arrays, we would want a sparse solver for Zinv. <<<
+        
+        # 1. get latest impedence matrix and invert it
+        #Z = Z (already done)
+        Zinv  = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=complex)  # total system impedance matrix
+        for iw in range(self.nw):
+            Zinv[:,:,iw] = np.linalg.inv(Z[:,:,iw])
+        
+        # 2. calculate response for each source of excitation
+        Xi = np.zeros([fowt.nWaves+1,self.nDOF,self.nw], dtype=complex)  # response tensor, including for each excitation type
+        
+        # wave excitation
+        for ih in range(fowt.nWaves):
+        
+            F_linearized = fowt.calcDragExcitation(ih)
+        
+            F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized
+        
+            for iw in range(self.nw):
+                Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+        
+        # rotor excitation
+        F_rotor = np.sum(fowt.F_aero, axis=2)
+        for iw in range(self.nw):
+            Xi[-1,:,iw] = np.matmul(Zinv[:,:,iw], F_rotor[:,iw])
+        
+        # store the results in the FOWT object >>> for arrays, there is probably a more efficient way to partition some of the solves above <<<
+        # for...
+        fowt.Xi = Xi[:, 0:6, :]   # this overwrites the response in the FOWT with what's been calculated
+        
+        
+        # XXX  3. calculate overall response spectrum with Stot = |Hw|^2 Sw + |Hi|^2 Si + ...
+        # XXX Stot = np.sum(np.abs(Xi)**2, axis=0)
+        
 
 
         # ------------------------------ preliminary plotting of response ---------------------------------
         
         if RAO_plot:
-            # RAO plotting
+            # RAO plotting (for first wave heading)
             fig, ax = plt.subplots(3,1, sharex=True)
     
             fowt = self.fowtList[0]
     
-            ax[0].plot(self.w, np.abs(Xi[0,:])          , 'b', label="surge")
-            ax[0].plot(self.w, np.abs(Xi[1,:])          , 'g', label="sway")
-            ax[0].plot(self.w, np.abs(Xi[2,:])          , 'r', label="heave")
-            ax[1].plot(self.w, np.abs(Xi[3,:])*180/np.pi, 'b', label="roll")
-            ax[1].plot(self.w, np.abs(Xi[4,:])*180/np.pi, 'g', label="pitch")
-            ax[1].plot(self.w, np.abs(Xi[5,:])*180/np.pi, 'r', label="yaw")
+            ax[0].plot(self.w, np.abs(Xi[0,0,:])          , 'b', label="surge")
+            ax[0].plot(self.w, np.abs(Xi[0,1,:])          , 'g', label="sway")
+            ax[0].plot(self.w, np.abs(Xi[0,2,:])          , 'r', label="heave")
+            ax[1].plot(self.w, np.abs(Xi[0,3,:])*180/np.pi, 'b', label="roll")
+            ax[1].plot(self.w, np.abs(Xi[0,4,:])*180/np.pi, 'g', label="pitch")
+            ax[1].plot(self.w, np.abs(Xi[0,5,:])*180/np.pi, 'r', label="yaw")
             ax[2].plot(self.w, fowt.zeta,                 'k', label="wave amplitude (m)")
     
             ax[0].legend()
@@ -678,7 +732,7 @@ class Model():
 
         self.results['response'] = {}   # signal this data is available by adding a section to the results dictionary
 
-        return Xi  # currently returning the response rather than saving in the model object
+        return Xi  # is it better to return the response or save it in the model object? Or in the FOWT objects? <<<
 
 
 
@@ -788,6 +842,51 @@ class Model():
         #if nCases > 1:
         ax[-1].legend()
         fig.suptitle('RAFT power spectral densities')
+
+    def plotResponses_extended(self):
+        '''Plots more power spectral densities of the available response channels for each case.'''
+
+        fig, ax = plt.subplots(9, 1, sharex=True)
+
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+
+        for iCase in range(nCases):
+            ax[0].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
+            ax[1].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
+            ax[2].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
+            ax[3].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :])  # pitch [deg]
+            ax[4].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :])  # pitch [deg]
+            ax[5].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :])  # pitch [deg]
+            ax[6].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
+            ax[7].plot(self.w / TwoPi,
+                       TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
+            ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD'][iCase, :],
+                       label=f'case {iCase + 1}')  # wave spectrum
+
+            # need a variable number of subplots for the mooring lines
+            # ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
+
+        ax[0].set_ylabel('surge \n' + r'(m$^2$/Hz)')
+        ax[1].set_ylabel('sway \n' + r'(m$^2$/Hz)')
+        ax[2].set_ylabel('heave \n' + r'(m$^2$/Hz)')
+        ax[3].set_ylabel('pitch \n' + r'(deg$^2$/Hz)')
+        ax[4].set_ylabel('roll \n' + r'(deg$^2$/Hz)')
+        ax[5].set_ylabel('yaw \n' + r'(deg$^2$/Hz)')
+        ax[6].set_ylabel('nac. acc. \n' + r'((m/s$^2$)$^2$/Hz)')
+        ax[7].set_ylabel('twr. bend \n' + r'((Nm)$^2$/Hz)')
+        ax[8].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
+
+        # ax[0].set_ylim([0.0, 25])
+        # ax[1].set_ylim([0.0, 15])
+        # ax[2].set_ylim([0.0, 4])
+        # ax[-1].set_xlim([0.03, 0.15])
+        ax[-1].set_xlabel('frequency (Hz)')
+
+        # if nCases > 1:
+        ax[-1].legend()
+        fig.suptitle('RAFT power spectral densities')
+
         
         
 
@@ -1166,10 +1265,10 @@ if __name__ == "__main__":
     
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
 
     #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
+    #odel = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
    
     plt.show()
     

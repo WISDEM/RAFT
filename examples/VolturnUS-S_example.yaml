@@ -1,10 +1,10 @@
 type: input file for RAFT
 name: IEA 15 MW with VolturnUS-S steel semi
-comments: Revised example with "super-member" type inputs, including one for the tower
+comments: This is a quick example that includes potential flow BEM hydrodynamics with PyHAMS and different wave headings.
 
 
 settings:                   # global Settings
-    min_freq     :  0.002   #  [Hz]       lowest frequency to consider, also the frequency bin width 
+    min_freq     :  0.01    #  [Hz]       lowest frequency to consider, also the frequency bin width 
     max_freq     :  0.20    #  [Hz]       highest frequency to consider
     XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
     nIter        :   4      # sets how many iterations to perform in Model.solveDynamics()
@@ -20,8 +20,8 @@ cases:
 
     keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading  ]
     data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)
-        -  [     0,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0        ]
-        -  [    16,         0,            0,     operating,          0,        JONSWAP,         12,         6,           0        ]
+        -  [     0,         0,            0,          operating,          0,        JONSWAP,         12,         6,           0        ]
+        -  [    16,         0,            0,          operating,          0,        JONSWAP,         12,         6,           30       ]
     
 
 turbine:

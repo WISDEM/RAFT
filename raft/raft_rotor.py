@@ -5,8 +5,6 @@ import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 
-import pandas as pd
-
 
 from raft.pyIECWind         import pyIECWind_extreme
 from raft.raft_member import Member
@@ -17,19 +15,17 @@ from scipy.special          import modstruve, iv
 
 from raft.helpers                import rotationMatrix, getFromDict
 
-from wisdem.ccblade.ccblade import CCBlade, CCAirfoil
+try:
+    from ccblade.ccblade import CCBlade, CCAirfoil
+except:
+    from wisdem.ccblade.ccblade import CCBlade, CCAirfoil
+
 
 import pickle
 
 if False:
     thrust_psd = pickle.load( open( "/Users/dzalkind/Tools/RAFT/designs/rotors/thrust_psd.p", "rb" ) )
 
-'''
-try:
-    import ccblade        as CCBlade, CCAirfoil  # for cloned ccblade
-except:
-    import wisdem.ccblade as CCblade, CCAirfoil  # for conda install wisdem
-'''
 
 # global constants
 raft_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))

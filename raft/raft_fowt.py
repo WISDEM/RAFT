@@ -378,7 +378,7 @@ class FOWT():
         self.mballast = np.zeros(len(self.pb))                      # make an empty mballast list with len=len(pb)
         for i in range(len(self.pb)):                               # for each ballast density
             for j in range(len(mballast)):                          # loop through each ballast mass
-                if np.float(pballast[j]) == np.float(self.pb[i]):   # but only if the index of the ballast mass (density) matches the value of pb
+                if float(pballast[j]) == float(self.pb[i]):   # but only if the index of the ballast mass (density) matches the value of pb
                     self.mballast[i] += mballast[j]                 # add that ballast mass to the correct index of mballast
 
 
@@ -1170,6 +1170,7 @@ class FOWT():
         '''plots the FOWT...'''
 
         if plot_rotor:
+<<<<<<< HEAD
             for rotor in self.rotorList:
                 coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + np.array(self.body.r6[:3])
                 rotor.plot(ax, r_ptfm=coords, R_ptfm=self.body.R, color=color)
@@ -1179,6 +1180,10 @@ class FOWT():
                     afmem.calcOrientation()
                     afmem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, nodes=nodes, station_plot=station_plot)
                 '''
+=======
+            self.rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, airfoils=airfoils)
+
+>>>>>>> master
         # loop through each member and plot it
         for mem in self.memberList:
 

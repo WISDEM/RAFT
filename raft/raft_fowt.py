@@ -163,6 +163,10 @@ class FOWT():
         #self.F_BEM = np.zeros([self.nWaves, 6, self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
         # <<< TODO: Set maximum of amount of headingsm for X_BEM and F_BEM and use interpolation of hydrodynamics. Or not?
 
+        self.readQTF('examples\IEA-15-240-RWT-UMaineSemi.12d')
+        self.mu_2nd = self.w - self.w[0] # The frequency array for difference-frequency second-order is the same as self.w, but starting at 0
+        self.Sf_2nd = np.zeros([self.nWaves, 6, self.nw])
+
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
         '''
@@ -489,7 +493,7 @@ class FOWT():
                 
             ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
                                   numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS,
-                                  numHeadings=5, minHeading=0, dHeading=30) #, numThreads=self.numThreads) <<<
+                                  numHeadings=len(headings), headingList=headings) #, numThreads=self.numThreads) <<<
             
             # Note about zero/infinite frequencies from WAMIT-formatted output files (as per WAMIT v7 manual): 
             # The limiting values of the added-mass coefficients may be evaluated for zero or infinite
@@ -786,7 +790,7 @@ class FOWT():
                 S = np.zeros(self.nw)        
             else:
                 raise ValueError(f"Wave spectrum input '{case['wave_spectrum'][ih]}' not recognized.")
-        
+            self.Sf_2nd[ih, :, :] = self.ForceSpectrum_2ndOrd(S)
 
         #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
 
@@ -1130,6 +1134,83 @@ class FOWT():
                     self.D_hydro = D_hydro
 
         return D_hydro
+
+    def readQTF(self, flPath):
+        data = np.loadtxt(flPath)
+        ULEN = 1 # For now, assume that ULEN = 1
+        data[:,0:2] = 2.*np.pi/data[:,0:2] # Input is assumed to be as a function of wave period
+
+        # Consider only unidirectional QTFs
+        if not (data[:,2] == data[:,3]).all():
+            raise ValueError("Only unidirectional QTFs are supported for now.")
+        self.heads_2nd = np.unique(data[:,2])
+        nheads = len(self.heads_2nd)
+
+        # Both frequency vectors should contain the same frequencies,
+        # but they are not necessarily the same as self.w 
+        self.w1_2nd = np.unique(data[:,0])  
+        self.w2_2nd = np.unique(data[:,1])
+        nw1 = len(self.w1_2nd)
+        nw2 = len(self.w2_2nd)
+        if not (self.w1_2nd==self.w2_2nd).all():
+            raise ValueError("Both frequency columns in the input QTF must contain the same values.")
+        
+        self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)                
+        for row in data:
+            indw1, = np.where(self.w1_2nd==row[0]) # index for first frequency
+            indw2, = np.where(self.w2_2nd==row[1]) # index for second frequency
+            indhead, = np.where(self.heads_2nd==row[2]) # index for heading
+            indDOF = round(row[4]-1) # index for degree of freedom. Needs to be an int. -1 is due to being from 1 to 6 in the input file
+
+            # Factor for dimensionalization (except for wave amplitudes)
+            factor = self.rho_water * self.g * ULEN
+            if indhead >= 4:
+                factor *= ULEN
+
+            self.qtf[indw1[0], indw2[0], indhead[0], indDOF] = factor*(row[7]+1j*row[8])
+
+        # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))
+
+    # Change that for a spectrum
+    def ForceSpectrum_2ndOrd(self, S0):
+        f = np.zeros([self.nDOF, self.nw], dtype=complex)
+        nw1 = len(self.w1_2nd)
+
+        # Compute force spectrum considering the frequency resolution of the QTF
+        S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) # Resample wave spectrum (the input is assumed to be in rad/s)        
+                
+        # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.        
+        mu = self.w1_2nd - self.w1_2nd[0]
+        Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
+        Sf_interp = np.zeros([self.nDOF, self.nw])
+        for idof in range(0,self.nDOF):                        
+            for imu in range(0, nw1): # Loop the difference frequencies
+                Saux = np.zeros(nw1)
+                Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
+                Qaux = np.zeros(nw1, dtype=complex)
+                Qaux[0:nw1-imu] = np.diag(np.squeeze(self.qtf[:,:,0, idof]), -imu) # Only the lower part of the QTF was filled, that is why we get the lower diagonal -imu
+                Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
+                        
+
+            # Interpolate the force spectrum to the same resolution as the original wave spectrum            
+            Sf_interp[idof, :] = np.interp(self.mu_2nd, mu, Sf[idof,:], left=0, right=0)        
+
+        # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
+        # f = np.sqrt(2*Sf_interp*self.dw)
+
+        # with open('examples/Sf_2nd.txt', 'w') as file:
+        #     for w, Srow in zip(mu_interp, Sf_interp.T):
+        #         file.write(f'{w:.5f} {Srow[0]:.5f} {Srow[1]:.5f} {Srow[2]:.5f} {Srow[3]:.5f} {Srow[4]:.5f} {Srow[5]:.5f}\n')
+
+        # with open('examples/f_2nd.txt', 'w') as file:
+        #     for w, frow in zip(mu_interp, f.T):
+        #         file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
+
+        # return f
+
+        return Sf_interp
+
+
 
 
     def saveTurbineOutputs(self, results, case, iCase, Xi0, Xi):

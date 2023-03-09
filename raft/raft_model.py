@@ -281,10 +281,10 @@ class Model():
             
             self.results['case_metrics']['Tmoor_avg'][iCase,:] = self.T_moor
             for iT in range(2*nLine):
-                TRMS = getRMS(T_moor_amps[:,iT,:], self.w[0]) # estimated mooring line RMS tension [N]
+                TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
                 self.results['case_metrics']['Tmoor_std'][iCase,iT] = TRMS
                 self.results['case_metrics']['Tmoor_max'][iCase,iT] = self.T_moor[iT] + 3*TRMS
-                self.results['case_metrics']['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[:,iT,:]) # PSD in N^2/(rad/s)
+                self.results['case_metrics']['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
                 #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
         
             if display > 0:

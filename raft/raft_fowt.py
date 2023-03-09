@@ -163,9 +163,12 @@ class FOWT():
         #self.F_BEM = np.zeros([self.nWaves, 6, self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
         # <<< TODO: Set maximum of amount of headingsm for X_BEM and F_BEM and use interpolation of hydrodynamics. Or not?
 
-        self.readQTF('examples\IEA-15-240-RWT-UMaineSemi.12d')
-        self.mu_2nd = self.w - self.w[0] # The frequency array for difference-frequency second-order is the same as self.w, but starting at 0
-        self.Sf_2nd = np.zeros([self.nWaves, 6, self.nw])
+        # Add a flag to either not compute 2nd order hydro; read QTF; or compute it with a slender-body approximation
+        # self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)
+        if 'qtfPath' in design['platform']:
+            self.qtfPath = design['platform']['qtfPath']
+            self.readQTF(self.qtfPath)
+        self.mu_2nd = self.w - self.w[0] # The frequency array for difference-frequency second-order is the same as self.w, but starting at 0    
 
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
@@ -778,6 +781,9 @@ class FOWT():
         self.zeta = np.zeros([self.nWaves,self.nw], dtype=complex)
 
         # make wave spectrum for each heading
+        # We are actually losing the phase by computing the 2nd order hydrodynamic forces this way, as the amplitudes will always be real
+        self.Fhydro_2nd = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex) 
+        self.Fhydro_2nd_mean = np.zeros([self.nWaves, self.nDOF])
         for ih in range(self.nWaves):
             if case['wave_spectrum'][ih] == 'unit':
                 self.zeta[ih,:] = np.tile(1, self.nw)
@@ -790,7 +796,7 @@ class FOWT():
                 S = np.zeros(self.nw)        
             else:
                 raise ValueError(f"Wave spectrum input '{case['wave_spectrum'][ih]}' not recognized.")
-            self.Sf_2nd[ih, :, :] = self.ForceSpectrum_2ndOrd(S)
+            self.Fhydro_2nd_mean[ih, :], self.Fhydro_2nd[ih, :, :] = self.calcHydroForce_2ndOrd(case['wave_heading'][ih], S)
 
         #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
 
@@ -1143,7 +1149,7 @@ class FOWT():
         # Consider only unidirectional QTFs
         if not (data[:,2] == data[:,3]).all():
             raise ValueError("Only unidirectional QTFs are supported for now.")
-        self.heads_2nd = np.unique(data[:,2])
+        self.heads_2nd = np.sort(np.unique(data[:,2]))
         nheads = len(self.heads_2nd)
 
         # Both frequency vectors should contain the same frequencies,
@@ -1164,21 +1170,39 @@ class FOWT():
 
             # Factor for dimensionalization (except for wave amplitudes)
             factor = self.rho_water * self.g * ULEN
-            if indhead >= 4:
+            if indDOF >= 3:
                 factor *= ULEN
 
             self.qtf[indw1[0], indw2[0], indhead[0], indDOF] = factor*(row[7]+1j*row[8])
 
-        # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))
+            # Fill the other half of the matrix (which is equal to the conjugate of its symmetric element)
+            if not indw1[0] == indw2[0]:
+                self.qtf[indw2[0], indw1[0], indhead[0], indDOF] = factor*(row[7]-1j*row[8])
+        
+
+        # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))    
 
     # Change that for a spectrum
-    def ForceSpectrum_2ndOrd(self, S0):
+    def calcHydroForce_2ndOrd(self, beta, S0):
         f = np.zeros([self.nDOF, self.nw], dtype=complex)
         nw1 = len(self.w1_2nd)
 
-        # Compute force spectrum considering the frequency resolution of the QTF
-        S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) # Resample wave spectrum (the input is assumed to be in rad/s)        
-                
+        # Resample wave spectrum (the input is assumed to be in rad/s)
+        S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) 
+
+        # Interpolate for the wave incidence        
+        if beta < self.heads_2nd[0]:
+            print(f"Warning in calcHydroForce_2ndOrd: angle {beta} is less than the minimum incidence angle in the QTF. An incidence of {self.heads_2nd[0]} will be considered for 2nd order loads.")
+
+        if beta > self.heads_2nd[-1]:
+            print(f"Warning in calcHydroForce_2ndOrd: angle {beta} is more than the maximum incidence angle in the QTF. An incidence of {self.heads_2nd[-1]} will be considered for 2nd order loads.")
+
+        if len(self.heads_2nd)==1:
+            qtf_interpBeta = self.qtf[:,:,0,:]
+        
+        else:
+            qtf_interpBeta = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:]))(beta)
+        
         # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.        
         mu = self.w1_2nd - self.w1_2nd[0]
         Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
@@ -1188,7 +1212,8 @@ class FOWT():
                 Saux = np.zeros(nw1)
                 Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
                 Qaux = np.zeros(nw1, dtype=complex)
-                Qaux[0:nw1-imu] = np.diag(np.squeeze(self.qtf[:,:,0, idof]), -imu) # Only the lower part of the QTF was filled, that is why we get the lower diagonal -imu
+
+                Qaux[0:nw1-imu] = np.diag(np.squeeze(qtf_interpBeta[:,:,idof]), -imu) # Sum only the lower half of the QTF
                 Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
                         
 
@@ -1196,22 +1221,21 @@ class FOWT():
             Sf_interp[idof, :] = np.interp(self.mu_2nd, mu, Sf[idof,:], left=0, right=0)        
 
         # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
-        # f = np.sqrt(2*Sf_interp*self.dw)
+        f = np.sqrt(2*Sf_interp*self.dw)
+        f_mean = np.zeros([self.nDOF])
+        f_mean[:] = f[:,0]
+        f[:, 0:-1] = f[:, 1:] # Displace f by one frequency so that it aligns with the frequency vector
+        f[:, -1] = 0
 
         # with open('examples/Sf_2nd.txt', 'w') as file:
+        #     mu_interp = self.w - self.w[0]
         #     for w, Srow in zip(mu_interp, Sf_interp.T):
         #         file.write(f'{w:.5f} {Srow[0]:.5f} {Srow[1]:.5f} {Srow[2]:.5f} {Srow[3]:.5f} {Srow[4]:.5f} {Srow[5]:.5f}\n')
 
         # with open('examples/f_2nd.txt', 'w') as file:
         #     for w, frow in zip(mu_interp, f.T):
         #         file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
-
-        # return f
-
-        return Sf_interp
-
-
-
+        return f_mean, f
 
     def saveTurbineOutputs(self, results, case, iCase, Xi0, Xi):
         '''Calculate and store output metrics of the FOWT response at the current load case.

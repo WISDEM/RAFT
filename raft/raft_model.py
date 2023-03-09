@@ -244,6 +244,12 @@ class Model():
 
         if runPyHAMS:
             fowt.calcBEM(meshDir=meshDir)
+
+        # w_2nd = np.linspace(self.w[0], self.w[-1], 50)
+        # k_2nd = np.zeros(len(w_2nd))
+        # for i in range(len(w_2nd)):
+        #     k_2nd[i] = waveNumber(w_2nd[i], self.depth)
+        # fowt.calcQTF_slenderbody(w_2nd=w_2nd, k_2nd=k_2nd, beta=0)
             
         # loop through each case
         for iCase in range(nCases):
@@ -260,7 +266,7 @@ class Model():
                 nWaves = len(case['wave_heading'])
             
             # solve system operating point / mean offsets for this load case
-            self.solveStatics(case)
+            self.solveStatics(case, iCase)
           
             # solve system dynamics
             self.solveDynamics(case)
@@ -337,7 +343,7 @@ class Model():
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
     """    
     
-    def calcMooringAndOffsets(self):
+    def calcMooringAndOffsets(self, iCase=0):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
         Mean offsets are saved in the FOWT object.
@@ -349,6 +355,12 @@ class Model():
         # + self.fowtList[0].F_hydro0 <<< hydro load would be nice here eventually
         D_hydro = self.fowtList[0].D_hydro
         self.ms.bodyList[0].f6Ext = np.array(F_PRP + D_hydro)
+
+        F_meanDrift = np.zeros(len(D_hydro))
+        # try:
+        #     F_meanDrift = self.fowtList[0].Fhydro_2nd_mean[iCase, :]        
+        # except: 
+        #     pass
 
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
@@ -521,7 +533,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
     
-    def solveStatics(self, case):
+    def solveStatics(self, case, iCase):
 
         # get initial FOWT values assuming no offset
         for fowt in self.fowtList:
@@ -533,7 +545,7 @@ class Model():
             fowt.calcCurrentLoads(case)
         
         # calculate platform offsets and mooring system equilibrium state
-        self.calcMooringAndOffsets()
+        self.calcMooringAndOffsets(iCase)
         
         # update values based on offsets if applicable
         for fowt in self.fowtList:
@@ -679,7 +691,7 @@ class Model():
         
             F_linearized = fowt.calcDragExcitation(ih)
         
-            F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized
+            F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih,:,:]
         
             for iw in range(self.nw):
                 Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
@@ -842,6 +854,29 @@ class Model():
         #if nCases > 1:
         ax[-1].legend()
         fig.suptitle('RAFT power spectral densities')
+
+    def saveResponses(self, outPath):
+        '''Save the power spectral densities of the available response channels for each case to an output file.'''
+        
+        metrics = self.results['case_metrics']
+        nCases = len(metrics['surge_avg'])
+        
+        chooseMetrics = ['wave_PSD', 'surge_PSD', 'heave_PSD', 'pitch_PSD', 'AxRNA_PSD', 'Mbase_PSD']
+        metricUnit    = ['m^2/Hz', 'm^2/Hz', 'm^2/Hz', 'deg^2/Hz', '(m/s^2)^2/Hz', '(Nm)^2/Hz']
+        for iCase in range(nCases):
+            with open(f'{outPath}_Case{iCase}.txt', 'w') as file:
+                # Write the header
+                file.write('Frequency [rad/s] \t')
+                for metric, unit in zip(chooseMetrics, metricUnit):
+                    file.write(f'{metric} [{unit}] \t')
+                file.write('\n')
+
+                # Write the data
+                for iFreq in range(len(self.w)):
+                    file.write(f'{self.w[iFreq]:.5f} \t')
+                    for metric in chooseMetrics:
+                        file.write(f'{np.squeeze(metrics[metric][iCase, iFreq]):.5f} \t')
+                    file.write('\n')
 
     def plotResponses_extended(self):
         '''Plots more power spectral densities of the available response channels for each case.'''

@@ -798,14 +798,14 @@ class FOWT():
         
         # resize members' wave kinematics arrays for this case's sea states
         for i,mem in enumerate(memberList):
-            mem.u    = np.zeros([self.nWaves, mem.ns, 3, self.nw])
-            mem.ud   = np.zeros([self.nWaves, mem.ns, 3, self.nw])
-            mem.pDyn = np.zeros([self.nWaves, mem.ns,    self.nw])
+            mem.u    = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
+            mem.ud   = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
+            mem.pDyn = np.zeros([self.nWaves, mem.ns,    self.nw], dtype=complex)
             
             
         # ----- calculate potential-flow wave excitation force -----
 
-        self.F_BEM = np.zeros([self.nWaves,6,self.nw])
+        self.F_BEM = np.zeros([self.nWaves,6,self.nw], dtype=complex)
         self.F_hydro_iner = np.zeros([self.nWaves, 6, self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
         # BEM-based wave excitation force on platform for each wave heading (will be zero if HAMS isn't run). This includes heading interpolation.

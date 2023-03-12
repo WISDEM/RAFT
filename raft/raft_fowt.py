@@ -163,6 +163,13 @@ class FOWT():
         #self.F_BEM = np.zeros([self.nWaves, 6, self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
         # <<< TODO: Set maximum of amount of headingsm for X_BEM and F_BEM and use interpolation of hydrodynamics. Or not?
 
+        # Add a flag to either not compute 2nd order hydro; read QTF; or compute it with a slender-body approximation
+        # self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)
+        if 'qtfPath' in design['platform']:
+            self.qtfPath = design['platform']['qtfPath']
+            self.readQTF(self.qtfPath)
+        self.mu_2nd = self.w - self.w[0] # The frequency array for difference-frequency second-order is the same as self.w, but starting at 0    
+
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
         '''
@@ -489,7 +496,7 @@ class FOWT():
                 
             ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
                                   numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS,
-                                  numHeadings=5, minHeading=0, dHeading=30) #, numThreads=self.numThreads) <<<
+                                  numHeadings=len(headings), headingList=headings) #, numThreads=self.numThreads) <<<
             
             # Note about zero/infinite frequencies from WAMIT-formatted output files (as per WAMIT v7 manual): 
             # The limiting values of the added-mass coefficients may be evaluated for zero or infinite
@@ -774,19 +781,22 @@ class FOWT():
         self.zeta = np.zeros([self.nWaves,self.nw], dtype=complex)
 
         # make wave spectrum for each heading
+        # We are actually losing the phase by computing the 2nd order hydrodynamic forces this way, as the amplitudes will always be real
+        self.Fhydro_2nd = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex) 
+        self.Fhydro_2nd_mean = np.zeros([self.nWaves, self.nDOF])
         for ih in range(self.nWaves):
             if case['wave_spectrum'][ih] == 'unit':
                 self.zeta[ih,:] = np.tile(1, self.nw)
                 S         = np.tile(1, self.nw)
             elif case['wave_spectrum'][ih] == 'JONSWAP':
                 S = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        
-                self.zeta[ih,:] = np.sqrt(S)    # wave elevation amplitudes (these are easiest to use)
+                self.zeta[ih,:] = np.sqrt(2*S*self.dw)    # wave elevation amplitudes (these are easiest to use)
             elif case['wave_spectrum'][ih] in ['none','still']:
                 self.zeta[ih,:] = np.zeros(self.nw)        
                 S = np.zeros(self.nw)        
             else:
                 raise ValueError(f"Wave spectrum input '{case['wave_spectrum'][ih]}' not recognized.")
-        
+            self.Fhydro_2nd_mean[ih, :], self.Fhydro_2nd[ih, :, :] = self.calcHydroForce_2ndOrd(case['wave_heading'][ih], S)
 
         #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
 
@@ -794,14 +804,14 @@ class FOWT():
         
         # resize members' wave kinematics arrays for this case's sea states
         for i,mem in enumerate(memberList):
-            mem.u    = np.zeros([self.nWaves, mem.ns, 3, self.nw])
-            mem.ud   = np.zeros([self.nWaves, mem.ns, 3, self.nw])
-            mem.pDyn = np.zeros([self.nWaves, mem.ns,    self.nw])
+            mem.u    = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
+            mem.ud   = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
+            mem.pDyn = np.zeros([self.nWaves, mem.ns,    self.nw], dtype=complex)
             
             
         # ----- calculate potential-flow wave excitation force -----
 
-        self.F_BEM = np.zeros([self.nWaves,6,self.nw])
+        self.F_BEM = np.zeros([self.nWaves,6,self.nw], dtype=complex)
         self.F_hydro_iner = np.zeros([self.nWaves, 6, self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
         # BEM-based wave excitation force on platform for each wave heading (will be zero if HAMS isn't run). This includes heading interpolation.
@@ -965,9 +975,9 @@ class FOWT():
                     vrel_p2 = np.sum(vrel*mem.p2[:,None], axis=0)*mem.p2[:,None]
                     
                     # get RMS of relative velocity component magnitudes (real-valued)
-                    vRMS_q  = getRMS(vrel_q , self.dw)
-                    vRMS_p1 = getRMS(vrel_p1, self.dw)
-                    vRMS_p2 = getRMS(vrel_p2, self.dw)
+                    vRMS_q  = getRMS(vrel_q)
+                    vRMS_p1 = getRMS(vrel_p1)
+                    vRMS_p2 = getRMS(vrel_p2)
                     
                     # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
                     Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * a_i_q  * Cd_q
@@ -1131,6 +1141,101 @@ class FOWT():
 
         return D_hydro
 
+    def readQTF(self, flPath):
+        data = np.loadtxt(flPath)
+        ULEN = 1 # For now, assume that ULEN = 1
+        data[:,0:2] = 2.*np.pi/data[:,0:2] # Input is assumed to be as a function of wave period
+
+        # Consider only unidirectional QTFs
+        if not (data[:,2] == data[:,3]).all():
+            raise ValueError("Only unidirectional QTFs are supported for now.")
+        self.heads_2nd = np.sort(np.unique(data[:,2]))
+        nheads = len(self.heads_2nd)
+
+        # Both frequency vectors should contain the same frequencies,
+        # but they are not necessarily the same as self.w 
+        self.w1_2nd = np.unique(data[:,0])  
+        self.w2_2nd = np.unique(data[:,1])
+        nw1 = len(self.w1_2nd)
+        nw2 = len(self.w2_2nd)
+        if not (self.w1_2nd==self.w2_2nd).all():
+            raise ValueError("Both frequency columns in the input QTF must contain the same values.")
+        
+        self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)                
+        for row in data:
+            indw1, = np.where(self.w1_2nd==row[0]) # index for first frequency
+            indw2, = np.where(self.w2_2nd==row[1]) # index for second frequency
+            indhead, = np.where(self.heads_2nd==row[2]) # index for heading
+            indDOF = round(row[4]-1) # index for degree of freedom. Needs to be an int. -1 is due to being from 1 to 6 in the input file
+
+            # Factor for dimensionalization (except for wave amplitudes)
+            factor = self.rho_water * self.g * ULEN
+            if indDOF >= 3:
+                factor *= ULEN
+
+            self.qtf[indw1[0], indw2[0], indhead[0], indDOF] = factor*(row[7]+1j*row[8])
+
+            # Fill the other half of the matrix (which is equal to the conjugate of its symmetric element)
+            if not indw1[0] == indw2[0]:
+                self.qtf[indw2[0], indw1[0], indhead[0], indDOF] = factor*(row[7]-1j*row[8])
+        
+
+        # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))    
+
+    # Change that for a spectrum
+    def calcHydroForce_2ndOrd(self, beta, S0):
+        f = np.zeros([self.nDOF, self.nw], dtype=complex)
+        nw1 = len(self.w1_2nd)
+
+        # Resample wave spectrum (the input is assumed to be in rad/s)
+        S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) 
+
+        # Interpolate for the wave incidence        
+        if beta < self.heads_2nd[0]:
+            print(f"Warning in calcHydroForce_2ndOrd: angle {beta} is less than the minimum incidence angle in the QTF. An incidence of {self.heads_2nd[0]} will be considered for 2nd order loads.")
+
+        if beta > self.heads_2nd[-1]:
+            print(f"Warning in calcHydroForce_2ndOrd: angle {beta} is more than the maximum incidence angle in the QTF. An incidence of {self.heads_2nd[-1]} will be considered for 2nd order loads.")
+
+        if len(self.heads_2nd)==1:
+            qtf_interpBeta = self.qtf[:,:,0,:]
+        
+        else:
+            qtf_interpBeta = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:]))(beta)
+        
+        # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.        
+        mu = self.w1_2nd - self.w1_2nd[0]
+        Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
+        Sf_interp = np.zeros([self.nDOF, self.nw])
+        for idof in range(0,self.nDOF):                        
+            for imu in range(0, nw1): # Loop the difference frequencies
+                Saux = np.zeros(nw1)
+                Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
+                Qaux = np.zeros(nw1, dtype=complex)
+
+                Qaux[0:nw1-imu] = np.diag(np.squeeze(qtf_interpBeta[:,:,idof]), -imu) # Sum only the lower half of the QTF
+                Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
+                        
+
+            # Interpolate the force spectrum to the same resolution as the original wave spectrum            
+            Sf_interp[idof, :] = np.interp(self.mu_2nd, mu, Sf[idof,:], left=0, right=0)        
+
+        # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
+        f = np.sqrt(2*Sf_interp*self.dw)
+        f_mean = np.zeros([self.nDOF])
+        f_mean[:] = f[:,0]
+        f[:, 0:-1] = f[:, 1:] # Displace f by one frequency so that it aligns with the frequency vector
+        f[:, -1] = 0
+
+        # with open('examples/Sf_2nd.txt', 'w') as file:
+        #     mu_interp = self.w - self.w[0]
+        #     for w, Srow in zip(mu_interp, Sf_interp.T):
+        #         file.write(f'{w:.5f} {Srow[0]:.5f} {Srow[1]:.5f} {Srow[2]:.5f} {Srow[3]:.5f} {Srow[4]:.5f} {Srow[5]:.5f}\n')
+
+        # with open('examples/f_2nd.txt', 'w') as file:
+        #     for w, frow in zip(mu_interp, f.T):
+        #         file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
+        return f_mean, f
 
     def saveTurbineOutputs(self, results, case, iCase, Xi0, Xi):
         '''Calculate and store output metrics of the FOWT response at the current load case.
@@ -1142,37 +1247,37 @@ class FOWT():
 
         # platform motions
         results['surge_avg'][iCase] = self.Xi0[0]
-        results['surge_std'][iCase] = getRMS(self.Xi[:,0,:], self.dw) 
+        results['surge_std'][iCase] = getRMS(self.Xi[:,0,:]) 
         results['surge_max'][iCase] = self.Xi0[0] + 3*results['surge_std'][iCase]
-        results['surge_PSD'][iCase,:] = getPSD(self.Xi[:,0,:])
+        results['surge_PSD'][iCase,:] = getPSD(self.Xi[:,0,:], self.dw)
         
         results['sway_avg'][iCase] = self.Xi0[1]
-        results['sway_std'][iCase] = getRMS(self.Xi[:,1,:], self.dw)
+        results['sway_std'][iCase] = getRMS(self.Xi[:,1,:])
         results['sway_max'][iCase] = self.Xi0[1] + 3*results['sway_std'][iCase]
-        results['sway_PSD'][iCase,:] = getPSD(self.Xi[:,1,:])
+        results['sway_PSD'][iCase,:] = getPSD(self.Xi[:,1,:], self.dw)
         
         results['heave_avg'][iCase] = self.Xi0[2]
-        results['heave_std'][iCase] = getRMS(self.Xi[:,2,:], self.dw)
+        results['heave_std'][iCase] = getRMS(self.Xi[:,2,:])
         results['heave_max'][iCase] = self.Xi0[2] + 3*results['heave_std'][iCase]
-        results['heave_PSD'][iCase,:] = getPSD(self.Xi[:,2,:])
+        results['heave_PSD'][iCase,:] = getPSD(self.Xi[:,2,:], self.dw)
         
         roll_deg = rad2deg(self.Xi[:,3,:])
         results['roll_avg'][iCase] = rad2deg(self.Xi0[3])
-        results['roll_std'][iCase] = getRMS(roll_deg, self.dw)
+        results['roll_std'][iCase] = getRMS(roll_deg)
         results['roll_max'][iCase] = rad2deg(self.Xi0[3]) + 3*results['roll_std'][iCase]
-        results['roll_PSD'][iCase,:] = getPSD(roll_deg)
+        results['roll_PSD'][iCase,:] = getPSD(roll_deg, self.dw)
         
         pitch_deg = rad2deg(self.Xi[:,4,:])
         results['pitch_avg'][iCase] = rad2deg(self.Xi0[4])
-        results['pitch_std'][iCase] = getRMS(pitch_deg, self.dw)
+        results['pitch_std'][iCase] = getRMS(pitch_deg)
         results['pitch_max'][iCase] = rad2deg(self.Xi0[4]) + 3*results['pitch_std'][iCase]
-        results['pitch_PSD'][iCase,:] = getPSD(pitch_deg)
+        results['pitch_PSD'][iCase,:] = getPSD(pitch_deg, self.dw)
         
         yaw_deg = rad2deg(self.Xi[:,5,:])
         results['yaw_avg'][iCase] = rad2deg(self.Xi0[5])
-        results['yaw_std'][iCase] = getRMS(yaw_deg, self.dw)
+        results['yaw_std'][iCase] = getRMS(yaw_deg)
         results['yaw_max'][iCase] = rad2deg(self.Xi0[5]) + 3*results['yaw_std'][iCase]
-        results['yaw_PSD'][iCase,:] = getPSD(yaw_deg)
+        results['yaw_PSD'][iCase,:] = getPSD(yaw_deg, self.dw)
         
         # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)
         XiHub = np.zeros([self.Xi.shape[0], self.nrotors, self.nw], dtype=complex)
@@ -1180,8 +1285,8 @@ class FOWT():
             XiHub[:,ir,:] = self.Xi[:,0,:] + self.hHub[ir]*self.Xi[:,4,:]  
         
             # nacelle acceleration
-            results['AxRNA_std'][iCase,  ir] = getRMS(XiHub[:,ir,:]*self.w**2, self.dw)
-            results['AxRNA_PSD'][iCase,:,ir] = getPSD(XiHub[:,ir,:]*self.w**2)
+            results['AxRNA_std'][iCase,  ir] = getRMS(XiHub[:,ir,:]*self.w**2)
+            results['AxRNA_PSD'][iCase,:,ir] = getPSD(XiHub[:,ir,:]*self.w**2, self.dw)
         
         # tower base bending moment  >>> should three-dimensionalize this <<<
         m_turbine = np.zeros(len(self.mtower))
@@ -1219,16 +1324,16 @@ class FOWT():
             M_X_aero[:,ir,:] = -(-self.w**2 *self.A_aero[0,0,:,ir]                                 # tower base aero reaction moment
                         + 1j*self.w *self.B_aero[0,0,:,ir] )*(self.hHub[ir] - zBase[ir])**2 *self.Xi[:,4,:]        
             dynamic_moment[:,ir,:] = M_I[:,ir,:] + M_w[:,ir,:] + M_F_aero + M_X_aero[:,ir,:]       # total tower base fore-aft bending moment [N-m]
-            dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:], self.dw)
+            dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
             # fill in metrics
             results['Mbase_avg'][iCase,ir] = m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + transformForce(self.F_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] # mean moment from weight and thrust
             results['Mbase_std'][iCase,ir] = dynamic_moment_RMS[ir]
-            results['Mbase_PSD'][iCase,:,ir] = getPSD(dynamic_moment[:,ir,:])
+            results['Mbase_PSD'][iCase,:,ir] = getPSD(dynamic_moment[:,ir,:], self.dw)
             #results['Mbase_max'][iCase]
             #results['Mbase_DEL'][iCase]
         
         # wave PSD for reference
-        results['wave_PSD'][iCase,:] = getPSD(self.zeta)        # wave elevation spectrum
+        results['wave_PSD'][iCase,:] = getPSD(self.zeta, self.dw)        # wave elevation spectrum
         
         '''
         # TEMPORARY CHECK>>>
@@ -1278,14 +1383,14 @@ class FOWT():
 
                 # rotor speed (rpm) 
                 results['omega_avg'][iCase,ir]     = self.rotorList[ir].Omega_case
-                results['omega_std'][iCase,ir]     = radps2rpm(getRMS(omega_w[:,ir,:], self.dw))
+                results['omega_std'][iCase,ir]     = radps2rpm(getRMS(omega_w[:,ir,:]))
                 results['omega_max'][iCase,ir]     = results['omega_avg'][iCase,ir] + 2 * results['omega_std'][iCase,ir] # this and other _max values will be based on std (avg + 2 or 3 * std)   (95% or 99% max)
-                results['omega_PSD'][iCase,:,ir]     = radps2rpm(1)**2 * getPSD(omega_w[:,ir,:])
+                results['omega_PSD'][iCase,:,ir]     = radps2rpm(1)**2 * getPSD(omega_w[:,ir,:], self.dw)
                 
                 # generator torque (Nm)
                 results['torque_avg'][iCase,ir]    = self.rotorList[ir].aero_torque / self.rotorList[ir].Ng        # Nm
-                results['torque_std'][iCase,ir]    = getRMS(torque_w[:,ir,:], self.dw)
-                results['torque_PSD'][iCase,:,ir]    = getPSD(torque_w[:,ir,:])
+                results['torque_std'][iCase,ir]    = getRMS(torque_w[:,ir,:])
+                results['torque_PSD'][iCase,:,ir]    = getPSD(torque_w[:,ir,:], self.dw)
                 # results['torque_max'][iCase]    # skip, nonlinear
                 
                 # rotor power (W)
@@ -1295,12 +1400,12 @@ class FOWT():
 
                 # collective blade pitch (deg)
                 results['bPitch_avg'][iCase,ir]    = self.rotorList[ir].pitch_case
-                results['bPitch_std'][iCase,ir]    = rad2deg(getRMS(bPitch_w[:,ir,:], self.dw))
-                results['bPitch_PSD'][iCase,:,ir]    = rad2deg(1)**2 *getPSD(bPitch_w[:,ir,:])
+                results['bPitch_std'][iCase,ir]    = rad2deg(getRMS(bPitch_w[:,ir,:]))
+                results['bPitch_PSD'][iCase,:,ir]    = rad2deg(1)**2 *getPSD(bPitch_w[:,ir,:], self.dw)
                 # results['bPitch_max'][iCase]    # skip, not something we'd consider in design
 
                 # wind PSD for reference
-                results['wind_PSD'][iCase,:] = getPSD(self.rotorList[ir].V_w)   # <<< need to confirm
+                results['wind_PSD'][iCase,:] = getPSD(self.rotorList[ir].V_w, self.dw)   # <<< need to confirm
 
 
         '''

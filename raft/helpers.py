@@ -382,25 +382,25 @@ def rotateMatrix3(Min, rotMat):
     return np.matmul( np.matmul(rotMat, Min), rotMat.T )
 
 
-def getRMS(xi, dw):
+def getRMS(xi):
     '''Calculates standard deviation or RMS of inputted (complex) response amplitude vector.
     If a matrix is provided, the first dimension is considered to be multiple cases and the
     second dimension is considered to be frequencies. Results are summed across cases for 
     each frequency. The calculation is the same regardless.'''
     
-    return np.sqrt( np.sum( np.abs(xi)**2 )*dw )
+    return np.sqrt( np.sum( np.abs(xi)**2 ) )
 
 
-def getPSD(xi):
+def getPSD(xi, dw):
     '''Calculates power spectral density from inputted (complex) response amplitude vector. Units of [unit]^2/(rad/s).
     If a matrix is provided, the first dimension is considered to be multiple cases and the
     second dimension is considered to be frequencies. Results are summed across cases for 
     each frequency.'''
     
     if len(xi.shape) == 1:
-        psd = np.abs(xi)**2
+        psd = 0.5*np.abs(xi)**2/dw
     elif len(xi.shape) == 2:
-        psd = np.sum(np.abs(xi)**2, axis=0)  # sum squares across excitation sources for each frequency
+        psd = np.sum(0.5*np.abs(xi)**2/dw, axis=0)  # sum squares across excitation sources for each frequency
     else:
         raise Exception("getPSD must be passed an array with 1 or 2 dimensions.")
     
@@ -747,7 +747,7 @@ def getSigmaXPSD(TBFA, TBSS, frequencies, angles=np.linspace(0,2*np.pi,50), d = 
     # print(sigmaX)
     # sigmaX = psdTBFAMesh*(np.cos(angleMeshFA)*d/2/Izz)**2+psdTBSSMesh*(np.sin(angleMeshSS)*d/2/Izz)**2
     ANGLESMesh, FREQMesh = np.meshgrid(angles, frequencies)
-    return getPSD(sigmaX/10**6), ANGLESMesh, FREQMesh
+    return getPSD(sigmaX/10**6, frequencies[1]-frequencies[0]), ANGLESMesh, FREQMesh
 
 
 def parametricAnalysisBuilder(design, changeType, startValueSensitivityStudy, parametricAnalysis= False):

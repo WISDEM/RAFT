@@ -45,21 +45,50 @@ class FOWT():
         self.Xi0 = np.zeros( self.nDOF)                           # mean offsets of platform, initialized at zero  [m, rad]
         self.Xi  = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]
         
-        # collect numbers of rotors, towers, members, etc.
-        self.nrotors = getFromDict(design['turbine'], 'nrotors', dtype=int, shape=0, default=1)
-        if self.nrotors==1: design['turbine']['nrotors'] = 1
-        
-        if isinstance(design['turbine']['tower'], dict):          # if we use the entire blade dict list approach
-            design['turbine']['tower'] = [design['turbine']['tower']]*self.nrotors
-        
-        self.ntowers = len(design['turbine']['tower'])
-        #if self.ntowers != self.nrotors: raise ValueError('One tower is needed per rotor')
+        # count number of platform members
         self.nplatmems = 0
         for platmem in design['platform']['members']:
             if 'heading' in platmem:
                 self.nplatmems += len(platmem['heading'])
             else:
                 self.nplatmems += 1
+        
+        # count numbers of rotors and their towers and copy some info
+        if 'turbine' in design:
+        
+            self.nrotors = getFromDict(design['turbine'], 'nrotors', dtype=int, shape=0, default=1)
+            if self.nrotors==1: design['turbine']['nrotors'] = 1
+            
+            if 'tower' in design['turbine']:
+                if isinstance(design['turbine']['tower'], dict):                            # if a single tower is specified (rather than a list)
+                    design['turbine']['tower'] = [design['turbine']['tower']]*self.nrotors  # replicate the tower info for each rotor
+            
+                self.ntowers = len(design['turbine']['tower'])
+            
+            else:
+                self.ntowers = 0
+
+            # copy over site info into turbine dictionary
+            design['turbine']['rho_air'       ] = getFromDict(design['site'], 'rho_air', shape=0, default=1.225)
+            design['turbine']['mu_air'        ] = getFromDict(design['site'], 'mu_air', shape=0, default=1.81e-05)
+            design['turbine']['shearExp_air'  ] = getFromDict(design['site'], 'shearExp_air', shape=0, default=0.12)
+            design['turbine']['rho_water'     ] = getFromDict(design['site'], 'rho_water', shape=0, default=1025.0)
+            design['turbine']['mu_water'      ] = getFromDict(design['site'], 'mu_water', shape=0, default=1.0e-03)
+            design['turbine']['shearExp_water'] = getFromDict(design['site'], 'shearExp_water', shape=0, default=0.12)
+            
+            # turbine RNA description 
+            self.mRNA    = getFromDict(design['turbine'], 'mRNA'   , shape=self.nrotors)
+            self.IxRNA   = getFromDict(design['turbine'], 'IxRNA'  , shape=self.nrotors)
+            self.IrRNA   = getFromDict(design['turbine'], 'IrRNA'  , shape=self.nrotors)
+            self.xCG_RNA = getFromDict(design['turbine'], 'xCG_RNA', shape=self.nrotors)
+            self.hHub    = getFromDict(design['turbine'], 'hHub'   , shape=self.nrotors)
+        
+        else: # no turbines/rotors case
+        
+            self.nrotors = 0  # this will ensure RAFT doesn't set up or look for any Rotor objects
+            self.ntowers = 0
+            
+            # note: RNA descriptions are not defined because there is no turbine
 
 
         self.rotorList = []
@@ -114,10 +143,10 @@ class FOWT():
                     self.memberList.append(Member(mi, self.nw))
                 mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
 
-        # think more about handling multiple towers starting here >>>
-        for t,tower in enumerate(design['turbine']['tower']):
+        # add tower(s) to member list if applicable
+        for ti in range(self.ntowers):
             #tower['dlsMax'] = design['turbine']['tower']['dlsMax']     # for when we want to make a list of tower 'members' and have general inputs like dlsMax first
-            self.memberList.append(Member(tower, self.nw))
+            self.memberList.append(Member(design['turbine']['tower'][ti], self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
 
         # mooring system connection
@@ -128,24 +157,11 @@ class FOWT():
         else:
             self.yawstiff = 0
 
-        # Turbine rotor
-        design['turbine']['rho_air'       ] = getFromDict(design['site'], 'rho_air', shape=0, default=1.225)
-        design['turbine']['mu_air'        ] = getFromDict(design['site'], 'mu_air', shape=0, default=1.81e-05)
-        design['turbine']['shearExp_air'  ] = getFromDict(design['site'], 'shearExp_air', shape=0, default=0.12)
-        design['turbine']['rho_water'     ] = getFromDict(design['site'], 'rho_water', shape=0, default=1025.0)
-        design['turbine']['mu_water'      ] = getFromDict(design['site'], 'mu_water', shape=0, default=1.0e-03)
-        design['turbine']['shearExp_water'] = getFromDict(design['site'], 'shearExp_water', shape=0, default=0.12)
-        
+        # build Rotor list
         for ir in range(self.nrotors):
             self.rotorList.append(Rotor(design['turbine'], self.w, ir))
             #self.rotorCoords.append(design['turbine']['rotorCoords'])
         
-        # turbine RNA description
-        self.mRNA    = getFromDict(design['turbine'], 'mRNA', shape=self.nrotors)
-        self.IxRNA   = getFromDict(design['turbine'], 'IxRNA', shape=self.nrotors)
-        self.IrRNA   = getFromDict(design['turbine'], 'IrRNA', shape=self.nrotors)
-        self.xCG_RNA = getFromDict(design['turbine'], 'xCG_RNA', shape=self.nrotors)
-        self.hHub    = getFromDict(design['turbine'], 'hHub', shape=self.nrotors)
         
         # initialize mean force arrays to zero, so the model can work before we calculate excitation
         self.F_aero0 = np.zeros([6, self.nrotors])
@@ -166,9 +182,12 @@ class FOWT():
         # Add a flag to either not compute 2nd order hydro; read QTF; or compute it with a slender-body approximation
         # self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)
         if 'qtfPath' in design['platform']:
+            self.secondOrderWaveMod = 1     # <<< temporary, until we implement a flag like this in the inputs
             self.qtfPath = design['platform']['qtfPath']
             self.readQTF(self.qtfPath)
-        self.mu_2nd = self.w - self.w[0] # The frequency array for difference-frequency second-order is the same as self.w, but starting at 0    
+            self.mu_2nd = self.w - self.w[0] # The frequency array for difference-frequency second-order is the same as self.w, but starting at 0    
+        else:
+            self.secondOrderWaveMod = 0    # <<< temporary
 
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
@@ -796,7 +815,9 @@ class FOWT():
                 S = np.zeros(self.nw)        
             else:
                 raise ValueError(f"Wave spectrum input '{case['wave_spectrum'][ih]}' not recognized.")
-            self.Fhydro_2nd_mean[ih, :], self.Fhydro_2nd[ih, :, :] = self.calcHydroForce_2ndOrd(case['wave_heading'][ih], S)
+            
+            if self.secondOrderWaveMod == 1:
+                self.Fhydro_2nd_mean[ih, :], self.Fhydro_2nd[ih, :, :] = self.calcHydroForce_2ndOrd(case['wave_heading'][ih], S)
 
         #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
 
@@ -1076,11 +1097,11 @@ class FOWT():
         speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
         heading = getFromDict(case, 'current_heading', shape=0, default=0)
 
-        # if no submerged rotor, assume current ref elevation is sea surface rather than hub height
-        if self.rotorList[0].Zhub < 0:
-            Zref = self.rotorList[0].Zhub
-        else:
-            Zref = 0.0
+        
+        Zref = 0.0  # reference z elevation for current profile (at the sea surface by default)
+        for ti in range(self.nrotors):
+            if self.rotorList[ti].Zhub < 0:     # If there is a submerged rotor,
+                Zref = self.rotorList[ti].Zhub  # use it for the reference current height.
 
         # loop through each member
         for mem in self.memberList:
@@ -1141,6 +1162,7 @@ class FOWT():
 
         return D_hydro
 
+
     def readQTF(self, flPath):
         data = np.loadtxt(flPath)
         ULEN = 1 # For now, assume that ULEN = 1
@@ -1181,6 +1203,7 @@ class FOWT():
         
 
         # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))    
+
 
     # Change that for a spectrum
     def calcHydroForce_2ndOrd(self, beta, S0):
@@ -1236,6 +1259,7 @@ class FOWT():
         #     for w, frow in zip(mu_interp, f.T):
         #         file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
         return f_mean, f
+
 
     def saveTurbineOutputs(self, results, case, iCase, Xi0, Xi):
         '''Calculate and store output metrics of the FOWT response at the current load case.

@@ -114,7 +114,7 @@ class Model():
         
         # need to zero out external loads >>>
         self.fowtList[0].D_hydr0 = np.zeros(6)
-        self.fowtList[0].F_aero0 = np.zeros([6,1])
+        self.fowtList[0].F_aero0 = np.zeros([6,self.fowtList[0].nrotors])
         
             
         # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
@@ -280,7 +280,7 @@ class Model():
  
             # process mooring tension outputs
             nLine = int(len(self.T_moor)/2)
-            T_moor_amps = np.zeros_like(self.Xi, dtype=complex)    # mooring tension amplitude spectra for each excitation source and line end
+            T_moor_amps = np.zeros([nWaves+1, 2*nLine, self.nw])  # mooring tension amplitudes for each excitation source and line end
             for ih in range(nWaves+1):
                 for iw in range(self.nw):
                     T_moor_amps[ih,:,iw] = np.matmul(self.J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions

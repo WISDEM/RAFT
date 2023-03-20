@@ -1205,13 +1205,12 @@ class FOWT():
         # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))    
 
 
-    # Change that for a spectrum
+    # Compute force due to 2nd order hydrodynamic loads
+    # See Pinkster (1980), Section IV.3
     def calcHydroForce_2ndOrd(self, beta, S0):
         f = np.zeros([self.nDOF, self.nw], dtype=complex)
-        nw1 = len(self.w1_2nd)
-
-        # Resample wave spectrum (the input is assumed to be in rad/s)
-        S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) 
+        f_mean = np.zeros([self.nDOF])
+        interpMode = 'qtf'
 
         # Interpolate for the wave incidence        
         if beta < self.heads_2nd[0]:
@@ -1226,30 +1225,52 @@ class FOWT():
         else:
             qtf_interpBeta = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:]))(beta)
         
-        # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.        
-        mu = self.w1_2nd - self.w1_2nd[0]
-        Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
-        Sf_interp = np.zeros([self.nDOF, self.nw])
-        for idof in range(0,self.nDOF):                        
-            for imu in range(0, nw1): # Loop the difference frequencies
-                Saux = np.zeros(nw1)
-                Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
-                Qaux = np.zeros(nw1, dtype=complex)
+        # Compute force spectrum with QTF resolution and then interpolate to the frequency vector of the input wave spectrum
+        if interpMode == 'spectrum':
+            # Resample wave spectrum (the input is assumed to be in rad/s)
+            nw1 = len(self.w1_2nd)
+            S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) 
 
-                Qaux[0:nw1-imu] = np.diag(np.squeeze(qtf_interpBeta[:,:,idof]), -imu) # Sum only the lower half of the QTF
-                Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
-                        
+            # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.        
+            mu = self.w1_2nd - self.w1_2nd[0]
+            Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
+            Sf_interp = np.zeros([self.nDOF, self.nw]) 
+            for idof in range(0,self.nDOF):                    
+                for imu in range(1, nw1): # Loop the difference frequencies
+                    Saux = np.zeros(nw1)
+                    Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
+                    Qaux = np.zeros(nw1, dtype=complex)
 
-            # Interpolate the force spectrum to the same resolution as the original wave spectrum            
-            Sf_interp[idof, :] = np.interp(self.mu_2nd, mu, Sf[idof,:], left=0, right=0)        
+                    Qaux[0:nw1-imu] = np.diag(np.squeeze(qtf_interpBeta[:,:,idof]), -imu) # Sum only the lower half of the QTF
+                    Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
+                            
+                # Mean drift is easier, as you have just the product of the same wave
+                f_mean[idof] = 2*np.sum(S*np.diag(np.squeeze(qtf_interpBeta[:,:,idof].real), 0)) * (self.w1_2nd[1]-self.w1_2nd[0])
 
-        # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
-        f = np.sqrt(2*Sf_interp*self.dw)
-        f_mean = np.zeros([self.nDOF])
-        f_mean[:] = f[:,0]
-        f[:, 0:-1] = f[:, 1:] # Displace f by one frequency so that it aligns with the frequency vector
+                # Interpolate the force spectrum to the same resolution as the original wave spectrum            
+                Sf_interp[idof, :] = np.interp(self.mu_2nd, mu, Sf[idof,:], left=0, right=0)
+                
+        # Otherwise, interpolate the QTF first and then compute the force amplitude directly
+        else:
+            f = np.zeros([self.nDOF, self.nw]) 
+            for idof in range(0,self.nDOF):
+                qtf_interp = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof], bounds_error=False, fill_value=(0))(self.w, self.w)                     
+                for imu in range(1, self.nw): # Loop the difference frequencies
+                    Saux = np.zeros(self.nw)
+                    Saux[0:self.nw-imu] = S0[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
+                    Qaux = np.zeros(self.nw, dtype=complex)
+
+                    Qaux[0:self.nw-imu] = np.diag(np.squeeze(qtf_interp), -imu) # Sum only the lower half of the QTF
+                    f[idof, imu] = 4 *np.sqrt( np.sum(S0*Saux*np.abs(Qaux)**2) ) * self.dw
+
+                # Mean drift is easier, as you have just the product of the same wave
+                f_mean[idof] = 2*np.sum(S0*np.diag(np.squeeze(qtf_interp.real), 0)) * self.dw
+
+        # Displace f by one frequency so that it aligns with the frequency vector
+        f[:, 0:-1] = f[:, 1:]
         f[:, -1] = 0
 
+        # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
         # with open('examples/Sf_2nd.txt', 'w') as file:
         #     mu_interp = self.w - self.w[0]
         #     for w, Srow in zip(mu_interp, Sf_interp.T):

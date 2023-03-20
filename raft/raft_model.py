@@ -265,11 +265,25 @@ class Model():
             else:
                 nWaves = len(case['wave_heading'])
             
+            # Initialize second-order wave forces at each case to avoid using the results from the previous one
+            self.fowtList[0].Fhydro_2nd = np.zeros([nWaves, self.fowtList[0].nDOF, self.fowtList[0].nw], dtype = complex) 
+            self.fowtList[0].Fhydro_2nd_mean = np.zeros([nWaves, self.fowtList[0].nDOF])
+
+
+            # TODO: Once we have the slender-body approximation, we will perhaps need to iterate the mean offsets
+            # because the mean wave forces will depend on the first-order motions, which depend on the mean offsets.
+            # Not sure though whether this will be needed, as the mean offsets computed with the slender-body approximation
+            # should not be large due to its inherent assumptions (neglecting wave diffraction, hence no wave reflection).
+            # Iterating is not needed for the diffraction approach, as it is given by an input QTF. Just need to call solveStatics() twice
+
             # solve system operating point / mean offsets for this load case
-            self.solveStatics(case, iCase)
+            self.solveStatics(case)
           
             # solve system dynamics
             self.solveDynamics(case)
+
+            # Resolve system operating point / mean offsets, but now including mean wave forces
+            self.solveStatics(case)
             
             # >>> need to device if I want to store Xi0 and Xi in the FOWTs or work with them directly here. <<<
             
@@ -343,7 +357,7 @@ class Model():
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
     """    
     
-    def calcMooringAndOffsets(self, iCase=0):
+    def calcMooringAndOffsets(self):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
         Mean offsets are saved in the FOWT object.
@@ -354,13 +368,16 @@ class Model():
         F_PRP = np.sum(self.fowtList[0].F_aero0, axis=1)
         # + self.fowtList[0].F_hydro0 <<< hydro load would be nice here eventually
         D_hydro = self.fowtList[0].D_hydro
-        self.ms.bodyList[0].f6Ext = np.array(F_PRP + D_hydro)
 
+        # Just sum mean drift from each wave direction.
+        # This is not exactly correct, as there would be the interactions among different 
+        # wave directions, but it's the best we can do for now.
         F_meanDrift = np.zeros(len(D_hydro))
-        # try:
-        #     F_meanDrift = self.fowtList[0].Fhydro_2nd_mean[iCase, :]        
-        # except: 
-        #     pass
+        try:
+            F_meanDrift = np.sum(self.fowtList[0].Fhydro_2nd_mean, axis = 0)
+        except: 
+            pass
+        self.ms.bodyList[0].f6Ext = np.array(F_PRP + D_hydro + F_meanDrift)
 
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
@@ -384,7 +401,7 @@ class Model():
 
         #self.ms.plot()
 
-        print(f"Found mean offets with with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
+        print(f"Found mean offets with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
         
         try:
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
@@ -533,7 +550,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
     
-    def solveStatics(self, case, iCase):
+    def solveStatics(self, case):
 
         # get initial FOWT values assuming no offset
         for fowt in self.fowtList:
@@ -545,7 +562,7 @@ class Model():
             fowt.calcCurrentLoads(case)
         
         # calculate platform offsets and mooring system equilibrium state
-        self.calcMooringAndOffsets(iCase)
+        self.calcMooringAndOffsets()
         
         # update values based on offsets if applicable
         for fowt in self.fowtList:

@@ -68,6 +68,24 @@ class Rotor:
 
         self.R_rot      = getFromDict(turbine['blade'][ir], 'Rtip', shape=-1)
         # otherwise, we can avoid the if statment if we use the list approach within each dict value of the blade dict
+        
+        
+        # Ensure the blade geometry inputs are inputted correctly
+        nb = len(turbine['blade'])      # the number of blade types in the system.
+            # Reminder: Assumption is that all blades on a rotor will be the same. You can input nrotors blade types for multiple rotors, or input one blade type and have it be used for all rotors in the system
+        for ib in range(nb):
+            nr = len(turbine['blade'][0]['geometry'])       # the number of nodes along the length of the blade
+            r0 = turbine['blade'][ib]['geometry'][0][0]     # the first radius value of the blade
+            rtip = turbine['blade'][ib]['geometry'][-1][0]  # the last radius value of the blade
+            if r0 >= self.Rhub and rtip <= self.R_rot:  # if the geometry range lies between the hub radius and the blade length, do nothing, this is normal
+                pass   
+            #elif rtip-r0 == self.R_rot-self.Rhub and r0 < self.Rhub:     # if the geometry range is the right length, but starts inside the hub radius [0,length-Rhub], shift values to outside the hub [Rhub,length] 
+                #print("WARNING: The input blade geometry radii start inside the hub, when they need to be defined outside of the hub")
+                #for i in range(nr):
+                    #turbine['blade'][ib]['geometry'][i][0] += self.Rhub-r0
+            elif r0 < self.Rhub or rtip > self.R_rot:           # if none of the above works, then something is off with the input blade radii
+                raise ValueError(f"Input blade geometry is invalid. First node radius needs to be >= Rhub ({self.Rhub}) or last node radius needs to be <= Rtip ({self.R_rot})")
+
 
         #yaw  = 0        
 

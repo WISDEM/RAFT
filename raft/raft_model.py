@@ -1286,7 +1286,7 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     model.analyzeCases(display=1)
     
     if plot:
-        model.plot(station_plot=station_plot)        
+        model.plot(station_plot=station_plot, zbounds=[-model.ms.depth, model.ms.depth + 2*model.ms.bodyList[0].r6[2]], hideGrid=True, draw_body=True)        
         model.plotResponses()
     
     #model.preprocess_HAMS("testHAMSoutput", dw=0.1, wMax=10)
@@ -1300,10 +1300,12 @@ if __name__ == "__main__":
     
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
 
     #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
-    #odel = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/Vertical_cylinder.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/MHKF1_Rotor_RAFT.yaml'), plot=1)
    
     plt.show()
     

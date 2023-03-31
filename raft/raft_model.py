@@ -265,11 +265,24 @@ class Model():
             else:
                 nWaves = len(case['wave_heading'])
             
+            # Initialize second-order mean wave forces at each case to avoid using the results from the previous one in solveStatics()
+            self.fowtList[0].Fhydro_2nd_mean = np.zeros([nWaves, self.fowtList[0].nDOF])
+
+
+            # TODO: Once we have the slender-body approximation, we will perhaps need to iterate the mean offsets
+            # because the mean wave forces will depend on the first-order motions, which depend on the mean offsets.
+            # Not sure though whether this will be needed, as the mean offsets computed with the slender-body approximation
+            # should not be large due to its inherent assumptions (neglecting wave diffraction, hence no wave reflection).
+            # Iterating is not needed for the diffraction approach, as it is given by an input QTF. Just need to call solveStatics() twice
+
             # solve system operating point / mean offsets for this load case
-            self.solveStatics(case, iCase)
+            self.solveStatics(case)
           
             # solve system dynamics
             self.solveDynamics(case)
+
+            # Resolve system operating point / mean offsets, but now including mean wave forces
+            self.solveStatics(case)
             
             # >>> need to device if I want to store Xi0 and Xi in the FOWTs or work with them directly here. <<<
             
@@ -343,7 +356,7 @@ class Model():
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
     """    
     
-    def calcMooringAndOffsets(self, iCase=0):
+    def calcMooringAndOffsets(self):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
         Mean offsets are saved in the FOWT object.
@@ -354,13 +367,16 @@ class Model():
         F_PRP = np.sum(self.fowtList[0].F_aero0, axis=1)
         # + self.fowtList[0].F_hydro0 <<< hydro load would be nice here eventually
         D_hydro = self.fowtList[0].D_hydro
-        self.ms.bodyList[0].f6Ext = np.array(F_PRP + D_hydro)
 
+        # Just sum mean drift from each wave direction.
+        # This is not exactly correct, as there would be the interactions among different 
+        # wave directions, but it's the best we can do for now.
         F_meanDrift = np.zeros(len(D_hydro))
-        # try:
-        #     F_meanDrift = self.fowtList[0].Fhydro_2nd_mean[iCase, :]        
-        # except: 
-        #     pass
+        try:
+            F_meanDrift = np.sum(self.fowtList[0].Fhydro_2nd_mean, axis = 0)
+        except: 
+            pass
+        self.ms.bodyList[0].f6Ext = np.array(F_PRP + D_hydro + F_meanDrift)
 
 
         # Now find static equilibrium offsets of platform and get mooring properties about that point
@@ -384,7 +400,7 @@ class Model():
 
         #self.ms.plot()
 
-        print(f"Found mean offets with with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
+        print(f"Found mean offets with surge = {r6eq[0]:.2f} m and pitch = {r6eq[4]*180/np.pi:.2f} deg.")
         
         try:
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
@@ -533,7 +549,7 @@ class Model():
         self.results['eigen']['modes'      ] = modes
   
     
-    def solveStatics(self, case, iCase):
+    def solveStatics(self, case):
 
         # get initial FOWT values assuming no offset
         for fowt in self.fowtList:
@@ -545,7 +561,7 @@ class Model():
             fowt.calcCurrentLoads(case)
         
         # calculate platform offsets and mooring system equilibrium state
-        self.calcMooringAndOffsets(iCase)
+        self.calcMooringAndOffsets()
         
         # update values based on offsets if applicable
         for fowt in self.fowtList:
@@ -688,13 +704,49 @@ class Model():
         
         # wave excitation
         for ih in range(fowt.nWaves):
-        
-            F_linearized = fowt.calcDragExcitation(ih)
-        
-            F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih,:,:]
+            # We can include second-order hydrodynamic forces here if they are computed by an external QTF file
+            Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
+            fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF]) # Keep that as a member because it will be used in the functions that compute mean displacements
+            if fowt.potSecOrder==2:
+                fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+
+            F_linearized = fowt.calcDragExcitation(ih)        
+            F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + Fhydro_2nd[ih,:,:]
         
             for iw in range(self.nw):
                 Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+        
+            # Time this loop with tic and toc
+            import time 
+            tic = time.perf_counter()
+
+            # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces, which were computed above
+            if fowt.potSecOrder == 1:
+                Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)
+                for iDoF in range(Xi_unitWave.shape[0]):
+                    # get indices where fowt.zeta[ih,:] is not zero
+                    idx = np.where(fowt.zeta[ih,:]!=0) # Is there an eps value to use instead of zero?
+                    Xi_unitWave[iDoF, idx] = Xi[ih,iDoF, idx]/fowt.zeta[ih,idx]
+
+                fowt.calcQTF_slenderBody(ih, Xi_unitWave)      
+                fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+
+                # Recompute the wave excitation forces and consequent motions to include second-order hydrodynamic forces
+                F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + Fhydro_2nd[ih,:,:]
+                for iw in range(self.nw):
+                    Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+            toc = time.perf_counter()
+            print(f"\n Time to compute QTFs: {toc - tic:0.4f} seconds")
+
+            # For illustration purposes
+            ident = ''
+            if fowt.potSecOrder == 1:
+                ident = 'slenderBody'
+            elif fowt.potSecOrder == 2:
+                ident += 'WAMIT'
+            with open('examples/f_hydro-'+ ident + '.txt', 'w') as file:
+                for w, frow in zip(self.w, np.abs(F_wave.T)):
+                    file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
         
         # rotor excitation
         F_rotor = np.sum(fowt.F_aero, axis=2)

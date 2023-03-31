@@ -181,13 +181,25 @@ class FOWT():
 
         # Add a flag to either not compute 2nd order hydro; read QTF; or compute it with a slender-body approximation
         # self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)
-        if 'qtfPath' in design['platform']:
-            self.secondOrderWaveMod = 1     # <<< temporary, until we implement a flag like this in the inputs
+        self.potSecOrder = getFromDict(design['platform'], 'potSecOrder', dtype=int, default=0)
+        if self.potSecOrder==1:
+            if (not 'min_freq2nd' in design['platform']) or (not 'max_freq2nd' in design['platform']):
+                raise Exception('If potSecOrder==1, then both min_freq2nd and max_freq2nd must be specified in the platform input.')
+            min_freq2nd = design['platform']['min_freq2nd']
+            max_freq2nd = design['platform']['max_freq2nd']
+            self.w1_2nd = np.arange(min_freq2nd, max_freq2nd+0.5*min_freq2nd, min_freq2nd)*2*np.pi
+            self.w2_2nd = self.w1_2nd.copy()
+
+            self.k1_2nd = np.zeros(len(self.w1_2nd))
+            for i, w in enumerate(self.w1_2nd):
+                self.k1_2nd[i] = waveNumber(w, self.depth)
+            self.k2_2nd = self.k1_2nd.copy()
+
+        elif self.potSecOrder==2:
+            if not 'qtfPath' in design['platform']:
+                raise Exception('If potSecOrder==2, then qtfPath must be specified in the platform input.')
             self.qtfPath = design['platform']['qtfPath']
-            self.readQTF(self.qtfPath)
-            self.mu_2nd = self.w - self.w[0] # The frequency array for difference-frequency second-order is the same as self.w, but starting at 0    
-        else:
-            self.secondOrderWaveMod = 0    # <<< temporary
+            self.readQTF(self.qtfPath)            
 
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
@@ -799,25 +811,20 @@ class FOWT():
         self.beta = case['wave_heading']   # [rad] array of wave headings
         self.zeta = np.zeros([self.nWaves,self.nw], dtype=complex)
 
-        # make wave spectrum for each heading
-        # We are actually losing the phase by computing the 2nd order hydrodynamic forces this way, as the amplitudes will always be real
-        self.Fhydro_2nd = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex) 
-        self.Fhydro_2nd_mean = np.zeros([self.nWaves, self.nDOF])
+        # make wave spectrum for each heading   
+        self.S = np.zeros([self.nWaves,self.nw])     
         for ih in range(self.nWaves):
             if case['wave_spectrum'][ih] == 'unit':
                 self.zeta[ih,:] = np.tile(1, self.nw)
-                S         = np.tile(1, self.nw)
+                self.S[ih,:]         = np.tile(1, self.nw)
             elif case['wave_spectrum'][ih] == 'JONSWAP':
-                S = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        
-                self.zeta[ih,:] = np.sqrt(2*S*self.dw)    # wave elevation amplitudes (these are easiest to use)
+                self.S[ih,:] = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        
+                self.zeta[ih,:] = np.sqrt(2*self.S[ih,:]*self.dw)    # wave elevation amplitudes (these are easiest to use)
             elif case['wave_spectrum'][ih] in ['none','still']:
                 self.zeta[ih,:] = np.zeros(self.nw)        
-                S = np.zeros(self.nw)        
+                self.S[ih,:] = np.zeros(self.nw)        
             else:
-                raise ValueError(f"Wave spectrum input '{case['wave_spectrum'][ih]}' not recognized.")
-            
-            if self.secondOrderWaveMod == 1:
-                self.Fhydro_2nd_mean[ih, :], self.Fhydro_2nd[ih, :, :] = self.calcHydroForce_2ndOrd(case['wave_heading'][ih], S)
+                raise ValueError(f"Wave spectrum input '{case['wave_spectrum'][ih]}' not recognized.")                        
 
         #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
 
@@ -1162,6 +1169,144 @@ class FOWT():
 
         return D_hydro
 
+    def calcQTF_slenderBody(self, ih, Xi0):
+        '''This computes the second-order strip-theory-hydrodynamics terms'''
+        ''' Only long crested seas are currently considered here, but multidirectional
+            wave pairs can be considered in the functions that compute the accelerations'''
+        
+        rho = self.rho_water
+        g   = self.g
+        beta = self.beta[ih]
+        self.heads_2nd = [beta] # Need that to print the QT
+
+        # Downsample Xi0, which is input in the same frequency as the first-order loads,
+        # to the frequencies of the 2nd order hydrodynamic forces
+        # Same thing for the first-order loads
+        Xi = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
+        F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
+        for iDoF in range(self.nDOF):
+            Xi[iDoF,:] = np.interp(self.w1_2nd, self.w, Xi0[iDoF,:], left=0, right=0) 
+            F1st[iDoF,:] = np.interp(self.w1_2nd, self.w, self.F_BEM[ih, iDoF,:]+self.F_hydro_iner[ih, iDoF,:], left=0, right=0)                
+        F1st += np.matmul(self.C_hydro, Xi) # Need to add hydrostatic force to F1st
+        
+        # Pre compute some quantities for each member
+        nodeV = [] # vector with body velocity at each member node        
+        eta   = [] # wave elevation at intersection with water line
+        eta_r = [] # relative wave elevation at intersection with water line
+        ud_wl = [] # acceleration at intersection with water line
+        a_wl  = [] # node acceleration at intersection with water line
+        dr_wl = [] # displacement at intersection with water line
+        g_e1  = [] # dot product between gravity vector and unit vector perpendicular to the member
+        for i,mem in enumerate(self.memberList):
+            # append to nodeV
+            nodeV.append(np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex))            
+            for iNode, r in enumerate(mem.r):
+                _, nodeV[i][:,:, iNode], _ = getVelocity(r, Xi, self.w1_2nd)
+
+            # Wave elevation and acceleration at intersection with water line            
+            eta.append(np.zeros([len(self.w1_2nd)], dtype=complex))
+            eta_r.append(np.zeros([len(self.w1_2nd)], dtype=complex))
+            ud_wl.append(np.zeros([3, len(self.w1_2nd)], dtype=complex))
+            dr_wl.append(np.zeros([3, len(self.w1_2nd)], dtype=complex))
+            a_wl.append(np.zeros([3, len(self.w1_2nd)], dtype=complex))
+            if mem.r[-1,2] * mem.r[0,2] < 0:
+                r_int = mem.r[0,:] + (mem.r[-1,:] - mem.r[0,:]) * (0. - mem.r[0,2]) / (mem.r[-1,2] - mem.r[0,2])
+                _, ud_wl[i], eta[i] = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r_int, len(self.w1_2nd), rho=rho, g=g)
+                eta[i] = eta[i]/(rho*g) # getWaveKin actually returns dynamic pressure, so divide by rho*g to get wave elevation
+                dr_wl[i], _, a_wl[i] = getVelocity(r_int, Xi, self.w1_2nd)
+
+            g_e1.append(np.zeros([3, len(self.w1_2nd)], dtype=complex))
+            for iw in range(len(self.w1_2nd)):
+                g_e1[i][:, iw] = g*np.cross(Xi[3:, iw], mem.p1)[2] * mem.p1 -g*np.cross(Xi[3:, iw], mem.p2)[2] * mem.p2
+
+            # Get relative wave elevation
+            eta_r[i] = eta[i]-dr_wl[i][2,:]
+
+        # qtf_2ndPot = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        # qtf_gradPert = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        # qtf_convInc = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        # qtf_eta = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        # qtf_rotN = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)        
+        
+        # loop through each pair of frequency        
+        self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)    # Need this fourth dimension for conformity with the case where the QTFs are read from a file
+        print(f"Computing QTF for heading {beta:.2f}")
+        for i1, (w1, k1) in enumerate(zip(self.w1_2nd, self.k1_2nd)):
+            print(f" Line {i1} of {len(self.w1_2nd)}", end='\r')            
+            for i2, (w2, k2) in enumerate(zip(self.w2_2nd, self.k2_2nd)):
+                F_2ndPot = np.zeros(6, dtype='complex')
+                F_conv   = np.zeros(6, dtype='complex')
+                F_axdv   = np.zeros(6, dtype='complex')
+                F_eta    = np.zeros(6, dtype='complex')
+                F_rotN   = np.zeros(6, dtype='complex')                
+
+                # Need to loop only half of the matrix due to symmetry (QTFs are Hermitian matrices)
+                if w2 < w1:
+                    continue
+
+                # loop through each member        
+                for i,mem in enumerate(self.memberList):
+                
+                    circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections                        
+
+                    # loop through each node of the member
+                    for il in range(mem.ns):
+                        f_2ndPot = np.zeros(3, dtype='complex')
+                        f_conv = np.zeros(3, dtype='complex')
+                        f_axdv = np.zeros(3, dtype='complex')                        
+
+                        # only process hydrodynamics if this node is submerged
+                        if mem.r[il,2] < 0:
+
+                            # interpolate coefficients for the current strip
+                            Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
+                            Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
+                            Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
+
+
+                            # ----- compute side effects ---------------------------------------------------------
+                            if circ:
+                                v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
+                            else:
+                                v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
+                                
+                            if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
+                                v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
+                                                        
+                            # Convective acceleration
+                            f_2ndPot = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, getWaveKin_du2dt(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g))
+                            f_conv   = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, getWaveKin_convecAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g))
+                            f_axdv   = rho*v_i * np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, getWaveKin_axdivAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], np.zeros([3,1]), np.zeros([3,1]), mem.q, g=g))
+
+                            # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------                            
+                            F_2ndPot += translateForce3to6DOF(f_2ndPot, mem.r[il,:])
+                            F_conv   += translateForce3to6DOF(f_conv, mem.r[il,:])                   
+                            F_axdv   += translateForce3to6DOF(f_axdv, mem.r[il,:])
+
+                    if mem.r[-1,2] * mem.r[0,2] < 0:
+                        f_eta = 0.25*(ud_wl[i][:,i1]*np.conj(eta_r[i][i2])+np.conj(ud_wl[i][:,i2])*eta_r[i][i1])
+                        f_eta = np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_eta)
+                        f_eta *= rho*(v_i/mem.dls[1]) # divide by length of member to get the area. The length is the relative wave elevation
+                        f_eta += -0.25*rho*(v_i/mem.dls[1]) * (g_e1[i][:,i1]*np.conj(eta_r[i][i2])+np.conj(g_e1[i][:,i2])*eta_r[i][i1])
+                        F_eta = translateForce3to6DOF(f_eta, r_int)
+
+                # Force due to rotation of first-order wave forces
+                F_rotN[0:3]  = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
+                F_rotN[3: ]  = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
+
+                self.qtf[i1,i2,ih,:] = F_2ndPot + F_conv + F_axdv + F_eta + F_rotN
+                
+                # qtf_2ndPot[i1,i2,0,:] = F_2ndPot
+                # qtf_gradPert[i1,i2,0,:] = F_conv/2 + F_axdv
+                # qtf_convInc[i1,i2,0,:] = F_conv/2
+                # qtf_eta[i1,i2,0,:] = F_eta
+                # qtf_rotN[i1,i2,0,:] = F_rotN
+        self.writeQTF(self.qtf, "./examples/qtf-slender_body-total.12d")
+        # self.writeQTF(qtf_2ndPot, "./examples/qtf-slender_body-pot2-new.12d")
+        # self.writeQTF(qtf_gradPert, "./examples/qtf-slender_body-gradPert-new.12d")
+        # self.writeQTF(qtf_convInc, "./examples/qtf-slender_body-convInc-new.12d")
+        # self.writeQTF(qtf_eta, "./examples/qtf-slender_body-eta-new.12d")
+        # self.writeQTF(qtf_rotN, "./examples/qtf-slender_body-rotN-new.12d")
 
     def readQTF(self, flPath):
         data = np.loadtxt(flPath)
@@ -1199,19 +1344,32 @@ class FOWT():
 
             # Fill the other half of the matrix (which is equal to the conjugate of its symmetric element)
             if not indw1[0] == indw2[0]:
-                self.qtf[indw2[0], indw1[0], indhead[0], indDOF] = factor*(row[7]-1j*row[8])
-        
-
+                self.qtf[indw2[0], indw1[0], indhead[0], indDOF] = factor*(row[7]-1j*row[8])        
         # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))    
 
 
-    # Change that for a spectrum
+
+    def writeQTF(self, qtfIn, outPath):
+        with open(outPath, "w") as f:
+            ULEN = 1
+            for ih in range(len(self.heads_2nd)):
+                for iDoF in range(self.nDOF):
+                    qtf = qtfIn[:,:,ih,iDoF]
+                    for i1 in range(len(self.w1_2nd)):
+                        for i2 in range(i1, len(self.w2_2nd)):
+                            F = qtf[i1,i2]/(self.rho_water*self.g*ULEN)
+                            f.write(f"{2*np.pi/self.w1_2nd[i1]: 8.4e} {2*np.pi/self.w1_2nd[i2]: 8.4e} {self.heads_2nd[ih]: 8.4e} {self.heads_2nd[ih]: 8.4e} {iDoF+1} {np.abs(F): 8.4e} {np.angle(F): 8.4e} {F.real: 8.4e} {F.imag: 8.4e}\n")
+                        
+
+    # Compute force due to 2nd order hydrodynamic loads
+    # See Pinkster (1980), Section IV.3
+    # We are losing the phases when computing forces from the spectrum.
+    # We should at least correct the phase of the incoming waves to account for different positions in arrays.
+    # Should just multiply things by exp(-1j*(k_j-j_l)*x_j)
     def calcHydroForce_2ndOrd(self, beta, S0):
         f = np.zeros([self.nDOF, self.nw], dtype=complex)
-        nw1 = len(self.w1_2nd)
-
-        # Resample wave spectrum (the input is assumed to be in rad/s)
-        S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) 
+        f_mean = np.zeros([self.nDOF])
+        interpMode = 'qtf'
 
         # Interpolate for the wave incidence        
         if beta < self.heads_2nd[0]:
@@ -1225,39 +1383,67 @@ class FOWT():
         
         else:
             qtf_interpBeta = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:]))(beta)
-        
-        # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.        
-        mu = self.w1_2nd - self.w1_2nd[0]
-        Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
-        Sf_interp = np.zeros([self.nDOF, self.nw])
-        for idof in range(0,self.nDOF):                        
-            for imu in range(0, nw1): # Loop the difference frequencies
-                Saux = np.zeros(nw1)
-                Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
-                Qaux = np.zeros(nw1, dtype=complex)
 
-                Qaux[0:nw1-imu] = np.diag(np.squeeze(qtf_interpBeta[:,:,idof]), -imu) # Sum only the lower half of the QTF
-                Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
-                        
+        # Compute force spectrum with QTF resolution and then interpolate to the frequency vector of the input wave spectrum
+        if interpMode == 'spectrum':
+            # Resample wave spectrum (the input is assumed to be in rad/s)
+            nw1 = len(self.w1_2nd)
+            S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) 
 
-            # Interpolate the force spectrum to the same resolution as the original wave spectrum            
-            Sf_interp[idof, :] = np.interp(self.mu_2nd, mu, Sf[idof,:], left=0, right=0)        
+            # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.        
+            mu = self.w1_2nd - self.w1_2nd[0]
+            Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
+            Sf_interp = np.zeros([self.nDOF, self.nw]) 
+            for idof in range(0,self.nDOF):                    
+                for imu in range(1, nw1): # Loop the difference frequencies
+                    Saux = np.zeros(nw1)
+                    Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
+                    Qaux = np.zeros(nw1, dtype=complex)
 
-        # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
-        f = np.sqrt(2*Sf_interp*self.dw)
-        f_mean = np.zeros([self.nDOF])
-        f_mean[:] = f[:,0]
-        f[:, 0:-1] = f[:, 1:] # Displace f by one frequency so that it aligns with the frequency vector
+                    Qaux[0:nw1-imu] = np.diag(np.squeeze(qtf_interpBeta[:,:,idof]), imu) # Sum only the upper half of the QTF
+                    Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
+                            
+                # Mean drift is easier, as you have just the product of the same wave
+                f_mean[idof] = 2*np.sum(S*np.diag(np.squeeze(qtf_interpBeta[:,:,idof].real), 0)) * (self.w1_2nd[1]-self.w1_2nd[0])
+
+                # Interpolate the force spectrum to the same resolution as the original wave spectrum            
+                Sf_interp[idof, :] = np.interp(self.w - self.w[0], mu, Sf[idof,:], left=0, right=0)
+                
+        # Otherwise, interpolate the QTF first and then compute the force amplitude directly
+        else:
+            f = np.zeros([self.nDOF, self.nw]) 
+            for idof in range(0,self.nDOF):
+                # TODO: Need to interpolate real and imaginary part separately
+                qtf_interp = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof], bounds_error=False, fill_value=(0))(self.w, self.w)                     
+                for imu in range(1, self.nw): # Loop the difference frequencies
+                    Saux = np.zeros(self.nw)
+                    Saux[0:self.nw-imu] = S0[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
+                    Qaux = np.zeros(self.nw, dtype=complex)
+
+                    Qaux[0:self.nw-imu] = np.diag(np.squeeze(qtf_interp), imu) # Sum only the upper half of the QTF
+                    f[idof, imu] = 4 *np.sqrt( np.sum(S0*Saux*np.abs(Qaux)**2) ) * self.dw
+
+                # Mean drift is easier, as you have just the product of the same wave
+                f_mean[idof] = 2*np.sum(S0*np.diag(np.squeeze(qtf_interp.real), 0)) * self.dw
+
+        # Displace f by one frequency so that it aligns with the frequency vector
+        f[:, 0:-1] = f[:, 1:]
         f[:, -1] = 0
 
+        # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
         # with open('examples/Sf_2nd.txt', 'w') as file:
         #     mu_interp = self.w - self.w[0]
         #     for w, Srow in zip(mu_interp, Sf_interp.T):
         #         file.write(f'{w:.5f} {Srow[0]:.5f} {Srow[1]:.5f} {Srow[2]:.5f} {Srow[3]:.5f} {Srow[4]:.5f} {Srow[5]:.5f}\n')
 
-        # with open('examples/f_2nd.txt', 'w') as file:
-        #     for w, frow in zip(mu_interp, f.T):
-        #         file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
+        ident = 'WAMIT'
+        if self.potSecOrder == 1:
+            ident = 'slenderBody'        
+        with open('examples/f_2nd-'+ ident + '.txt', 'w') as file:
+            for w, frow in zip(self.w, f.T):
+                file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
+
+        
         return f_mean, f
 
 

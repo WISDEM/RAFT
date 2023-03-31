@@ -101,7 +101,7 @@ def getWaveKin(zeta0, beta, w, k, h, r, nw, rho=1025.0, g=9.81):
         z = r[2]
 
         # only process wave kinematics if this node is submerged
-        if z < 0:
+        if z <= 0:
 
             # Calculate SINH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/COSH( k*h )
             # given the wave number, k, water depth, h, and elevation z, as inputs.
@@ -133,6 +133,137 @@ def getWaveKin(zeta0, beta, w, k, h, r, nw, rho=1025.0, g=9.81):
 
     return u, ud, pDyn
 
+# Convective acceleration
+def getWaveKin_convecAcc(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81):
+    acc = np.zeros(3, dtype=complex)
+
+    b1 = deg2rad(beta1)
+    cosB1 = np.cos(b1)
+    sinB1 = np.sin(b1)
+
+    b2 = deg2rad(beta2)
+    cosB2 = np.cos(b2)
+    sinB2 = np.sin(b2)
+
+    z = r[2]
+
+    if (z <= 0 and k1 > 0 and k2 > 0):
+        k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0])
+        aux = 0.25*(k1*k2*g*g/w1/w2) / (np.cosh(k1*h)*np.cosh(k2*h)) 
+
+        acc[0:2]  = np.sin(np.dot(k1_k2, r)) + 1j * np.cos(np.dot(k1_k2, r))
+        acc[0:2] *= aux * (np.cosh(k1*(z+h))*np.cosh(k2*(z+h)) * np.cos(b1 - b2) + np.sinh(k1*(z+h))*np.sinh(k2*(z+h)))
+        acc[0]   *= -k1_k2[0]
+        acc[1]   *= -k1_k2[1]
+
+        acc[2]  = np.sin(np.dot(k1_k2, r)) - 1j * np.sin(np.dot(k1_k2, r))
+        acc[2] *= aux * (np.sinh(k1*(z+h))*np.sinh(k2*(z+h)) * np.cos(b1 - b2) + np.sinh(k1*(z+h))*np.sinh(k2*(z+h)))
+        acc[2] *= -(k1-k2)
+
+    return acc
+    
+# Matrix of gradient of wave velocity, which is needed to compute the axial-divergence acceleration
+def getWaveKin_grad_u1(w, k, beta, h, r):
+    grad = np.zeros([3, 3], dtype="complex")
+    x,y,z = r[0], r[1], r[2]
+
+    # More friendly notation
+    cosBeta = np.cos(deg2rad(beta))
+    sinBeta = np.cos(deg2rad(beta))
+    khz_xy = 0
+    khz_z = 0
+
+    if z <= 0 and k > 0:
+        # When k*h is too high, which happens for deep water/short waves, sinh(k*h) and cosh(k*h) become too large and are considered "inf".
+        # Hence, we chose a threshold of 10, above which the deep water approximation is employed.
+        if k*h >= 10:
+            khz_xy = np.exp(k*z)
+            khz_z = khz_xy
+        else:
+            khz_xy = np.cosh(k * (z + h)) / np.sinh(k*h)
+            khz_z = np.sinh(k * (z + h)) / np.sinh(k*h)
+
+        # Along x direction
+        aux = w * k * cosBeta * (np.sin(k*cosBeta*x + k * sinBeta*y) + 1j* np.cos(k*cosBeta*x + k * sinBeta*y))
+        grad[0,0] = -aux * khz_xy * cosBeta # du/dx
+        grad[0,1] = -aux * khz_xy * sinBeta # du/dy
+        grad[0,2] = -aux * 1j * khz_z       # du/dz
+
+        # Along y direction
+        aux = w * k * sinBeta * (np.sin(k*cosBeta*x + k * sinBeta*y) + 1j* np.cos(k*cosBeta*x + k * sinBeta*y))
+        grad[1,0] = grad[0,1]               # dv/dx = du/dy
+        grad[1,1] = -aux * khz_xy * sinBeta # dv/dy
+        grad[1,2] = -aux * 1j * khz_z       # dv/dz
+
+        # Along z direction
+        aux = w * k * (np.cos(k*cosBeta*x + k * sinBeta*y) - 1j * np.sin(k*cosBeta*x + k * sinBeta*y))
+        grad[2,0] = grad[0,2]         # dw/dx = du/dz
+        grad[2,1] = grad[0,1]         # dw/dy = dv/dz
+        grad[2,2] = aux * 1j * khz_xy # dw/dz
+
+    return grad
+
+# Axial-divergence acceleration
+def getWaveKin_axdivAcc(w1, w2, k1, k2, beta1, beta2, h, r, vel1, vel2, q, g=9.81):
+    acc = np.zeros(3, dtype=complex)
+
+    aux = np.matmul(getWaveKin_grad_u1(w1, k1, beta1, h, r), q)
+    dwdz1 = np.dot(np.squeeze(aux), np.squeeze(q))
+    u1, _, _ = getWaveKin(np.ones([1,1]), beta1, w1*np.ones([1,1]), k1*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
+   
+    aux = np.matmul(getWaveKin_grad_u1(w2, k2, beta2, h, r), q)
+    dwdz2 = np.dot(np.squeeze(aux), np.squeeze(q))
+    u2, _, _ = getWaveKin(np.ones([1,1]), beta2, w2*np.ones([1,1]), k2*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
+
+    acc = 0.25*(dwdz1*np.conj(u2 - vel2)+np.conj(dwdz2)*(u1 - vel1))
+
+    return np.squeeze(acc)
+
+# Acceleration due to second-order potential
+def getWaveKin_du2dt(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81):
+    acc = np.zeros(3, dtype=complex)
+    if w1 == w2: # The difference-frequency second-order potential does not contribute to the mean forces 
+        return acc
+        
+    b1 = deg2rad(beta1)
+    cosB1 = np.cos(b1)
+    sinB1 = np.sin(b1)
+
+    b2 = deg2rad(beta2)
+    cosB2 = np.cos(b2)
+    sinB2 = np.sin(b2)
+    
+    z = r[2]
+
+    if (z <= 0 and k1 > 0 and k2 > 0):
+        k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0])
+        norm_k1_k2 = np.linalg.norm(k1_k2)
+    
+        aux = ((w2 - w1) / (w1 * w2)) * k1 * k2 * (np.cos(b1 - b2) + np.tanh(k1*h) * np.tanh(k2*h)) - 0.5 * (k1*k1 / (w1 * np.cosh(k1*h)*np.cosh(k1*h)) - k2 * k2 / (w2 * np.cosh(k2*h)*np.cosh(k2*h)))
+        aux = aux / (g * norm_k1_k2 * np.tanh(norm_k1_k2 * h) - (w1 - w2)*(w1 - w2))
+
+        khz_xy, khz_z = (np.cosh(norm_k1_k2 * (z + h)) , np.sinh(norm_k1_k2 * (z + h))) / np.cosh(norm_k1_k2 * h)
+
+        acc[0:2] = np.sin(np.dot(k1_k2, r)) + 1j * np.cos(np.dot(k1_k2, r)) * g*g * aux * khz_xy
+        acc[0] *= 0.5 * (w1 - w2) * (k1 * cosB1 - k2 * cosB2)
+        acc[1] *= 0.5 * (w1 - w2) * (k1 * sinB1 - k2 * sinB2)
+
+        acc[2] = np.cos(np.dot(k1_k2, r)) - 1j * np.sin(np.dot(k1_k2, r)) * g*g * aux * khz_z
+        acc[2] *= -0.5 * (w1 - w2) * norm_k1_k2
+
+    return acc
+
+# Product of wave elevation and wave acceleration
+def getWaveForce_du1dt_eta(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81):
+    r[2] = 0 # Should call this function only for z=0, but make sure that it is exactly zero before proceeding
+    
+    eta1 = np.exp( -1j*(k1*(np.cos(beta1)*r[0] + np.sin(beta1)*r[1])))
+    dudt1 = 1j*g*k1*eta1*np.array([np.cos(beta1), np.sin(beta1), 0])
+
+    eta2 = np.exp( -1j*(k2*(np.cos(beta2)*r[0] + np.sin(beta2)*r[1])))
+    dudt2 = 1j*g*k2*eta2*np.array([np.cos(beta2), np.sin(beta2), 0])
+
+    return np.squeeze(0.25*(dudt1*np.conj(eta2) + np.conj(dudt2)*eta1))
 
 
 # calculate wave number based on wave frequency in rad/s and depth

@@ -265,8 +265,7 @@ class Model():
             else:
                 nWaves = len(case['wave_heading'])
             
-            # Initialize second-order wave forces at each case to avoid using the results from the previous one
-            self.fowtList[0].Fhydro_2nd = np.zeros([nWaves, self.fowtList[0].nDOF, self.fowtList[0].nw], dtype = complex) 
+            # Initialize second-order mean wave forces at each case to avoid using the results from the previous one in solveStatics()
             self.fowtList[0].Fhydro_2nd_mean = np.zeros([nWaves, self.fowtList[0].nDOF])
 
 
@@ -705,13 +704,49 @@ class Model():
         
         # wave excitation
         for ih in range(fowt.nWaves):
-        
-            F_linearized = fowt.calcDragExcitation(ih)
-        
-            F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih,:,:]
+            # We can include second-order hydrodynamic forces here if they are computed by an external QTF file
+            Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
+            fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF]) # Keep that as a member because it will be used in the functions that compute mean displacements
+            if fowt.potSecOrder==2:
+                fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+
+            F_linearized = fowt.calcDragExcitation(ih)        
+            F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + Fhydro_2nd[ih,:,:]
         
             for iw in range(self.nw):
                 Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+        
+            # Time this loop with tic and toc
+            import time 
+            tic = time.perf_counter()
+
+            # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces, which were computed above
+            if fowt.potSecOrder == 1:
+                Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)
+                for iDoF in range(Xi_unitWave.shape[0]):
+                    # get indices where fowt.zeta[ih,:] is not zero
+                    idx = np.where(fowt.zeta[ih,:]!=0) # Is there an eps value to use instead of zero?
+                    Xi_unitWave[iDoF, idx] = Xi[ih,iDoF, idx]/fowt.zeta[ih,idx]
+
+                fowt.calcQTF_slenderBody(ih, Xi_unitWave)      
+                fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+
+                # Recompute the wave excitation forces and consequent motions to include second-order hydrodynamic forces
+                F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + Fhydro_2nd[ih,:,:]
+                for iw in range(self.nw):
+                    Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+            toc = time.perf_counter()
+            print(f"\n Time to compute QTFs: {toc - tic:0.4f} seconds")
+
+            # For illustration purposes
+            ident = ''
+            if fowt.potSecOrder == 1:
+                ident = 'slenderBody'
+            elif fowt.potSecOrder == 2:
+                ident += 'WAMIT'
+            with open('examples/f_hydro-'+ ident + '.txt', 'w') as file:
+                for w, frow in zip(self.w, np.abs(F_wave.T)):
+                    file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
         
         # rotor excitation
         F_rotor = np.sum(fowt.F_aero, axis=2)

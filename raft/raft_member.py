@@ -88,8 +88,8 @@ class Member:
         if isinstance(self.l_fill, np.ndarray):
             if len(self.l_fill) != n-1 or len(self.rho_fill) != n-1:
                 raise ValueError(f"Member '{self.name}': The number of stations ({n}) should always be 1 greater than the number of ballast sections, l_fill ({len(self.l_fill)}) and rho_fill ({len(self.rho_fill)})")
-        if np.array(mi['stations'], dtype=float)[-1] == 1:  # if the input stations are relative (i.e. [0, 1]), then that means the input ballast fill levels are also relative (i.e., <= 1.0)
-            self.l_fill *= self.l                            # if it's relative, multiply the ballast fill level amount (-) by the length to get units of (m)
+        # if np.array(mi['stations'], dtype=float)[-1] == 1:  # if the input stations are relative (i.e. [0, 1]), then that means the input ballast fill levels are also relative (i.e., <= 1.0)
+        #     self.l_fill *= self.l                            # if it's relative, multiply the ballast fill level amount (-) by the length to get units of (m)
 
         self.rho_shell = getFromDict(mi, 'rho_shell', default=8500.) # shell mass density [kg/m^3]
 

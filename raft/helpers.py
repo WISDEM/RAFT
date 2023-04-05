@@ -169,7 +169,7 @@ def getWaveKin_grad_u1(w, k, beta, h, r):
 
     # More friendly notation
     cosBeta = np.cos(deg2rad(beta))
-    sinBeta = np.cos(deg2rad(beta))
+    sinBeta = np.sin(deg2rad(beta))
     khz_xy = 0
     khz_z = 0
 
@@ -203,9 +203,16 @@ def getWaveKin_grad_u1(w, k, beta, h, r):
 
     return grad
 
+# Matrix of gradient of wave acceleration
+def getWaveKin_grad_dudt(w, k, beta, h, r):
+    return 1j*w*getWaveKin_grad_u1(w, k, beta, h, r)
+
 # Axial-divergence acceleration
 def getWaveKin_axdivAcc(w1, w2, k1, k2, beta1, beta2, h, r, vel1, vel2, q, g=9.81):
     acc = np.zeros(3, dtype=complex)
+
+    vel1 -= np.dot(vel1, q) * q
+    vel2 -= np.dot(vel2, q) * q
 
     aux = np.matmul(getWaveKin_grad_u1(w1, k1, beta1, h, r), q)
     dwdz1 = np.dot(np.squeeze(aux), np.squeeze(q))
@@ -215,15 +222,20 @@ def getWaveKin_axdivAcc(w1, w2, k1, k2, beta1, beta2, h, r, vel1, vel2, q, g=9.8
     dwdz2 = np.dot(np.squeeze(aux), np.squeeze(q))
     u2, _, _ = getWaveKin(np.ones([1,1]), beta2, w2*np.ones([1,1]), k2*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
 
-    acc = 0.25*(dwdz1*np.conj(u2 - vel2)+np.conj(dwdz2)*(u1 - vel1))
+    acc = 0.25*(dwdz1*np.conj(np.squeeze(u2) - vel2)+np.conj(dwdz2)*(np.squeeze(u1) - vel1))
+
+    # There can't be any axial-divergence acceleration in the axial direction
+    acc -= np.dot(np.squeeze(acc), q) * q
 
     return np.squeeze(acc)
 
-# Acceleration due to second-order potential
-def getWaveKin_du2dt(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81):
+# Acceleration and pressure due to second-order potential
+def getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81, rho=1025.0):
     acc = np.zeros(3, dtype=complex)
+    p = 0+0j
+
     if w1 == w2: # The difference-frequency second-order potential does not contribute to the mean forces 
-        return acc
+        return acc, p
         
     b1 = deg2rad(beta1)
     cosB1 = np.cos(b1)
@@ -251,20 +263,9 @@ def getWaveKin_du2dt(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81):
         acc[2] = np.cos(np.dot(k1_k2, r)) - 1j * np.sin(np.dot(k1_k2, r)) * g*g * aux * khz_z
         acc[2] *= -0.5 * (w1 - w2) * norm_k1_k2
 
-    return acc
-
-# Product of wave elevation and wave acceleration
-def getWaveForce_du1dt_eta(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81):
-    r[2] = 0 # Should call this function only for z=0, but make sure that it is exactly zero before proceeding
-    
-    eta1 = np.exp( -1j*(k1*(np.cos(beta1)*r[0] + np.sin(beta1)*r[1])))
-    dudt1 = 1j*g*k1*eta1*np.array([np.cos(beta1), np.sin(beta1), 0])
-
-    eta2 = np.exp( -1j*(k2*(np.cos(beta2)*r[0] + np.sin(beta2)*r[1])))
-    dudt2 = 1j*g*k2*eta2*np.array([np.cos(beta2), np.sin(beta2), 0])
-
-    return np.squeeze(0.25*(dudt1*np.conj(eta2) + np.conj(dudt2)*eta1))
-
+        p = 0.5 * np.cos(np.dot(k1_k2, r)) - 1j * np.sin(np.dot(k1_k2, r)) * g*g * aux * khz_xy
+        p *= 0.5 * rho * (w1 - w2)
+    return acc, p
 
 # calculate wave number based on wave frequency in rad/s and depth
 def waveNumber(omega, h, e=0.001):

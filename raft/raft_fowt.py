@@ -1184,76 +1184,102 @@ class FOWT():
         # Same thing for the first-order loads
         Xi = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
         F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
+        A_BEM = np.zeros([self.nDOF, self.nDOF, len(self.w1_2nd)])
         for iDoF in range(self.nDOF):
             Xi[iDoF,:] = np.interp(self.w1_2nd, self.w, Xi0[iDoF,:], left=0, right=0) 
-            F1st[iDoF,:] = np.interp(self.w1_2nd, self.w, self.F_BEM[ih, iDoF,:]+self.F_hydro_iner[ih, iDoF,:], left=0, right=0)                
-        F1st += np.matmul(self.C_hydro, Xi) # Need to add hydrostatic force to F1st
-        
-        # Pre compute some quantities for each member
-        nodeV = [] # vector with body velocity at each member node        
-        eta   = [] # wave elevation at intersection with water line
-        eta_r = [] # relative wave elevation at intersection with water line
-        ud_wl = [] # acceleration at intersection with water line
-        a_wl  = [] # node acceleration at intersection with water line
-        dr_wl = [] # displacement at intersection with water line
-        g_e1  = [] # dot product between gravity vector and unit vector perpendicular to the member
-        for i,mem in enumerate(self.memberList):
-            # append to nodeV
-            nodeV.append(np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex))            
-            for iNode, r in enumerate(mem.r):
-                _, nodeV[i][:,:, iNode], _ = getVelocity(r, Xi, self.w1_2nd)
+            F1st[iDoF,:] = np.interp(self.w1_2nd, self.w, self.F_BEM[ih, iDoF,:]+self.F_hydro_iner[ih, iDoF,:], left=0, right=0)
+            A_BEM = interp1d(self.w, self.A_BEM, axis=2, fill_value=0, bounds_error=False, assume_sorted=True)(self.w1_2nd)
+    
+        # Need to add hydrostatic force and added mass to F1st
+        for iw in range(len(self.w1_2nd)): # Need to add added mass force to F1st
+            F1st[:,iw] += -np.matmul(self.C_hydro, Xi[:,iw])
+            F1st[:,iw] += -np.matmul(A_BEM[:,:,iw] + self.A_hydro_morison[:,:], -Xi[:,iw] * self.w1_2nd[iw] * self.w1_2nd[iw]) # Need to add added mass to F1st
 
-            # Wave elevation and acceleration at intersection with water line            
-            eta.append(np.zeros([len(self.w1_2nd)], dtype=complex))
-            eta_r.append(np.zeros([len(self.w1_2nd)], dtype=complex))
-            ud_wl.append(np.zeros([3, len(self.w1_2nd)], dtype=complex))
-            dr_wl.append(np.zeros([3, len(self.w1_2nd)], dtype=complex))
-            a_wl.append(np.zeros([3, len(self.w1_2nd)], dtype=complex))
-            if mem.r[-1,2] * mem.r[0,2] < 0:
-                r_int = mem.r[0,:] + (mem.r[-1,:] - mem.r[0,:]) * (0. - mem.r[0,2]) / (mem.r[-1,2] - mem.r[0,2])
-                _, ud_wl[i], eta[i] = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r_int, len(self.w1_2nd), rho=rho, g=g)
-                eta[i] = eta[i]/(rho*g) # getWaveKin actually returns dynamic pressure, so divide by rho*g to get wave elevation
-                dr_wl[i], _, a_wl[i] = getVelocity(r_int, Xi, self.w1_2nd)
-
-            g_e1.append(np.zeros([3, len(self.w1_2nd)], dtype=complex))
-            for iw in range(len(self.w1_2nd)):
-                g_e1[i][:, iw] = g*np.cross(Xi[3:, iw], mem.p1)[2] * mem.p1 -g*np.cross(Xi[3:, iw], mem.p2)[2] * mem.p2
-
-            # Get relative wave elevation
-            eta_r[i] = eta[i]-dr_wl[i][2,:]
-
-        # qtf_2ndPot = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
-        # qtf_gradPert = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
-        # qtf_convInc = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
-        # qtf_eta = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
-        # qtf_rotN = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)        
+        # Variables to store different components for post-processing
+        qtf_2ndPot = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        qtf_axdv   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        qtf_conv   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        qtf_eta    = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        qtf_nabla  = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        qtf_rotN   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
+        qtf_rslb   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
         
         # loop through each pair of frequency        
         self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)    # Need this fourth dimension for conformity with the case where the QTFs are read from a file
         print(f"Computing QTF for heading {beta:.2f}")
-        for i1, (w1, k1) in enumerate(zip(self.w1_2nd, self.k1_2nd)):
-            print(f" Line {i1} of {len(self.w1_2nd)}", end='\r')            
-            for i2, (w2, k2) in enumerate(zip(self.w2_2nd, self.k2_2nd)):
-                F_2ndPot = np.zeros(6, dtype='complex')
-                F_conv   = np.zeros(6, dtype='complex')
-                F_axdv   = np.zeros(6, dtype='complex')
-                F_eta    = np.zeros(6, dtype='complex')
-                F_rotN   = np.zeros(6, dtype='complex')                
 
-                # Need to loop only half of the matrix due to symmetry (QTFs are Hermitian matrices)
-                if w2 < w1:
-                    continue
+        # Start with the force due to rotation of first-order wave forces
+        # This component depends on the forces on the whole body, hence it is outside of the member loop
+        for i1 in range(len(self.w1_2nd)):
+            for i2 in range(len(self.w2_2nd)):
+                F_rotN = np.zeros(6, dtype='complex')    
+                F_rotN[0:3] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
+                F_rotN[3: ] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[3:,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[3:,i1]))
+                self.qtf[i1,i2,0,:] += F_rotN
+                qtf_rotN[i1,i2,0,:] = F_rotN
 
-                # loop through each member        
-                for i,mem in enumerate(self.memberList):
-                
-                    circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections                        
+        # loop through each member
+        for i,mem in enumerate(self.memberList):
+            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections              
+        
+            # Quantities at each node
+            nodeV = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)
+            dr    = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)
+            grad_dudt = np.zeros([3, 3, len(self.w1_2nd), mem.ns], dtype=complex)
+            nodeV_axial_rel = np.zeros([len(self.w1_2nd), mem.ns], dtype=complex) # Node relative axial velocity
+
+            w_x = np.dot(Xi[3:, :].T, mem.p1) # Rotation along local x axis
+            w_y = np.dot(Xi[3:, :].T, mem.p2) # Rotation along local y axis
+            for iNode, r in enumerate(mem.r):
+                dr[:,:, iNode], nodeV[:,:, iNode], _ = getVelocity(r, Xi, self.w1_2nd)
+                u_aux, _, _ = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r, len(self.w1_2nd), rho=rho, g=g)
+
+                for iw in range(len(self.w1_2nd)):
+                    grad_dudt[:, :, iw, iNode] = getWaveKin_grad_dudt(self.w1_2nd[iw], self.k1_2nd[iw], beta, self.depth, r)
+                    nodeV_axial_rel[iw, iNode] = np.dot(u_aux[:, iw]-nodeV[:,iw, iNode], mem.q)
+                                                
+            # Quantities at intersection with water line            
+            eta = np.zeros([len(self.w1_2nd)], dtype=complex)
+            eta_r = np.zeros([len(self.w1_2nd)], dtype=complex)
+            ud_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex)
+            dr_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex)
+            a_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex)
+            if mem.r[-1,2] * mem.r[0,2] < 0:
+                r_int = mem.r[0,:] + (mem.r[-1,:] - mem.r[0,:]) * (0. - mem.r[0,2]) / (mem.r[-1,2] - mem.r[0,2])
+                _, ud_wl, eta = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r_int, len(self.w1_2nd), rho=rho, g=g)
+                eta = eta/(rho*g) # getWaveKin actually returns dynamic pressure, so divide by rho*g to get wave elevation
+                dr_wl, _, a_wl = getVelocity(r_int, Xi, self.w1_2nd)
+
+            g_e1 = np.zeros([3, len(self.w1_2nd)], dtype=complex)
+            for iw in range(len(self.w1_2nd)):
+                g_e1[:, iw] = g*np.cross(Xi[3:, iw], mem.p1)[2] * mem.p1 -g*np.cross(Xi[3:, iw], mem.p2)[2] * mem.p2
+
+            # Relative wave elevation
+            eta_r = eta-dr_wl[2,:]
+
+            # Loop through each pair of frequency
+            for i1, (w1, k1) in enumerate(zip(self.w1_2nd, self.k1_2nd)):
+                print(f" Element {i} of {len(self.memberList)} - Line {i1} of {len(self.w1_2nd)}", end='\r')            
+                for i2, (w2, k2) in enumerate(zip(self.w2_2nd, self.k2_2nd)):
+                    F_2ndPot = np.zeros(6, dtype='complex')
+                    F_conv   = np.zeros(6, dtype='complex')
+                    F_axdv   = np.zeros(6, dtype='complex')
+                    F_eta    = np.zeros(6, dtype='complex')
+                    F_nabla  = np.zeros(6, dtype='complex')         
+                    F_rslb   = np.zeros(6, dtype='complex')
+
+                    # Need to loop only half of the matrix due to symmetry (QTFs are Hermitian matrices)
+                    if w2 < w1:
+                        continue
 
                     # loop through each node of the member
                     for il in range(mem.ns):
                         f_2ndPot = np.zeros(3, dtype='complex')
-                        f_conv = np.zeros(3, dtype='complex')
-                        f_axdv = np.zeros(3, dtype='complex')                        
+                        f_conv   = np.zeros(3, dtype='complex')
+                        f_axdv   = np.zeros(3, dtype='complex')
+                        f_nabla  = np.zeros(3, dtype='complex')
+                        f_rslb   = np.zeros(3, dtype='complex')              
+
 
                         # only process hydrodynamics if this node is submerged
                         if mem.r[il,2] < 0:
@@ -1273,40 +1299,59 @@ class FOWT():
                             if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
                                 v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
                                                         
-                            # Convective acceleration
-                            f_2ndPot = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, getWaveKin_du2dt(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g))
-                            f_conv   = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, getWaveKin_convecAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g))
-                            f_axdv   = rho*v_i * np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, getWaveKin_axdivAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], np.zeros([3,1]), np.zeros([3,1]), mem.q, g=g))
+                            f_2ndPot, p_2nd = getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g, rho=rho)
+                            f_2ndPot = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_2ndPot)
 
-                            # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------                            
+                            f_conv   = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, getWaveKin_convecAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g))
+                            f_axdv   = rho*v_i * np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, getWaveKin_axdivAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], nodeV[:, i1, il], nodeV[:, i2, il], mem.q, g=g))
+
+                            f_nabla  = 0.25*np.matmul(np.squeeze(grad_dudt[:, :, i1, il]), np.squeeze(np.conj(dr[:, i2, il]))) + 0.25*np.matmul(np.squeeze(np.conj(grad_dudt[:, :, i2, il])), np.squeeze(dr[:, i1, il]))
+                            f_nabla  = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_nabla)
+
+                            f_rslb   = -0.25*2*((w_y[i1]*np.conj(nodeV_axial_rel[i2, il])) + (np.conj(w_y[i2])*nodeV_axial_rel[i1, il]))*mem.p1
+                            f_rslb   += 0.25*2*((w_x[i1]*np.conj(nodeV_axial_rel[i2, il])) + (np.conj(w_x[i2])*nodeV_axial_rel[i1, il]))*mem.p2
+                            f_rslb   = rho*v_i * np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, f_rslb)
+                                                      
                             F_2ndPot += translateForce3to6DOF(f_2ndPot, mem.r[il,:])
                             F_conv   += translateForce3to6DOF(f_conv, mem.r[il,:])                   
                             F_axdv   += translateForce3to6DOF(f_axdv, mem.r[il,:])
-
+                            F_nabla  += translateForce3to6DOF(f_nabla, mem.r[il,:])
+                            F_rslb   += translateForce3to6DOF(f_rslb, mem.r[il,:])
+                            
+                    # Force acting at the intersection of the member with the mean waterline
                     if mem.r[-1,2] * mem.r[0,2] < 0:
-                        f_eta = 0.25*(ud_wl[i][:,i1]*np.conj(eta_r[i][i2])+np.conj(ud_wl[i][:,i2])*eta_r[i][i1])
+                        f_eta = 0.25*((ud_wl[:,i1]-a_wl[:,i1])*np.conj(eta_r[i2])+np.conj((ud_wl[:,i2])-a_wl[:,i2])*eta_r[i1])
                         f_eta = np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_eta)
                         f_eta *= rho*(v_i/mem.dls[1]) # divide by length of member to get the area. The length is the relative wave elevation
-                        f_eta += -0.25*rho*(v_i/mem.dls[1]) * (g_e1[i][:,i1]*np.conj(eta_r[i][i2])+np.conj(g_e1[i][:,i2])*eta_r[i][i1])
+                        f_eta += -0.25*rho*(v_i/mem.dls[1]) * (g_e1[:,i1]*np.conj(eta_r[i2])+np.conj(g_e1[:,i2])*eta_r[i1])
                         F_eta = translateForce3to6DOF(f_eta, r_int)
 
-                # Force due to rotation of first-order wave forces
-                F_rotN[0:3]  = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
-                F_rotN[3: ]  = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
+                    # Forces acting at the end of the member
+                    # 2nd order pressure
+                    # 2nd order axial acceleration
+                    # Convective acceleration
+                    # Gradient of first-order pressure times displacement
+                    # Gradient of first-order axial accelertion times displacement 
 
-                self.qtf[i1,i2,ih,:] = F_2ndPot + F_conv + F_axdv + F_eta + F_rotN
+                        
+                    self.qtf[i1,i2,0,:] += F_2ndPot + F_conv + F_axdv + F_nabla + F_eta + F_rslb
                 
-                # qtf_2ndPot[i1,i2,0,:] = F_2ndPot
-                # qtf_gradPert[i1,i2,0,:] = F_conv/2 + F_axdv
-                # qtf_convInc[i1,i2,0,:] = F_conv/2
-                # qtf_eta[i1,i2,0,:] = F_eta
-                # qtf_rotN[i1,i2,0,:] = F_rotN
+                    qtf_2ndPot[i1,i2,0,:] += F_2ndPot
+                    qtf_axdv[i1,i2,0,:] += F_axdv
+                    qtf_conv[i1,i2,0,:] += F_conv
+                    qtf_eta[i1,i2,0,:] += F_eta
+                    qtf_nabla[i1,i2,0,:] += F_nabla
+                    qtf_rslb[i1,i2,0,:] += F_rslb
+                    
         self.writeQTF(self.qtf, "./examples/qtf-slender_body-total.12d")
-        # self.writeQTF(qtf_2ndPot, "./examples/qtf-slender_body-pot2-new.12d")
-        # self.writeQTF(qtf_gradPert, "./examples/qtf-slender_body-gradPert-new.12d")
-        # self.writeQTF(qtf_convInc, "./examples/qtf-slender_body-convInc-new.12d")
-        # self.writeQTF(qtf_eta, "./examples/qtf-slender_body-eta-new.12d")
-        # self.writeQTF(qtf_rotN, "./examples/qtf-slender_body-rotN-new.12d")
+
+        self.writeQTF(qtf_2ndPot, "./examples/qtf-slender_body-pot2.12d")
+        self.writeQTF(qtf_axdv, "./examples/qtf-slender_body-axDv.12d")
+        self.writeQTF(qtf_conv, "./examples/qtf-slender_body-conv.12d")
+        self.writeQTF(qtf_eta, "./examples/qtf-slender_body-eta.12d")
+        self.writeQTF(qtf_nabla, "./examples/qtf-slender_body-nabla.12d")
+        self.writeQTF(qtf_rslb, "./examples/qtf-slender_body-rslb.12d")
+        self.writeQTF(qtf_rotN, "./examples/qtf-slender_body-rotN.12d")
 
     def readQTF(self, flPath):
         data = np.loadtxt(flPath)
@@ -1349,16 +1394,23 @@ class FOWT():
 
 
 
-    def writeQTF(self, qtfIn, outPath):
+    def writeQTF(self, qtfIn, outPath, w=None):
+        if w is None:
+            w1 = self.w1_2nd
+            w2 = self.w2_2nd
+        else:
+            w1 = w
+            w2 = w
+
         with open(outPath, "w") as f:
             ULEN = 1
             for ih in range(len(self.heads_2nd)):
                 for iDoF in range(self.nDOF):
                     qtf = qtfIn[:,:,ih,iDoF]
-                    for i1 in range(len(self.w1_2nd)):
-                        for i2 in range(i1, len(self.w2_2nd)):
+                    for i1 in range(len(w1)):
+                        for i2 in range(i1, len(w2)):
                             F = qtf[i1,i2]/(self.rho_water*self.g*ULEN)
-                            f.write(f"{2*np.pi/self.w1_2nd[i1]: 8.4e} {2*np.pi/self.w1_2nd[i2]: 8.4e} {self.heads_2nd[ih]: 8.4e} {self.heads_2nd[ih]: 8.4e} {iDoF+1} {np.abs(F): 8.4e} {np.angle(F): 8.4e} {F.real: 8.4e} {F.imag: 8.4e}\n")
+                            f.write(f"{2*np.pi/w1[i1]: 8.4e} {2*np.pi/w2[i2]: 8.4e} {self.heads_2nd[ih]: 8.4e} {self.heads_2nd[ih]: 8.4e} {iDoF+1} {np.abs(F): 8.4e} {np.angle(F): 8.4e} {F.real: 8.4e} {F.imag: 8.4e}\n")
                         
 
     # Compute force due to 2nd order hydrodynamic loads
@@ -1408,13 +1460,18 @@ class FOWT():
 
                 # Interpolate the force spectrum to the same resolution as the original wave spectrum            
                 Sf_interp[idof, :] = np.interp(self.w - self.w[0], mu, Sf[idof,:], left=0, right=0)
+                f[idof, :] = 2*np.sqrt(Sf_interp[idof, :]*self.dw)
                 
         # Otherwise, interpolate the QTF first and then compute the force amplitude directly
         else:
-            f = np.zeros([self.nDOF, self.nw]) 
+            f = np.zeros([self.nDOF, self.nw])
+            qtf4print = np.zeros([self.nw, self.nw, 1, self.nDOF], dtype=complex)
             for idof in range(0,self.nDOF):
                 # TODO: Need to interpolate real and imaginary part separately
-                qtf_interp = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof], bounds_error=False, fill_value=(0))(self.w, self.w)                     
+                qtf_interp_Re = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof].real, bounds_error=False, fill_value=(0))(self.w, self.w)
+                qtf_interp_Im = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof].imag, bounds_error=False, fill_value=(0))(self.w, self.w)
+                qtf_interp = qtf_interp_Re + 1j*qtf_interp_Im
+                # qtf4print[:,:,0,idof] = qtf_interp
                 for imu in range(1, self.nw): # Loop the difference frequencies
                     Saux = np.zeros(self.nw)
                     Saux[0:self.nw-imu] = S0[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
@@ -1425,6 +1482,14 @@ class FOWT():
 
                 # Mean drift is easier, as you have just the product of the same wave
                 f_mean[idof] = 2*np.sum(S0*np.diag(np.squeeze(qtf_interp.real), 0)) * self.dw
+
+
+        # if self.potSecOrder == 1:
+        #     identifier = "-slenderBody"
+        # else:
+        #     identifier = "-WAMIT"
+        # self.writeQTF(qtf4print, "./examples/qtf-interp" + identifier + ".12d", w=self.w)
+
 
         # Displace f by one frequency so that it aligns with the frequency vector
         f[:, 0:-1] = f[:, 1:]

@@ -913,7 +913,7 @@ class Model():
         metrics = self.results['case_metrics']
         nCases = len(metrics['surge_avg'])
         
-        chooseMetrics = ['wave_PSD', 'surge_PSD', 'heave_PSD', 'pitch_PSD', 'AxRNA_PSD', 'Mbase_PSD']
+        chooseMetrics = ['wave_PSD', 'surge_PSD', 'sway_PSD', 'heave_PSD', 'roll_PSD', 'pitch_PSD', 'yaw_PSD', 'AxRNA_PSD', 'Mbase_PSD']
         metricUnit    = ['m^2/Hz', 'm^2/Hz', 'm^2/Hz', 'deg^2/Hz', '(m/s^2)^2/Hz', '(Nm)^2/Hz']
         for iCase in range(nCases):
             with open(f'{outPath}_Case{iCase}.txt', 'w') as file:

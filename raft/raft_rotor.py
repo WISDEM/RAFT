@@ -50,7 +50,7 @@ class Rotor:
         self.headings   = getFromDict(turbine, 'headings', shape=-1, default=[90,210,330])  # [deg]
         self.nBlades    = len(self.headings)
 
-        self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]       # [-]
+        self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]  # unit vector of rotor axis, facing downflow [-]
 
         self.Zhub       = getFromDict(turbine, 'hHub', shape=turbine['nrotors'])[ir]            # [m]
         self.Rhub       = getFromDict(turbine, 'Rhub', shape=turbine['nrotors'])[ir]            # [m]
@@ -58,6 +58,8 @@ class Rotor:
         self.shaft_tilt = getFromDict(turbine, 'shaft_tilt', shape=turbine['nrotors'])[ir]      # [deg]        
         self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]        # [m]
         self.aeroServoMod = getFromDict(turbine, 'aeroServoMod', shape=turbine['nrotors'], default=1)[ir]  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
+
+        self.rHub = np.array([self.coords[0], self.coords[1], self.Zhub])  # save the rotor's hub coordinates in the platform reference frame [m]
 
         # support if blade and wt_ops are each a single dictionary or a list of dictionaries for each rotor
         # note: this would only be done on the first turbine  >>> we may want to move this stuff up a level, outside of each Rotor object
@@ -299,7 +301,6 @@ class Rotor:
         To be used for added mass and buoyancy calculations of underwater turbines'''
         
         self.bladeMemberList = []
-        rHub = np.array([self.coords[0], self.coords[1], self.Zhub])    # rHub = position of hub; Rhub = radius of hub
         blade_length = self.R_rot-self.Rhub
         blade_r = np.array(self.af_position)*blade_length
 
@@ -394,8 +395,6 @@ class Rotor:
         ''' Returns the node positions of blade members as it is rotated by an azimuth angle about the rotor's axis.
         rOG is a matrix of n number of rows and 3 columns, where each row is a position vector that needs rotating'''
 
-        rHub = np.array([self.coords[0], self.coords[1], self.Zhub])     # save the rotor hub center point for later
-
         # create rotation matrix based on the rotor's axis (default axis=[1,0,0])
         c = np.cos(np.deg2rad(azimuth))
         s = np.sin(np.deg2rad(azimuth))
@@ -409,7 +408,7 @@ class Rotor:
         r_new = np.zeros_like(r_OG)
         for i in range(len(r_OG)):
             r_from_Zhub = np.matmul(R, r_OG[i,:])   # wrt to the hub center
-            r_new[i,:] = r_from_Zhub + rHub         # wrt to the global coordinates
+            r_new[i,:] = r_from_Zhub + self.rHub    # wrt to the global coordinates
 
         return r_new
 
@@ -498,6 +497,7 @@ class Rotor:
         self.Omega_case     = Omega_rpm
         self.aero_torque    = loads["Q"][0]
         self.aero_power     = loads["P"][0]
+        self.aero_thrust    = loads["T"][0]
         self.pitch_case     = pitch_deg
 
         outputs = {}
@@ -512,7 +512,7 @@ class Rotor:
         outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
 
 
-        print(f"Wind speed: {Uhub} m/s, Aerodynamic power coefficient: {loads['CP'][0]:4.3f}")
+        print(f"Wind speed: {Uhub:.2f} m/s, Omega: {Omega_rpm:.2f} rpm, Cp: {loads['CP'][0]:4.3f}, T: {loads['T'][0]/1e3:.0f} kN")
         
         J={} # Jacobian/derivatives
 

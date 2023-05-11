@@ -599,11 +599,11 @@ def JONSWAP(ws, Hs, Tp, Gamma=1.0):
 def printMat(mat):
     '''Print a matrix'''
     for i in range(mat.shape[0]):
-        print( "\t".join(["{:+8.3e}"]*mat.shape[1]).format( *mat[i,:] ))
+        print( "  ".join(["{:+10.3e}"]*mat.shape[1]).format( *mat[i,:] ))
 
 def printVec(vec):
     '''Print a vector'''
-    print( "\t".join(["{:+8.3e}"]*len(vec)).format( *vec ))
+    print( "  ".join(["{:+10.3e}"]*len(vec)).format( *vec ))
 
 
 def getFromDict(dict, key, shape=0, dtype=float, default=None, index=None):

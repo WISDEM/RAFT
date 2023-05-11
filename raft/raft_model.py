@@ -141,19 +141,27 @@ class Model():
             
             # This is the original approach. It assumes a single turbine, platform, and mooring section are given.
             # Note: its mooring system will be put in the FOWT now rather than existing at the model/array level.
-        
+            design['platform'] = design['platform'][0]  # only use the first platform in the list
+            design['turbine']  = design['turbine'][0]   # only use the first turbine in the list
+            design['mooring']  = design['mooring'][0]   # only use the first mooring in the list
+
             # # process mooring information 
-            # self.ms = mp.System()
-            # self.ms.parseYAML(design['mooring'])
-            self.ms = None
+            self.ms = mp.System()
+            self.ms.parseYAML(design['mooring'])
+            self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
+            try:
+                self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
+            except Exception as e:
+                raise RuntimeError('An error occured when initializing the mooring system: '+e.message)
+
 
             # set up the FOWT here
             #self.fowtList.append(fowt.FOWT(design, self.w, self.ms.bodyList[0], depth=self.depth))
-            self.fowtList.append(fowt.FOWT(design, self.w, None, depth=self.depth))
+            self.fowtList.append(fowt.FOWT(design, self.w, self.ms.bodyList[0], depth=self.depth))
             self.coords.append([0.0,0.0])
             self.nDOF += 6
 
-            #self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
+            self.nFOWT = 1
         
         
         if self.ms:
@@ -236,7 +244,7 @@ class Model():
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
             
         # calculate platform offsets and mooring system equilibrium state
-        self.calcMooringAndOffsets()
+        # self.calcMooringAndOffsets()
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
         
         # TODO: add printing of summary info here - mass, stiffnesses, etc
@@ -433,7 +441,8 @@ class Model():
             #nLines = int(len(self.T_moor)/2)
             T_moor_amps = np.zeros([nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
             
-            if self.ms:
+            # if self.ms:
+            if False:
                 C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
                 T_moor = self.ms.getTensions()  # get line end mean tensions
                 
@@ -745,8 +754,8 @@ class Model():
                 RMSeForce  = np.linalg.norm([Y[6*i  :6*i+3] for i in range(self.nFOWT)])
                 RMSeMoment = np.linalg.norm([Y[6*i+3:6*i+6] for i in range(self.nFOWT)])
                 print(f"Iteration RMS force adn moment errors: {RMSeForce:8.2e} {RMSeMoment:8.2e}")
-                if RMSeForce < 100 and RMSeMoment < 100:
-                    breakpoint()
+                # if RMSeForce < 100 and RMSeMoment < 100:
+                    # breakpoint()
             
             return Y, oths, False
         
@@ -1121,7 +1130,14 @@ class Model():
                 # calculate linear and nonlinear wave excitation for this FOWT and case (consider phasing due to position in array)
                 fowt.calcHydroExcitation(case, memberList=fowt.memberList)
                 F_linearized = fowt.calcDragExcitation(ih)
-                F_wave[i*6:i*6+6] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized #+ fowt.Fhydro_2nd[ih,:,:]
+
+                # We can include second-order hydrodynamic forces here if they are computed by an external QTF file
+                Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
+                fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF]) # Keep that as a member because it will be used in the functions that compute mean displacements
+                if fowt.potSecOrder==2:
+                    fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+
+                F_wave[i*6:i*6+6] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + Fhydro_2nd[ih, :, :]
         
             # compute system response
             for iw in range(self.nw):
@@ -1132,20 +1148,21 @@ class Model():
             tic = time.perf_counter()
 
             # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces, which were computed above
-            if fowt.potSecOrder == 1:
-                Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)
-                for iDoF in range(Xi_unitWave.shape[0]):
-                    # get indices where fowt.zeta[ih,:] is not zero
-                    idx = np.where(np.abs(fowt.zeta[ih,:])>1e-6) # Is there an eps value to use instead of that?
-                    Xi_unitWave[iDoF, idx] = Xi[ih,iDoF, idx]/fowt.zeta[ih,idx]
+            # For now, I am assuming that 2nd order loads will be computed in the same way for all FOWTs
+            if self.fowtList[0].potSecOrder == 1:
+                for i, fowt in enumerate(self.fowtList):
+                    Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)
+                    for iDoF in range(Xi_unitWave.shape[0]):
+                        # get indices where fowt.zeta[ih,:] is not zero
+                        idx = np.where(np.abs(fowt.zeta[ih,:])>1e-6) # Is there an eps value to use instead of that?
+                        Xi_unitWave[iDoF, idx] = self.Xi[ih,i*6+iDoF, idx]/fowt.zeta[ih,idx]
+                    fowt.calcQTF_slenderBody(ih, Xi_unitWave)      
+                    fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
 
-                fowt.calcQTF_slenderBody(ih, Xi_unitWave)      
-                fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
-
-                # Recompute the wave excitation forces and consequent motions to include second-order hydrodynamic forces
-                F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + Fhydro_2nd[ih,:,:]
+                    F_wave[i*6:i*6+6] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + Fhydro_2nd[ih, :, :]
+                # Recompute system response
                 for iw in range(self.nw):
-                    Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+                    self.Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
             toc = time.perf_counter()
             print(f"\n Time to compute QTFs: {toc - tic:0.4f} seconds")
 
@@ -1310,7 +1327,7 @@ class Model():
         
         fig, ax = plt.subplots(6, 1, sharex=True)
         
-        metrics = self.results['case_metrics']
+        metrics = self.results['case_metrics'][0]
         nCases = len(metrics['surge_avg'])
         
         for iCase in range(nCases):
@@ -1345,7 +1362,7 @@ class Model():
     def saveResponses(self, outPath):
         '''Save the power spectral densities of the available response channels for each case to an output file.'''
         
-        metrics = self.results['case_metrics']
+        metrics = self.results['case_metrics'][0]
         nCases = len(metrics['surge_avg'])
         
         chooseMetrics = ['wave_PSD', 'surge_PSD', 'sway_PSD', 'heave_PSD', 'roll_PSD', 'pitch_PSD', 'yaw_PSD', 'AxRNA_PSD', 'Mbase_PSD']

@@ -133,36 +133,7 @@ def getWaveKin(zeta0, beta, w, k, h, r, nw, rho=1025.0, g=9.81):
 
     return u, ud, pDyn
 
-# Convective acceleration
-def getWaveKin_convecAcc(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81):
-    acc = np.zeros(3, dtype=complex)
-
-    b1 = deg2rad(beta1)
-    cosB1 = np.cos(b1)
-    sinB1 = np.sin(b1)
-
-    b2 = deg2rad(beta2)
-    cosB2 = np.cos(b2)
-    sinB2 = np.sin(b2)
-
-    z = r[2]
-
-    if (z <= 0 and k1 > 0 and k2 > 0):
-        k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0])
-        aux = 0.25*(k1*k2*g*g/w1/w2) / (np.cosh(k1*h)*np.cosh(k2*h)) 
-
-        acc[0:2]  = np.sin(np.dot(k1_k2, r)) + 1j * np.cos(np.dot(k1_k2, r))
-        acc[0:2] *= aux * (np.cosh(k1*(z+h))*np.cosh(k2*(z+h)) * np.cos(b1 - b2) + np.sinh(k1*(z+h))*np.sinh(k2*(z+h)))
-        acc[0]   *= -k1_k2[0]
-        acc[1]   *= -k1_k2[1]
-
-        acc[2]  = np.sin(np.dot(k1_k2, r)) - 1j * np.sin(np.dot(k1_k2, r))
-        acc[2] *= aux * (np.sinh(k1*(z+h))*np.sinh(k2*(z+h)) * np.cos(b1 - b2) + np.sinh(k1*(z+h))*np.sinh(k2*(z+h)))
-        acc[2] *= -(k1-k2)
-
-    return acc
-    
-# Matrix of gradient of wave velocity, which is needed to compute the axial-divergence acceleration
+# Matrix of gradient of wave velocity
 def getWaveKin_grad_u1(w, k, beta, h, r):
     grad = np.zeros([3, 3], dtype="complex")
     x,y,z = r[0], r[1], r[2]
@@ -183,23 +154,28 @@ def getWaveKin_grad_u1(w, k, beta, h, r):
             khz_xy = np.cosh(k * (z + h)) / np.sinh(k*h)
             khz_z = np.sinh(k * (z + h)) / np.sinh(k*h)
 
+
+            # u[0,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.cos(beta)
+            # u[1,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.sin(beta)
+            # u[2,i] = 1j*w[i]* zeta[i]*SINHNumOvrSIHNDen
+
         # Along x direction
-        aux = w * k * cosBeta * (np.sin(k*cosBeta*x + k * sinBeta*y) + 1j* np.cos(k*cosBeta*x + k * sinBeta*y))
-        grad[0,0] = -aux * khz_xy * cosBeta # du/dx
-        grad[0,1] = -aux * khz_xy * sinBeta # du/dy
-        grad[0,2] = -aux * 1j * khz_z       # du/dz
+        aux = w * cosBeta * np.exp( -1j*(k*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))
+        grad[0,0] = -1j*aux * khz_xy * k*cosBeta # du/dx
+        grad[0,1] = -1j*aux * khz_xy * k*sinBeta # du/dy
+        grad[0,2] = aux * k * khz_z              # du/dz
 
         # Along y direction
-        aux = w * k * sinBeta * (np.sin(k*cosBeta*x + k * sinBeta*y) + 1j* np.cos(k*cosBeta*x + k * sinBeta*y))
-        grad[1,0] = grad[0,1]               # dv/dx = du/dy
-        grad[1,1] = -aux * khz_xy * sinBeta # dv/dy
-        grad[1,2] = -aux * 1j * khz_z       # dv/dz
+        aux = w * sinBeta * np.exp( -1j*(k*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))
+        grad[1,0] = grad[0,1]                    # dv/dx = du/dy
+        grad[1,1] = -1j*aux * khz_xy * k*sinBeta # dv/dy
+        grad[1,2] = aux * k * khz_z              # dv/dz
 
         # Along z direction
-        aux = w * k * (np.cos(k*cosBeta*x + k * sinBeta*y) - 1j * np.sin(k*cosBeta*x + k * sinBeta*y))
+        aux = 1j * w * np.exp( -1j*(k*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))
         grad[2,0] = grad[0,2]         # dw/dx = du/dz
         grad[2,1] = grad[0,1]         # dw/dy = dv/dz
-        grad[2,2] = aux * 1j * khz_xy # dw/dz
+        grad[2,2] = aux * k * khz_xy  # dw/dz
 
     return grad
 
@@ -207,27 +183,57 @@ def getWaveKin_grad_u1(w, k, beta, h, r):
 def getWaveKin_grad_dudt(w, k, beta, h, r):
     return 1j*w*getWaveKin_grad_u1(w, k, beta, h, r)
 
+# Gradient of first order pressure
+def getWaveKin_grad_pres1st(k, beta, h, r, rho=1025, g=9.81):
+    grad = np.zeros(3, dtype="complex")
+    z = r[2]
+
+    # More friendly notation
+    cosBeta = np.cos(deg2rad(beta))
+    sinBeta = np.sin(deg2rad(beta))
+    khz_xy = 0
+    khz_z = 0
+
+    if z <= 0 and k > 0:
+        # When k*h is too high, which happens for deep water/short waves, sinh(k*h) and cosh(k*h) become too large and are considered "inf".
+        # Hence, we chose a threshold of 10, above which the deep water approximation is employed.
+        if k*h >= 10:
+            khz_xy = np.exp(k*z)
+            khz_z = khz_xy
+        else:
+            khz_xy = np.cosh(k * (z + h)) / np.cosh(k*h)
+            khz_z = np.sinh(k * (z + h)) / np.cosh(k*h)
+
+        grad[0] = rho*g*khz_xy*np.exp(-1j*(k*(cosBeta*r[0] + sinBeta*r[1])))*(-1j*k*cosBeta)
+        grad[1] = rho*g*khz_xy*np.exp(-1j*(k*(cosBeta*r[0] + sinBeta*r[1])))*(-1j*k*sinBeta)
+        grad[2] = rho*g*khz_z *np.exp(-1j*(k*(cosBeta*r[0] + sinBeta*r[1])))*k
+    return grad
+
 # Axial-divergence acceleration
 def getWaveKin_axdivAcc(w1, w2, k1, k2, beta1, beta2, h, r, vel1, vel2, q, g=9.81):
     acc = np.zeros(3, dtype=complex)
 
-    vel1 -= np.dot(vel1, q) * q
-    vel2 -= np.dot(vel2, q) * q
-
     aux = np.matmul(getWaveKin_grad_u1(w1, k1, beta1, h, r), q)
     dwdz1 = np.dot(np.squeeze(aux), np.squeeze(q))
     u1, _, _ = getWaveKin(np.ones([1,1]), beta1, w1*np.ones([1,1]), k1*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
+    u1 = np.squeeze(u1)
    
     aux = np.matmul(getWaveKin_grad_u1(w2, k2, beta2, h, r), q)
     dwdz2 = np.dot(np.squeeze(aux), np.squeeze(q))
     u2, _, _ = getWaveKin(np.ones([1,1]), beta2, w2*np.ones([1,1]), k2*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
+    u2 = np.squeeze(u2)
 
-    acc = 0.25*(dwdz1*np.conj(np.squeeze(u2) - vel2)+np.conj(dwdz2)*(np.squeeze(u1) - vel1))
+    vel1 -= np.dot(vel1, q) * q
+    vel2 -= np.dot(vel2, q) * q
+    u1   -= np.dot(u1, q) * q
+    u2   -= np.dot(u2, q) * q
+
+    acc = 0.25*(dwdz1*np.conj(u2 - vel2)+np.conj(dwdz2)*(u1 - vel1))
 
     # There can't be any axial-divergence acceleration in the axial direction
-    acc -= np.dot(np.squeeze(acc), q) * q
+    acc -= np.dot(acc, q) * q
 
-    return np.squeeze(acc)
+    return acc
 
 # Acceleration and pressure due to second-order potential
 def getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81, rho=1025.0):
@@ -250,21 +256,23 @@ def getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81, rho=1025.0)
     if (z <= 0 and k1 > 0 and k2 > 0):
         k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0])
         norm_k1_k2 = np.linalg.norm(k1_k2)
-    
-        aux = ((w2 - w1) / (w1 * w2)) * k1 * k2 * (np.cos(b1 - b2) + np.tanh(k1*h) * np.tanh(k2*h)) - 0.5 * (k1*k1 / (w1 * np.cosh(k1*h)*np.cosh(k1*h)) - k2 * k2 / (w2 * np.cosh(k2*h)*np.cosh(k2*h)))
-        aux = aux / (g * norm_k1_k2 * np.tanh(norm_k1_k2 * h) - (w1 - w2)*(w1 - w2))
 
-        khz_xy, khz_z = (np.cosh(norm_k1_k2 * (z + h)) , np.sinh(norm_k1_k2 * (z + h))) / np.cosh(norm_k1_k2 * h)
+        gamma_12 = (-1j*g/(2*w1)) * ( (k1**2)*(1-np.tanh(k1*h)**2) - 2*k1*k2*(1+np.tanh(k1*h)*np.tanh(k2*h)) ) / ((w1-w2)**2/g - norm_k1_k2*np.tanh(norm_k1_k2*h))
+        gamma_21 = (-1j*g/(2*w2)) * ( (k2**2)*(1-np.tanh(k2*h)**2) - 2*k2*k1*(1+np.tanh(k2*h)*np.tanh(k1*h)) ) / ((w2-w1)**2/g - norm_k1_k2*np.tanh(norm_k1_k2*h))
+        aux   = 0.5*(gamma_21+np.conj(gamma_12))
 
-        acc[0:2] = np.sin(np.dot(k1_k2, r)) + 1j * np.cos(np.dot(k1_k2, r)) * g*g * aux * khz_xy
-        acc[0] *= 0.5 * (w1 - w2) * (k1 * cosB1 - k2 * cosB2)
-        acc[1] *= 0.5 * (w1 - w2) * (k1 * sinB1 - k2 * sinB2)
+        khz_xy = np.cosh(norm_k1_k2 * (z + h)) / np.cosh(norm_k1_k2 * h)
+        khz_z  = np.sinh(norm_k1_k2 * (z + h)) / np.cosh(norm_k1_k2 * h)
+        
+        acc[0:2] = aux * khz_xy * np.exp(-1j*np.dot(k1_k2, r))
+        acc[0]  *= (w1 - w2) * (k1 * cosB1 - k2 * cosB2)
+        acc[1]  *= (w1 - w2) * (k1 * sinB1 - k2 * sinB2)
 
-        acc[2] = np.cos(np.dot(k1_k2, r)) - 1j * np.sin(np.dot(k1_k2, r)) * g*g * aux * khz_z
-        acc[2] *= -0.5 * (w1 - w2) * norm_k1_k2
+        acc[2] = aux * khz_z * np.exp(-1j*np.dot(k1_k2, r))
+        acc[2] *= 1j * (w1 - w2) * norm_k1_k2
 
-        p = 0.5 * np.cos(np.dot(k1_k2, r)) - 1j * np.sin(np.dot(k1_k2, r)) * g*g * aux * khz_xy
-        p *= 0.5 * rho * (w1 - w2)
+        p = aux * khz_xy * np.exp(-1j*np.dot(k1_k2, r))
+        p *= -1j * rho * (w1 - w2)
     return acc, p
 
 # calculate wave number based on wave frequency in rad/s and depth

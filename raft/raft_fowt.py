@@ -187,7 +187,10 @@ class FOWT():
                 raise Exception('If potSecOrder==1, then both min_freq2nd and max_freq2nd must be specified in the platform input.')
             min_freq2nd = design['platform']['min_freq2nd']
             max_freq2nd = design['platform']['max_freq2nd']
-            self.w1_2nd = np.arange(min_freq2nd, max_freq2nd+0.5*min_freq2nd, min_freq2nd)*2*np.pi
+            df_freq2nd = min_freq2nd
+            if ('df_freq2nd' in design['platform']):
+                df_freq2nd = design['platform']['df_freq2nd']
+            self.w1_2nd = np.arange(min_freq2nd, max_freq2nd+0.5*min_freq2nd, df_freq2nd)*2*np.pi
             self.w2_2nd = self.w1_2nd.copy()
 
             self.k1_2nd = np.zeros(len(self.w1_2nd))
@@ -199,7 +202,13 @@ class FOWT():
             if not 'qtfPath' in design['platform']:
                 raise Exception('If potSecOrder==2, then qtfPath must be specified in the platform input.')
             self.qtfPath = design['platform']['qtfPath']
-            self.readQTF(self.qtfPath)            
+            self.readQTF(self.qtfPath)
+
+        # Set output folder for QTFs
+        self.outFolderQTF = None
+        if 'outFolderQTF' in design['platform']:
+            self.outFolderQTF = design['platform']['outFolderQTF']
+              
 
     def calcStatics(self):
         '''Fills in the static quantities of the FOWT and its matrices.
@@ -1169,32 +1178,39 @@ class FOWT():
 
         return D_hydro
 
-    def calcQTF_slenderBody(self, ih, Xi0):
+    def calcQTF_slenderBody(self, ih, Xi0=None, beta=None):
         '''This computes the second-order strip-theory-hydrodynamics terms'''
         ''' Only long crested seas are currently considered here, but multidirectional
             wave pairs can be considered in the functions that compute the accelerations'''
-        
+        if Xi0 is None:
+            Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)
+
         rho = self.rho_water
         g   = self.g
-        beta = self.beta[ih]
-        self.heads_2nd = [beta] # Need that to print the QT
+        if beta is None:
+            beta = self.beta[ih]
+        self.heads_2nd = [beta] # Need that to print the QTF
 
-        # Downsample Xi0, which is input in the same frequency as the first-order loads,
+        # Resample Xi0, which is input in the same frequency as the first-order loads,
         # to the frequencies of the 2nd order hydrodynamic forces
-        # Same thing for the first-order loads
         Xi = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
-        F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
-        A_BEM = np.zeros([self.nDOF, self.nDOF, len(self.w1_2nd)])
         for iDoF in range(self.nDOF):
-            Xi[iDoF,:] = np.interp(self.w1_2nd, self.w, Xi0[iDoF,:], left=0, right=0) 
-            F1st[iDoF,:] = np.interp(self.w1_2nd, self.w, self.F_BEM[ih, iDoF,:]+self.F_hydro_iner[ih, iDoF,:], left=0, right=0)
-            A_BEM = interp1d(self.w, self.A_BEM, axis=2, fill_value=0, bounds_error=False, assume_sorted=True)(self.w1_2nd)
-    
-        # Need to add hydrostatic force and added mass to F1st
-        for iw in range(len(self.w1_2nd)): # Need to add added mass force to F1st
-            F1st[:,iw] += -np.matmul(self.C_hydro, Xi[:,iw])
-            F1st[:,iw] += -np.matmul(A_BEM[:,:,iw] + self.A_hydro_morison[:,:], -Xi[:,iw] * self.w1_2nd[iw] * self.w1_2nd[iw]) # Need to add added mass to F1st
+            Xi[iDoF,:] = np.interp(self.w1_2nd, self.w, Xi0[iDoF,:], left=0, right=0)
 
+        # First-order forces, which are used to compute Pinkster's IV term]
+        # F1st = np.matmul(self.M_struc, -self.w1_2nd**2 * Xi)
+        F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
+        F1st[0:3,:] = self.M_struc[0,0] * (-self.w1_2nd**2 * Xi[0:3,:]) # F_1stOrder = Mass * Acceleration_1stOrder
+        F1st[3:6,:] = np.matmul(self.M_struc[3:,3:], (-self.w1_2nd**2 * Xi[3:,:]))
+        
+        # Print Xi in the same format as a WAMIT .4 file for comparison
+        if self.outFolderQTF is not None:
+            with open(os.path.join(self.outFolderQTF, 'raos-slender_body.4'), "w") as f:
+                ULEN = 1
+                for iDoF in range(self.nDOF):
+                    for w1, x in zip(self.w1_2nd, Xi[iDoF,:]):
+                        f.write(f"{2*np.pi/w1: 8.4e} {beta: 8.4e} {iDoF+1} {np.abs(x): 8.4e} {np.angle(x): 8.4e} {x.real: 8.4e} {x.imag: 8.4e}\n")
+                        
         # Variables to store different components for post-processing
         qtf_2ndPot = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
         qtf_axdv   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
@@ -1203,63 +1219,70 @@ class FOWT():
         qtf_nabla  = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
         qtf_rotN   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
         qtf_rslb   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
-        
-        # loop through each pair of frequency        
-        self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)    # Need this fourth dimension for conformity with the case where the QTFs are read from a file
+          
+        # Initialize qtf that will actually be used by the solver
+        self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)  # Need this fourth dimension for conformity with the case where the QTFs are read from a file
         print(f"Computing QTF for heading {beta:.2f}")
 
         # Start with the force due to rotation of first-order wave forces
         # This component depends on the forces on the whole body, hence it is outside of the member loop
         for i1 in range(len(self.w1_2nd)):
-            for i2 in range(len(self.w2_2nd)):
+            for i2 in range(i1, len(self.w2_2nd)):
+                if self.w2_2nd[i2] < self.w1_2nd[i1]:
+                        continue
                 F_rotN = np.zeros(6, dtype='complex')    
                 F_rotN[0:3] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
-                F_rotN[3: ] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[3:,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[3:,i1]))
-                self.qtf[i1,i2,0,:] += F_rotN
+                F_rotN[3: ] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[3: ,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[3: ,i1]))
+                self.qtf[i1,i2,0,:] = F_rotN
                 qtf_rotN[i1,i2,0,:] = F_rotN
 
-        # loop through each member
+        # Loop for each member to pre-compute quantities that are used in the QTF computation
         for i,mem in enumerate(self.memberList):
-            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections              
-        
-            # Quantities at each node
-            nodeV = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)
-            dr    = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)
-            grad_dudt = np.zeros([3, 3, len(self.w1_2nd), mem.ns], dtype=complex)
-            nodeV_axial_rel = np.zeros([len(self.w1_2nd), mem.ns], dtype=complex) # Node relative axial velocity
+            if mem.r[-1,2] > 0 and mem.r[0,2] > 0:
+                continue
 
-            w_x = np.dot(Xi[3:, :].T, mem.p1) # Rotation along local x axis
-            w_y = np.dot(Xi[3:, :].T, mem.p2) # Rotation along local y axis
+            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections              
+
+            # Quantities at each node
+            nodeV           = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)    # Node velocity
+            dr              = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)    # Node displacement
+            u               = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)    # Incident fluid velocity at node
+            grad_u          = np.zeros([3, 3, len(self.w1_2nd), mem.ns], dtype=complex) # Gradient matrix of first-order velocity
+            grad_dudt       = np.zeros([3, 3, len(self.w1_2nd), mem.ns], dtype=complex) # Gradient matrix of first-order acceleration
+            nodeV_axial_rel = np.zeros([len(self.w1_2nd), mem.ns], dtype=complex)       # Node relative axial velocity
+            grad_pres1st    = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)    # Gradient of first order pressure at each node
             for iNode, r in enumerate(mem.r):
                 dr[:,:, iNode], nodeV[:,:, iNode], _ = getVelocity(r, Xi, self.w1_2nd)
-                u_aux, _, _ = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r, len(self.w1_2nd), rho=rho, g=g)
+                u[:,:, iNode], _, _ = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r, len(self.w1_2nd), rho=rho, g=g)
 
                 for iw in range(len(self.w1_2nd)):
+                    grad_u[:, :, iw, iNode]    = getWaveKin_grad_u1(self.w1_2nd[iw], self.k1_2nd[iw], beta, self.depth, r)
                     grad_dudt[:, :, iw, iNode] = getWaveKin_grad_dudt(self.w1_2nd[iw], self.k1_2nd[iw], beta, self.depth, r)
-                    nodeV_axial_rel[iw, iNode] = np.dot(u_aux[:, iw]-nodeV[:,iw, iNode], mem.q)
+                    nodeV_axial_rel[iw, iNode] = np.dot(u[:, iw, iNode]-nodeV[:,iw, iNode], mem.q)
+                    grad_pres1st[:, iw, iNode] = getWaveKin_grad_pres1st(self.k1_2nd[iw], beta, self.depth, r, rho=rho, g=g)
                                                 
             # Quantities at intersection with water line            
-            eta = np.zeros([len(self.w1_2nd)], dtype=complex)
-            eta_r = np.zeros([len(self.w1_2nd)], dtype=complex)
-            ud_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex)
-            dr_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex)
-            a_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex)
+            eta   = np.zeros([len(self.w1_2nd)], dtype=complex)    # Incoming wave elevation
+            eta_r = np.zeros([len(self.w1_2nd)], dtype=complex)    # Relative incoming wave elevation (i.e. wave elevation - vertical body motion)
+            ud_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex) # Incoming wave acceleration
+            dr_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex) # Body displacement at intersection with water line
+            a_wl  = np.zeros([3, len(self.w1_2nd)], dtype=complex) # Body acceleration at intersection with water line
             if mem.r[-1,2] * mem.r[0,2] < 0:
                 r_int = mem.r[0,:] + (mem.r[-1,:] - mem.r[0,:]) * (0. - mem.r[0,2]) / (mem.r[-1,2] - mem.r[0,2])
-                _, ud_wl, eta = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r_int, len(self.w1_2nd), rho=rho, g=g)
-                eta = eta/(rho*g) # getWaveKin actually returns dynamic pressure, so divide by rho*g to get wave elevation
+                _, ud_wl, eta  = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r_int, len(self.w1_2nd), rho=1, g=1) # getWaveKin actually returns dynamic pressure, so consider unitary rho and g to get wave elevation
                 dr_wl, _, a_wl = getVelocity(r_int, Xi, self.w1_2nd)
-
+            
+            # Vector with the acceleration of gravity projected along the displaced local x and y axes
             g_e1 = np.zeros([3, len(self.w1_2nd)], dtype=complex)
             for iw in range(len(self.w1_2nd)):
-                g_e1[:, iw] = g*np.cross(Xi[3:, iw], mem.p1)[2] * mem.p1 -g*np.cross(Xi[3:, iw], mem.p2)[2] * mem.p2
+                g_e1[:, iw] = -g * (np.cross(Xi[3:, iw], mem.p1)[2] * mem.p1 + np.cross(Xi[3:, iw], mem.p2)[2] * mem.p2)
 
             # Relative wave elevation
             eta_r = eta-dr_wl[2,:]
 
             # Loop through each pair of frequency
             for i1, (w1, k1) in enumerate(zip(self.w1_2nd, self.k1_2nd)):
-                print(f" Element {i} of {len(self.memberList)} - Line {i1} of {len(self.w1_2nd)}", end='\r')            
+                print(f" Element {i+1} of {len(self.memberList)} - Line {i1+1:02d} of {len(self.w1_2nd):02d}", end='\r')            
                 for i2, (w2, k2) in enumerate(zip(self.w2_2nd, self.k2_2nd)):
                     F_2ndPot = np.zeros(6, dtype='complex')
                     F_conv   = np.zeros(6, dtype='complex')
@@ -1274,84 +1297,134 @@ class FOWT():
 
                     # loop through each node of the member
                     for il in range(mem.ns):
-                        f_2ndPot = np.zeros(3, dtype='complex')
-                        f_conv   = np.zeros(3, dtype='complex')
-                        f_axdv   = np.zeros(3, dtype='complex')
-                        f_nabla  = np.zeros(3, dtype='complex')
-                        f_rslb   = np.zeros(3, dtype='complex')              
-
-
                         # only process hydrodynamics if this node is submerged
-                        if mem.r[il,2] < 0:
+                        if mem.r[il,2] >= 0:
+                            continue
 
-                            # interpolate coefficients for the current strip
-                            Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
-                            Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
-                            Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
+                        # interpolate coefficients for the current strip
+                        Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
+                        Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
+                        Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
 
 
-                            # ----- compute side effects ---------------------------------------------------------
-                            if circ:
-                                v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
-                            else:
-                                v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
-                                
-                            if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
-                                v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
-                                                        
-                            f_2ndPot, p_2nd = getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g, rho=rho)
-                            f_2ndPot = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_2ndPot)
-
-                            f_conv   = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, getWaveKin_convecAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g))
-                            f_axdv   = rho*v_i * np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, getWaveKin_axdivAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], nodeV[:, i1, il], nodeV[:, i2, il], mem.q, g=g))
-
-                            f_nabla  = 0.25*np.matmul(np.squeeze(grad_dudt[:, :, i1, il]), np.squeeze(np.conj(dr[:, i2, il]))) + 0.25*np.matmul(np.squeeze(np.conj(grad_dudt[:, :, i2, il])), np.squeeze(dr[:, i1, il]))
-                            f_nabla  = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_nabla)
-
-                            f_rslb   = -0.25*2*((w_y[i1]*np.conj(nodeV_axial_rel[i2, il])) + (np.conj(w_y[i2])*nodeV_axial_rel[i1, il]))*mem.p1
-                            f_rslb   += 0.25*2*((w_x[i1]*np.conj(nodeV_axial_rel[i2, il])) + (np.conj(w_x[i2])*nodeV_axial_rel[i1, il]))*mem.p2
-                            f_rslb   = rho*v_i * np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, f_rslb)
-                                                      
-                            F_2ndPot += translateForce3to6DOF(f_2ndPot, mem.r[il,:])
-                            F_conv   += translateForce3to6DOF(f_conv, mem.r[il,:])                   
-                            F_axdv   += translateForce3to6DOF(f_axdv, mem.r[il,:])
-                            F_nabla  += translateForce3to6DOF(f_nabla, mem.r[il,:])
-                            F_rslb   += translateForce3to6DOF(f_rslb, mem.r[il,:])
+                        # ----- compute side effects ---------------------------------------------------------
+                        if circ:
+                            v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
+                        else:
+                            v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
                             
-                    # Force acting at the intersection of the member with the mean waterline
-                    if mem.r[-1,2] * mem.r[0,2] < 0:
-                        f_eta = 0.25*((ud_wl[:,i1]-a_wl[:,i1])*np.conj(eta_r[i2])+np.conj((ud_wl[:,i2])-a_wl[:,i2])*eta_r[i1])
-                        f_eta = np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_eta)
-                        f_eta *= rho*(v_i/mem.dls[1]) # divide by length of member to get the area. The length is the relative wave elevation
-                        f_eta += -0.25*rho*(v_i/mem.dls[1]) * (g_e1[:,i1]*np.conj(eta_r[i2])+np.conj(g_e1[:,i2])*eta_r[i1])
-                        F_eta = translateForce3to6DOF(f_eta, r_int)
+                        if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
+                            v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
+                                                    
+                        acc_2ndPot, p_2nd = getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g, rho=rho)
+                        f_2ndPot = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, acc_2ndPot)
 
-                    # Forces acting at the end of the member
-                    # 2nd order pressure
-                    # 2nd order axial acceleration
-                    # Convective acceleration
-                    # Gradient of first-order pressure times displacement
-                    # Gradient of first-order axial accelertion times displacement 
-
+                        conv_acc = 0.25 * ( np.matmul(grad_u[:, :, i1, il], np.conj(u[:, i2, il])) + np.matmul(np.conj(grad_u[:, :, i2, il]), u[:, i1, il]) )
+                        f_conv   = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, conv_acc)
+                        f_axdv   = rho*v_i * np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, getWaveKin_axdivAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], nodeV[:, i1, il], nodeV[:, i2, il], mem.q, g=g))
                         
-                    self.qtf[i1,i2,0,:] += F_2ndPot + F_conv + F_axdv + F_nabla + F_eta + F_rslb
-                
-                    qtf_2ndPot[i1,i2,0,:] += F_2ndPot
-                    qtf_axdv[i1,i2,0,:] += F_axdv
-                    qtf_conv[i1,i2,0,:] += F_conv
-                    qtf_eta[i1,i2,0,:] += F_eta
-                    qtf_nabla[i1,i2,0,:] += F_nabla
-                    qtf_rslb[i1,i2,0,:] += F_rslb
-                    
-        self.writeQTF(self.qtf, "./examples/qtf-slender_body-total.12d")
+                        acc_nabla = 0.25*np.matmul(np.squeeze(grad_dudt[:, :, i1, il]), np.squeeze(np.conj(dr[:, i2, il]))) + 0.25*np.matmul(np.squeeze(np.conj(grad_dudt[:, :, i2, il])), np.squeeze(dr[:, i1, il]))
+                        f_nabla  = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, acc_nabla)
 
-        self.writeQTF(qtf_2ndPot, "./examples/qtf-slender_body-pot2.12d")
-        self.writeQTF(qtf_axdv, "./examples/qtf-slender_body-axDv.12d")
-        self.writeQTF(qtf_conv, "./examples/qtf-slender_body-conv.12d")
-        self.writeQTF(qtf_eta, "./examples/qtf-slender_body-eta.12d")
-        self.writeQTF(qtf_nabla, "./examples/qtf-slender_body-nabla.12d")
-        self.writeQTF(qtf_rslb, "./examples/qtf-slender_body-rslb.12d")
-        self.writeQTF(qtf_rotN, "./examples/qtf-slender_body-rotN.12d")
+                        OMEGA1  = -getH(1j*w1*Xi[3:,i1]) # The alternator matrix is the opposite of what we need, that is why we subtract it
+                        OMEGA2  = -getH(1j*w2*Xi[3:,i2])
+                        f_rslb  = -0.25*2*np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(OMEGA1, np.conj(nodeV_axial_rel[i2, il]*mem.q)) + np.matmul(np.conj(OMEGA2), nodeV_axial_rel[i1, il]*mem.q))
+                        f_rslb *= rho*v_i                                                
+                        
+                        # # Rainey load that is only non zero for non-circular cylinders
+                        # u1_aux  = u[:,i1, il]-nodeV[:,i1, il]
+                        # u2_aux  = u[:,i2, il]-nodeV[:,i2, il]
+                        # Vmatrix1 = getWaveKin_grad_u1(w1, k1, beta, self.depth, mem.r[il,:]) + OMEGA1
+                        # Vmatrix2 = getWaveKin_grad_u1(w2, k2, beta, self.depth, mem.r[il,:]) + OMEGA2
+                        # aux      = 0.25*(np.matmul(Vmatrix1, np.conj(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u2_aux))) + np.matmul(np.conj(Vmatrix2), np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u1_aux)))
+                        # aux     -= np.matmul(mem.qMat, aux) # remove axial component                            
+                        # f_rslb  += rho*v_i * aux
+
+                        # # Similar to the one above, but note that the order in which the axial part is removed is different
+                        # u1_aux  -= np.matmul(mem.qMat, u1_aux) # remove axial component
+                        # u2_aux  -= np.matmul(mem.qMat, u2_aux)
+                        # aux      = 0.25*(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(Vmatrix1, np.conj(u2_aux))) + np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(np.conj(Vmatrix2), u1_aux)))
+                        # f_rslb  += - rho*v_i * aux
+
+                                                    
+                        # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
+                        # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+                        if circ:
+                            v_i = np.pi/12.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
+                            a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                        else:
+                            v_i = np.pi/12.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
+                            a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
+                        
+
+                        f_2ndPot += mem.a_i[il]*p_2nd*mem.q # 2nd order pressure
+                        f_2ndPot += rho*v_i*Ca_End*np.matmul(mem.qMat, acc_2ndPot) # 2nd order axial acceleration
+                        f_conv   += rho*v_i*Ca_End*np.matmul(mem.qMat, conv_acc)   # convective acceleration
+                        f_nabla  += rho*v_i*Ca_End*np.matmul(mem.qMat, acc_nabla) # Gradient of first-order axial acceleration times displacement                                      
+                        p_nabla   = 0.25*np.dot(grad_pres1st[:, i1, il], np.conj(dr[:, i2, il])) + 0.25*np.dot(np.conj(grad_pres1st[:, i2, il]), dr[:, i1, il])
+                        f_nabla  += mem.a_i[il]*p_nabla*mem.q # Gradient of first-order pressure times displacement
+                        p_drop    = -0.25*0.5*rho*np.dot(u[:,i1, il]-nodeV[:, i1, il], np.conj(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u[:,i2, il]-nodeV[:, i2, il])))
+                        p_drop   += -0.25*0.5*rho*np.dot(np.conj(u[:,i2, il]-nodeV[:, i2, il]), np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u[:,i2, il]-nodeV[:, i2, il]))
+                        f_conv   += mem.a_i[il]*p_drop*mem.q
+
+                        F_2ndPot += translateForce3to6DOF(f_2ndPot, mem.r[il,:])
+                        F_conv   += translateForce3to6DOF(f_conv, mem.r[il,:])                   
+                        F_axdv   += translateForce3to6DOF(f_axdv, mem.r[il,:])
+                        F_nabla  += translateForce3to6DOF(f_nabla, mem.r[il,:])
+                        F_rslb   += translateForce3to6DOF(f_rslb, mem.r[il,:])
+                                                        
+                    # Force acting at the intersection of the member with the mean waterline
+                    f_eta = np.zeros(3, dtype=complex)
+                    if mem.r[-1,2] * mem.r[0,2] < 0:
+                        # Need just the cross section area, as the length is the relative wave elevation
+                        # Get the area of the cross section at the mean waterline
+                        i_wl = np.where(mem.r[:,2] < 0)[0][-1] # find index of mem.r[:,2] that is right before crossing 0
+                        if circ:
+                            if i_wl != len(mem.ds)-1:
+                                d_wl = 0.5*(mem.ds[i_wl]+mem.ds[i_wl+1])
+                            else:
+                                d_wl = mem.ds[iwl]
+                            a_i = 0.25*np.pi*d_wl**2
+                        else:
+                            if i_wl != len(mem.ds)-1:
+                                d1_wl = 0.5*(mem.ds[i_wl,0]+mem.ds[i_wl+1,0])
+                                d2_wl = 0.5*(mem.ds[i_wl,1]+mem.ds[i_wl+1,1])
+                            else:
+                                d1_wl = mem.ds[i_wl, 0]
+                                d2_wl = mem.ds[i_wl, 1]
+                            a_i = d1_wl*d2_wl
+
+                        f_eta = 0.25*((ud_wl[:,i1])*np.conj(eta_r[i2])+np.conj((ud_wl[:,i2]))*eta_r[i1])
+                        f_eta = rho*a_i*np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_eta)
+                        a_eta = 0.25*((a_wl[:,i1])*np.conj(eta_r[i2])+np.conj((a_wl[:,i2]))*eta_r[i1])
+                        f_eta -= rho*a_i*np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, a_eta)
+                        f_eta -= 0.25*rho*a_i * (g_e1[:,i1]*np.conj(eta_r[i2])+np.conj(g_e1[:,i2])*eta_r[i1])
+
+
+                    F_eta = translateForce3to6DOF(f_eta, r_int)                    
+                        
+                    self.qtf[i1,i2,0,:] += F_2ndPot + F_axdv + F_conv + F_nabla + F_eta + F_rslb
+               
+                    qtf_2ndPot[i1,i2,0,:] += F_2ndPot
+                    qtf_axdv[i1,i2,0,:]   += F_axdv
+                    qtf_conv[i1,i2,0,:]   += F_conv
+                    qtf_eta[i1,i2,0,:]    += F_eta
+                    qtf_nabla[i1,i2,0,:]  += F_nabla
+                    qtf_rslb[i1,i2,0,:]   += F_rslb
+
+        # Need a complete matrix due to interpolations that are used to computed the forces
+        for i in range(self.nDOF):
+            self.qtf[:,:,0,i] = self.qtf[:,:,0,i] + np.conj(self.qtf[:,:,0,i]).T - np.diag(np.diag(np.conj(self.qtf[:,:,0,i])))
+
+        if self.outFolderQTF is not None:
+            self.writeQTF(self.qtf,   os.path.join(self.outFolderQTF, "qtf-slender_body-total.12d"))
+            self.writeQTF(qtf_2ndPot, os.path.join(self.outFolderQTF, "qtf-slender_body-pot2.12d"))
+            self.writeQTF(qtf_axdv,   os.path.join(self.outFolderQTF, "qtf-slender_body-axDv.12d"))
+            self.writeQTF(qtf_conv,   os.path.join(self.outFolderQTF, "qtf-slender_body-conv.12d"))
+            self.writeQTF(qtf_eta,    os.path.join(self.outFolderQTF, "qtf-slender_body-eta.12d"))
+            self.writeQTF(qtf_nabla,  os.path.join(self.outFolderQTF, "qtf-slender_body-nabla.12d"))
+            self.writeQTF(qtf_rslb,   os.path.join(self.outFolderQTF, "qtf-slender_body-rslb.12d"))
+            self.writeQTF(qtf_rotN,   os.path.join(self.outFolderQTF, "qtf-slender_body-rotN.12d"))
 
     def readQTF(self, flPath):
         data = np.loadtxt(flPath)
@@ -1389,7 +1462,8 @@ class FOWT():
 
             # Fill the other half of the matrix (which is equal to the conjugate of its symmetric element)
             if not indw1[0] == indw2[0]:
-                self.qtf[indw2[0], indw1[0], indhead[0], indDOF] = factor*(row[7]-1j*row[8])        
+                self.qtf[indw2[0], indw1[0], indhead[0], indDOF] = factor*(row[7]-1j*row[8])
+
         # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))    
 
 
@@ -1434,7 +1508,9 @@ class FOWT():
             qtf_interpBeta = self.qtf[:,:,0,:]
         
         else:
-            qtf_interpBeta = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:]))(beta)
+            qtf_interpBetaRe = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:].real))(beta)
+            qtf_interpBetaIm = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:].imag))(beta)
+            qtf_interpBeta   = qtf_interpBetaRe + 1j*qtf_interpBetaIm
 
         # Compute force spectrum with QTF resolution and then interpolate to the frequency vector of the input wave spectrum
         if interpMode == 'spectrum':
@@ -1476,7 +1552,6 @@ class FOWT():
                     Saux = np.zeros(self.nw)
                     Saux[0:self.nw-imu] = S0[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
                     Qaux = np.zeros(self.nw, dtype=complex)
-
                     Qaux[0:self.nw-imu] = np.diag(np.squeeze(qtf_interp), imu) # Sum only the upper half of the QTF
                     f[idof, imu] = 4 *np.sqrt( np.sum(S0*Saux*np.abs(Qaux)**2) ) * self.dw
 
@@ -1503,12 +1578,12 @@ class FOWT():
 
         ident = 'WAMIT'
         if self.potSecOrder == 1:
-            ident = 'slenderBody'        
-        with open('examples/f_2nd-'+ ident + '.txt', 'w') as file:
-            for w, frow in zip(self.w, f.T):
-                file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
+            ident = 'slenderBody'
 
-        
+        if self.outFolderQTF is not None: 
+            with open(os.path.join(self.outFolderQTF, 'f_2nd-'+ ident + '.txt'), 'w') as file:
+                for w, frow in zip(self.w, f.T):
+                    file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
         return f_mean, f
 
 

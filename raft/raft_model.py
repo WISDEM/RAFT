@@ -39,16 +39,6 @@ class Model():
 
         self.nDOF = 0  # number of FOWT-level DOFs in the system - normally will be 6*len(fowtList)
 
-        # some checks/updates of the dictionary for compatibility
-        if 'turbine' in design and not 'turbines' in design:  # if a single turbine is listed, make it a list for more consistent parsing
-            design['turbine'] = [design['turbine']]
-        if 'platform' in design and not 'platforms' in design: 
-            design['platform'] = [design['platform']]
-        if 'mooring' in design and not 'moorings' in design: 
-            design['mooring'] = [design['mooring']]
-
-        self.design = design # save design dictionary for possible later use/reference
-
 
         # parse settings
         if not 'settings' in design:    # if settings field not in input data
@@ -75,6 +65,14 @@ class Model():
         if 'array' in design:  # if array info is given, RAFT will run in array mode
         
             self.nFOWT = len(design['array']['data'])
+            
+            # some checks/updates of the dictionary for compatibility
+            if 'turbine' in design and not 'turbines' in design:  # if a single turbine is listed, make it a list for more consistent parsing
+                design['turbines'] = [design['turbine']]
+            if 'platform' in design and not 'platforms' in design: 
+                design['platforms'] = [design['platform']]
+            if 'mooring' in design and not 'moorings' in design: 
+                design['moorings'] = [design['mooring']]
             
             # form dictionary of fowt array data
             fowtInfo = [dict(zip( design['array']['keys'], row)) for row in design['array']['data']]
@@ -110,18 +108,18 @@ class Model():
                     #design_i['turbine'] = None
                     design_i.pop('turbine', None)  # if no turbine, make sure the entry isn't in the design dictionary
                 else:
-                    design_i['turbine'] = design['turbine'][fowtInfo[i]['turbineID']-1]
+                    design_i['turbine'] = design['turbines'][fowtInfo[i]['turbineID']-1]
                 
                 if fowtInfo[i]['platformID'] == 0:
                     design_i['platform'] = None
                     print("Warning: platforms MUST be included for the time being.")
                 else:
-                    design_i['platform'] = design['platform'][fowtInfo[i]['platformID']-1]
+                    design_i['platform'] = design['platforms'][fowtInfo[i]['platformID']-1]
                     
                 if fowtInfo[i]['mooringID'] == 0:  # no mooring on this FOWT (array-level moorings may be used instead)
                     design_i['mooring'] = None
                 else:
-                    design_i['mooring'] = design['mooring'][fowtInfo[i]['mooringID']-1]
+                    design_i['mooring'] = design['moorings'][fowtInfo[i]['mooringID']-1]
                 
                 if self.ms:
                     mpb = self.ms.bodyList[i]  # reference to the FOWT's body in the array level MoorPy system
@@ -140,8 +138,10 @@ class Model():
         else:  # normal single-FOWT mode
             
             # This is the original approach. It assumes a single turbine, platform, and mooring section are given.
+            
+            self.nFOWT = 1
+            
             # Note: its mooring system will be put in the FOWT now rather than existing at the model/array level.
-        
             # # process mooring information 
             # self.ms = mp.System()
             # self.ms.parseYAML(design['mooring'])
@@ -156,6 +156,9 @@ class Model():
             #self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
         
         
+        self.design = design # save design dictionary for possible later use/reference
+
+        
         if self.ms:
             self.ms.initialize()
         #>>> initialize all the mooring systems?
@@ -165,6 +168,8 @@ class Model():
         #    raise RuntimeError('An error occured when initializing the mooring system: '+e.message)
         
         self.results = {}     # dictionary to hold all results from the model
+        
+        
         
 
 
@@ -733,7 +738,10 @@ class Model():
                 RMSeMoment = np.linalg.norm([Y[6*i+3:6*i+6] for i in range(self.nFOWT)])
                 print(f"Iteration RMS force adn moment errors: {RMSeForce:8.2e} {RMSeMoment:8.2e}")
                 if RMSeForce < 100 and RMSeMoment < 100:
-                    breakpoint()
+                    if display > 1:
+                        breakpoint()
+                    else:
+                        print('Warning: RMS error of equilibrium forces or moments exceeds 100.')
             
             return Y, oths, False
         
@@ -1263,20 +1271,23 @@ class Model():
         
         fig, ax = plt.subplots(6, 1, sharex=True)
         
-        metrics = self.results['case_metrics']
-        nCases = len(metrics['surge_avg'])
+        # loop through each FOWT and plot its response (on the same figure for now)
+        for i in range(self.nFOWT):
         
-        for iCase in range(nCases):
-        
-            ax[0].plot(self.w/TwoPi, TwoPi*metrics['surge_PSD'][iCase,:]    )  # surge
-            ax[1].plot(self.w/TwoPi, TwoPi*metrics['heave_PSD'][iCase,:]    )  # heave
-            ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD'][iCase,:]    )  # pitch [deg]
-            ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD'][iCase,:]    )  # nacelle acceleration
-            ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD'][iCase,:]    )  # tower base bending moment (using FAST's kN-m)
-            ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'case {iCase+1}')  # wave spectrum
+            metrics = self.results['case_metrics'][i]
+            nCases = len(metrics['surge_avg'])
+            
+            for iCase in range(nCases):
+            
+                ax[0].plot(self.w/TwoPi, TwoPi*metrics['surge_PSD'][iCase,:]    )  # surge
+                ax[1].plot(self.w/TwoPi, TwoPi*metrics['heave_PSD'][iCase,:]    )  # heave
+                ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD'][iCase,:]    )  # pitch [deg]
+                ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD'][iCase,:]    )  # nacelle acceleration
+                ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD'][iCase,:]    )  # tower base bending moment (using FAST's kN-m)
+                ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'case {iCase+1}')  # wave spectrum
 
-            # need a variable number of subplots for the mooring lines
-            #ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
+                # need a variable number of subplots for the mooring lines
+                #ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
 
         ax[0].set_ylabel('surge \n'+r'(m$^2$/Hz)')
         ax[1].set_ylabel('heave \n'+r'(m$^2$/Hz)')
@@ -1295,52 +1306,60 @@ class Model():
         ax[-1].legend()
         fig.suptitle('RAFT power spectral densities')
 
+
     def saveResponses(self, outPath):
         '''Save the power spectral densities of the available response channels for each case to an output file.'''
         
-        metrics = self.results['case_metrics']
-        nCases = len(metrics['surge_avg'])
-        
         chooseMetrics = ['wave_PSD', 'surge_PSD', 'heave_PSD', 'pitch_PSD', 'AxRNA_PSD', 'Mbase_PSD']
         metricUnit    = ['m^2/Hz', 'm^2/Hz', 'm^2/Hz', 'deg^2/Hz', '(m/s^2)^2/Hz', '(Nm)^2/Hz']
-        for iCase in range(nCases):
-            with open(f'{outPath}_Case{iCase}.txt', 'w') as file:
-                # Write the header
-                file.write('Frequency [rad/s] \t')
-                for metric, unit in zip(chooseMetrics, metricUnit):
-                    file.write(f'{metric} [{unit}] \t')
-                file.write('\n')
-
-                # Write the data
-                for iFreq in range(len(self.w)):
-                    file.write(f'{self.w[iFreq]:.5f} \t')
-                    for metric in chooseMetrics:
-                        file.write(f'{np.squeeze(metrics[metric][iCase, iFreq]):.5f} \t')
+        
+        for i in range(self.nFOWT):
+        
+            metrics = self.results['case_metrics'][i]
+            nCases = len(metrics['surge_avg'])
+        
+            for iCase in range(nCases):
+                with open(f'{outPath}_Case{iCase}_WT{i}.txt', 'w') as file:
+                    # Write the header
+                    file.write('Frequency [rad/s] \t')
+                    for metric, unit in zip(chooseMetrics, metricUnit):
+                        file.write(f'{metric} [{unit}] \t')
                     file.write('\n')
+
+                    # Write the data
+                    for iFreq in range(len(self.w)):
+                        file.write(f'{self.w[iFreq]:.5f} \t')
+                        for metric in chooseMetrics:
+                            file.write(f'{np.squeeze(metrics[metric][iCase, iFreq]):.5f} \t')
+                        file.write('\n')
+
 
     def plotResponses_extended(self):
         '''Plots more power spectral densities of the available response channels for each case.'''
 
         fig, ax = plt.subplots(9, 1, sharex=True)
+        
+        # loop through each FOWT and plot its response (on the same figure for now)
+        for i in range(self.nFOWT):
+        
+            metrics = self.results['case_metrics'][i]
+            nCases = len(metrics['surge_avg'])
 
-        metrics = self.results['case_metrics']
-        nCases = len(metrics['surge_avg'])
+            for iCase in range(nCases):
+                ax[0].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
+                ax[1].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
+                ax[2].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
+                ax[3].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :])  # pitch [deg]
+                ax[4].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :])  # pitch [deg]
+                ax[5].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :])  # pitch [deg]
+                ax[6].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
+                ax[7].plot(self.w / TwoPi,
+                           TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
+                ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD'][iCase, :],
+                           label=f'case {iCase + 1}')  # wave spectrum
 
-        for iCase in range(nCases):
-            ax[0].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
-            ax[1].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
-            ax[2].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
-            ax[3].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :])  # pitch [deg]
-            ax[4].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :])  # pitch [deg]
-            ax[5].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :])  # pitch [deg]
-            ax[6].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
-            ax[7].plot(self.w / TwoPi,
-                       TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
-            ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD'][iCase, :],
-                       label=f'case {iCase + 1}')  # wave spectrum
-
-            # need a variable number of subplots for the mooring lines
-            # ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
+                # need a variable number of subplots for the mooring lines
+                # ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
 
         ax[0].set_ylabel('surge \n' + r'(m$^2$/Hz)')
         ax[1].set_ylabel('sway \n' + r'(m$^2$/Hz)')
@@ -1750,12 +1769,12 @@ if __name__ == "__main__":
     
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
 
     #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/Vertical_cylinder.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/MHKF1_Rotor_RAFT.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/MHKF1_Rotor_RAFT.yaml'), plot=1)
    
     plt.show()
     

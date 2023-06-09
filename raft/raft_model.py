@@ -244,12 +244,6 @@ class Model():
 
         if runPyHAMS:
             fowt.calcBEM(meshDir=meshDir)
-
-        # w_2nd = np.linspace(self.w[0], self.w[-1], 50)
-        # k_2nd = np.zeros(len(w_2nd))
-        # for i in range(len(w_2nd)):
-        #     k_2nd[i] = waveNumber(w_2nd[i], self.depth)
-        # fowt.calcQTF_slenderbody(w_2nd=w_2nd, k_2nd=k_2nd, beta=0)
             
         # loop through each case
         for iCase in range(nCases):
@@ -610,12 +604,19 @@ class Model():
         # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
         print('Solving for system response to wave excitation in primary wave direction') 
 
+        # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
+        Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
+        fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF]) # Keep that as a member because it will be used in the functions that compute mean displacements
+        if fowt.potSecOrder==2:
+            fowt.Fhydro_2nd_mean[0, :], Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:])
+
         # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
         M_lin = M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]         # mass
         B_lin = B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None]  # damping
         C_lin =          fowt.C_struc   + self.C_moor        + fowt.C_hydro                           # stiffness
         # consider only excitation from the primary sea state in the load case for now
-        F_lin = fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:]
+        F_lin = fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:] + Fhydro_2nd[0, :, :]
+
         
         #F_lin = np.sum(fowt.F_aero, axis=2) + fowt.F_BEM + np.sum(fowt.F_hydro_iner, axis=0) # excitation
         
@@ -655,6 +656,24 @@ class Model():
                 # solve response (complex amplitude)
                 Xi[:,ii] = np.linalg.solve(Z[:,:,ii], F_tot[:,ii])
 
+            # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces, which were computed above
+            # Rigorously, they should be computed at each iteration, but that would be very expensive. We will assume that the first-order motions won't change that much after two iterations
+            #  to impact the QTFs at a level that justifies the computational cost
+            if fowt.potSecOrder == 1 and iiter < 1:
+                Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex) # RAOs (unit wave amplitude)
+                for iDoF in range(Xi_unitWave.shape[0]):
+                    # get indices where fowt.zeta[ih,:] is not zero
+                    idx = np.where(np.abs(fowt.zeta[0,:])>1e-6) # Is there an eps value to use instead of that?
+                    Xi_unitWave[iDoF, idx] = Xi[iDoF, idx]/fowt.zeta[0,idx]                    
+                        
+                # Time the QTF computation
+                import time 
+                tic = time.perf_counter()
+                fowt.calcQTF_slenderBody(0, Xi_unitWave)
+                toc = time.perf_counter()
+                print(f"\n Time to compute QTFs: {toc - tic:0.4f} seconds") 
+                _, Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:])
+                F_lin += Fhydro_2nd[0, :, :]
 
             if conv_plot:
                 # Convergence Plotting
@@ -715,28 +734,25 @@ class Model():
         
             for iw in range(self.nw):
                 Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
-        
-            # Time this loop with tic and toc
-            import time 
-            tic = time.perf_counter()
 
             # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces, which were computed above
+            # TODO: Not very nice to keep the same code twice. Maybe we can move it to a function?
             if fowt.potSecOrder == 1:
-                Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)
-                for iDoF in range(Xi_unitWave.shape[0]):
-                    # get indices where fowt.zeta[ih,:] is not zero
-                    idx = np.where(np.abs(fowt.zeta[ih,:])>1e-6) # Is there an eps value to use instead of that?
-                    Xi_unitWave[iDoF, idx] = Xi[ih,iDoF, idx]/fowt.zeta[ih,idx]
+                if ih > 0: # Don't recompute it for the first wave because it was already done above. It would change slightly, but it's probably not worth the computational cost
+                    Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)
+                    for iDoF in range(Xi_unitWave.shape[0]):
+                        # get indices where fowt.zeta[ih,:] is not zero
+                        idx = np.where(np.abs(fowt.zeta[ih,:])>1e-6) # Is there an eps value to use instead of that?
+                        Xi_unitWave[iDoF, idx] = Xi[ih,iDoF, idx]/fowt.zeta[ih,idx]
 
-                fowt.calcQTF_slenderBody(ih, Xi_unitWave)      
+                    fowt.calcQTF_slenderBody(ih, Xi_unitWave)      
                 fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
 
                 # Recompute the wave excitation forces and consequent motions to include second-order hydrodynamic forces
                 F_wave = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + Fhydro_2nd[ih,:,:]
                 for iw in range(self.nw):
                     Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
-            toc = time.perf_counter()
-            print(f"\n Time to compute QTFs: {toc - tic:0.4f} seconds")
+
 
             # For illustration purposes
             ident = ''

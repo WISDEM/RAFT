@@ -1536,7 +1536,7 @@ class FOWT():
 
                 # Interpolate the force spectrum to the same resolution as the original wave spectrum            
                 Sf_interp[idof, :] = np.interp(self.w - self.w[0], mu, Sf[idof,:], left=0, right=0)
-                f[idof, :] = 2*np.sqrt(Sf_interp[idof, :]*self.dw)
+                f[idof, :] = np.sqrt(2*Sf_interp[idof, :]*self.dw)
                 
         # Otherwise, interpolate the QTF first and then compute the force amplitude directly
         else:

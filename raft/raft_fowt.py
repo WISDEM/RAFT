@@ -664,8 +664,8 @@ class FOWT():
         '''
         
         #self.rotor.runCCBlade(case['wind_speed'], ptfm_pitch=ptfm_pitch, yaw_misalign=case['yaw_misalign'])
-        
-        turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
+        print(case)
+        turbine_heading = getFromDict(case, 'turbine_heading', shape=0, dtype = float, default=0.0)  # [deg]
         turbine_status  = getFromDict(case, 'turbine_status', shape=0, dtype=str, default='operating')
         
         # initialize arrays (can remain zero if aerodynamics are disabled)

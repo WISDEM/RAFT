@@ -15,7 +15,7 @@ import moorpy as mp
 import raft.raft_fowt as fowt
 from raft.helpers import *
 from moorpy.helpers import dsolve2, set_axes_equal, dsolvePlot
-
+import copy
 #import F6T1RNA as structural    # import turbine structural model functions
 
 raft_dir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
@@ -84,7 +84,6 @@ class Model():
                 # set up a coupled MoorPy body for each FOWT
                 for i in range(self.nFOWT):
                     self.ms.addBody(-1, [fowtInfo[i]['x_location'], fowtInfo[i]['y_location'], 0,0,0,0])
-           
                 # load the MD style input file (this is the only option supported right now)
                 if 'file' in design['array_mooring']:
                     self.ms.load(design['array_mooring']['file'], clear=False)  # add the array level mooring system to the already created bodies
@@ -606,6 +605,8 @@ class Model():
         
         statics_mod - 0: linearized hydrostatics; 1: hydrostatics are updated each iteration based on new poses
         forcing_mod - 0: don't update environmental loads; 1: loads are updated each iteration based on new poses
+        
+        New change: supports either a single wind speed or a list (where there is one wind speed per turbine)
         '''
         
         statics_mod = 0
@@ -620,9 +621,22 @@ class Model():
         
         X_initial = np.zeros(self.nDOF)  # position vector of all FOWTs
         
+        caseorig = copy.deepcopy(case) # save original case data in new dict
+        if type(case['wind_speed']) == list :
+            print('List of wind speeds found!')
+            
+            if len(case['wind_speed']) != len(self.fowtList):
+                raise IndexError("List of wind speeds must be the same length as the list of wind turbines")
+            
         # set initial values before solving        
         for i, fowt in enumerate(self.fowtList):
-        
+            
+            # If list of wind speeds, set each turbine case with corresponding wind speed
+            if type(caseorig['wind_speed']) == list :
+                case['wind_speed'] = caseorig['wind_speed'][i]
+                print('Fowt ' + str(i))
+                print(case)
+                
             if display > 0:  print(f"FOWT {i+1:}")
         
             #X_initial[6*i:6*i+6] = fowt.r6 - np.array([fowt.xref, fowt.yref,0,0,0,0])
@@ -678,7 +692,11 @@ class Model():
             Fnet = np.zeros(self.nDOF)  # net forces and moments on each DOF across all platforms [N,N,N,Nm,Nm,Nm,N...]
             
             for i, fowt in enumerate(self.fowtList):
-            
+                
+                # If list of wind speeds, set each turbine case with corresponding wind speed
+                if type(caseorig['wind_speed']) == list :
+                    case['wind_speed'] = caseorig['wind_speed'][i]
+                
                 Xi0 = X[6*i:6*i+6] - np.array([fowt.x_ref, fowt.y_ref,0,0,0,0])  # fowt mean offset from its reference position
             
                 # mooring forces
@@ -1710,10 +1728,216 @@ class Model():
         with open(new_wisdem_file, "w", encoding="utf-8") as f:
             yaml.dump(wisdem_design, f)
 
+    def powerThrustCurve(self,nfowt, nrotor, uhubs, heading, yaw, plot = False ):
+        '''
+        Parameters
+        ----------
+        vhubs : array
+            Array of wind speeds for power thrust curves.
+        Returns
+        -------
+        None.
 
+        '''
+        #store case data then delete for now
+        casedata = self.design['cases']['data']
+        self.design['cases']['data'] = []
+        cp = []
+        ct = []
+        pitch = []
+        
+        power = []
+        thrust = [] 
+        for uhub in uhubs:
+            if uhub >= 3 and uhub <=25: 
+                self.design['cases']['data'] = [[uhub, heading, 0.1, 'operating', yaw, 'JONSWAP', 0,0,0]]
+            else:
+                self.design['cases']['data'] = [[uhub, heading, 0.1, 'parked', yaw, 'JONSWAP', 0,0,0]]
+            case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][0]))   
+            self.solveStatics(case=case)
+            
+            # Not sure how the pitch angle should be handled if wind comes at angle.....
+            loads, derivs = self.fowtList[nfowt].rotorList[nrotor].runCCBlade(Uhub = uhub, ptfm_pitch = self.fowtList[nfowt].Xi0[4])
+            cp.append(loads["CP"][0])
+            ct.append(loads["CT"][0])
+            pitch.append(self.fowtList[nfowt].Xi0[4])
+            
+            power.append(self.fowtList[nfowt].rotorList[nrotor].aero_power)
+            thrust.append(self.fowtList[nfowt].rotorList[nrotor].aero_thrust)
+        
+        if plot:
+            fig, ax = plt.subplots(3,1, sharex = True)
+            plotvars = [cp, ct,pitch]
+            ylabels = ["Power Coef", "Thrust Coef", "Ptfm Pitch (deg)"]
+            for i in range(0, 3):
+                ax[i].plot(uhubs, plotvars[i])
+                ax[i].set_ylabel(ylabels[i])
+            ax[2].set_xlabel('Wind Speed (m/s)')
+            
+            
+            fig, ax = plt.subplots(2,1, sharex = True)
+            plotvars = [power, thrust]
+            ylabels = ["Power", "Thrust"]
+            for i in range(0, 2):
+                ax[i].plot(uhubs, plotvars[i])
+                ax[i].set_ylabel(ylabels[i])
+            ax[1].set_xlabel('Wind Speed (m/s)')
+            
+        self.design['cases']['data'] = casedata
+        
+        return cp, ct, pitch
+    
+    
+    def florisCoupling(self, config, turbconfig, path ):
+        '''
+        Function to set up FLORIS interface, using parameters from the RAFT model. 
+        Takes in base yaml files for floris configuration and turbine configuration and updates the
+        turbine locations, shear, air density, rotor diameter, power-thrust curve. Iterates through each
+        RAFT case and calculates turbine power matrix
+        
+        NOTE: this function writes a new turbine yaml file for each turbine. 
 
+        Parameters
+        ----------
+        config : str
+            Name of floris config yaml file for basis of floris interface
+        turbconfig : List of str
+            List of turbine yaml files that corresponds to RAFT turbine IDs 
+        path : str
+            Path to turbine library of yaml files
 
-
+        '''
+        from floris.tools import FlorisInterface
+        
+        # Setup FLORIS interface using base yaml file
+        self.fi = FlorisInterface(config)
+        
+        # Update floris interface settings to match RAFT design
+        self.fi.reinitialize(air_density = self.design["site"]["rho_air"], wind_shear = self.design["site"]["shearExp"])
+        fowtInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
+        self.fi.reinitialize(layout_x=[fowtInfo[j]["x_location"] for j in range(0,len(fowtInfo))], layout_y=[fowtInfo[j]["y_location"] for j in range(0,len(fowtInfo))])
+        
+        # create new turbine yaml file for each turbine with a unique turbine, platform, mooring, or heading adjustment
+        # this is because these effect the pitch of the platform in the power-thrust curve
+        # FLORIS reinitialize function calls on the turbine yaml files whenever reinitialize is called
+      
+        turblist = []
+        uniqueLists =[]
+        for l in range(len(self.design['cases']['data'])):
+            case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][l]))   
+            
+            #list of lists for turbine yaml references
+            turblist.append([])
+            uniqueLists.append([])
+            
+            for i in range(self.nFOWT):
+                turbID = fowtInfo[i]['turbineID']
+                
+                #Check if turbine has unique platform, turbine, mooring, or rotation ... if so, calculate new power thrust curve
+                IDList = [fowtInfo[i]['turbineID'], fowtInfo[i]['platformID'], fowtInfo[i]['mooringID'], fowtInfo[i]['heading_adjust']]
+                if IDList in uniqueLists[l]:
+                    for j, ulist in enumerate(uniqueLists[l]):
+                        if IDList == ulist:
+                            ID = j
+                    print('Turbine ' +str(i+1) +' is not unqiue, using Turbine ' + str(ID)+" input")
+                else:
+                    
+                    # If turbine is unique then create new ID/input file
+                    uniqueLists[l].append(IDList)
+                    ID = len(uniqueLists[l]) - 1
+                    print('Turbine ' +str(i+1) +' is unqiue, creating Turbine ' + str(ID)+ " input")
+                    
+                    with open(turbconfig[turbID - 1]) as file:
+                        turbData = yaml.safe_load(file)
+                    
+                    #Find turbine ID and use yaml file associated with that ID as basis
+                    turbData['hub_height'] = self.design["turbines"][turbID - 1]["hHub"]
+                    turbData['rotor_diameter'] = self.design["turbines"][turbID - 1]["blade"][0]["Rtip"]*2 # Check this (takes the rotor radius from first blade)
+                    turbData['ref_density_cp_ct'] = self.design["site"]["rho_air"]
+                    
+                    #RAFT may want to name the turbines
+                    turbData['turbine_type'] ='turb'+str(ID)+'_case'+str(l) +'_floating'
+                    
+                    #Cp and Ct curves already incorporate the floating tilt... so FLORIS can ignore
+                    turbData['floating_correct_cp_ct_for_tilt'] = False 
+                    
+                    #set up list of hub velocities to match floris 
+                    uhubs=list(np.arange(3,25,0.5))
+                    #uhubs.insert(0, 0)
+                    uhubs.append(25.02)
+                    uhubs.append(50)
+                    
+                    #currently only setup to handle one rotor
+                    power, thrust, pitch = self.powerThrustCurve(i, 0, uhubs, case['wind_heading'], case['yaw_misalign'])
+                    turbData['power_thrust_table']['power'] = np.array(power).tolist()
+                    turbData['power_thrust_table']['thrust'] = np.array(thrust).tolist()
+                    turbData['power_thrust_table']['wind_speed'] = np.array(uhubs).tolist()
+                    
+                    print('len winds ', len(uhubs))
+                    print('len pitch ', len(pitch))
+                    #Set floating tilt table only for use in Empirical Gaussian wake model (wake deflection for pitch angle)
+                    turbData['floating_tilt_table']['wind_speeds'] = np.array(uhubs).tolist() # match roughly the wind speeds in example files
+                    turbData['floating_tilt_table']['tilt'] = np.array(pitch).tolist()
+        
+                    with open(path+'\\'+'turb'+str(ID)+'case'+str(l)+'.yaml', 'w') as file:
+                        yaml.dump(turbData, file, sort_keys=False, default_flow_style=None)
+                turblist[l].append('turb'+str(ID)+'case'+str(l)+'.yaml')
+            
+            #reinitialize floris interface with updated turbine yaml files
+            self.fi.reinitialize(turbine_type= turblist[l], turbine_library_path= path)
+            
+            #Update for given case
+            self.fi.reinitialize(wind_directions = [case['wind_heading']+270], wind_speeds = [case['wind_speed']], turbulence_intensity= case['turbulence'])
+            
+            yaw_angles = np.ones([1,1,self.nFOWT]) * case['yaw_misalign']
+            self.fi.calculate_wake(yaw_angles=yaw_angles)
+    
+            # Get the turbine powers
+            turbine_powers = self.fi.get_turbine_powers()/1000.
+            print('The turbine power matrix should be of dimensions 1 WD X 1 WS X '+str(self.nFOWT)+' Turbines')
+            print('Turbine powers for case '+str(l+1))
+            print(turbine_powers)
+            print("Shape: ",turbine_powers.shape)
+            
+            self.turblist = turblist
+    
+    def florisFindEquilibrium(self, path, updateCpCt = False):
+        
+        if not hasattr(self, 'fi'):
+            raise AttributeError("Need to initialize floris coupling first")
+            
+        fowtInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
+        #iterate through load cases
+        for i in range(len(self.design['cases']['data'])):
+            case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][i]))  
+            
+            #Reintiailize turbine yaml files (for correct case heading)
+            self.fi.reinitialize(turbine_type= self.turblist[i], turbine_library_path= path)
+            
+            #FLORIS inputs the wind direction as direction wind is coming from (where the -X axis is 0)
+            self.fi.reinitialize(wind_directions = [-case['wind_heading']+270], wind_speeds = [case['wind_speed']], turbulence_intensity= case['turbulence'])
+            yaw_angles = np.ones([1,1,self.nFOWT]) * case['yaw_misalign']
+             
+            winds = []
+            xpositions = []
+            ypositions = []
+            for n in range(0, 10):
+                
+                #solve statics to find updated turbine positions
+                self.solveStatics(case=case, display = 1)
+                
+                #update floris turbine positions
+                self.fi.reinitialize(layout_x=[self.fowtList[nfowt].Xi0[0] + fowtInfo[nfowt]["x_location"] for nfowt in range(len(self.fowtList))], layout_y=[self.fowtList[nfowt].Xi0[1]  + fowtInfo[nfowt]["y_location"] for nfowt in range(len(self.fowtList))])
+                self.fi.calculate_wake(yaw_angles=yaw_angles)
+                print('Turbine avg vels ', self.fi.turbine_average_velocities[0][0])
+                
+                #update wind speed list for RAFT
+                case['wind_speed'] = list(self.fi.turbine_average_velocities[0][0])
+                winds.append(self.fi.turbine_average_velocities)
+                xpositions.append([self.fowtList[nfowt].Xi0[0] + fowtInfo[nfowt]["x_location"] for nfowt in range(len(self.fowtList))])
+                ypositions.append( [self.fowtList[nfowt].Xi0[1] + fowtInfo[nfowt]["y_location"] for nfowt in range(len(self.fowtList))])
+        
+        return(winds,xpositions, ypositions)           
 
 def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[]):
     '''

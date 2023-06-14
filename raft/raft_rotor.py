@@ -658,8 +658,8 @@ class Rotor:
             E   = np.zeros_like(self.w,dtype=np.complex_)
 
             # Roots of characteristic equation, helps w/ debugging
-            p = np.array([-self.I_drivetrain, (dQ_dOm + self.kp_beta * dQ_dPi - self.Ng * kp_tau), self.ki_beta* dQ_dPi - self.Ng * ki_tau])
-            r = np.roots(p)
+            # p = np.array([-self.I_drivetrain, (dQ_dOm + self.kp_beta * dQ_dPi - self.Ng * kp_tau), self.ki_beta* dQ_dPi - self.Ng * ki_tau])
+            # r = np.roots(p)
 
             for iw, omega in enumerate(self.w):
                 
@@ -924,6 +924,7 @@ class Rotor:
         # print(sigma_u)
 
         return U, V, W, Rot
+
 
 if __name__=='__main__':
     fname_design = os.path.join(raft_dir,'designs/VolturnUS-S.yaml')

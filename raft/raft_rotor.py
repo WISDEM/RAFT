@@ -116,30 +116,29 @@ class Rotor:
         wakerotation = True # Wake rotation, True/False
         usecd = True # Use drag coefficient within BEMT, True/False
 
-        # Set discretization parameters
-        nSector = 4 # [-] - number of equally spaced azimuthal positions where CCBlade should be interrogated. The results are averaged across the n positions. 4 is a good first guess
-        n_span = 30 # [-] - number of blade stations along span
-        grid = np.linspace(0., 1., n_span) # equally spaced grid along blade span, root=0 tip=1
-
 
         # ----- AIRFOIL STUFF ------
-        n_aoa = 200 # [-] - number of angles of attack to discretize airfoil polars - MUST BE MULTIPLE OF 4
-        self.af_used     = [ b for [a,b] in turbine['blade'][ir]["airfoils"] ]  # airfoil name
-        self.af_position = [ a for [a,b] in turbine['blade'][ir]["airfoils"] ]  # airfoil relative position along blade [0-1]
-        n_af = len(np.unique(self.af_used))  # number of airfoils that are used in the rotor
-        n_af_span = len(self.af_used)
+        
+        # compile info for airfoil station points along the blade
+        #nStations = len(turbine['blade'][ir]["airfoils"])
+        station_airfoil  = [ b for [a,b] in turbine['blade'][ir]["airfoils"] ]  # airfoil name
+        station_position = [ a for [a,b] in turbine['blade'][ir]["airfoils"] ]  # airfoil relative position from blade root to tip [0-1]
+        nStations = len(station_airfoil)
         
         # One fourth of the angles of attack from -pi to -pi/6, half between -pi/6 to pi/6, and one fourth from pi/6 to pi
+        n_aoa = 200 # [-] - number of angles of attack to discretize airfoil polars - MUST BE MULTIPLE OF 4
         aoa = np.unique(np.hstack([np.linspace(-180, -30, int(n_aoa/4.0 + 1)), 
                                    np.linspace( -30,  30, int(n_aoa/2.0),),
                                    np.linspace(  30, 180, int(n_aoa/4.0 + 1))]))
 
-        af_name = n_af * [""]
-        r_thick = np.zeros(n_af)    # <<<<< rename all the r_thicks to more clearly denote relative thickness!
-        Ca = np.zeros([n_af, 2])
+        # compile info for individual airfoils
+        n_af = len(turbine["airfoils"])  #len(np.unique(station_airfoil))  # number of airfoils that are used in the rotor
+        airfoil_name = n_af * [""]         # name of each listed airfoil
+        airfoil_thickness = np.zeros(n_af) # relative thickness of each listed airfoil (thickness/chord)
+        Ca = np.zeros([n_af, 2])           # added mass coefficient [edgewise, flapwise] of each airfoil
         for i in range(n_af):
-            af_name[i] = turbine["airfoils"][i]["name"]
-            r_thick[i] = turbine["airfoils"][i]["relative_thickness"]
+            airfoil_name[i] = turbine["airfoils"][i]["name"]
+            airfoil_thickness[i] = turbine["airfoils"][i]["relative_thickness"]
             if 'added_mass_coeff' in turbine["airfoils"][i].keys():
                 Ca[i,:] = turbine["airfoils"][i]["added_mass_coeff"]
             else:
@@ -157,10 +156,6 @@ class Rotor:
 
         # Interp cl-cd-cm along predefined grid of angle of attack
         for i in range(n_af):
-        
-            #cl[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_l"])
-            #cd[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_d"])
-            #cm[i, :, 0] = np.interp(aoa, turbine["airfoils"][i]["alpha"], turbine["airfoils"][i]["c_m"])
 
             polar_table = np.array(turbine["airfoils"][i]['data'])
             
@@ -175,72 +170,101 @@ class Rotor:
             #plt.figure()
             #plt.plot(polar_table[:,0], polar_table[:,1])
             #plt.plot(polar_table[:,0], polar_table[:,2])
-            #plt.title(af_name[i])
+            #plt.title(airfoil_name[i])
             
             if abs(cl[i, 0, 0] - cl[i, -1, 0]) > 1.0e-5:
-                print("WARNING: Ai " + af_name[i] + " has the lift coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                print("WARNING: Ai " + airfoil_name[i] + " has the lift coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cl[i, 0, 0] = cl[i, -1, 0]
             if abs(cd[i, 0, 0] - cd[i, -1, 0]) > 1.0e-5:
-                print("WARNING: Airfoil " + af_name[i] + " has the drag coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                print("WARNING: Airfoil " + airfoil_name[i] + " has the drag coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cd[i, 0, 0] = cd[i, -1, 0]
             if abs(cm[i, 0, 0] - cm[i, -1, 0]) > 1.0e-5:
-                print("WARNING: Airfoil " + af_name[i] + " has the moment coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                print("WARNING: Airfoil " + airfoil_name[i] + " has the moment coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cm[i, 0, 0] = cm[i, -1, 0]
             if cpmin_flag and abs(cpmin[i, 0, 0] - cpmin[i, -1, 0]) > 1.0e-5:
-                print("WARNING: Airfoil " + af_name[i] + " has the minimum pressure coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
+                print("WARNING: Airfoil " + airfoil_name[i] + " has the minimum pressure coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cpmin[i, 0, 0] = cpmin[i, -1, 0]
 
 
-        # ----- Interpolate airfoil coefficients blade span using a pchip on relative thickness -----
+
+        # Set discretization parameters
+        nSector = getFromDict(turbine['blade'][ir], 'nSector', default=4) # number of equally spaced azimuthal positions for CCblade to compute and average over
+        nr = getFromDict(turbine['blade'][ir], 'nr', default=20) # number of radial blade stations (or blade elements) to use
         
-        r_thick_used = np.zeros(n_af_span)
-        Ca_used = np.zeros((n_af_span, 2))
-        cl_used = np.zeros((n_af_span, n_aoa, 1))
-        cd_used = np.zeros((n_af_span, n_aoa, 1))
-        cm_used = np.zeros((n_af_span, n_aoa, 1))
-        cpmin_used = np.zeros((n_af_span, n_aoa, 1))
+        grid = np.linspace(0., 1., nr, endpoint=False) + 0.5/nr # equally spaced grid along blade span, root=0 tip=1
+
+
+        # ----- Interpolate airfoil coefficients over the blade span using a pchip on relative thickness -----
+        
+        station_thickness = np.zeros(nStations)
+        station_Ca = np.zeros((nStations, 2))
+        station_cl = np.zeros((nStations, n_aoa, 1))
+        station_cd = np.zeros((nStations, n_aoa, 1))
+        station_cm = np.zeros((nStations, n_aoa, 1))
+        station_cpmin = np.zeros((nStations, n_aoa, 1))
 
         # copy-paste coefficient values from airfoil database to each station point along the blade
-        for i in range(n_af_span):
+        for i in range(nStations):
             for j in range(n_af):
-                if self.af_used[i] == af_name[j]:
-                    r_thick_used[i] = r_thick[j]
-                    Ca_used[i,:] = Ca[j,:]
-                    cl_used[i, :, :] = cl[j, :, :]
-                    cd_used[i, :, :] = cd[j, :, :]
-                    cm_used[i, :, :] = cm[j, :, :]
-                    cpmin_used[i, :, :] = cpmin[j, :, :]
+                if station_airfoil[i] == airfoil_name[j]:
+                    station_thickness[i] = airfoil_thickness[j]
+                    station_Ca[i,:] = Ca[j,:]
+                    station_cl[i, :, :] = cl[j, :, :]
+                    station_cd[i, :, :] = cd[j, :, :]
+                    station_cm[i, :, :] = cm[j, :, :]
+                    station_cpmin[i, :, :] = cpmin[j, :, :]
                     break
 
-        # Spanwise interpolation of the airfoil polars with a pchip
-        spline = PchipInterpolator
-        rthick_spline = spline(self.af_position, r_thick_used)
-        # self.r_thick_interp = rthick_spline(grid)  # or rthick_spline(grid[1:-1]) <<< must confirm how to handle ends
-        self.r_thick_interp = rthick_spline(grid[1:-1]) 
+        if np.all(station_thickness == np.flip(sorted(station_thickness))):  # if the airfoils get consistently thinner toward the tip
+
+            # Spanwise interpolation of the airfoil polars with a pchip
+            spline = PchipInterpolator  # select spline interpolation method
+            
+            # spline interpolate airfoil thickness over evenly spaced element locations along span
+            rthick_spline = spline(station_position, station_thickness)
+            self.r_thick_interp = rthick_spline(grid) 
+            
+            # make nonredundant (and sorted) list of airfoil thicknesses (and indices)
+            r_thick_unique, indices = np.unique(station_thickness, return_index=True)
+            
+            Ca_spline = spline(station_position, station_Ca)
+            self.Ca_interp = Ca_spline(grid)
+            
+            cl_spline = spline(r_thick_unique, station_cl[indices, :, :])
+            self.cl_interp = np.flip(cl_spline(np.flip(self.r_thick_interp)), axis=0)
+            
+            cd_spline = spline(r_thick_unique, station_cd[indices, :, :])
+            self.cd_interp = np.flip(cd_spline(np.flip(self.r_thick_interp)), axis=0)
+            
+            cm_spline = spline(r_thick_unique, station_cm[indices, :, :])
+            self.cm_interp = np.flip(cm_spline(np.flip(self.r_thick_interp)), axis=0)
+            
+            cpmin_spline = spline(r_thick_unique, station_cpmin[indices, :, :])
+            self.cpmin_interp = np.flip(cpmin_spline(np.flip(self.r_thick_interp)), axis=0)
         
-        r_thick_unique, indices = np.unique(r_thick_used, return_index=True)  # <<< check if this is redundant
+        else:  # if it's an atypical case with non-ordered airfoil thicknesses
+            # do simple span-based interpolation
+            breakpoint()
+            self.Ca_interp    = np.interp(grid, station_position, station_Ca)
+            self.cl_interp    = np.interp(grid, station_position, station_cl)
+            self.cd_interp    = np.interp(grid, station_position, station_cd)
+            self.cm_interp    = np.interp(grid, station_position, station_cm)
+            self.cpmin_interp = np.interp(grid, station_position, station_cpmin)
         
-        Ca_spline = spline(self.af_position, Ca_used)
-        #self.Ca_interp = Ca_spline(grid)
-        self.Ca_interp = Ca_spline(grid[1:-1])
-        cl_spline = spline(r_thick_unique, cl_used[indices, :, :])
-        self.cl_interp = np.flip(cl_spline(np.flip(self.r_thick_interp)), axis=0)
-        cd_spline = spline(r_thick_unique, cd_used[indices, :, :])
-        self.cd_interp = np.flip(cd_spline(np.flip(self.r_thick_interp)), axis=0)
-        cm_spline = spline(r_thick_unique, cm_used[indices, :, :])
-        self.cm_interp = np.flip(cm_spline(np.flip(self.r_thick_interp)), axis=0)
-        cpmin_spline = spline(r_thick_unique, cpmin_used[indices, :, :])
-        self.cpmin_interp = np.flip(cpmin_spline(np.flip(self.r_thick_interp)), axis=0)
-                
         self.aoa = aoa
         
         # split out blade geometry info from table 
         geometry_table = np.array(turbine['blade'][ir]['geometry'])
-        self.blade_r         = geometry_table[:,0]
-        self.blade_chord     = geometry_table[:,1]
-        self.blade_theta     = geometry_table[:,2]
-        blade_precurve  = geometry_table[:,3]
-        blade_presweep  = geometry_table[:,4]
+        r_input           = geometry_table[:,0]
+        self.dr = (rtip - self.Rhub)/nr
+        
+        # radial locations of blade elements for BEM
+        self.blade_r      = np.linspace(self.Rhub, rtip, nr, endpoint=False) + self.dr/2  
+        
+        self.blade_chord  = np.interp(self.blade_r, r_input, geometry_table[:,1])
+        self.blade_theta  = np.interp(self.blade_r, r_input, geometry_table[:,2])
+        blade_precurve    = np.interp(self.blade_r, r_input, geometry_table[:,3])
+        blade_presweep    = np.interp(self.blade_r, r_input, geometry_table[:,4])
         #  <<<<<< move this to beginning, then do some interpolating to unify grid and blade_r <<<<<<< and go from above 0 to below 1
 
         if self.Zhub < 0:
@@ -284,7 +308,7 @@ class Rotor:
             usecd=usecd,                    # If True, use drag coefficient in computing induction factors (always used in evaluating distributed loads from the induction factors).
             derivatives=True,               # if True, derivatives along with function values will be returned for the various methods
         )
-
+        
         # pull control gains out of dictionary
         self.setControlGains(turbine)
 
@@ -302,24 +326,24 @@ class Rotor:
         
         self.bladeMemberList = []
         blade_length = self.R_rot-self.Rhub
-        blade_r = np.array(self.af_position)*blade_length
+        blade_r = np.array(station_position)*blade_length
 
         airfoil_name_dict = [foil['name'] for foil in self.turbine['airfoils']]
 
-        for i,af in enumerate(self.af_used[:-1]):
+        for i,af in enumerate(station_airfoil[:-1]):
             airfoil = {}        # dictionary to hold properties of blade sub-member = each airfoil
-            airfoil['name'] = af+'-'+str(i+1)+'/'+str(len(self.af_used))
+            airfoil['name'] = af+'-'+str(i+1)+'/'+str(len(station_airfoil))
             airfoil['type'] = 3
 
             # started a fancy method to determine the axis that the airfoil blades will have different headings about
             # ideally, I want to find a vector (r) orthogonal to the rotor axis vector (n), which has infinite solutions (r dot n = 0)
             # the way I set it up below rotates the rotor axis vector 90 degrees, but breaks down if rotor.axis[2] != 0 since the rotation metrix used here is about the z axis
             airfoil_zero_heading = np.matmul(np.array([[0, -1, 0],[1, 0, 0],[0, 0, 1]]), self.axis)
-            airfoil['rA'] = np.array(airfoil_zero_heading)*(self.Rhub+(self.af_position[i]*blade_length))
-            airfoil['rB'] = airfoil['rA'] + np.array(airfoil_zero_heading)*((self.af_position[i+1]-self.af_position[i])*blade_length)
+            airfoil['rA'] = np.array(airfoil_zero_heading)*(self.Rhub+(station_position[i]*blade_length))
+            airfoil['rB'] = airfoil['rA'] + np.array(airfoil_zero_heading)*((station_position[i+1]-station_position[i])*blade_length)
 
-            #airfoil['rA'] = rHub + np.array([0,0,self.Rhub]) + np.array([0,0,(self.af_position[i])*blade_length])
-            #airfoil['rB'] = airfoil['rA'] + np.array([0,0, (self.af_position[i+1]-self.af_position[i])*blade_length])
+            #airfoil['rA'] = rHub + np.array([0,0,self.Rhub]) + np.array([0,0,(station_position[i])*blade_length])
+            #airfoil['rB'] = airfoil['rA'] + np.array([0,0, (station_position[i+1]-station_position[i])*blade_length])
             # >>>>>>>> don't need to specify direction of blade; just assume vertical and then can transform in later operations <<<<<<<<<<<<<
             airfoil['shape'] = 'rect'
             airfoil['stations'] = [0,1]
@@ -349,6 +373,7 @@ class Rotor:
 
             self.bladeMemberList.append(Member(airfoil, len(self.w)))
 
+
     def bladeGeometry2Member(self):
         '''Method to create members for each "node" that is specified in turbine['blade']['geometry']
         To be used for added mass and buoyancy calculations of underwater turbines'''
@@ -361,25 +386,24 @@ class Rotor:
             blademem['type'] = 3
 
             airfoil_zero_heading = np.matmul(np.array([[0, -1, 0],[1, 0, 0],[0, 0, 1]]), self.axis) # see comments in bladeAirfoil2Member()
-            blademem['rA'] = np.array(airfoil_zero_heading) * self.blade_r[i]
-            blademem['rB'] = np.array(airfoil_zero_heading) * self.blade_r[i+1]
+            blademem['rA'] = np.array(airfoil_zero_heading) * (self.blade_r[i] - self.dr/2)
+            blademem['rB'] = np.array(airfoil_zero_heading) * (self.blade_r[i] + self.dr/2)
 
             blademem['shape'] = 'rect'
             blademem['stations'] = [0,1]
 
-            chordA = self.blade_chord[i]; chordB = self.blade_chord[i+1]
-            rel_thickA = self.r_thick_interp[i]; rel_thickB = self.r_thick_interp[i+1]
-            areaA = (np.pi/4)*chordA**2 * rel_thickA; areaB = (np.pi/4)*chordB**2 * rel_thickB
-            sideA = areaA/chordA; sideB = areaB/chordB
-            blademem['d'] = [[chordA, sideA],[chordB, sideB]]
+            chord = self.blade_chord[i]
+            rel_thick = self.r_thick_interp[i]
+            area = (np.pi/4)*chord**2 * rel_thick
+            rect_thick = area/chord  # thickness of rectange with same chord length to achieve same cross sectional area
+            blademem['d'] = [[chord, rect_thick],[chord, rect_thick]]
 
-            # how to do gamma? We can't really have a twist of both ends 
-            blademem['gamma'] = np.mean(np.array([self.blade_theta[i], self.blade_theta[i+1]]))
+            blademem['gamma'] = self.blade_theta[i]
 
             blademem['potMod'] = False
 
             blademem['Cd'] = 0.0
-            blademem['Ca'] = self.Ca_interp[i:i+2,:]            
+            blademem['Ca'] = self.Ca_interp[i,:]            
             blademem['CdEnd'] = 0.0
             blademem['CaEnd'] = 0.0
         

@@ -749,6 +749,7 @@ class Model():
                 printVec(Fnet)
             
             Y = Fnet
+            
             oths = dict(status=1)                # other outputs - returned as dict for easy use
             
             if display > 0:
@@ -760,7 +761,8 @@ class Model():
                         breakpoint()
                     else:
                         print('Warning: RMS error of equilibrium forces or moments exceeds 100.')
-            
+           
+           
             return Y, oths, False
         
         
@@ -815,11 +817,7 @@ class Model():
                 
                 else:  # normal approach
                     dX = np.linalg.solve(K, Y)   # calculate position adjustment according to Newton's method
-                    #if display > 0:
-                    #print("Y and dX is")
-                    #printVec(Y)
-                    #printVec(dX)
-                                
+
                     if np.linalg.det(K) < 0:
                         print(f" XXXX Determinant is {np.linalg.det(K)} while sum of dx*y is {sum(dX*Y)}")
                    
@@ -853,14 +851,6 @@ class Model():
                     dX = Y/np.diag(K)
                     print('failed'+str(e2)+" after "+str(ex))
             
-            
-            # but limit adjustment magnitude (still preserve direction) to keep things under control
-            overratio = np.max(np.abs(dX)/db)            
-            if overratio > 1.0:
-                dX = dX/overratio
-            
-            #breakpoint()
- 
             return dX
         
         
@@ -1993,7 +1983,9 @@ if __name__ == "__main__":
     
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), ballast=True, plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
+    
+    
 
     #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)

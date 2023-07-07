@@ -179,8 +179,22 @@ class FOWT():
         if design['mooring']:
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
-            self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
-            self.ms.transform(trans=[x_ref, y_ref])  # move mooring system according to the FOWT's reference position
+            
+            # ensure proper setup with one coupled Body tied to this FOWT
+            if len(self.ms.bodyList) == 0:
+                self.ms.addBody(-1, [0,0,0,0,0,0]) # create a new body if needed
+                for point in self.ms.pointList:
+                    if point.type == -1:  # attached any coupled points to the body
+                        self.ms.bodyList[0].attachPoint(point.number, point.r)
+                        point.type = 1  # now indicate point is fixed (to the body)
+                        
+            elif len(self.ms.bodyList) == 1:
+                self.ms.bodyList[0].type = -1  # ensure it's set to coupled type
+            else:
+                raise Exception("More than one body detected in FOWT mooring system.")
+                
+            # move mooring system according to the FOWT's reference position
+            self.ms.transform(trans=[x_ref, y_ref])  
             self.ms.initialize()
         else:
             self.ms = None
@@ -522,7 +536,11 @@ class FOWT():
             self.body.AWP = AWP_TOT
             self.body.rM = np.array([rCB_TOT[0], rCB_TOT[1], zMeta])    # now includes x and y coordinates for center of buoyancy
         #is there any risk of additional moments due to offset CB since MoorPy assumes CB at ref point? <<<
-
+        self.m = mTOT
+        self.v = VTOT
+        self.rCG = rCG_TOT
+        self.AWP = AWP_TOT
+        self.rM = np.array([rCB_TOT[0], rCB_TOT[1], zMeta])
 
 
     def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, headings=[0], meshDir=os.path.join(os.getcwd(),'BEM')):

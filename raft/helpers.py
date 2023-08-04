@@ -1119,6 +1119,31 @@ def printCaseToTable(cases, keys):
         print(parameters[p])
 
 
+def adjustMooring(ms, design):
+    '''
+    ms: moorpy system 
+    design: RAFT input dictionary 
+    
+    Returns updated design dictionary to match moorpy mooring system (hackish method - will not work for every mooring system!)
+    '''
+    
+    design['mooring']['water_depth'] = ms.depth
+    for i, linetype in enumerate(ms.lineTypes):
+        #design['mooring']['line_types'][i]['name'] = linetype
+        design['mooring']['line_types'][i]['diameter'] = ms.lineTypes[linetype]['input_d']
+        design['mooring']['line_types'][i]['mass_density'] = ms.lineTypes[linetype]['m']
+        design['mooring']['line_types'][i]['stiffness'] = ms.lineTypes[linetype]['EA']
+   
+    nLines = len(ms.lineList)
+    for i in range(nLines):
+        design['mooring']['points'][i]['location'] = list(ms.pointList[i*2].r)
+        design['mooring']['points'][i+3]['location'] = list(ms.pointList[i*2+1].r)
+    
+        design['mooring']['lines'][i]['length'] = ms.lineList[i].L
+    
+    return(design)
+
+
 if __name__ == '__main__':
     
     

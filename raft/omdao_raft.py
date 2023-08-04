@@ -682,3 +682,23 @@ class RAFT_OMDAO(om.ExplicitComponent):
         outputs["platform_I_total"][:3] = np.r_[outputs['properties_roll inertia at subCG'][0],
                                            outputs['properties_pitch inertia at subCG'][0],
                                            outputs['properties_yaw inertia at subCG'][0]]
+
+class RAFT_Group(om.Group):
+    def initialize(self):
+        self.options.declare('modeling_options')
+        self.options.declare('turbine_options')
+        self.options.declare('mooring_options')
+        self.options.declare('member_options')
+        self.options.declare('analysis_options')
+
+    def setup(self):
+        modeling_opt = self.options['modeling_options']
+        analysis_opt = self.options['analysis_options']
+        turbine_opt = self.options['turbine_options']
+        members_opt = self.options['member_options']
+        mooring_opt = self.options['mooring_options']
+        self.add_subsystem("raft", RAFT_OMDAO(modeling_options=modeling_opt,
+                                              analysis_options=analysis_opt,
+                                              turbine_options=turbine_opt,
+                                              mooring_options=mooring_opt,
+                                              member_options=members_opt), promotes=["*"])

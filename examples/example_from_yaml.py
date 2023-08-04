@@ -1,6 +1,4 @@
 # example script for running RAFT from a YAML input file
-
-import numpy as np
 import matplotlib.pyplot as plt
 import yaml
 import raft

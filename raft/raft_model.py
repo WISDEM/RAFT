@@ -141,9 +141,9 @@ class Model():
             self.nFOWT = 1
             
             # Note: its mooring system will be put in the FOWT now rather than existing at the model/array level.
-            design['platform'] = design['platform'][0]  # only use the first platform in the list
-            design['turbine']  = design['turbine'][0]   # only use the first turbine in the list
-            design['mooring']  = design['mooring'][0]   # only use the first mooring in the list
+            design['platform'] = design['platform']  # only use the first platform in the list
+            design['turbine']  = design['turbine']   # only use the first turbine in the list
+            design['mooring']  = design['mooring']   # only use the first mooring in the list
 
             # # process mooring information 
             self.ms = mp.System()
@@ -354,7 +354,6 @@ class Model():
         
         
         # calculate the system's constant properties
-        '''  >>> this part needs to be made to work again, so that we have unloaded equilibrium <<<
         for fowt in self.fowtList:
             fowt.calcStatics()
 
@@ -472,7 +471,6 @@ class Model():
                 
                 self.T_moor_amps = T_moor_amps  # save for future processing!
         
-    '''
     """
     def calcSystemConstantProps(self):
         '''This gets the various static/constant calculations of each FOWT done. (Those that don't depend on load case.)'''
@@ -1067,7 +1065,7 @@ class Model():
                     for iDoF in range(Xi_unitWave.shape[0]):
                         # get indices where fowt.zeta[ih,:] is not zero
                         idx = np.where(np.abs(fowt.zeta[0,:])>1e-6) # Is there an eps value to use instead of that?
-                        Xi_unitWave[iDoF, idx] = self.Xi[ih,i*6+iDoF, idx]/fowt.zeta[ih,idx]
+                        Xi_unitWave[iDoF, idx] = Xi[i*6+iDoF, idx]/fowt.zeta[0,idx]
                     
                     # Time the QTF computation
                     import time 
@@ -1357,21 +1355,18 @@ class Model():
         
         metrics = self.results['case_metrics'][0]
         nCases = len(metrics['surge_avg'])
+            
+        for iCase in range(nCases):
         
-            metrics = self.results['case_metrics'][i]
-            nCases = len(metrics['surge_avg'])
-            
-            for iCase in range(nCases):
-            
-                ax[0].plot(self.w/TwoPi, TwoPi*metrics['surge_PSD'][iCase,:]    )  # surge
-                ax[1].plot(self.w/TwoPi, TwoPi*metrics['heave_PSD'][iCase,:]    )  # heave
-                ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD'][iCase,:]    )  # pitch [deg]
-                ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD'][iCase,:]    )  # nacelle acceleration
-                ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD'][iCase,:]    )  # tower base bending moment (using FAST's kN-m)
-                ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'case {iCase+1}')  # wave spectrum
+            ax[0].plot(self.w/TwoPi, TwoPi*metrics['surge_PSD'][iCase,:]    )  # surge
+            ax[1].plot(self.w/TwoPi, TwoPi*metrics['heave_PSD'][iCase,:]    )  # heave
+            ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD'][iCase,:]    )  # pitch [deg]
+            ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD'][iCase,:]    )  # nacelle acceleration
+            ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD'][iCase,:]    )  # tower base bending moment (using FAST's kN-m)
+            ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'case {iCase+1}')  # wave spectrum
 
-                # need a variable number of subplots for the mooring lines
-                #ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
+            # need a variable number of subplots for the mooring lines
+            #ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
 
         ax[0].set_ylabel('surge \n'+r'(m$^2$/Hz)')
         ax[1].set_ylabel('heave \n'+r'(m$^2$/Hz)')

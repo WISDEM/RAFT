@@ -1127,9 +1127,9 @@ platform:
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  7850                      # [kg/m3] 
         # --- handling of end caps or any internal structures if we need them ---
-        cap_stations :  [ 0    ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
-        cap_t        :  [ 0.001  ]             # [m]  thickness of any internal structures
-        cap_d_in     :  [ 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)     
+        cap_stations :  [ 0, 1  ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
+        cap_t        :  [ 0.001, 0.001  ]             # [m]  thickness of any internal structures
+        cap_d_in     :  [ 0, 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)     
 
 
 mooring:

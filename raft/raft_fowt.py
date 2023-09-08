@@ -67,7 +67,7 @@ class FOWT():
         self.nplatmems = 0
         for platmem in design['platform']['members']:
             if 'heading' in platmem:
-                print(platmem['heading'])
+                #print(platmem['heading'])
                 self.nplatmems += len(platmem['heading'])
             else:
                 self.nplatmems += 1
@@ -697,7 +697,7 @@ class FOWT():
         '''
         
         #self.rotor.runCCBlade(case['wind_speed'], ptfm_pitch=ptfm_pitch, yaw_misalign=case['yaw_misalign'])
-        print(case)
+        #print(case)
         turbine_heading = getFromDict(case, 'turbine_heading', shape=0, dtype = float, default=0.0)  # [deg]
         turbine_status  = getFromDict(case, 'turbine_status', shape=0, dtype=str, default='operating')
         
@@ -934,8 +934,9 @@ class FOWT():
         self.Fhydro_2nd_mean = np.zeros([self.nWaves, self.nDOF])
         for ih in range(self.nWaves):
             if case['wave_spectrum'][ih] == 'unit':
-                self.zeta[ih,:] = np.tile(1, self.nw)
+                #self.zeta[ih,:] = np.tile(1, self.nw)
                 S         = np.tile(1, self.nw)
+                self.zeta[ih,:] = np.sqrt(2*S*self.dw)
             elif case['wave_spectrum'][ih] == 'JONSWAP':
                 S = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        
                 self.zeta[ih,:] = np.sqrt(2*S*self.dw)    # wave elevation amplitudes (these are easiest to use)

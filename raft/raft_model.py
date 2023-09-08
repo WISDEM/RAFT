@@ -205,7 +205,7 @@ class Model():
         
         # >>> this whole method needs to be updated or possibly removed <<<
         
-        if len(self.fowtList) > 0:
+        if len(self.fowtList) > 1:
             raise Exception('analyzeUnloaded is an old method that only works for a single FOWT.')
         
         # need to zero out external loads >>>
@@ -713,7 +713,10 @@ class Model():
         setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
         Mean offsets are saved in the FOWT object.
         '''        
+        
         def eval_func_equil(X, args):
+
+            display = args['display']
             
             # set latest positions of each FOWT
             for i, fowt in enumerate(self.fowtList):
@@ -781,7 +784,7 @@ class Model():
             
             # note that the above also calculates many stiffnes terms that are used in step_func_equil
             
-            
+
             if display > 1:
                 print("Net forces")
                 printVec(Fnet)
@@ -797,8 +800,8 @@ class Model():
                 if RMSeForce < 100 and RMSeMoment < 100:
                     if display > 1:
                         breakpoint()
-                    else:
-                        print('Warning: RMS error of equilibrium forces or moments exceeds 100.')
+                else:
+                    print('Warning: RMS error of equilibrium forces or moments exceeds 100.')
            
            
             return Y, oths, False
@@ -894,13 +897,13 @@ class Model():
         
         # Now find static equilibrium offsets 
         X, Y, info = dsolve2(eval_func_equil, X_initial, step_func=step_func_equil, 
-                             tol=tols, a_max=1.6, maxIter=20, display=0 ) #, dodamping=True)
+                             tol=tols, a_max=1.6, maxIter=20, display=0, args={'display': display} ) #, dodamping=True)
         #X, Y, info = dsolve2(eval_func_equil, X_initial, step_func=step_func_equil, 
         #                     ytol=1e4, a_max=1.6, maxIter=20, display=0 ) #, dodamping=True)
        
-        #if display > 1:
-        print(X)
-        print(Y)
+        if display > 0:
+            print('New Equilibrium Position', X)
+            print('Remaining Forces on the Model (N)', Y)
         
         self.Xs2 = info['Xs']    # List of positions as it finds equilibrium for every iteration
         self.Es2 = info['Es']    # List of errors that the forces are away from 0, which in this case, is the same as the forces
@@ -1316,7 +1319,7 @@ class Model():
     def plotResponses(self):
         '''Plots the power spectral densities of the available response channels for each case.'''
         
-        fig, ax = plt.subplots(6, 1, sharex=True)
+        fig, ax = plt.subplots(6, 1, sharex=True, figsize=(6,6))
         
         # loop through each FOWT and plot its response (on the same figure for now)
         for i in range(self.nFOWT):
@@ -1331,7 +1334,7 @@ class Model():
                 ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD'][iCase,:]    )  # pitch [deg]
                 ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD'][iCase,:]    )  # nacelle acceleration
                 ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD'][iCase,:]    )  # tower base bending moment (using FAST's kN-m)
-                ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'case {iCase+1}')  # wave spectrum
+                ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'FOWT {i+1}; Case {iCase+1}')  # wave spectrum
 
                 # need a variable number of subplots for the mooring lines
                 #ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
@@ -1352,6 +1355,7 @@ class Model():
         #if nCases > 1:
         ax[-1].legend()
         fig.suptitle('RAFT power spectral densities')
+        fig.tight_layout()
 
 
     def saveResponses(self, outPath):
@@ -2014,7 +2018,6 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     This will set up and run RAFT based on a YAML input file.
     '''
     
-    
     if input_file[-3:]=='pkl' or input_file[-6:]=='pickle':
         with open(input_file, 'rb') as pfile:
             design = pickle.load(pfile)
@@ -2041,8 +2044,8 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     # Create and run the model
     print(" --- making model ---")
     model = Model(design)  
-    #print(" --- analyzing unloaded ---")
-    #model.analyzeUnloaded(ballast=ballast)
+    print(" --- analyzing unloaded ---")
+    model.analyzeUnloaded(ballast=ballast)
     print(" --- analyzing cases ---")
     model.analyzeCases(display=1)
     
@@ -2056,23 +2059,63 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     #model.preprocess_HAMS("testHAMSoutput", dw=0.1, wMax=10)
     
     return model
+
+
+
+def runRAFTFarm(input_file, plot=0):
+    '''
+    This will set up and run RAFT "Farm" based on a YAML input file.
+    '''
+    
+    if input_file[-3:]=='pkl' or input_file[-6:]=='pickle':
+        with open(input_file, 'rb') as pfile:
+            design = pickle.load(pfile)
+    elif not isinstance(input_file, dict):
+        # open the design YAML file and parse it into a dictionary for passing to raft
+        print("\n\nLoading RAFTFarm input file: "+input_file)
+        with open(input_file) as file:
+            design = yaml.load(file, Loader=yaml.FullLoader)
+    else:
+        design = input_file
+        print(f"'{design['name']}'")
+    
+    # Create and run the model
+    print(" --- making model ---")
+    model = Model(design)  
+    print('**Note: RAFTFarm cannot run model.analyzeUnloaded()')
+    print(" --- analyzing cases ---")
+    model.analyzeCases(display=1)
+    
+    print('**Note: model.calcOutputs is not supported yet for multi-turbine Farm configurations')
+    
+    if plot: 
+        model.plot()
+        model.plotResponses()
+    
+    return model
     
 
     
     
 if __name__ == "__main__":
     
+    ### Run a Simple Model ###
+    model = runRAFT(os.path.join(raft_dir,'designs/Vertical_cylinder.yaml'), plot=1)
+
+    ### Run a Reference FOWT Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'OC3spar-SlenderBody-Farm.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
     
-    
+    ### Run a MHK Model ###
+    #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
 
     #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/Vertical_cylinder.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/MHKF1_Rotor_RAFT.yaml'), plot=1)
-   
+    #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
+    
+    ### Run a RAFT Farm Model ###
+    #model = runRAFTFarm(os.path.join(raft_dir,'designs/VolturnUS-S_farm.yaml'), plot=1)
+
     plt.show()
     

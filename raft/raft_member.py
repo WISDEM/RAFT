@@ -106,7 +106,7 @@ class Member:
         # store end cap and bulkhead info
 
         cap_stations = getFromDict(mi, 'cap_stations', shape=-1, default=[])   # station location inputs before scaling
-        if cap_stations == []:
+        if len(cap_stations) == 0:
             self.cap_t        = []
             self.cap_d_in     = []
             self.cap_stations = []

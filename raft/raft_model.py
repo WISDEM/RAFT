@@ -851,6 +851,11 @@ class Model():
             
             try:
                 if self.nDOF > 36: # if huge, count on the system being sparse and use a sparse solver
+                    # import relevant packages
+                    import warnings
+                    from scipy.sparse import csr_matrix
+                    from scipy.sparse.linalg import spsolve, MatrixRankWarning
+
                     with warnings.catch_warnings():
                         warnings.simplefilter("error", category=MatrixRankWarning)
                         Kcsr = csr_matrix(K)
@@ -2110,9 +2115,6 @@ if __name__ == "__main__":
     ### Run a MHK Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
-
-    #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
     
     ### Run a RAFT Farm Model ###
     #model = runRAFTFarm(os.path.join(raft_dir,'designs/VolturnUS-S_farm.yaml'), plot=1)

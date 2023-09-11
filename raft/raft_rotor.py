@@ -319,9 +319,11 @@ class Rotor:
         else:
             self.bladeMemberList = []
     
-
+    """
     def bladeAirfoil2Member(self, Ca_edge=0.5, Ca_flap=1.0):
-        '''Method to create members for each airfoil in the turbine blade
+        '''First iteration of a method to create RAFT members for the rotor blades (not used right now).
+
+        Method to create members for each airfoil in the turbine blade
         To be used for added mass and buoyancy calculations of underwater turbines'''
         
         self.bladeMemberList = []
@@ -372,10 +374,13 @@ class Rotor:
             airfoil['rho_shell'] = 1850
 
             self.bladeMemberList.append(Member(airfoil, len(self.w)))
+    """
 
 
     def bladeGeometry2Member(self):
-        '''Method to create members for each "node" that is specified in turbine['blade']['geometry']
+        '''Second iteration of a function to create RAFT members based on rotor blades (is currently used).
+
+        Method to create members for each "node" that is specified in turbine['blade']['geometry']
         To be used for added mass and buoyancy calculations of underwater turbines'''
 
         self.bladeMemberList = []

@@ -684,8 +684,8 @@ turbine:
     
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
         type      :  1                         # [-]    
-        rA        :  [ 0, 0, -9.0]             # [m]    end A coordinates
-        rB        :  [ 0, 0, -24.0]             # [m]    and B coordinates
+        rA        :  [ 0, 0, -24.0]             # [m]    end A coordinates
+        rB        :  [ 0, 0, -9.0]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
         stations  :  [ 0, 1 ]                  # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
@@ -934,8 +934,8 @@ platform:
       
       - name      :  diag_tower_brace-S                # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
-        rA        :  [ 0.0, -8.0, 4.5]   # [m]    end A coordinates
-        rB        :  [ 0.0, 0.0, -8.5]       # [m]    and B coordinates
+        rA        :  [ 0.0, -8.0, -8.5]   # [m]    end A coordinates
+        rB        :  [ 0.0, 0.0, 4.5]       # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
@@ -950,8 +950,8 @@ platform:
       
       - name      :  diag_tower_brace-N                # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
-        rA        :  [ 0.0, 8.0, 4.5]   # [m]    end A coordinates
-        rB        :  [ 0.0, 0.0, -8.5]       # [m]    and B coordinates
+        rA        :  [ 0.0, 8.0, -8.5]   # [m]    end A coordinates
+        rB        :  [ 0.0, 0.0, 4.5]       # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
@@ -966,8 +966,8 @@ platform:
       
       - name      :  heave_plate-E                # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
-        rA        :  [ 28.0, 0.0, -10.0]   # [m]    end A coordinates
-        rB        :  [ 28.0, 0.0, -10.5]       # [m]    and B coordinates
+        rA        :  [ 28.0, 0.0, -10.5]   # [m]    end A coordinates
+        rB        :  [ 28.0, 0.0, -10.0]       # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
@@ -982,8 +982,8 @@ platform:
       
       - name      :  heave_plate-W                # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
-        rA        :  [ -28.0, 0.0, -10.0]   # [m]    end A coordinates
-        rB        :  [ -28.0, 0.0, -10.5]       # [m]    and B coordinates
+        rA        :  [ -28.0, 0.0, -10.5]   # [m]    end A coordinates
+        rB        :  [ -28.0, 0.0, -10.0]       # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
@@ -998,8 +998,8 @@ platform:
       
       - name      :  heave_plate-S                # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
-        rA        :  [ 0.0, -12.0, -10.0]   # [m]    end A coordinates
-        rB        :  [ 0.0, -12.0, -10.5]       # [m]    and B coordinates
+        rA        :  [ 0.0, -12.0, -10.5]   # [m]    end A coordinates
+        rB        :  [ 0.0, -12.0, -10.0]       # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
@@ -1014,8 +1014,8 @@ platform:
       
       - name      :  heave_plate-N                # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
-        rA        :  [ 0.0, 12.0, -10.0]   # [m]    end A coordinates
-        rB        :  [ 0.0, 12.0, -10.5]       # [m]    and B coordinates
+        rA        :  [ 0.0, 12.0, -10.5]   # [m]    end A coordinates
+        rB        :  [ 0.0, 12.0, -10.0]       # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory

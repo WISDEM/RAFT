@@ -1236,7 +1236,7 @@ class FOWT():
         heading = getFromDict(case, 'current_heading', shape=0, default=0)
 
         
-        Zref = 0.0  # reference z elevation for current profile (at the sea surface by default)
+        Zref = 0.0  # reference z elevation for current profile (at the sea surface by default) (reference height set to submerged rotor hub depth if rotor is submerged)
         for ti in range(self.nrotors):
             if self.rotorList[ti].Zhub < 0:     # If there is a submerged rotor,
                 Zref = self.rotorList[ti].Zhub  # use it for the reference current height.

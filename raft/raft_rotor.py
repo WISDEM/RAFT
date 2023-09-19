@@ -799,7 +799,8 @@ class Rotor:
         return F_aero0, f_aero, a_aero, b_aero #  B_aero, C_aero, F_aero0, F_aero
         
         
-    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0, color='k', airfoils=False):
+    def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0, color='k', 
+             airfoils=False, zorder=2):
         '''Draws the rotor on the passed axes, considering optional platform offset and rotation matrix, and rotor azimuth angle'''
 
         # ----- blade geometry ----------
@@ -849,8 +850,8 @@ class Rotor:
                 for ii in range(m-1):
                     ax.plot(P2[0, npts*ii:npts*(ii+1)], P2[1, npts*ii:npts*(ii+1)], P2[2, npts*ii:npts*(ii+1)], color=color, lw=0.4)  
             # draw outline
-            ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], color=color, lw=0.4, zorder=2) # leading edge  
-            ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], color=color, lw=0.4, zorder=2)  # trailing edge
+            ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], color=color, lw=0.4, zorder=zorder) # leading edge  
+            ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], color=color, lw=0.4, zorder=zorder)  # trailing edge
             
             
         #for j in range(m):

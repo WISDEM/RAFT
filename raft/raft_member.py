@@ -862,6 +862,97 @@ class Member:
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 
+    def getHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False):
+        '''Compute the Member's linear strip-theory-hydrodynamics terms, 
+        related to drag and added mass, which are also a precursor to excitation.
+        
+        r_ref : reference point coordinates to compute matrices about
+        '''
+        
+        # hydrodynamic added mass matrix from strip theory [kg, kg-m, kg-m^2]
+        A_hydro = np.zeros([6,6])
+        I_hydro = np.zeros([6,6])
+
+        circ = self.shape=='circular'  # boolean for circular vs. rectangular
+        
+
+        # loop through each node of the member
+        for il in range(self.ns):
+
+            # only process hydrodynamics if this node is submerged
+            if self.r[il,2] < 0:
+                
+                # only compute inertial loads and added mass for members that aren't modeled with potential flow
+                if self.potMod==False:
+
+                    # interpolate coefficients for the current strip
+                    Ca_q   = np.interp( self.ls[il], self.stations, self.Ca_q  )
+                    Ca_p1  = np.interp( self.ls[il], self.stations, self.Ca_p1 )
+                    Ca_p2  = np.interp( self.ls[il], self.stations, self.Ca_p2 )
+                    Ca_End = np.interp( self.ls[il], self.stations, self.Ca_End)
+
+
+                    # ----- compute side effects (transverse only) -----
+
+                    # volume assigned to this node
+                    if circ:
+                        v_i = 0.25*np.pi*self.ds[il]**2*self.dls[il]
+                    else:
+                        v_i = self.ds[il,0]*self.ds[il,1]*self.dls[il]  
+                        
+                    if self.r[il,2] + 0.5*self.dls[il] > 0:    # if member extends out of water 
+                        v_i = v_i * (0.5*self.dls[il] - self.r[il,2]) / self.dls[il]  # scale volume by the portion that is under water
+                    
+                    # Local added mass matrix (axial term explicitly excluded here - we aren't dealing with chains)
+                    Amat_sides = rho*v_i *( Ca_p1*self.p1Mat + Ca_p2*self.p2Mat )
+                    
+                    # Local inertial excitation matrix - Froude-Krylov  
+                    # (axial term explicitly excluded here - we aren't dealing with chains)
+                    # Note, the 1 is the Cp, dynamic pressure, term.
+                    Imat_sides = rho*v_i *(  (1.+Ca_p1)*self.p1Mat + (1.+Ca_p2)*self.p2Mat ) 
+                    
+
+                    # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
+                    # Note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+
+                    # compute volume assigned to this end surface, and
+                    # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                    if circ:
+                        v_i = np.pi/12.0 * abs(  (self.ds[il]+self.drs[il])**3 
+                                               - (self.ds[il]-self.drs[il])**3 )  
+                        a_i = np.pi*self.ds[il] * self.drs[il]   
+                    else:
+                        v_i = np.pi/12.0 * (  (np.mean(self.ds[il]+self.drs[il]))**3 
+                                            - (np.mean(self.ds[il]-self.drs[il]))**3 )    # so far just using sphere eqn and taking mean of side lengths as d
+                        a_i = (  (self.ds[il,0]+self.drs[il,0])*(self.ds[il,1]+self.drs[il,1]) 
+                               - (self.ds[il,0]-self.drs[il,0])*(self.ds[il,1]-self.drs[il,1]))
+                        # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
+
+                    # Local added mass matrix
+                    Amat_end = rho*v_i * Ca_End*self.qMat
+                    
+                    # Local inertial excitation matrix 
+                    # Note, there is no 1 added to Ca_End because dynamic pressure is handled separately
+                    Imat_end = rho*v_i * Ca_End*self.qMat  
+                    
+
+                    # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
+                    self.Amat[il,:,:] = Amat_sides + Amat_end
+                    self.Imat[il,:,:] = Imat_sides + Imat_end
+                    self.a_i[il] = a_i
+                    
+                    
+                    # add to global added mass and inertial excitation matrices
+                    # which consider the mean offsets and are relative to the ref in global orientation
+                    A_hydro += translateMatrix3to6DOF(self.Amat[il,:,:], self.r[il,:] - r_ref[:3])    
+                    if sum_inertia:
+                        I_hydro += translateMatrix3to6DOF(self.Imat[il,:,:], self.r[il,:] - r_ref[:3])   
+
+        if sum_inertia:
+            return A_hydro, I_hydro
+        else:
+            return A_hydro
+
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[], color='k', nodes=0, 
              station_plot=[], plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):
         '''Draws the member on the passed axes, and optional platform offset and rotation matrix

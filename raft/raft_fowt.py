@@ -687,7 +687,8 @@ class FOWT():
             
     
     def calcTurbineConstants(self, case, ptfm_pitch=0):
-        '''This computes turbine linear terms
+        '''This computes turbine linear terms (excluding hydrodynamic added 
+        mass and inertial excitation, which are handled by getHydroConstants).
         
         case
             dictionary of case information
@@ -774,20 +775,9 @@ class FOWT():
             print(f"Warning: turbine status is '{turbine_status}' so rotor fluid loads are neglected.")
 
 
-    def calcHydroConstants(self, case, memberList=[], Rotor=None, dgamma=0):
-        '''This computes the linear strip-theory-hydrodynamics terms, 
-        related to drag and added mass, which are also a precursor to excitation. 
-        
-        Parameters
-        ----------
-        memberList : list of Member objects
-            List of members to be involved in the calculations.
-        rotor : Rotor object
-            The rotor in case hydro constants of an underwater rotor are being calculated.
-        dgamma : float
-            Blade pitch angle to be applied when modeling the hydrodynamics of any underwater rotors.
-        
-        '''
+    def calcHydroConstants(self):
+        '''Compute FOWT hydrodynamic added mass matrix and member-level
+        inertial excitation coefficients.'''
 
 
         rho = self.rho_water
@@ -799,7 +789,7 @@ class FOWT():
 
         # loop through each member
         for i,mem in enumerate(memberList):
-        
+            '''
             circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
             
             # find the proper member node positions (mem.r) if this memberList is a bladeMemberList for underwater rotors. Otherwise, skip
@@ -829,7 +819,7 @@ class FOWT():
                 # - Do we need to adjust any other methods in raft_fowt to account for added mass?
                 # - Do we need to make any changes to the pyHAMS code to account for rotor added mass?
                 # - How should we adjust the inclusion of member end effects of added mass knowing blade members are attached on ends to each other?
-                        
+            
 
             # loop through each node of the member
             for il in range(mem.ns):
@@ -847,7 +837,7 @@ class FOWT():
                         Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
 
 
-                        # ----- compute side effects ---------------------------------------------------------
+                        # ----- compute side effects (transverse only) -----
 
                         if circ:
                             v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
@@ -856,16 +846,13 @@ class FOWT():
                             
                         if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
                             v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
-                            
-                         
+                        
                         # added mass (axial term explicitly excluded here - we aren't dealing with chains)
                         Amat_sides = rho*v_i *( Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
-                        #Amat = rho*v_i *( Ca_q*mem.qMat + Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
-
+                        
                         # inertial excitation - Froude-Krylov  (axial term explicitly excluded here - we aren't dealing with chains)
                         Imat_sides = rho*v_i *(  (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix (note: the 1 is the Cp, dynamic pressure, term)
-                        #Imat = rho*v_i *( (1.+Ca_q)*mem.qMat + (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix
-
+                        
 
                         # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
                         # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
@@ -893,15 +880,37 @@ class FOWT():
                         
                         # add to global added mass matrix for Morison members, which considers the mean offsets and is relative to the RPP with global orientation
                         self.A_hydro_morison += translateMatrix3to6DOF(mem.Amat[il,:,:], mem.r[il,:] - self.r6[:3])    
-
+            
 
             # reset the member.r variable if underwater blade members were used
             if mem.type==3 and Rotor is not None:
                 mem.rA0 = rOG[0]
                 mem.rB0 = rOG[-1]
+            '''
+            # get member added mass matrix about PRP (also saves each member's inertial excitation coefficients)
+            A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3])  
+            
+            self.A_hydro_morison += A_hydro_i  # add to FOWT added mass matrix
+    
+    
+        # ----- Get hydrodynamic contributions from any underwater rotors ------
+        for i, rot in enumerate(self.rotorList):
+            # compute rotor hydro added mass/inertia properties and take added mass matrix about PRP
+            rot.calcHydroConstants(r_ref=self.r6[:3])
+            
+            # rotate rotor matrices if needed then add to FOWT total matrices
+            angles = self.r6[3:] + np.array([0, np.atan2(rot.axis[2], rot.axis[0]),
+                                                np.atan2(rot.axis[1], rot.axis[0])])
+            Rmat = rotationMatrix(*angles)  # rotation matrix for rotor+fowt orientation
+            Mmat = rotateMatrix6(Mmat,Rmat)       # adjust the inertia matrix to align with global directions
+            
+            
+            self.A_hydro_morison += rotateMatrix6(rot.A_hydro, Rmat)
+            
+            # done in rotor instead of here:  self.I_hydro[i, :,:] = rotateMatrix6(rot.I_hydro, Rmat)
+    
 
-
-    def calcHydroExcitation(self, case, memberList=[], Rotor=None, dgamma=0):
+    def calcHydroExcitation(self, case, memberList=[], dgamma=0):
         '''This computes the wave kinematics and linear excitation for a given case.
         It calculates and F_BEM and F_hydro_iner, each with dimensions [wave headings, DOFs, frequencies].
         
@@ -959,7 +968,12 @@ class FOWT():
             mem.u    = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
             mem.ud   = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
             mem.pDyn = np.zeros([self.nWaves, mem.ns,    self.nw], dtype=complex)
-            
+        
+        # also set up wave kinematics arrays for the rotors
+        for i,rot in enumerate(self.rotorList):
+            rot.u    = np.zeros([self.nWaves, 3, self.nw], dtype=complex)
+            rot.ud   = np.zeros([self.nWaves, 3, self.nw], dtype=complex)
+            rot.pDyn = np.zeros([self.nWaves,    self.nw], dtype=complex)
             
         # ----- calculate potential-flow wave excitation force -----
 
@@ -1024,6 +1038,7 @@ class FOWT():
                 self.F_BEM[ih,:,:] = self.X_BEM[ih,:,:] * self.zeta[ih,:] * phase_offset
 
 
+        # ----- strip-theory wave excitation force -----
         # loop through each member to compute strip-theory contributions
         for i,mem in enumerate(memberList):
             
@@ -1037,12 +1052,6 @@ class FOWT():
                 if mem.r[il,2] < 0:
 
                     # get wave kinematics spectra given a certain wave spectrum and location
-                    #mem.u[il,:,:], mem.ud[il,:,:], mem.pDyn[il,:] = getWaveKin(self.zeta, self.beta, self.w, self.k, self.depth, mem.r[il,:], self.nw)
-                    
-                    #u    = np.zeros([self.nWaves,3,self.nw])
-                    #ud   = np.zeros([self.nWaves,3,self.nw])
-                    #pDyn = np.zeros([self.nWaves,self.nw])
-                    
                     # for each wave direction, calculate this node's frequency-dependent wave velocity, acceleration, and dynamic presure
                     for ih in range(self.nWaves):
                         mem.u[ih,il,:,:], mem.ud[ih,il,:,:], mem.pDyn[ih,il,:] = getWaveKin(self.zeta[ih,:], self.beta[ih], 
@@ -1060,17 +1069,39 @@ class FOWT():
                     for ih in range(self.nWaves):
                         for i in range(self.nw):
 
-                            #mem.F_exc_a[il,:,i] = np.matmul(mem.Imat[il,:,:], ud[ih,:,i]) # local inertial excitation force complex amplitude in x,y,z
-                            # >>> may want to add a separate dynamic pressure input <<<
-                            #mem.F_exc_p[il,:,i] = pDyn[ih,i]*mem.a_i[il]*mem.q  # add dynamic pressure - positive with q if end A - determined by sign of a_i
-                            # 
+                            # add dynamic pressure - positive with q if end A - determined by sign of a_i
                             F_exc_iner_temp = np.matmul(mem.Imat[il,:,:], mem.ud[ih,il,:,i]) + mem.pDyn[ih,il,i]*mem.a_i[il]*mem.q 
-                            #mem.F_exc_iner[il,:,i] += F_exc_iner_temp                    # add to stored member force vector
-
+                            
                             # add the excitation complex amplitude for this heading and frequency to the global excitation vector
                             self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:] - self.r6[:3]) # (about PRP)
 
 
+        # ----- inertial excitation on rotor(s) -----
+        
+        for i, rot in enumerate(self.rotorList):
+            if rot.Zhub < 0:  # if submerged
+
+                r = rot.r_hub + self.r6[:3]  # hub location in global coordinates
+
+                # get wave kinematics spectra given a certain wave spectrum and location
+                # for each wave direction, calculate the hub wave kinematics
+                for ih in range(self.nWaves):
+                    rot.u[ih,:,:], rot.ud[ih,:,:], rot.pDyn[ih,:] = getWaveKin(self.zeta[ih,:], self.beta[ih], 
+                                                                    self.w, self.k, self.depth, r, self.nw)
+                # Note: the above wave kinematics account for phasing due to the FOWT's mean offset position in the array
+                
+                # rotate rotor inertial excitation matrix to align with global
+                angles = self.r6[3:] + np.array([0, np.atan2(rot.axis[2], rot.axis[0]),
+                                                    np.atan2(rot.axis[1], rot.axis[0])])
+                Rmat = rotationMatrix(*angles)  # rotation matrix for rotor+fowt orientation
+                I_hydro = rotateMatrix6(rot.I_hydro, Rmat)
+
+                # compute force across frequency range
+                for i in range(self.nw):
+                    f_I = np.matmul( I_hydro, rot.ud[ih,:,i] )
+
+                    self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(f_I, r - self.r6[:3]) # (about PRP)
+                
 
     def calcHydroLinearization(self, Xi):
         '''The FOWT's dynamics solve iteration method. This calculates the amplitude-dependent 

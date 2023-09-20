@@ -45,6 +45,7 @@ class Rotor:
         self.turbine = turbine      # store dictionary for later use
 
         self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
+        self.speed_gain = getFromDict(turbine, 'speed_gain', shape=turbine['nrotors'], default=1.0)[ir]
         
         self.headings   = getFromDict(turbine, 'headings', shape=-1, default=[90,210,330])  # [deg]
         if 'headings' not in turbine:
@@ -111,6 +112,9 @@ class Rotor:
         self.ki_0 = np.zeros_like(self.Uhub)       
         self.k_float = 0 # np.zeros_like(self.Uhub), right now this is a single value, but this may change    <<< what is this?
 
+        # arrays to hold water wave velocities and accelerations if applicable
+        self.u  = np.array([[[]]])
+        self.ud = np.array([[[]]])
 
         # Set CCBlade flags
         tiploss = True # Tip loss model True/False
@@ -438,13 +442,117 @@ class Rotor:
 
         # find the new node positions of the blade member
         r_new = np.zeros_like(r_OG)
-        for i in range(len(r_OG)):
+        for i in range(r_OG.shape[0]):
             r_from_Zhub = np.matmul(R, r_OG[i,:])   # wrt to the hub center
             r_new[i,:] = r_from_Zhub + self.rHub    # wrt to the global coordinates
 
         return r_new
 
 
+    def calcHydroConstants(self, r_ref=np.zeros(3), dgamma=0):
+        '''Compute hydrodynamic added mass and inertial excitation coefficients
+        for the rotor as a whole.
+        
+        Parameters
+        ----------
+        r_ref : array
+            Reference point for computing returned added mass matrix about.
+        dgamma : float
+            Blade pitch angle to be applied when modeling the hydrodynamics of any underwater rotors.
+        '''
+        
+        A_hydro = np.zeros([6,6])
+        I_hydro = np.zeros([6,6])
+        
+        
+        ''' --- manual temporary option ---
+        # make a temporary set of members for a blade (coordinates relative to hub)
+        
+        bladeMemberList = []
+
+        for i in range(len(self.blade_r)-1):
+            blademem = dict(name=i, type=3, shape='rect', potMod=False)
+
+            q = np.matmul(np.array([[0, -1, 0],[1, 0, 0],[0, 0, 1]]), self.axis) 
+            blademem['rA'] = q * (self.blade_r[i] - self.dr/2)
+            blademem['rB'] = q * (self.blade_r[i] + self.dr/2)
+
+            blademem['stations'] = [0,1]
+
+            chord = self.blade_chord[i]
+            rel_thick = self.r_thick_interp[i]
+            area = (np.pi/4)*chord**2 * rel_thick
+            rect_thick = area/chord  # thickness of rectange with same chord length to achieve same cross sectional area
+            blademem['d'] = [[chord, rect_thick],[chord, rect_thick]]
+
+            blademem['gamma'] = self.blade_theta[i]
+
+            blademem['Cd'] = 0.0
+            blademem['Ca'] = self.Ca_interp[i,:]            
+            blademem['CdEnd'] = 0.0
+            blademem['CaEnd'] = 0.0
+        
+            blademem['t'] = 0.01
+            blademem['rho_shell'] = 0
+
+            bladeMemberList.append(Member(blademem, len(self.w)))
+        
+        # sum up hydro coefficients
+        A_hydro_morison = np.zeros([6,6])
+        for i, mem in enumerate(bladeMemberList):
+        
+            A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True)
+            
+            A_hydro += A_hydro_i 
+            I_hydro += I_hydro_i 
+            
+            
+        # duplicate for number of blades and compute whole-rotor terms!
+        self.A_11 = A_hydro[0,0] * self.nBlades  # thrust
+        self.A_44 = A_hydro[3,3] * self.nBlades  # torque
+        self.A_14 = A_hydro[0,3] * self.nBlades  # torque-thrust coupling
+        elf.A_55 = A_hydro[0,3] * self.nBlades * 0.707  # torque-thrust coupling <<< need to azimuthally average <<<
+        self.I_11 = I_hydro[0,0] * self.nBlades  # thrust (neglect the others for now)
+        self.I_14 = I_hydro[0,3] * self.nBlades  # thrust-torque coupling
+        then populate full matrices?
+        
+        '''
+        
+        # --- whole-rotor members approach ---
+        for i,mem in enumerate(self.bladeMemberList):
+            # the input memberList is the rotor.bladeMemberList multiplied by nBlades (e.g. if len(rotor.bladeMemberList)=10, then this len(memberList)=30 for 3 blade rotor)
+            # adjust the heading/orientation of the each section of blade members by the corresponding heading in rotor.headings based on where in the list you are
+            j = i // int(len(self.bladeMemberList)/self.nBlades)     # i (from 0 to 30) // 10, which results in either j = 1, 2, or 3, for each blade heading
+
+            # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
+            rUpdated = self.getBladeMemberPositions(self.headings[j], rOG) # blade node coords relative to hub
+            mem.rA0 = rUpdated[0]
+            mem.rB0 = rUpdated[-1]
+            
+            # apply a blade pitch angle to every blade member if applicable
+            mem.gamma = mem.gamma + dgamma
+
+            # run calcOrientation to ensure the p1 and p2 axes of the members are oriented the way they should be
+            mem.setPosition()
+            
+            # compute hydro added mass and inertial excitation terms relative to hub
+            A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True)
+            
+            A_hydro += A_hydro_i 
+            I_hydro += I_hydro_i 
+        
+        # in this case these are complete 6x6 matrices for the whole rotor
+        # (end of case)
+        
+        # --- save hydro matrices ---
+        self.A_hydro = A_hydro
+        self.I_hydro = I_hydro
+
+        # >>>>>>> TODO (for added mass of underwater rotors) <<<<<<<<<<
+        # - Do we need to adjust any other methods in raft_fowt to account for added mass?
+        # - Do we need to make any changes to the pyHAMS code to account for rotor added mass?
+        # - How should we adjust the inclusion of member end effects of added mass knowing blade members are attached on ends to each other?
+                        
 
     def calcCavitation(self, case, azimuth=0, clearance_margin=1.0, Patm=101325, Pvap=2500, error_on_cavitation=False):
         ''' Method to calculate the cavitation number of the rotor
@@ -504,14 +612,19 @@ class Rotor:
         return cav_check
 
 
-    def runCCBlade(self, Uhub, ptfm_pitch=0, yaw_misalign=0):
+    def runCCBlade(self, U0, ptfm_pitch=0, yaw_misalign=0):
         '''This performs a single CCBlade evaluation at specified conditions.
         
+        U0
+            Freestream flow speed [m/s].
         ptfm_pitch
             mean platform pitch angle to be included in rotor tilt angle [rad]
         yaw_misalign
             turbine yaw misalignment angle [deg]
         '''
+        
+        # apply inflow speed gain factor (for any confinement/blockage effects)
+        Uhub = U0*self.speed_gain
         
         # find turbine operating point at the provided wind speed
         Omega_rpm = np.interp(Uhub, self.Uhub, self.Omega_rpm)  # rotor speed [rpm]
@@ -641,6 +754,12 @@ class Rotor:
         #turbine_heading = self.turbine_heading  #<<<<  USE THIS IN FUTURE <<<<<<
         yaw_misalign = heading - turbine_heading  # inflow misalignment heading relative to turbine heading [deg]
 
+
+        adjust ptfm_pitch for mean pitch of turbine, plus any tilt of rotor (see axis attribute) <<<
+        
+        also maybe adjust yaw_misalign for any platform yaw - or do we assume it's yaw controlled ? <<<
+
+
         # call CCBlade
         loads, derivs = self.runCCBlade(speed, ptfm_pitch=ptfm_pitch, yaw_misalign=yaw_misalign)
         
@@ -659,12 +778,18 @@ class Rotor:
         F_aero0 = np.array([loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0],
                             loads["My" ][0], loads["Q" ][0], loads["Mz" ][0] ])
         
-        #>>> need a rotor heading rotation somewhere applied to the forces <<<<
+        >>> need a rotor heading/axis rotation somewhere applied to the forces <<<<
+        RMat?
         
         # calculate rotor-averaged turbulent wind spectrum
         _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD [(m/s)^2/rad]
-        self.V_w = np.sqrt(S_rot)   # convert from power spectral density to complex amplitudes (FFT)
+        
+        # convert from power spectral density to complex amplitudes (FFT)
+        self.V_w = np.array(np.sqrt(S_rot), dtype=complex)   
 
+        # prepare rotated hydro inertial excitation matrix for the rotor
+        >>> need to compute Rmat above <<<
+        I_hydro = rotateMatrix6(self.I_hydro, Rmat)
 
         # no-control option
         if self.aeroServoMod == 1:  
@@ -672,10 +797,16 @@ class Rotor:
             a_aero = np.zeros(len(self.w)) 
             b_aero = np.zeros(len(self.w)) + dT_dU
 
-            f_aero =  dT_dU * np.sqrt(S_rot)
+            f_aero =  dT_dU * self.V_w
+            
+            # Add hydrodynamic inertial excitation for underwater rotors
+            if current:
+                f_aero += self.I_hydro[0,0] * 1i*self.w*self.V_w
             
         # control option
         elif self.aeroServoMod == 2:  
+        
+            # include added mass somewhere?  and maybe even effect of inertial excitation on control?
         
             # Pitch control gains at Uinf (Uinf), flip sign to translate ROSCO convention to this one
             self.kp_beta    = -np.interp(Uinf, self.Uhub, self.kp_0) 
@@ -746,6 +877,10 @@ class Rotor:
             b3 = np.real(  dT_dU - H_QT*dQ_dU             )  # damping
             a3 = np.real( (dT_dU - H_QT*dQ_dU)/(1j*self.w))  # added mass
 
+            # Add hydrodynamic inertial excitation for underwater rotors
+            # (thrust only, neglecting rotor dynamics)
+            if current:
+                f2 += self.I_hydro[0,0] * 1i*self.w*self.V_w
 
             if display > 1:
                 '''

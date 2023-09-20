@@ -28,7 +28,8 @@ cases:
 turbine:
 
     nrotors     :  1                # [-]        number of turbines in the FOWT
-    rotorCoords : [[0, 0]]     # [m, m]     x-y coordinates of rotor in space
+    rotorCoords : [[0, 0]]          # [m, m]     x-y coordinates of rotor in space
+    speed_gain  : 1.1               # [-]    multiplier on inflow velocity due to flow confinement
     
     mRNA        : 52755.716           # [kg]       RNA mass 
     IxRNA       : 232552.25             # [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
@@ -40,8 +41,8 @@ turbine:
     I_drivetrain: 0.0           # full rotor + drivetrain inertia as felt on the high-speed shaft
     
     nBlades     : 2                 # [-]        number of blades
-    Zhub        : -25.2              # [m]        hub height [m]
-    Rhub        : 1.0           # [m]        hub radius [m]
+    Zhub        : -25.2             # [m]        hub height [m]
+    Rhub        : 1.0               # [m]        hub radius [m]
     precone     : 0.0               # [deg]
     shaft_tilt  : 0.0               # [deg]
     overhang    : 4.91              # [m]

@@ -379,6 +379,7 @@ class Rotor:
     """
 
 
+
     def bladeGeometry2Member(self):
         '''Second iteration of a function to create RAFT members based on rotor blades (is currently used).
 

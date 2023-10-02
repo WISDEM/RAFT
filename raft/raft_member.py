@@ -697,7 +697,7 @@ class Member:
 
 
 
-    def getHydrostatics(self, rho, g, rPRP=np.zeros(3)):
+    def getHydrostatics(self, rPRP=np.zeros(3), rho=1025, g=9.81):
         '''Calculates member hydrostatic properties, namely buoyancy and stiffness matrix.
         Properties are calculated relative to the platform reference point (PRP) in the
         global orientation directions.
@@ -862,11 +862,23 @@ class Member:
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 
-    def getHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False):
+    def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81):
         '''Compute the Member's linear strip-theory-hydrodynamics terms, 
-        related to drag and added mass, which are also a precursor to excitation.
+        related to drag and added mass, which are also a precursor to 
+        excitation. All computed quantities are in global orientations.
         
-        r_ref : reference point coordinates to compute matrices about
+        Parameters
+        ----------
+        r_ref : size-3 vector
+            Reference point coordinates to compute matrices about [m].
+        sum_inertia : boolean, optional
+            Flag to calculate and return an overall inertial excitation matrix
+            (default False).
+        
+        Returns
+        -------
+        A_hydro, I_hydro : 3x3 matrices
+            Hydrodynamic added mass and inertial excitation matrices.
         '''
         
         # hydrodynamic added mass matrix from strip theory [kg, kg-m, kg-m^2]
@@ -952,6 +964,7 @@ class Member:
             return A_hydro, I_hydro
         else:
             return A_hydro
+
 
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[], color='k', nodes=0, 
              station_plot=[], plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):

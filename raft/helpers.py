@@ -359,12 +359,26 @@ def rotateMatrix6(Min, rotMat):
     rotMat : array(3,3)  
         rotation matrix (DCM)
     '''    
-    outMat = np.zeros([6,6])  # rotated matrix
+    outMat = np.zeros_like(Min)  # rotated matrix
 
-    outMat[:3,:3] = rotateMatrix3(Min[:3,:3], rotMat)    # mass matrix
-    outMat[:3,3:] = rotateMatrix3(Min[:3,3:], rotMat)    # product of inertia matrix
-    outMat[3:,:3] = outMat[:3,3:].T
-    outMat[3:,3:] = rotateMatrix3(Min[3:,3:], rotMat)    # moment of inertia matrix
+    shape = Min.shape
+    if not (shape[0]==6 and shape[1]==6):
+        raise Exception('The input matrix must be 6x6 (with an optional third dimension).')
+
+    if len(shape) == 2:
+        outMat[:3,:3] = rotateMatrix3(Min[:3,:3], rotMat)    # mass matrix
+        outMat[:3,3:] = rotateMatrix3(Min[:3,3:], rotMat)    # product of inertia matrix
+        outMat[3:,:3] = outMat[:3,3:].T
+        outMat[3:,3:] = rotateMatrix3(Min[3:,3:], rotMat)    # moment of inertia matrix
+    
+    elif len(shape) == 3:
+        for i in range(len(shape[2])):  # process each 6x6 slice
+            outMat[:3,:3, i] = rotateMatrix3(Min[:3,:3, i], rotMat)
+            outMat[:3,3:, i] = rotateMatrix3(Min[:3,3:, i], rotMat)
+            outMat[3:,:3, i] = outMat[:3,3:, i].T
+            outMat[3:,3:, i] = rotateMatrix3(Min[3:,3:, i], rotMat)
+    else:
+        raise Exception('Input matrix must be two- or three-dimensional.')
 
     return outMat
 
@@ -382,6 +396,25 @@ def rotateMatrix3(Min, rotMat):
     '''
     return np.matmul( np.matmul(rotMat, Min), rotMat.T )
 
+
+def RotFrm2Vect( A, B):
+    '''Rodriguez rotation function, which returns the rotation matrix 
+    that transforms vector A into Vector B.
+    '''
+    
+    
+    v = np.cross(A,B)
+    
+    if np.sum(v**2)==0:  # if something goes wrong (or A==B), no transformation
+        return np.eye(3)
+        
+    ssc = np.array([[0, -v[2], v[1]],
+                [v[2], 0, -v[0]],
+                [-v[1], v[0], 0]])
+         
+    R =  np.eye(3,3) + ssc + np.matmul(ssc,ssc)*(1-np.dot(A,B))/(np.linalg.norm(v)*np.linalg.norm(v))            
+
+    return R
 
 def getRMS(xi):
     '''Calculates standard deviation or RMS of inputted (complex) response amplitude vector.

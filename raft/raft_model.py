@@ -208,7 +208,8 @@ class Model():
         if len(self.fowtList) > 1:
             raise Exception('analyzeUnloaded is an old method that only works for a single FOWT.')
         
-        # need to zero out external loads >>>
+        # need to zero out external loads
+        self.fowtList[0].setPosition(np.zeros(6))
         self.fowtList[0].D_hydr0 = np.zeros(6)
         self.fowtList[0].F_aero0 = np.zeros([6,self.fowtList[0].nrotors])
         
@@ -247,9 +248,7 @@ class Model():
             # compute FOWT static and constant hydrodynamic properties
             fowt.calcStatics()
             #fowt.calcBEM()
-            fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0), memberList=fowt.memberList)    # for normal platform members
-            #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater)
-                #fowt.calcHydroConstants(dict(wave_spectrum='still', wave_heading=0), memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)
+            fowt.calcHydroConstants()  # includes rotor when underwater
         
         
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
@@ -672,7 +671,7 @@ class Model():
                     print(case)
                 
                 fowt.calcTurbineConstants(case, ptfm_pitch=0)  # for turbine forces >>> still need to update to use current fowt pose <<<
-                fowt.calcHydroConstants(case, memberList=fowt.memberList) # prep for drag force (and eventually mean drift)
+                fowt.calcHydroConstants()
                 #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater) ??
                     #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)                   ??
                 # wave mean drift to be added
@@ -1837,8 +1836,37 @@ class Model():
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][0]))   
             self.solveStatics(case=case)
             
+            
+            # --- some yaw misalignment processes (here for now, may be able to put in Rotor later) ---
+            rot = self.fowtList[nfowt].rotorList[nrotor]
+            
+            if rot.yaw_mode == 0:  # assume aligned
+                nac_yaw = np.radians(heading)
+                
+            elif rot.yaw_mode == 1:  # use case info
+                turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
+                nac_yaw = np.radians(turbine_heading - heading)
+                
+            elif rot.yaw_mode == 2:  # use self.yaw value
+                nac_yaw = rot.yaw
+            else:
+                raise Exception('Unsupported yaw_mode value. Must be 0, 1, or 2.')
+            
+            rot.yaw = nac_yaw  # save the nacelle yaw value just in case it's useful later
+            
+            # find turbine global heading and tilt
+            turbine_heading = np.arctan2(rot.q[1], rot.q[0]) + nac_yaw  # [rad]
+            turbine_tilt    = np.arctan2(rot.q[2], rot.q[0])  # [rad] front facing up is positive
+            
+            # inflow misalignment heading relative to turbine heading [deg]
+            yaw_misalign = np.radians(heading) - turbine_heading
+            turbine_tilt = turbine_tilt
+            
+            
             # Not sure how the pitch angle should be handled if wind comes at angle.....
-            loads, derivs = self.fowtList[nfowt].rotorList[nrotor].runCCBlade(Uhub = uhub, ptfm_pitch = self.fowtList[nfowt].Xi0[4])
+            loads, derivs = self.fowtList[nfowt].rotorList[nrotor].runCCBlade(uhub, #ptfm_pitch=self.fowtList[nfowt].Xi0[4],
+                                                                              ptfm_pitch=turbine_tilt,
+                                                                              yaw_misalign=yaw_misalign)
             cp.append(loads["CP"][0])
             ct.append(loads["CT"][0])
             pitch.append(self.fowtList[nfowt].Xi0[4])

@@ -12,7 +12,7 @@ from scipy.interpolate      import PchipInterpolator
 from scipy.special          import modstruve, iv
 
 
-from raft.helpers                import rotationMatrix, getFromDict
+from raft.helpers import rotationMatrix, getFromDict, rotateMatrix3, rotateMatrix6, RotFrm2Vect
 
 try:
     from ccblade.ccblade import CCBlade, CCAirfoil
@@ -42,6 +42,7 @@ class Rotor:
 
         # Should inherit these from raft_model or _env?
         self.w = np.array(w)
+        self.nw = len(self.w)
         self.turbine = turbine      # store dictionary for later use
 
         self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
@@ -58,10 +59,20 @@ class Rotor:
         self.Zhub       = getFromDict(turbine, 'hHub', shape=turbine['nrotors'])[ir]            # [m]
         self.Rhub       = getFromDict(turbine, 'Rhub', shape=turbine['nrotors'])[ir]            # [m]
         self.precone    = getFromDict(turbine, 'precone', shape=turbine['nrotors'])[ir]         # [m]
-        self.shaft_tilt = getFromDict(turbine, 'shaft_tilt', shape=turbine['nrotors'])[ir]      # [deg]        
+        self.shaft_tilt = getFromDict(turbine, 'shaft_tilt', shape=turbine['nrotors'])[ir]*np.pi/180 # [rad]        
         self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]        # [m]
         self.aeroServoMod = getFromDict(turbine, 'aeroServoMod', shape=turbine['nrotors'], default=1)[ir]  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
 
+        self.yaw = 0   # the relative yaw rotation of this rotor, as from a yaw drive [rad]
+        
+        # how nacelle yaw is handled: 0=assume aligned, 1=use case info, 2=use self.yaw value
+        self.yaw_mode = getFromDict(turbine, 'yaw_mode', shape=turbine['nrotors'], dtype=int, default=0)[ir]
+
+        # initialize absolute position/orientation variables
+        self.r3 = np.zeros(3)  # instantaneous global position of rotor hub location
+        self.q  = np.array([1,0,0]) # instantaneous unit vector of rotor axis, downflow
+        self.R  = np.ones(3)  # rotation matrix for platform orientation 
+        
         self.rHub = np.array([self.coords[0], self.coords[1], self.Zhub])  # save the rotor's hub coordinates in the platform reference frame [m]
 
         # support if blade and wt_ops are each a single dictionary or a list of dictionaries for each rotor
@@ -92,16 +103,12 @@ class Rotor:
                 raise ValueError(f"Input blade geometry is invalid. First node radius needs to be >= Rhub ({self.Rhub}) or last node radius needs to be <= Rtip ({self.R_rot})")
 
 
-        #yaw  = 0        
-
         self.Uhub      = getFromDict(turbine['wt_ops'][ir], 'v', shape=-1)
         self.Omega_rpm = getFromDict(turbine['wt_ops'][ir], 'omega_op', shape=-1)
         self.pitch_deg = getFromDict(turbine['wt_ops'][ir], 'pitch_op', shape=-1)
 
         self.I_drivetrain = getFromDict(turbine, 'I_drivetrain', shape=turbine['nrotors'])[ir]
 
-        #self.aeroServoMod = getFromDict(turbine, 'aeroServoMod', default=1)  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
-        
 		# Add parked pitch, rotor speed, assuming fully shut down by 40% above cut-out
         self.Uhub = np.r_[self.Uhub, self.Uhub.max()*1.4, 100]
         self.Omega_rpm = np.r_[self.Omega_rpm, 0, 0]
@@ -115,6 +122,8 @@ class Rotor:
         # arrays to hold water wave velocities and accelerations if applicable
         self.u  = np.array([[[]]])
         self.ud = np.array([[[]]])
+        
+        self.f0 = np.zeros(6)  # mean forces and moments about hub (aligned with platform local directions)
 
         # Set CCBlade flags
         tiploss = True # Tip loss model True/False
@@ -299,7 +308,7 @@ class Rotor:
             self.rho,                       # (kg/m^3) freestream fluid density
             self.mu,                        # (kg/m/s) dynamic viscosity of fluid
             self.precone,                   # (deg) hub precone angle
-            self.shaft_tilt,                # (deg) hub tilt angle
+            np.degrees(self.shaft_tilt),    # (deg) hub tilt angle  
             0.0,                            # (deg) nacelle yaw angle
             self.shearExp,                  # shear exponent for a power-law wind profile across hub
             self.Zhub,                      # (m) hub height used for power-law wind profile.  U = Uref*(z/hubHt)**shearExp
@@ -324,6 +333,29 @@ class Rotor:
             self.bladeGeometry2Member()
         else:
             self.bladeMemberList = []
+    
+    
+    def setPosition(self, r6=np.zeros(6), R=None):
+        '''Calculate rotor pose based on FOWT pose.
+        
+        Parameters
+        ----------
+        r6 : array, optional
+            Absolute position/orientation of FOWT to which member is attached.
+        '''
+        
+        # store rotation matrix for platform roll, pitch, yaw
+        if R:
+            self.R = np.array(R)
+        else:
+            self.R = rotationMatrix(*r6[3:])
+            
+        # apply platform rotation to rotor axis and position relative to PRP
+        self.q = np.matmul(self.R, self.axis)  # axis unit vector in global orientation
+        r3_rel = np.matmul(self.R, self.rHub)  
+        
+        self.r3 = r6[:3] + self.rHub  # absolute hub coordinate [m]
+        
     
     """
     def bladeAirfoil2Member(self, Ca_edge=0.5, Ca_flap=1.0):
@@ -449,16 +481,20 @@ class Rotor:
         return r_new
 
 
-    def calcHydroConstants(self, r_ref=np.zeros(3), dgamma=0):
+    def calcHydroConstants(self, dgamma=0, rho=1025, g=9.81):
         '''Compute hydrodynamic added mass and inertial excitation coefficients
-        for the rotor as a whole.
+        for the rotor as a whole. Stores and returns results in local reference
+        frame about hub location.
         
         Parameters
         ----------
-        r_ref : array
-            Reference point for computing returned added mass matrix about.
         dgamma : float
-            Blade pitch angle to be applied when modeling the hydrodynamics of any underwater rotors.
+            Blade pitch angle to be applied to the rotor.
+        
+        Returns
+        -------
+        A_hydro, I_hydro : 3x3 matrices
+            Hydrodynamic added mass and inertial excitation matrices.
         '''
         
         A_hydro = np.zeros([6,6])
@@ -523,7 +559,9 @@ class Rotor:
             # the input memberList is the rotor.bladeMemberList multiplied by nBlades (e.g. if len(rotor.bladeMemberList)=10, then this len(memberList)=30 for 3 blade rotor)
             # adjust the heading/orientation of the each section of blade members by the corresponding heading in rotor.headings based on where in the list you are
             j = i // int(len(self.bladeMemberList)/self.nBlades)     # i (from 0 to 30) // 10, which results in either j = 1, 2, or 3, for each blade heading
-
+            
+            rOG = np.array([mem.rA0, mem.rB0])
+            
             # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
             rUpdated = self.getBladeMemberPositions(self.headings[j], rOG) # blade node coords relative to hub
             mem.rA0 = rUpdated[0]
@@ -536,23 +574,17 @@ class Rotor:
             mem.setPosition()
             
             # compute hydro added mass and inertial excitation terms relative to hub
-            A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True)
+            A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True, rho=rho, g=g)
             
             A_hydro += A_hydro_i 
             I_hydro += I_hydro_i 
         
-        # in this case these are complete 6x6 matrices for the whole rotor
-        # (end of case)
-        
-        # --- save hydro matrices ---
+        # --- save hydro matrices (these are in global orientations) ---
         self.A_hydro = A_hydro
         self.I_hydro = I_hydro
+        
+        return A_hydro, I_hydro
 
-        # >>>>>>> TODO (for added mass of underwater rotors) <<<<<<<<<<
-        # - Do we need to adjust any other methods in raft_fowt to account for added mass?
-        # - Do we need to make any changes to the pyHAMS code to account for rotor added mass?
-        # - How should we adjust the inclusion of member end effects of added mass knowing blade members are attached on ends to each other?
-                        
 
     def calcCavitation(self, case, azimuth=0, clearance_margin=1.0, Patm=101325, Pvap=2500, error_on_cavitation=False):
         ''' Method to calculate the cavitation number of the rotor
@@ -620,7 +652,10 @@ class Rotor:
         ptfm_pitch
             mean platform pitch angle to be included in rotor tilt angle [rad]
         yaw_misalign
-            turbine yaw misalignment angle [deg]
+            turbine yaw misalignment angle [rad]
+            
+        In future could add options to specify rotor speed and blade pitch values
+        that override the default scheduled values, for controls applications.
         '''
         
         # apply inflow speed gain factor (for any confinement/blockage effects)
@@ -630,9 +665,10 @@ class Rotor:
         Omega_rpm = np.interp(Uhub, self.Uhub, self.Omega_rpm)  # rotor speed [rpm]
         pitch_deg = np.interp(Uhub, self.Uhub, self.pitch_deg)  # blade pitch angle [deg]
         
-        # adjust rotor angles based on provided info (I think this intervention in CCBlade should work...)
-        self.ccblade.tilt = np.deg2rad(self.shaft_tilt) + ptfm_pitch
-        self.ccblade.yaw  = np.deg2rad(yaw_misalign)
+        # Adjust rotor angles based on provided info
+        # Note: this adjusts internal CCBlade angles (which are in radians)
+        self.ccblade.tilt = self.shaft_tilt + ptfm_pitch
+        self.ccblade.yaw  = yaw_misalign
         
         # evaluate aero loads and derivatives with CCBlade
         loads, derivs = self.ccblade.evaluate(Uhub, Omega_rpm, pitch_deg, coefficients=True)
@@ -659,26 +695,11 @@ class Rotor:
 
         print(f"Wind speed: {Uhub:.2f} m/s, Omega: {Omega_rpm:.2f} rpm, Cp: {loads['CP'][0]:4.3f}, T: {loads['T'][0]/1e3:.0f} kN")
         
+        # save select derivatives
         J={} # Jacobian/derivatives
 
         dP = derivs["dP"]
         J["P", "r"] = dP["dr"]
-        # J["P", "chord"] = dP["dchord"]
-        # J["P", "theta"] = dP["dtheta"]
-        # J["P", "Rhub"] = np.squeeze(dP["dRhub"])
-        # J["P", "Rtip"] = np.squeeze(dP["dRtip"])
-        # J["P", "hub_height"] = np.squeeze(dP["dhubHt"])
-        # J["P", "precone"] = np.squeeze(dP["dprecone"])
-        # J["P", "tilt"] = np.squeeze(dP["dtilt"])
-        # J["P", "yaw"] = np.squeeze(dP["dyaw"])
-        # J["P", "shearExp"] = np.squeeze(dP["dshear"])
-        # J["P", "V_load"] = np.squeeze(dP["dUinf"])
-        # J["P", "Omega_load"] = np.squeeze(dP["dOmega"])
-        # J["P", "pitch_load"] = np.squeeze(dP["dpitch"])
-        # J["P", "precurve"] = dP["dprecurve"]
-        # J["P", "precurveTip"] = dP["dprecurveTip"]
-        # J["P", "presweep"] = dP["dpresweep"]
-        # J["P", "presweepTip"] = dP["dpresweepTip"]
 
         dQ = derivs["dQ"]
         J["Q","Uhub"]      = np.atleast_1d(np.diag(dQ["dUinf"]))
@@ -690,28 +711,9 @@ class Rotor:
         J["T","pitch_deg"] = np.atleast_1d(np.diag(dT["dpitch"]))
         J["T","Omega_rpm"] = np.atleast_1d(np.diag(dT["dOmega"]))
 
-        # dT = derivs["dT"]
-        # .J["Fhub", "r"][0,:] = dT["dr"]     # 0 is for thrust force, 1 would be y, 2 z
-        # .J["Fhub", "chord"][0,:] = dT["dchord"]
-        # .J["Fhub", "theta"][0,:] = dT["dtheta"]
-        # .J["Fhub", "Rhub"][0,:] = np.squeeze(dT["dRhub"])
-        # .J["Fhub", "Rtip"][0,:] = np.squeeze(dT["dRtip"])
-        # .J["Fhub", "hub_height"][0,:] = np.squeeze(dT["dhubHt"])
-        # .J["Fhub", "precone"][0,:] = np.squeeze(dT["dprecone"])
-        # .J["Fhub", "tilt"][0,:] = np.squeeze(dT["dtilt"])
-        # .J["Fhub", "yaw"][0,:] = np.squeeze(dT["dyaw"])
-        # .J["Fhub", "shearExp"][0,:] = np.squeeze(dT["dshear"])
-        # .J["Fhub", "V_load"][0,:] = np.squeeze(dT["dUinf"])
-        # .J["Fhub", "Omega_load"][0,:] = np.squeeze(dT["dOmega"])
-        # .J["Fhub", "pitch_load"][0,:] = np.squeeze(dT["dpitch"])
-        # .J["Fhub", "precurve"][0,:] = dT["dprecurve"]
-        # .J["Fhub", "precurveTip"][0,:] = dT["dprecurveTip"]
-        # .J["Fhub", "presweep"][0,:] = dT["dpresweep"]
-        # .J["Fhub", "presweepTip"][0,:] = dT["dpresweepTip"]
-
         self.J = J
 
-        return loads, derivs        
+        return loads, derivs
 
 
     def setControlGains(self,turbine):
@@ -732,54 +734,90 @@ class Rotor:
             
 
 
-    def calcAeroServoContributions(self, case, ptfm_pitch=0, current=False, display=0):
+    def calcAero(self, case, current=False, display=0):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
         Results are w.r.t. the hub coordinate on the nacelle reference frame (may be yawed)
         Currently returning 6 DOF mean loads, but other terms are just hub fore-aft scalars.
-        
-         ptfm_pitch
-            mean platform pitch angle to be included in rotor tilt angle [rad]
         '''
         
-        # get relative inflow angle
+        # get inflow
         if current:
             speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
             heading = getFromDict(case, 'current_heading', shape=0, default=0.0)
         else:
             speed = getFromDict(case, 'wind_speed', shape=0, default=10)
             heading = getFromDict(case, 'wind_heading', shape=0, default=0.0)
-            
-        turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
-        #turbine_heading = self.turbine_heading  #<<<<  USE THIS IN FUTURE <<<<<<
-        yaw_misalign = heading - turbine_heading  # inflow misalignment heading relative to turbine heading [deg]
-
-
-        adjust ptfm_pitch for mean pitch of turbine, plus any tilt of rotor (see axis attribute) <<<
         
-        also maybe adjust yaw_misalign for any platform yaw - or do we assume it's yaw controlled ? <<<
-
+        # Figure out relative inflow angles considering platform orientation,
+        # rotor axis angles, nacelle yaw, and inflow direction
+        
+        # Apply nacelle yaw depending on the yaw mode 
+        # (this does not consider if the axis has a permanent lateral angle)
+        if self.yaw_mode == 0:  # assume aligned
+            nac_yaw = np.radians(heading)
+            
+        elif self.yaw_mode == 1:  # use case info
+            turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
+            nac_yaw = np.radians(turbine_heading - heading)
+            
+        elif self.yaw_mode == 2:  # use self.yaw value
+            nac_yaw = self.yaw
+        else:
+            raise Exception('Unsupported yaw_mode value. Must be 0, 1, or 2.')
+        
+        self.yaw = nac_yaw  # save the nacelle yaw value just in case it's useful later
+        
+        # find turbine global heading and tilt
+        turbine_heading = np.arctan2(self.q[1], self.q[0]) + nac_yaw  # [rad]
+        turbine_tilt    = np.arctan2(self.q[2], self.q[0])  # [rad] front facing up is positive
+        
+        # inflow misalignment heading relative to turbine heading [deg]
+        yaw_misalign = np.radians(heading) - turbine_heading
+        turbine_tilt = turbine_tilt
 
         # call CCBlade
-        loads, derivs = self.runCCBlade(speed, ptfm_pitch=ptfm_pitch, yaw_misalign=yaw_misalign)
+        loads, derivs = self.runCCBlade(speed, ptfm_pitch=turbine_tilt,
+                                        yaw_misalign=yaw_misalign)
         
-        #Uinf = case['wind_speed']  # inflow wind speed (m/s) <<< eventually should be consistent with rest of RAFT
-        Uinf = speed
         
-        # extract derivatives of interest
+        # ----- Set up rotation matrices to re-orient the results -----
+        
+        # Rotation matrix from rotor axis orientation to wind inflow direction
+        R_inflow = rotationMatrix(0, turbine_tilt, yaw_misalign)  # <<< double check directions/signs
+        
+        # Rotation matrix from FOWT orientation to rotor axis oriention 
+        R_axis = rotationMatrix(0, np.arctan2(self.axis[2], self.axis[0]),
+                                   np.arctan2(self.axis[1], self.axis[0]) ) 
+        
+        # ----- Process derivatives of interest -----
         dT_dU  = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))
         dT_dOm = np.atleast_1d(np.diag(derivs["dT"]["dOmega"])) / rpm2radps
         dT_dPi = np.atleast_1d(np.diag(derivs["dT"]["dpitch"])) * rad2deg
         dQ_dU  = np.atleast_1d(np.diag(derivs["dQ"]["dUinf"]))
         dQ_dOm = np.atleast_1d(np.diag(derivs["dQ"]["dOmega"])) / rpm2radps
         dQ_dPi = np.atleast_1d(np.diag(derivs["dQ"]["dpitch"])) * rad2deg
+        # note: orientation corrections still need to be applied on these! <<<
 
-        # calculate steady aero forces and moments
-        F_aero0 = np.array([loads["T" ][0], loads["Y"  ][0], loads["Z"  ][0],
-                            loads["My" ][0], loads["Q" ][0], loads["Mz" ][0] ])
+
+        # ----- Process steady rotor forces and moments -----
         
-        >>> need a rotor heading/axis rotation somewhere applied to the forces <<<<
-        RMat?
+        # Set up vectors in axis frame (Assuming CCBlade forces (but not 
+        # moments) are relative to inflow direction.
+        forces_inflow = np.array([loads["T"][0], loads["Y"][0], loads["Z" ][0]])
+        moments_axis = np.array([loads["My"][0], loads["Q"][0], loads["Mz"][0]])
+        forces_axis = np.matmul(R_inflow, forces_inflow)
+        
+        # Rotate forces and moments to be relative to FOWT orientations
+        self.f0[:3] = np.matmul(R_axis, forces_axis)
+        self.f0[3:] = np.matmul(R_axis, moments_axis)
+        
+        
+        # ----- Dynamic rotor forces and reaction matrices -----
+        
+        # Note: this is currently looking at the inflow direction and then 
+        # rotating to the global frame, but this needs to be checked.
+        R_global2inflow = np.matmul(self.R, np.matmul(R_axis, R_inflow))
         
         # calculate rotor-averaged turbulent wind spectrum
         _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD [(m/s)^2/rad]
@@ -787,30 +825,41 @@ class Rotor:
         # convert from power spectral density to complex amplitudes (FFT)
         self.V_w = np.array(np.sqrt(S_rot), dtype=complex)   
 
+        # Do we need to worry about scaling by dot prod of rotor axis and
+        # inflow direction?  *np.cos(turbine_tilt)*np.cos(yaw_misalign) <<<
+
         # prepare rotated hydro inertial excitation matrix for the rotor
-        >>> need to compute Rmat above <<<
-        I_hydro = rotateMatrix6(self.I_hydro, Rmat)
+        I_hydro = rotateMatrix6(self.I_hydro, self.R)
 
         # no-control option
         if self.aeroServoMod == 1:  
 
-            a_aero = np.zeros(len(self.w)) 
-            b_aero = np.zeros(len(self.w)) + dT_dU
-
-            f_aero =  dT_dU * self.V_w
+            # Edded mass matrix is empty
+            a_inflow = np.zeros([6,6,len(self.w)])
             
-            # Add hydrodynamic inertial excitation for underwater rotors
-            if current:
-                f_aero += self.I_hydro[0,0] * 1i*self.w*self.V_w
+            # Damping matrix has just windspeed-thrust derivative
+            b_inflow = np.zeros([6,6,len(self.w)]) 
+            b_inflow[0,0,:] = dT_dU
+            
+            # Excitation vector
+            f_inflow = np.zeros([6,len(self.w)])
+            f_inflow[0,:] = dT_dU*self.V_w
+            
+            # Rotate to global orientations
+            self.a = rotateMatrix6(a_inflow, R_global2inflow)
+            self.b = rotateMatrix6(b_inflow, R_global2inflow)
+            self.f = np.matmul(R_global2inflow, f)
+            
+            # >>> oops maybe RAFT matrices should be structured like nw, 6, 6 rather than 6, 6, nw
             
         # control option
         elif self.aeroServoMod == 2:  
         
             # include added mass somewhere?  and maybe even effect of inertial excitation on control?
         
-            # Pitch control gains at Uinf (Uinf), flip sign to translate ROSCO convention to this one
-            self.kp_beta    = -np.interp(Uinf, self.Uhub, self.kp_0) 
-            self.ki_beta    = -np.interp(Uinf, self.Uhub, self.ki_0) 
+            # Pitch control gains at the inflow speed (flip sign due to ROSCO convention)
+            self.kp_beta    = -np.interp(speed, self.Uhub, self.kp_0) 
+            self.ki_beta    = -np.interp(speed, self.Uhub, self.ki_0) 
 
             # Torque control gains, need to get these from somewhere
             kp_tau = self.kp_tau * (self.kp_beta == 0)  #     -38609162.66552     ! VS_KP				- Proportional gain for generator PI torque controller [1/(rad/s) Nm]. (Only used in the transitional 2.5 region if VS_ControlMode =/ 2)
@@ -879,8 +928,8 @@ class Rotor:
 
             # Add hydrodynamic inertial excitation for underwater rotors
             # (thrust only, neglecting rotor dynamics)
-            if current:
-                f2 += self.I_hydro[0,0] * 1i*self.w*self.V_w
+            #if current:
+            #    f2 += self.I_hydro[0,0] * 1j*self.w*self.V_w
 
             if display > 1:
                 '''
@@ -927,12 +976,23 @@ class Rotor:
 
                 plt.show()
                 
+            # Rotate to global orientations
+            self.a = np.zeros([3,3,self.nw])
+            self.b = np.zeros([3,3,self.nw])
+            self.f = np.zeros([3  ,self.nw], dtype=complex)
+            
+            for iw in range(self.nw):
+                self.a[:,:, iw] = rotateMatrix3(np.diag([a2[iw],0,0]), R_global2inflow)
+                self.b[:,:, iw] = rotateMatrix3(np.diag([b2[iw],0,0]), R_global2inflow)
+                self.f[:,   iw] = np.matmul(R_global2inflow, np.array([f2[iw],0,0]))
 
-            f_aero = f2  # wind thrust force excitation spectrum
-            a_aero = a2
-            b_aero = b2
+
+        # Add hydrodynamic inertial excitation for underwater rotors
+        if current:
+            self.f[0,:] += self.I_hydro[0,0] * 1j*self.w*self.V_w  # <<< this should have a rotation applied
+            breakpoint()
         
-        return F_aero0, f_aero, a_aero, b_aero #  B_aero, C_aero, F_aero0, F_aero
+        return self.f0, self.f, self.a, self.b #  B_aero, C_aero, F_aero0, F_aero
         
         
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0, color='k', 
@@ -970,7 +1030,7 @@ class Rotor:
         R_precone = rotationMatrix(0, -self.ccblade.precone, 0)  
         #R_azimuth = [rotationMatrix(azimuth + azi, 0, 0) for azi in 2*np.pi/3.*np.arange(3)]
         R_azimuth = [rotationMatrix(azimuth + azi, 0, 0) for azi in (2*np.pi/self.nBlades)*np.arange(self.nBlades)]
-        R_tilt    = rotationMatrix(0, np.deg2rad(self.shaft_tilt), 0)   # # define x as along shaft downwind, y is same as ptfm y
+        R_tilt    = rotationMatrix(0, self.shaft_tilt, 0)   # # define x as along shaft downwind, y is same as ptfm y
         
         # ----- transform coordinates -----
         for ib in range(self.nBlades):
@@ -1148,7 +1208,7 @@ if __name__=='__main__':
     
         print(f"  Running case {i_case}")
         
-        F_aero0, f_aero, a_aero, b_aero = rotor.calcAeroServoContributions(case)
+        f_aero0, f_aero, a_aero, b_aero = rotor.calcAero(case)
 
 
         rgba = cmapper((i_case+1)/8)

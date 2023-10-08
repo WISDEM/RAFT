@@ -63,8 +63,27 @@ def FrustumVCV(dA, dB, H, rtn=0):
         return hc
 
 
-def getVelocity(r, Xi, ws):
-    '''Get node complex velocity spectrum based on platform motion's and relative position from PRP'''
+def getKinematics(r, Xi, ws):
+    '''Get node complex displacement, velocity, and acceleration complex 
+    amplitudes based on platform motion's and relative position from 
+    platform reference point PRP).
+    
+    Parameters
+    ----------
+    r : array
+        X, y, z coordinates of point of interest relative to PRP [m].
+    Xi : complex 2D array
+        Complex amplitudes of 6 degree of freedom as a function of frequency
+        (size 6 by nw).
+    ws : array
+        Frequency vector of length nw [rad/s].
+    
+    Returns
+    -------
+    dr, v, a : complex 2D array
+        Each is a 3 by nw array of the complex amplitudes of the point's
+        displacements, velocities, and accelerations, respectively.
+    '''
 
     nw = len(ws)
 
@@ -182,6 +201,10 @@ def VecVecTrans(vec):
 
     return vvt
 
+
+def intrp(x, xA, xB, yA, yB):  
+    '''Do simple interpolation between two points.'''
+    return yA + (x-xA)*(yB-yA)/(xB-xA)
 
 # produce alternator matrix
 def getH(r):

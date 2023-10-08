@@ -748,10 +748,6 @@ class Member:
                 cosBeta=np.cos(beta)
                 sinBeta=np.sin(beta)
                 tanBeta=sinBeta/cosBeta
-                
-                # TODO: move to helper func
-                def intrp(x, xA, xB, yA, yB):  # little basic interpolation function for 2 values rather than a vector
-                    return yA + (x-xA)*(yB-yA)/(xB-xA)
 
                 # -------------------- buoyancy and waterplane area properties ------------------------
 
@@ -965,6 +961,14 @@ class Member:
         else:
             return A_hydro
 
+
+    def getSectionProperties(self, station):
+        '''Get member cross sectional area and moments of inertia at a user-
+        specified location along the member.'''
+        
+        
+        
+        return A, I
 
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[], color='k', nodes=0, 
              station_plot=[], plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):

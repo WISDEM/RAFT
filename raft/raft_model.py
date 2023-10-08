@@ -341,23 +341,25 @@ class Model():
             # wind and wave spectra for reference
             self.results['case_metrics'][i]['wind_PSD'] = np.zeros([nCases, self.nw])
             self.results['case_metrics'][i]['wave_PSD'] = np.zeros([nCases, self.nw])
+            
+            # FOWT-level mooring tensions
+            if self.fowtList[i].ms:
+                nLines = len(self.fowtList[i].ms.lineList)  # number of line in this FOWT's mooring system
+                self.results['case_metrics'][i]['Tmoor_avg'] = np.zeros([nCases, 2*nLines])
+                self.results['case_metrics'][i]['Tmoor_std'] = np.zeros([nCases, 2*nLines])    
+                self.results['case_metrics'][i]['Tmoor_max'] = np.zeros([nCases, 2*nLines])    
+                self.results['case_metrics'][i]['Tmoor_DEL'] = np.zeros([nCases, 2*nLines])    
+                self.results['case_metrics'][i]['Tmoor_PSD'] = np.zeros([nCases, 2*nLines, self.nw])    
         
         
-        # mooring tension (handled at system level)
-        
-        # get number of mooring lines
-        nLines = 0
+        # array-level mooring tensions
         if self.ms:
-            nLines += len(self.ms.lineList)        
-        for fowt in self.fowtList:
-            if fowt.ms:
-                nLines += len(fowt.ms.lineList) 
-                
-        self.results['case_metrics']['Tmoor_avg'] = np.zeros([nCases, 2*nLines]) # 2d array, for each line in each case?
-        self.results['case_metrics']['Tmoor_std'] = np.zeros([nCases, 2*nLines])
-        self.results['case_metrics']['Tmoor_max'] = np.zeros([nCases, 2*nLines])
-        self.results['case_metrics']['Tmoor_DEL'] = np.zeros([nCases, 2*nLines])
-        self.results['case_metrics']['Tmoor_PSD'] = np.zeros([nCases, 2*nLines, self.nw])
+            nLines = len(self.ms.lineList)        
+            self.results['case_metrics']['array_mooring']['Tmoor_avg'] = np.zeros([nCases, 2*nLines]) # 2d array, for each line in each case?
+            self.results['case_metrics']['array_mooring']['Tmoor_std'] = np.zeros([nCases, 2*nLines])
+            self.results['case_metrics']['array_mooring']['Tmoor_max'] = np.zeros([nCases, 2*nLines])
+            self.results['case_metrics']['array_mooring']['Tmoor_DEL'] = np.zeros([nCases, 2*nLines])
+            self.results['case_metrics']['array_mooring']['Tmoor_PSD'] = np.zeros([nCases, 2*nLines, self.nw])
         
         
         # calculate the system's constant properties
@@ -444,7 +446,6 @@ class Model():
                 C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
                 T_moor = self.ms.getTensions()  # get line end mean tensions
                 
-                # >>> so far this is only set up for the system level MoorPy instance <<<
             
                 for ih in range(nWaves+1):
                     for iw in range(self.nw):
@@ -1261,19 +1262,16 @@ class Model():
         
             self.results['properties']['tower mass'] = fowt.mtower
             self.results['properties']['tower CG'] = fowt.rCG_tow
-            self.results['properties']['substructure mass'] = fowt.msubstruc
+            self.results['properties']['substructure mass'] = fowt.m_sub
             self.results['properties']['substructure CG'] = fowt.rCG_sub
-            self.results['properties']['shell mass'] = fowt.mshell
-            self.results['properties']['ballast mass'] = fowt.mballast
+            self.results['properties']['shell mass'] = fowt.m_shell
+            self.results['properties']['ballast mass'] = fowt.m_ballast
             self.results['properties']['ballast densities'] = fowt.pb
             self.results['properties']['total mass'] = fowt.M_struc[0,0]
-            self.results['properties']['total CG'] = fowt.rCG_TOT
-            #self.results['properties']['roll inertia at subCG'] = fowt.I44
-            #self.results['properties']['pitch inertia at subCG'] = fowt.I55
-            #self.results['properties']['yaw inertia at subCG'] = fowt.I66
-            self.results['properties']['roll inertia at subCG'] = fowt.M_struc_subCM[3,3]
-            self.results['properties']['pitch inertia at subCG'] = fowt.M_struc_subCM[4,4]
-            self.results['properties']['yaw inertia at subCG'] = fowt.M_struc_subCM[5,5]
+            self.results['properties']['total CG'] = fowt.rCG
+            self.results['properties']['roll inertia at subCG']  = fowt.props['Ixx_sub']
+            self.results['properties']['pitch inertia at subCG'] = fowt.props['Iyy_sub']
+            self.results['properties']['yaw inertia at subCG']   = fowt.props['Izz_sub']
             
             self.results['properties']['buoyancy (pgV)'] = fowt.rho_water*fowt.g*fowt.V
             self.results['properties']['center of buoyancy'] = fowt.rCB
@@ -1286,7 +1284,7 @@ class Model():
             self.results['properties']['C_lines0'] = self.C_moor0
                     
             # 6DOF matrices for the support structure (everything but turbine) including mass, hydrostatics, and mooring reactions
-            self.results['properties']['M support structure'] = fowt.M_struc_subCM                          # mass matrix
+            self.results['properties']['M support structure'] = fowt.M_struc_sub          # mass matrix (about PRP)
             self.results['properties']['A support structure'] = fowt.A_hydro_morison + fowt.A_BEM[:,:,-1]   # hydrodynamic added mass (currently using highest frequency of BEM added mass)
             self.results['properties']['C support structure'] = fowt.C_struc_sub + fowt.C_hydro + self.C_moor0  # stiffness
 

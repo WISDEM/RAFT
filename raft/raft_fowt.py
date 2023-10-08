@@ -302,8 +302,7 @@ class FOWT():
         self.B_struc = np.zeros([6,6])                # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
         self.C_struc = np.zeros([6,6])                # structure effective stiffness matrix [N/m, N, N-m]
         self.W_struc = np.zeros([6])                  # static weight vector [N, N-m]
-        self.C_struc_sub = np.zeros([6,6])            # substructure effective stiffness matrix [N/m, N, N-m]
-
+        
         # hydrostatic arrays
         self.C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N, N-m]
         self.W_hydro = np.zeros(6)                    # buoyancy force/moment vector [N, N-m]  <<<<< not used yet
@@ -316,18 +315,19 @@ class FOWT():
 
         # initialize some variables for running totals
         VTOT = 0.                   # Total underwater volume of all members combined
-        mTOT = 0.                   # Total mass of all members [kg]
+        m_all = 0.                   # Total mass of all members [kg]
         AWP_TOT = 0.                # Total waterplane area of all members [m^2]
         IWPx_TOT = 0                # Total waterplane moment of inertia of all members about x axis [m^4]
         IWPy_TOT = 0                # Total waterplane moment of inertia of all members about y axis [m^4]
         Sum_V_rCB = np.zeros(3)     # product of each member's buoyancy multiplied by center of buoyancy [m^4]
         Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
-        Sum_M_center = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
+        m_center_sum = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
 
-        self.msubstruc = 0          # total mass of just the members that make up the substructure [kg]
-        self.M_struc_subPRP = np.zeros([6,6])  # total mass matrix of just the substructure about the PRP
-        msubstruc_sum = 0           # product of each substructure member's mass and CG, to be used to find the total substructure CG [kg-m]
-        self.mshell = 0             # total mass of the shells/steel of the members in the substructure [kg]
+        self.m_sub = 0              # total mass of just the members that make up the substructure [kg]
+        self.C_struc_sub = np.zeros([6,6])  # substructure effective stiffness matrix [N/m, N, N-m]
+        self.M_struc_sub = np.zeros([6,6])  # total mass matrix of just the substructure about the PRP
+        m_sub_sum = 0               # product of each substructure member's mass and CG, to be used to find the total substructure CG [kg-m]
+        self.m_shell = 0             # total mass of the shells/steel of the members in the substructure [kg]
         mballast = []               # list to store the mass of the ballast in each of the substructure members [kg]
         pballast = []               # list to store the density of ballast in each of the substructure members [kg]
         '''
@@ -349,13 +349,13 @@ class FOWT():
 
             # ---------------------- get member's mass and inertia properties ------------------------------
             # get member mass and inertia info (including mem.M_struc) <<< still split between converting to PRP in or out of these functions
-            mass, center, mshell, mfill, pfill = mem.getInertia(rPRP=self.r6[:3]) 
+            mass, center, m_shell, mfill, pfill = mem.getInertia(rPRP=self.r6[:3]) 
 
             # Calculate the mass matrix of the FOWT about the PRP
             self.W_struc += translateForce3to6DOF( np.array([0,0, -g*mass]), center )  # weight vector
             self.M_struc += mem.M_struc     # mass/inertia matrix about the PRP
             
-            Sum_M_center += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
+            m_center_sum += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
 
             # Tower calculations
             if mem.type <= 1:   # <<<<<<<<<<<< maybe find a better way to do the if condition
@@ -363,10 +363,10 @@ class FOWT():
                 self.rCG_tow.append(center)               # center of mass of the tower from the PRP [m]
             # Substructure calculations
             if mem.type > 1:
-                self.msubstruc += mass              # mass of the substructure
-                self.M_struc_subPRP += mem.M_struc     # mass matrix of the substructure about the PRP
-                msubstruc_sum += center*mass        # product sum of the substructure members and their centers of mass [kg-m]
-                self.mshell += mshell               # mass of the substructure shell material [kg]
+                self.m_sub += mass              # mass of the substructure
+                self.M_struc_sub += mem.M_struc     # mass matrix of the substructure about the PRP
+                m_sub_sum += center*mass        # product sum of the substructure members and their centers of mass [kg-m]
+                self.m_shell += m_shell               # mass of the substructure shell material [kg]
                 mballast.extend(mfill)              # list of ballast masses in each substructure member (list of lists) [kg]
                 pballast.extend(pfill)              # list of ballast densities in each substructure member (list of lists) [kg/m^3]
                 '''
@@ -434,7 +434,7 @@ class FOWT():
                         afmem.setPosition()
 
                         # calculate the mass and inertial properties of the blade members
-                        #mass, center, mshell, mfill, pfill = afmem.getInertia()
+                        #mass, center, m_shell, mfill, pfill = afmem.getInertia()
                         # >>>>>> can be used later if actual rectangular mass properties are desired other than mRNA <<<<<<<<
 
                         # calculate hydrostatic properties of the blade (sub)member and add them to the system matrices
@@ -483,37 +483,30 @@ class FOWT():
             # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
             self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA[i]]), center )   # weight vector
             self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
-            Sum_M_center += center*self.mRNA[i]
+            m_center_sum += center*self.mRNA[i]
 
         # ----------- process inertia-related totals ----------------
 
-        mTOT = self.M_struc[0,0]                        # total mass of all the members
-        rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
-        self.rCG_TOT = rCG_TOT
-
-        self.rCG_sub = msubstruc_sum/self.msubstruc     # solve for just the substructure mass and CG
+        m_all = self.M_struc[0,0]             # total mass of all the members
+        rCG_all = m_center_sum/m_all          # total CG of all the members
         
-        self.M_struc_subCM = translateMatrix6to6DOF(self.M_struc_subPRP, -self.rCG_sub) # the mass matrix of the substructure about the substruc's CM
-        # need to make rCG_sub negative here because tM6to6DOF takes a vector that goes from where you want the ref point to be (CM) to the currently ref point (PRP)
+        self.rCG = rCG_all
+        self.rCG_sub = m_sub_sum/self.m_sub   # solve for just the substructure mass and CG
         
-        '''
-        self.I44 = 0        # moment of inertia in roll due to roll of the substructure about the substruc's CG [kg-m^2]
-        self.I44B = 0       # moment of inertia in roll due to roll of the substructure about the PRP [kg-m^2]
-        self.I55 = 0        # moment of inertia in pitch due to pitch of the substructure about the substruc's CG [kg-m^2]
-        self.I55B = 0       # moment of inertia in pitch due to pitch of the substructure about the PRP [kg-m^2]
-        self.I66 = 0        # moment of inertia in yaw due to yaw of the substructure about the substruc's centerline [kg-m^2]
+        
+  
+        # get principal moments of inertia (about CG) 
+        # note: these are likely only useful in the unrotated frame, i.e.
+        # the first time calcStatics is called.
+        
+        # the mass matrix of the substructure about the substruc's CM
+        M_sub = translateMatrix6to6DOF(self.M_struc_sub, -self.rCG_sub)  # -rCG_sub due to convention of the function
+        
+        # overall structure mass matrix about its CM
+        M_all = translateMatrix6to6DOF(self.M_struc, -self.rCG)
 
-        # Use the parallel axis theorem to move each substructure's MoI to the substructure's CG
-        x = np.linalg.norm([self.rCG_sub[1],self.rCG_sub[2]])   # the normalized distance between the x and x' axes
-        y = np.linalg.norm([self.rCG_sub[0],self.rCG_sub[2]])   # the normalized distance between the y and y' axes
-        z = np.linalg.norm([self.rCG_sub[0],self.rCG_sub[1]])   # the normalized distance between the z and z' axes
-        for i in range(len(I44list)):
-            self.I44 += I44list[i] - masslist[i]*x**2
-            self.I44B += I44list[i]
-            self.I55 += I55list[i] - masslist[i]*y**2
-            self.I55B += I55list[i]
-            self.I66 += I66list[i] - masslist[i]*z**2
-        '''
+        # could check that off-diagonals are approximately zero as an error check
+        
         
         # Solve for the total mass of each type of ballast in the substructure
         self.pb = []                                                # empty list to store the unique ballast densities
@@ -522,11 +515,11 @@ class FOWT():
                 if self.pb.count(pballast[i]) == 0:                 # and if that value is not already in pb
                     self.pb.append(pballast[i])                     # store that ballast density value
 
-        self.mballast = np.zeros(len(self.pb))                      # make an empty mballast list with len=len(pb)
+        self.m_ballast = np.zeros(len(self.pb))                      # make an empty m_ballast list with len=len(pb)
         for i in range(len(self.pb)):                               # for each ballast density
             for j in range(len(mballast)):                          # loop through each ballast mass
                 if float(pballast[j]) == float(self.pb[i]):   # but only if the index of the ballast mass (density) matches the value of pb
-                    self.mballast[i] += mballast[j]                 # add that ballast mass to the correct index of mballast
+                    self.m_ballast[i] += mballast[j]                 # add that ballast mass to the correct index of mballast
 
 
 
@@ -539,27 +532,43 @@ class FOWT():
         else:
             zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
 
-        self.C_struc[3,3] = -mTOT*g*rCG_TOT[2]
-        self.C_struc[4,4] = -mTOT*g*rCG_TOT[2]
+        self.C_struc[3,3] = -m_all*g*rCG_all[2]
+        self.C_struc[4,4] = -m_all*g*rCG_all[2]
         
-        self.C_struc_sub[3,3] = -self.msubstruc*g*self.rCG_sub[2]
-        self.C_struc_sub[4,4] = -self.msubstruc*g*self.rCG_sub[2]
+        self.C_struc_sub[3,3] = -self.m_sub*g*self.rCG_sub[2]
+        self.C_struc_sub[4,4] = -self.m_sub*g*self.rCG_sub[2]
 
         # add relevant properties to this turbine's MoorPy Body
         # >>> should double check proper handling of mean weight and buoyancy forces throughout model <<<
         if self.body:   # note: this is likely unused now <<<
-            self.body.m = mTOT
+            self.body.m = m_all
             self.body.v = VTOT
-            self.body.rCG = rCG_TOT
+            self.body.rCG = rCG_all
             self.body.AWP = AWP_TOT
             self.body.rM = np.array([rCB_TOT[0], rCB_TOT[1], zMeta])    # now includes x and y coordinates for center of buoyancy
         #is there any risk of additional moments due to offset CB since MoorPy assumes CB at ref point? <<<
         self.rCB = rCB_TOT
-        self.m = mTOT
+        self.m = m_all
         self.V = VTOT
-        self.rCG = rCG_TOT
         self.AWP = AWP_TOT
         self.rM = np.array([rCB_TOT[0], rCB_TOT[1], zMeta])
+      
+        # save things in a dictionary now        
+        self.props = {}
+        self.props['m']     = self.m 
+        self.props['m_sub'] = self.m_sub 
+        self.props['v'] = self.V
+        self.props['rCG']     = self.rCG
+        self.props['rCG_sub'] = self.rCG_sub
+        self.props['rCB'] = self.rCB
+        self.props['AWP'] = self.AWP
+        self.props['rM'] = self.rM
+        self.props['Ixx'] = M_all[3,3]  # principale moments of inertia of entire structure
+        self.props['Iyy'] = M_all[4,4]
+        self.props['Izz'] = M_all[5,5]
+        self.props['Ixx_sub'] = M_sub[3,3]  # principale moments of inertia of substructure
+        self.props['Iyy_sub'] = M_sub[4,4]
+        self.props['Izz_sub'] = M_sub[5,5]
 
 
     def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, headings=[0], meshDir=os.path.join(os.getcwd(),'BEM')):
@@ -1124,8 +1133,9 @@ class FOWT():
             # loop through each node of the member
             for il in range(mem.ns):
 
+                # get node complex velocity spectrum based on platform motion's and relative position from PRP
                 # node displacement, velocity, and acceleration (each [3 x nw])
-                drnode, vnode, anode = getVelocity(mem.r[il,:], Xi, self.w)      # get node complex velocity spectrum based on platform motion's and relative position from PRP
+                drnode, vnode, anode = getKinematics(mem.r[il,:], Xi, self.w)
 
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:

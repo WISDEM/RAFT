@@ -488,7 +488,6 @@ class FOWT():
         # ----------- process inertia-related totals ----------------
 
         mTOT = self.M_struc[0,0]                        # total mass of all the members
-        self.mTOT = mTOT
         rCG_TOT = Sum_M_center/mTOT                     # total CG of all the members
         self.rCG_TOT = rCG_TOT
 
@@ -532,11 +531,9 @@ class FOWT():
 
 
         # ----------- process key hydrostatic-related totals for use in static equilibrium solution ------------------
-
-        self.V = VTOT                                   # save the total underwater volume
+                               # save the total underwater volume
         rCB_TOT = Sum_V_rCB/VTOT       # location of center of buoyancy on platform
-        self.rCB = rCB_TOT
-
+        
         if VTOT==0: # if you're only working with members above the platform, like modeling the wind turbine
             zMeta = 0
         else:
@@ -557,8 +554,9 @@ class FOWT():
             self.body.AWP = AWP_TOT
             self.body.rM = np.array([rCB_TOT[0], rCB_TOT[1], zMeta])    # now includes x and y coordinates for center of buoyancy
         #is there any risk of additional moments due to offset CB since MoorPy assumes CB at ref point? <<<
+        self.rCB = rCB_TOT
         self.m = mTOT
-        self.v = VTOT
+        self.V = VTOT
         self.rCG = rCG_TOT
         self.AWP = AWP_TOT
         self.rM = np.array([rCB_TOT[0], rCB_TOT[1], zMeta])

@@ -211,7 +211,7 @@ class Model():
         # need to zero out external loads
         self.fowtList[0].setPosition(np.zeros(6))
         self.fowtList[0].D_hydr0 = np.zeros(6)
-        self.fowtList[0].F_aero0 = np.zeros([6,self.fowtList[0].nrotors])
+        self.fowtList[0].f_aero0 = np.zeros([6,self.fowtList[0].nrotors])
         
         
         # get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
@@ -675,7 +675,7 @@ class Model():
                 #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater) ??
                     #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)                   ??
                 # wave mean drift to be added
-                F_env_constant[6*i:6*i+6] = np.sum(fowt.F_aero0, axis=1) + fowt.calcCurrentLoads(case)
+                F_env_constant[6*i:6*i+6] = np.sum(fowt.f_aero0, axis=1) + fowt.calcCurrentLoads(case)
                 
                 if display > 0:  print(" F_env_constant"+"  ".join(["{:+8.2e}"]*6).format(*F_env_constant[6*i:6*i+6]))
         
@@ -768,7 +768,7 @@ class Model():
                         #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater) ??
                             #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)                   ??
                     
-                        Fnet[6*i:6*i+6] += np.sum(fowt.F_aero0, axis=1)  # sum mean turbine force across turbines
+                        Fnet[6*i:6*i+6] += np.sum(fowt.f_aero0, axis=1)  # sum mean turbine force across turbines
                         # F_meanDrift = self.fowtList[0].Fhydro_2nd_mean[iCase, :]  # wave mean drift to be added
                         Fnet[6*i:6*i+6] += fowt.calcCurrentLoads(case)  # current drag force  i.e. fowt.D_hydro
 
@@ -962,7 +962,7 @@ class Model():
         
         # store results
         self.results['means'] = {}   # signal this data is available by adding a section to the results dictionary
-        self.results['means']['aero force'  ] = self.fowtList[0].F_aero0
+        self.results['means']['aero force'  ] = self.fowtList[0].f_aero0
         self.results['means']['platform offset'  ] = r6eq
         self.results['means']['mooring force'    ] = F_moor
         self.results['means']['fairlead tensions'] = np.array([np.linalg.norm(self.ms.pointList[id-1].getForces()) for id in self.ms.bodyList[0].attachedP])
@@ -982,7 +982,7 @@ class Model():
                                     + self.fowtList[j].hHub[i]*self.fowtList[j].mRNA[i])/m_turbine[j,i]
                 zBase[j,i] = self.fowtList[j].memberList[self.fowtList[j].nplatmems + i].rA[2]  # tower base elevation [m]
                 hArm[j,i] = zCG_turbine[j,i] - zBase[j,i]                                                  # vertical distance from tower base to turbine CG [m]
-                self.results['means']['Mbase'][j,i] = m_turbine[j,i]*self.fowtList[j].g * hArm[j,i]*np.sin(r6eq[4]) + transformForce(self.fowtList[j].F_aero0[:,i], offset=[0,0,-hArm[j,i]])[4] # mean moment from weight and thrust
+                self.results['means']['Mbase'][j,i] = m_turbine[j,i]*self.fowtList[j].g * hArm[j,i]*np.sin(r6eq[4]) + transformForce(self.fowtList[j].f_aero0[:,i], offset=[0,0,-hArm[j,i]])[4] # mean moment from weight and thrust
         
                 
         # update values based on offsets if applicable
@@ -1563,7 +1563,7 @@ class Model():
         mass = (fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2])/fowt.g
         dmass = mass - fowt.M_struc[0,0]
         sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.AWP)
         if display==1: print(mass, dmass, heave)
         
         # loop through each member and adjust the l_fill of each to match the volume needed to balance the mass
@@ -1665,7 +1665,7 @@ class Model():
                         # check if heave equilibrium was reached by only changing this ballast section of the member
                         fowt.calcStatics()
                         sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-                        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+                        heave = sumFz/(fowt.rho_water*fowt.g*fowt.AWP)
                         if display==1: print('heave', heave, heave_tol)
                         if abs(heave) < heave_tol:  # congrats, you've ballasted to achieve the given heave tolerance
                             member_break_flag=True  # break out of the outer member for loop as well
@@ -1684,7 +1684,7 @@ class Model():
         """
         fowt.calcStatics()
         sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.AWP)
         while abs(heave) > 0.5:
             #print(f'Adjusting ballast since the heave is {heave:6.2f} m')
             for i in range(len(fowt.memberList)):
@@ -1696,7 +1696,7 @@ class Model():
                 # >>>>>> fyi there could be an else case where no members have ballast initially <<<<<
             fowt.calcStatics()
             sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-            heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+            heave = sumFz/(fowt.rho_water*fowt.g*fowt.AWP)
         """
         
         if rtn:
@@ -1723,7 +1723,7 @@ class Model():
         # compute ballast and check initial offset
         fowt.calcStatics()
         sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)        
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.AWP)        
         print(f" Original sumFz is {sumFz/1000:.0f} kN and heave is ~{heave:.3f} m")
         
         # total up the ballast volume
@@ -1753,7 +1753,7 @@ class Model():
         # recompute ballast and check adjusted offset
         fowt.calcStatics()
         sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-        heave = sumFz/(fowt.rho_water*fowt.g*fowt.body.AWP)
+        heave = sumFz/(fowt.rho_water*fowt.g*fowt.AWP)
         
         print(f" New sumFz is {sumFz/1000:.0f} kN and heave is ~{heave:.3f} m")
         
@@ -2140,11 +2140,11 @@ if __name__ == "__main__":
     ### Run a Reference FOWT Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
     
     ### Run a MHK Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
     

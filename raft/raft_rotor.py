@@ -773,7 +773,7 @@ class Rotor:
         turbine_tilt    = np.arctan2(self.q[2], self.q[0])  # [rad] front facing up is positive
         
         # inflow misalignment heading relative to turbine heading [deg]
-        yaw_misalign = np.radians(heading) - turbine_heading
+        yaw_misalign =  turbine_heading - np.radians(heading)
         turbine_tilt = turbine_tilt
 
         # call CCBlade

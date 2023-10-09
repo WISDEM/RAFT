@@ -1835,39 +1835,17 @@ class Model():
             self.solveStatics(case=case)
             
             
-            # --- some yaw misalignment processes (here for now, may be able to put in Rotor later) ---
+            # Calculate platform pitch
             rot = self.fowtList[nfowt].rotorList[nrotor]
-            
-            if rot.yaw_mode == 0:  # assume aligned
-                nac_yaw = np.radians(heading)
-                
-            elif rot.yaw_mode == 1:  # use case info
-                turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
-                nac_yaw = np.radians(turbine_heading - heading)
-                
-            elif rot.yaw_mode == 2:  # use self.yaw value
-                nac_yaw = rot.yaw
-            else:
-                raise Exception('Unsupported yaw_mode value. Must be 0, 1, or 2.')
-            
-            rot.yaw = nac_yaw  # save the nacelle yaw value just in case it's useful later
-            
-            # find turbine global heading and tilt
-            turbine_heading = np.arctan2(rot.q[1], rot.q[0]) + nac_yaw  # [rad]
             turbine_tilt    = np.arctan2(rot.q[2], rot.q[0])  # [rad] front facing up is positive
             
-            # inflow misalignment heading relative to turbine heading [deg]
-            yaw_misalign = np.radians(heading) - turbine_heading
-            turbine_tilt = turbine_tilt
             
             
             # Not sure how the pitch angle should be handled if wind comes at angle.....
-            loads, derivs = self.fowtList[nfowt].rotorList[nrotor].runCCBlade(uhub, #ptfm_pitch=self.fowtList[nfowt].Xi0[4],
-                                                                              ptfm_pitch=turbine_tilt,
-                                                                              yaw_misalign=yaw_misalign)
+            loads, derivs = self.fowtList[nfowt].rotorList[nrotor].runCCBlade(uhub,  ptfm_pitch=turbine_tilt, )
             cp.append(loads["CP"][0])
             ct.append(loads["CT"][0])
-            pitch.append(self.fowtList[nfowt].Xi0[4])
+            pitch.append(rad2deg(self.fowtList[nfowt].Xi0[4]))
             
             power.append(self.fowtList[nfowt].rotorList[nrotor].aero_power)
             thrust.append(self.fowtList[nfowt].rotorList[nrotor].aero_thrust)
@@ -1974,14 +1952,18 @@ class Model():
                     uhubs.append(25.02)
                     uhubs.append(50)
                     
-                    #currently only setup to handle one rotor
-                    power, thrust, pitch = self.powerThrustCurve(i, 0, uhubs, case['wind_heading'], case['yaw_misalign'])
+                    #Currently only setup to handle one rotor
+                    #FLORIS inputs Cp, Ct, Cq curves with a yaw misalignment of 0 and wind heading of 0
+                    #In reality, the mooring system stiffness would slightly change the Cp curve based on heading (because the pitch angle would change)
+                    power, thrust, pitch = self.powerThrustCurve(i, 0, uhubs, 0, yaw = 0)
                     turbData['power_thrust_table']['power'] = np.array(power).tolist()
                     turbData['power_thrust_table']['thrust'] = np.array(thrust).tolist()
                     turbData['power_thrust_table']['wind_speed'] = np.array(uhubs).tolist()
                     
                     print('len winds ', len(uhubs))
                     print('len pitch ', len(pitch))
+                    
+                    
                     #Set floating tilt table only for use in Empirical Gaussian wake model (wake deflection for pitch angle)
                     turbData['floating_tilt_table']['wind_speeds'] = np.array(uhubs).tolist() # match roughly the wind speeds in example files
                     turbData['floating_tilt_table']['tilt'] = np.array(pitch).tolist()
@@ -2023,15 +2005,46 @@ class Model():
             
             #FLORIS inputs the wind direction as direction wind is coming from (where the -X axis is 0)
             self.fi.reinitialize(wind_directions = [-case['wind_heading']+270], wind_speeds = [case['wind_speed']], turbulence_intensity= case['turbulence'])
-            yaw_angles = np.ones([1,1,self.nFOWT]) * case['yaw_misalign']
-             
+            yaw_angles = np.ones([1,1,self.nFOWT]) 
+            
+            
+            #calc yaw misalignment to input into FLORIS
+            heading = case['wind_heading']
+            for nfowt in range(0, (self.nFOWT)):
+                rot = self.fowtList[nfowt].rotorList[0]
+                
+                if rot.yaw_mode == 0:  # assume aligned
+                    nac_yaw = np.radians(heading)
+                    
+                elif rot.yaw_mode == 1:  # use case info
+                    turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
+                    nac_yaw = np.radians(turbine_heading - heading)
+                    
+                elif rot.yaw_mode == 2:  # use self.yaw value
+                    nac_yaw = rot.yaw
+                else:
+                    raise Exception('Unsupported yaw_mode value. Must be 0, 1, or 2.')
+                
+                rot.yaw = nac_yaw  # save the nacelle yaw value just in case it's useful later
+                
+                # find turbine global heading and tilt
+                turbine_heading = np.arctan2(rot.q[1], rot.q[0]) + nac_yaw  # [rad]
+    
+                # inflow misalignment heading relative to turbine heading [deg]
+                yaw_misalign = turbine_heading - np.radians(heading) 
+                yaw_angles[0,0,nfowt] = np.degrees(yaw_misalign)
+            
+            print('Yaw misalignment angles: ', yaw_angles)
+            
+            
             winds = []
             xpositions = []
             ypositions = []
-            for n in range(0, 10):
+            for n in range(0, 2):
                 
                 #solve statics to find updated turbine positions
                 self.solveStatics(case=case, display = 1)
+            
                 
                 #update floris turbine positions
                 self.fi.reinitialize(layout_x=[self.fowtList[nfowt].Xi0[0] + fowtInfo[nfowt]["x_location"] for nfowt in range(len(self.fowtList))], layout_y=[self.fowtList[nfowt].Xi0[1]  + fowtInfo[nfowt]["y_location"] for nfowt in range(len(self.fowtList))])

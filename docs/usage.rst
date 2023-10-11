@@ -488,7 +488,8 @@ sub-dictionaries for each turbine, identified by the numbers 0 to N-1 (where
 N is the number of turbines). In the case of an array-level mooring system,
 the mooring system results will be stored at the top level. Otherwise, they
 will be stored individually. A partial view of the case metrics data 
-structure is shown below.
+structure is shown below. Typically, each of these entries will be an array
+of data, with entries corresponding to the different environmental cases.
 
 .. code-block:: yaml
     case_metrics:

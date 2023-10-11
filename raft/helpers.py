@@ -395,7 +395,7 @@ def rotateMatrix6(Min, rotMat):
         outMat[3:,3:] = rotateMatrix3(Min[3:,3:], rotMat)    # moment of inertia matrix
     
     elif len(shape) == 3:
-        for i in range(len(shape[2])):  # process each 6x6 slice
+        for i in range(shape[2]):  # process each 6x6 slice
             outMat[:3,:3, i] = rotateMatrix3(Min[:3,:3, i], rotMat)
             outMat[:3,3:, i] = rotateMatrix3(Min[:3,3:, i], rotMat)
             outMat[3:,:3, i] = outMat[:3,3:, i].T

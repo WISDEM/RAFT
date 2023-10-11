@@ -849,7 +849,7 @@ class Rotor:
             # Rotate to global orientations
             self.a = rotateMatrix6(a_inflow, R_global2inflow)
             self.b = rotateMatrix6(b_inflow, R_global2inflow)
-            self.f = np.matmul(R_global2inflow, f)
+            self.f = np.matmul(R_global2inflow, f_inflow)
             
             # >>> oops maybe RAFT matrices should be structured like nw, 6, 6 rather than 6, 6, nw
             

@@ -741,6 +741,12 @@ class Rotor:
         Currently returning 6 DOF mean loads, but other terms are just hub fore-aft scalars.
         '''
         
+        # added mass, damping, excitation, mean force arrays to be filled in (6 DOF)
+        self.a = np.zeros([6,6,self.nw])
+        self.b = np.zeros([6,6,self.nw])
+        self.f = np.zeros([6  ,self.nw], dtype=complex)
+        self.f0 = np.zeros(6)
+        
         # get inflow
         if current:
             speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
@@ -849,9 +855,9 @@ class Rotor:
             # Rotate to global orientations
             self.a = rotateMatrix6(a_inflow, R_global2inflow)
             self.b = rotateMatrix6(b_inflow, R_global2inflow)
-            self.f = np.matmul(R_global2inflow, f_inflow)
+            self.f[:3,:] = np.matmul(R_global2inflow, f_inflow[:3,:])
+            #self.f[3:,:] = np.matmul(R_global2inflow, f_inflow[3:,:]) zero for now
             
-            # >>> oops maybe RAFT matrices should be structured like nw, 6, 6 rather than 6, 6, nw
             
         # control option
         elif self.aeroServoMod == 2:  
@@ -978,15 +984,11 @@ class Rotor:
                 plt.show()
                 
             # Rotate to global orientations
-            self.a = np.zeros([3,3,self.nw])
-            self.b = np.zeros([3,3,self.nw])
-            self.f = np.zeros([3  ,self.nw], dtype=complex)
-            
             for iw in range(self.nw):
-                self.a[:,:, iw] = rotateMatrix3(np.diag([a2[iw],0,0]), R_global2inflow)
-                self.b[:,:, iw] = rotateMatrix3(np.diag([b2[iw],0,0]), R_global2inflow)
-                self.f[:,   iw] = np.matmul(R_global2inflow, np.array([f2[iw],0,0]))
-
+                self.a[:3,:3, iw] = rotateMatrix3(np.diag([a2[iw],0,0]), R_global2inflow)
+                self.b[:3,:3, iw] = rotateMatrix3(np.diag([b2[iw],0,0]), R_global2inflow)
+                self.f[:3,    iw] = np.matmul(R_global2inflow, np.array([f2[iw],0,0]))
+                # Above is only forces for now. Moments can be added in future.
 
         # Add hydrodynamic inertial excitation for underwater rotors
         if current:

@@ -747,8 +747,8 @@ class FOWT():
                     
                     # convert coefficients to platform reference frame and populate tensor slice for this rotor
                     for iw in range(self.nw):
-                        self.A_aero[:,:,iw,ir] = translateMatrix3to6DOF(a_aero[:,:,iw], rHub)
-                        self.B_aero[:,:,iw,ir] = translateMatrix3to6DOF(b_aero[:,:,iw], rHub)
+                        self.A_aero[:,:,iw,ir] = translateMatrix6to6DOF(a_aero[:,:,iw], rHub)
+                        self.B_aero[:,:,iw,ir] = translateMatrix6to6DOF(b_aero[:,:,iw], rHub)
                     
                     # convert forces to platform reference frame
                     self.f_aero0[:,ir] = transformForce(f_aero0, offset=rHub) # mean forces and moments

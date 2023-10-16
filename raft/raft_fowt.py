@@ -1474,6 +1474,26 @@ class FOWT():
         results['yaw_max'][iCase] = rad2deg(self.Xi0[5]) + 3*results['yaw_std'][iCase]
         results['yaw_PSD'][iCase,:] = getPSD(yaw_deg, self.dw)
         
+        # ----- turbine-level mooring outputs (similar code as array-level) -----
+        nLines = len(self.ms.lineList)
+        T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
+        
+        if self.ms:
+            C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
+            T_moor = self.ms.getTensions()  # get line end mean tensions
+            
+            for ih in range(self.nWaves+1):
+                for iw in range(self.nw):
+                    T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
+        
+            results['Tmoor_avg'][iCase,:] = T_moor
+            for iT in range(2*nLines):
+                TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
+                results['Tmoor_std'][iCase,iT] = TRMS
+                results['Tmoor_max'][iCase,iT] = T_moor[iT] + 3*TRMS
+                results['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
+    
+        
         # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)
         XiHub = np.zeros([self.Xi.shape[0], self.nrotors, self.nw], dtype=complex)
         for ir in range(self.nrotors):

@@ -437,9 +437,8 @@ class Model():
 
                
  
-            # process mooring tension outputs
+            # process array-level mooring tension outputs
             
-            #nLines = int(len(self.T_moor)/2)
             T_moor_amps = np.zeros([nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
             
             if self.ms:
@@ -962,12 +961,13 @@ class Model():
         self.T_moor = T_moor
         
         # store results
-        self.results['means'] = {}   # signal this data is available by adding a section to the results dictionary
-        self.results['means']['aero force'  ] = self.fowtList[0].f_aero0
-        self.results['means']['platform offset'  ] = r6eq
-        self.results['means']['mooring force'    ] = F_moor
-        self.results['means']['fairlead tensions'] = np.array([np.linalg.norm(self.ms.pointList[id-1].getForces()) for id in self.ms.bodyList[0].attachedP])
-        
+        self.results['means'] = []   # signal this data is available by adding a section to the results dictionary
+        for i, fowt in enumerate(self.fowtList):
+            self.results['means'].append({})
+            self.results['means'][i]['aero force'  ] = fowt.f_aero0
+            self.results['means'][i]['platform offset'  ] = fowt.r6
+            self.results['means'][i]['mooring force'    ] = F_moor
+            self.results['means'][i]['fairlead tensions'] = np.array([np.linalg.norm(self.ms.pointList[id-1].getForces()) for id in self.ms.bodyList[0].attachedP])
         
         
         # mean tower base bending moment
@@ -1171,7 +1171,7 @@ class Model():
                 fowt.calcHydroExcitation(case, memberList=fowt.memberList)
                 F_linearized = fowt.calcDragExcitation(ih)
                 F_wave[i*6:i*6+6] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized #+ fowt.Fhydro_2nd[ih,:,:]
-        
+                
             # compute system response
             for iw in range(self.nw):
                 self.Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])

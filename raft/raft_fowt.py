@@ -929,7 +929,7 @@ class FOWT():
         case['wave_spectrum']= getFromDict(case, 'wave_spectrum' , shape=self.nWaves, dtype=str, default='JONSWAP')
         case['wave_period']  = getFromDict(case, 'wave_period'   , shape=self.nWaves, dtype=float)
         case['wave_height']  = getFromDict(case, 'wave_height'   , shape=self.nWaves, dtype=float)
-        case['wave_gamma']   = getFromDict(case, 'wave_gamma'    , shape=self.nWaves, dtype=float, default=2.0)
+        case['wave_gamma']   = getFromDict(case, 'wave_gamma'    , shape=self.nWaves, dtype=float, default=0)
         
         
         self.beta = case['wave_heading']   # [rad] array of wave headings

@@ -464,7 +464,7 @@ def getPSD(xi, dw):
     return psd
 
 
-def JONSWAP(ws, Hs, Tp, Gamma=1.0):
+def JONSWAP(ws, Hs, Tp, Gamma=None):
     '''Returns the JONSWAP wave spectrum for the given frequencies and parameters.
 
     Parameters
@@ -492,6 +492,17 @@ def JONSWAP(ws, Hs, Tp, Gamma=1.0):
     on what's documented in IEC 61400-3.
     '''
 
+    # If peak shape parameter gamma is not specified, use the recommendation 
+    # from IEC 61400-3 as a function of Hs and Tp. For PM spectrum, use 1.
+    if not Gamma:
+        TpOvrSqrtHs = Tp/np.sqrt(Hs)
+        if TpOvrSqrtHs <= 3.6:
+            Gamma = 5.0
+        elif TpOvrSqrtHs >= 5.0:
+            Gamma = 1.0
+        else:
+            Gamma = np.exp( 5.75 - 1.15*TpOvrSqrtHs )
+    
     # handle both scalar and array inputs
     if isinstance(ws, (list, tuple, np.ndarray)):
         ws = np.array(ws)

@@ -1430,10 +1430,10 @@ class FOWT():
         return f_mean, f
 
 
-    def saveTurbineOutputs(self, results, case, iCase):
+    def saveTurbineOutputs(self, results, case):
         '''Calculate and store output metrics of the FOWT response at the current load case.
         Note that the FOWT offset, motions, load case info, etc. are taken from what is stored
-        in the FOWT object. I.e. >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>    >> case parameter should be removed <<
+        in the FOWT object. I.e. >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>   
         Load cases may have multiple sources of excitation (such as wind, wave, and another wave
         at a different heading). Results are computed by RMS summing across these excitation sources.
         '''
@@ -1441,44 +1441,44 @@ class FOWT():
         self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref,0,0,0,0])  # FOWT's mean offset vector [m, rad]
 
         # platform motions
-        results['surge_avg'][iCase] = self.Xi0[0]
-        results['surge_std'][iCase] = getRMS(self.Xi[:,0,:]) 
-        results['surge_max'][iCase] = self.Xi0[0] + 3*results['surge_std'][iCase]
-        results['surge_PSD'][iCase,:] = getPSD(self.Xi[:,0,:], self.dw)
+        results['surge_avg'] = self.Xi0[0]
+        results['surge_std'] = getRMS(self.Xi[:,0,:]) 
+        results['surge_max'] = self.Xi0[0] + 3*results['surge_std']
+        results['surge_PSD'] = getPSD(self.Xi[:,0,:], self.dw)
         
-        results['sway_avg'][iCase] = self.Xi0[1]
-        results['sway_std'][iCase] = getRMS(self.Xi[:,1,:])
-        results['sway_max'][iCase] = self.Xi0[1] + 3*results['sway_std'][iCase]
-        results['sway_PSD'][iCase,:] = getPSD(self.Xi[:,1,:], self.dw)
+        results['sway_avg'] = self.Xi0[1]
+        results['sway_std'] = getRMS(self.Xi[:,1,:])
+        results['sway_max'] = self.Xi0[1] + 3*results['sway_std']
+        results['sway_PSD'] = getPSD(self.Xi[:,1,:], self.dw)
         
-        results['heave_avg'][iCase] = self.Xi0[2]
-        results['heave_std'][iCase] = getRMS(self.Xi[:,2,:])
-        results['heave_max'][iCase] = self.Xi0[2] + 3*results['heave_std'][iCase]
-        results['heave_PSD'][iCase,:] = getPSD(self.Xi[:,2,:], self.dw)
+        results['heave_avg'] = self.Xi0[2]
+        results['heave_std'] = getRMS(self.Xi[:,2,:])
+        results['heave_max'] = self.Xi0[2] + 3*results['heave_std']
+        results['heave_PSD'] = getPSD(self.Xi[:,2,:], self.dw)
         
         roll_deg = rad2deg(self.Xi[:,3,:])
-        results['roll_avg'][iCase] = rad2deg(self.Xi0[3])
-        results['roll_std'][iCase] = getRMS(roll_deg)
-        results['roll_max'][iCase] = rad2deg(self.Xi0[3]) + 3*results['roll_std'][iCase]
-        results['roll_PSD'][iCase,:] = getPSD(roll_deg, self.dw)
+        results['roll_avg'] = rad2deg(self.Xi0[3])
+        results['roll_std'] = getRMS(roll_deg)
+        results['roll_max']  = rad2deg(self.Xi0[3]) + 3*results['roll_std']
+        results['roll_PSD'] = getPSD(roll_deg, self.dw)
         
         pitch_deg = rad2deg(self.Xi[:,4,:])
-        results['pitch_avg'][iCase] = rad2deg(self.Xi0[4])
-        results['pitch_std'][iCase] = getRMS(pitch_deg)
-        results['pitch_max'][iCase] = rad2deg(self.Xi0[4]) + 3*results['pitch_std'][iCase]
-        results['pitch_PSD'][iCase,:] = getPSD(pitch_deg, self.dw)
+        results['pitch_avg'] = rad2deg(self.Xi0[4])
+        results['pitch_std'] = getRMS(pitch_deg)
+        results['pitch_max'] = rad2deg(self.Xi0[4]) + 3*results['pitch_std']
+        results['pitch_PSD'] = getPSD(pitch_deg, self.dw)
         
         yaw_deg = rad2deg(self.Xi[:,5,:])
-        results['yaw_avg'][iCase] = rad2deg(self.Xi0[5])
-        results['yaw_std'][iCase] = getRMS(yaw_deg)
-        results['yaw_max'][iCase] = rad2deg(self.Xi0[5]) + 3*results['yaw_std'][iCase]
-        results['yaw_PSD'][iCase,:] = getPSD(yaw_deg, self.dw)
+        results['yaw_avg'] = rad2deg(self.Xi0[5])
+        results['yaw_std'] = getRMS(yaw_deg)
+        results['yaw_max'] = rad2deg(self.Xi0[5]) + 3*results['yaw_std']
+        results['yaw_PSD'] = getPSD(yaw_deg, self.dw)
         
         # ----- turbine-level mooring outputs (similar code as array-level) -----
-        nLines = len(self.ms.lineList)
-        T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
-        
         if self.ms:
+            nLines = len(self.ms.lineList)
+            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
+            
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
             T_moor = self.ms.getTensions()  # get line end mean tensions
             
@@ -1486,23 +1486,33 @@ class FOWT():
                 for iw in range(self.nw):
                     T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
         
-            results['Tmoor_avg'][iCase,:] = T_moor
+            results['Tmoor_avg'] = T_moor
+            results['Tmoor_std'] = []
+            results['Tmoor_max'] = []
+            results['Tmoor_PSD'] =  np.zeros([ self.nw, 2*nLines])
             for iT in range(2*nLines):
                 TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
-                results['Tmoor_std'][iCase,iT] = TRMS
-                results['Tmoor_max'][iCase,iT] = T_moor[iT] + 3*TRMS
-                results['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
+                results['Tmoor_std'].append(TRMS)
+                results['Tmoor_max'].append( T_moor[iT] + 3*TRMS)
+                results['Tmoor_PSD'][:,iT] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
     
         
         # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)
         XiHub = np.zeros([self.Xi.shape[0], self.nrotors, self.nw], dtype=complex)
+        results['AxRNA_std'] = []
+        results['AxRNA_PSD'] = np.zeros([self.nw, self.nrotors]) 
+        results['AxRNA_avg'] = []
+        results['AxRNA_max'] = []
+        
         for ir in range(self.nrotors):
             XiHub[:,ir,:] = self.Xi[:,0,:] + self.hHub[ir]*self.Xi[:,4,:]  
         
             # nacelle acceleration
-            results['AxRNA_std'][iCase,  ir] = getRMS(XiHub[:,ir,:]*self.w**2)
-            results['AxRNA_PSD'][iCase,:,ir] = getPSD(XiHub[:,ir,:]*self.w**2, self.dw)
-        
+            results['AxRNA_std'].append(getRMS(XiHub[:,ir,:]*self.w**2))
+            results['AxRNA_PSD'][:,ir] = (getPSD(XiHub[:,ir,:]*self.w**2, self.dw))
+            results['AxRNA_avg'].append(abs(np.sin(self.Xi0[4])*9.81)) # @Matt check this! 
+            results['AxRNA_max'].append(results['AxRNA_avg'][ir]+3*results['AxRNA_std'][ir])
+            
         # tower base bending moment  >>> should three-dimensionalize this <<<
         m_turbine = np.zeros(len(self.mtower))
         zCG_turbine = np.zeros_like(m_turbine)
@@ -1517,6 +1527,10 @@ class FOWT():
         dynamic_moment = np.zeros_like(XiHub)
         dynamic_moment_RMS = np.zeros(self.nrotors)
 
+        results['Mbase_avg'] = []
+        results['Mbase_std'] = []
+        results['Mbase_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['Mbase_max'] = []
         for ir in range(self.nrotors):
             # mass and moment arm >>> should three-dimensionalize <<<
             m_turbine[ir] = self.mtower[ir] + self.mRNA[ir]                        # total masses of each turbine
@@ -1541,14 +1555,14 @@ class FOWT():
             dynamic_moment[:,ir,:] = M_I[:,ir,:] + M_w[:,ir,:] + M_F_aero + M_X_aero[:,ir,:]       # total tower base fore-aft bending moment [N-m]
             dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
             # fill in metrics
-            results['Mbase_avg'][iCase,ir] = m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] # mean moment from weight and thrust
-            results['Mbase_std'][iCase,ir] = dynamic_moment_RMS[ir]
-            results['Mbase_PSD'][iCase,:,ir] = getPSD(dynamic_moment[:,ir,:], self.dw)
-            #results['Mbase_max'][iCase]
+            results['Mbase_avg'].append(m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )# mean moment from weight and thrust
+            results['Mbase_std'].append(dynamic_moment_RMS[ir])
+            results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
+            results['Mbase_max'].append(results['Mbase_avg'][ir]+3*results['Mbase_std'][ir])
             #results['Mbase_DEL'][iCase]
         
         # wave PSD for reference
-        results['wave_PSD'][iCase,:] = getPSD(self.zeta, self.dw)        # wave elevation spectrum
+        results['wave_PSD'] = getPSD(self.zeta, self.dw)        # wave elevation spectrum
         
         '''
         # TEMPORARY CHECK>>>
@@ -1575,6 +1589,20 @@ class FOWT():
         torque_w = np.zeros([self.nWaves+1, self.nrotors, self.nw], dtype=complex)  # generator torque
         bPitch_w = np.zeros([self.nWaves+1, self.nrotors, self.nw], dtype=complex)  # blade pitch
 
+
+        results['omega_avg'] = []
+        results['omega_std'] = []
+        results['omega_max'] = []
+        results['omega_PSD'] = []
+        results['torque_avg'] = []
+        results['torque_std'] = []
+        results['torque_PSD'] = []
+        results['power_avg'] = []
+        results['bPitch_avg'] = []
+        results['bPitch_std'] = []
+        results['bPitch_PSD'] = []
+        
+        
         for ir in range(self.nrotors):
         
             # get inflow speed for wind or current turbine
@@ -1598,30 +1626,30 @@ class FOWT():
                 bPitch_w[:,ir,:] = (1j*self.w * self.rotorList[ir].kp_beta + self.rotorList[ir].ki_beta) * phi_w[:,ir,:]
 
                 # rotor speed (rpm) 
-                results['omega_avg'][iCase,ir]     = self.rotorList[ir].Omega_case
-                results['omega_std'][iCase,ir]     = radps2rpm(getRMS(omega_w[:,ir,:]))
-                results['omega_max'][iCase,ir]     = results['omega_avg'][iCase,ir] + 2 * results['omega_std'][iCase,ir] # this and other _max values will be based on std (avg + 2 or 3 * std)   (95% or 99% max)
-                results['omega_PSD'][iCase,:,ir]   = radps2rpm(1)**2 * getPSD(omega_w[:,ir,:], self.dw)
+                results['omega_avg'].append(self.rotorList[ir].Omega_case)
+                results['omega_std'].append(radps2rpm(getRMS(omega_w[:,ir,:])))
+                results['omega_max'].append(results['omega_avg'][ir] + 2 * results['omega_std'][ir]) # this and other _max values will be based on std (avg + 2 or 3 * std)   (95% or 99% max)
+                results['omega_PSD'].append(radps2rpm(1)**2 * getPSD(omega_w[:,ir,:], self.dw))
                 
                 # generator torque (Nm)
-                results['torque_avg'][iCase,ir]    = self.rotorList[ir].aero_torque / self.rotorList[ir].Ng        # Nm
-                results['torque_std'][iCase,ir]    = getRMS(torque_w[:,ir,:])
-                results['torque_PSD'][iCase,:,ir]  = getPSD(torque_w[:,ir,:], self.dw)
+                results['torque_avg'].append(self.rotorList[ir].aero_torque / self.rotorList[ir].Ng)        # Nm
+                results['torque_std'].append(getRMS(torque_w[:,ir,:]))
+                results['torque_PSD'].append(getPSD(torque_w[:,ir,:], self.dw))
                 # results['torque_max'][iCase]    # skip, nonlinear
                 
                 # rotor power (W)
-                results['power_avg'][iCase,ir]    = self.rotorList[ir].aero_power # compute from cc-blade coeffs
+                results['power_avg'].append(self.rotorList[ir].aero_power) # compute from cc-blade coeffs
                 # results['power_std'][iCase]     # nonlinear near rated, covered by torque_ and omega_std
                 # results['power_max'][iCase]     # skip, nonlinear
 
                 # collective blade pitch (deg)
-                results['bPitch_avg'][iCase,ir]    = self.rotorList[ir].pitch_case
-                results['bPitch_std'][iCase,ir]    = rad2deg(getRMS(bPitch_w[:,ir,:]))
-                results['bPitch_PSD'][iCase,:,ir]  = rad2deg(1)**2 *getPSD(bPitch_w[:,ir,:], self.dw)
+                results['bPitch_avg'].append(self.rotorList[ir].pitch_case)
+                results['bPitch_std'].append(rad2deg(getRMS(bPitch_w[:,ir,:])))
+                results['bPitch_PSD'].append(rad2deg(1)**2 *getPSD(bPitch_w[:,ir,:], self.dw))
                 # results['bPitch_max'][iCase]    # skip, not something we'd consider in design
 
                 # wind PSD for reference
-                results['wind_PSD'][iCase,:] = getPSD(self.rotorList[ir].V_w, self.dw)   # <<< need to confirm
+                results['wind_PSD'] = getPSD(self.rotorList[ir].V_w, self.dw)   # <<< need to confirm
 
 
         '''

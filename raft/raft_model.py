@@ -271,96 +271,7 @@ class Model():
         # set up output arrays for load cases >>> put these into an initialization function <<<
         
         self.results['case_metrics'] = {}
-        for i in range(self.nFOWT):
-            self.results['case_metrics'][i] = {} # make dictionary entry indexed to FOWT index
-            
-            self.results['case_metrics'][i]['surge_avg'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['surge_std'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['surge_max'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['surge_PSD'] = np.zeros([nCases,self.nw])  # adding PSDs as well. Could put behind an if statement if this slows things down
-            
-            self.results['case_metrics'][i]['sway_avg'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['sway_std'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['sway_max'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['sway_PSD'] = np.zeros([nCases,self.nw])
-            
-            self.results['case_metrics'][i]['heave_avg'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['heave_std'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['heave_max'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['heave_PSD'] = np.zeros([nCases,self.nw])
-            
-            self.results['case_metrics'][i]['roll_avg'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['roll_std'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['roll_max'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['roll_PSD'] = np.zeros([nCases,self.nw])
-            
-            self.results['case_metrics'][i]['pitch_avg'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['pitch_std'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['pitch_max'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['pitch_PSD'] = np.zeros([nCases,self.nw])
-            
-            self.results['case_metrics'][i]['yaw_avg'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['yaw_std'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['yaw_max'] = np.zeros(nCases)
-            self.results['case_metrics'][i]['yaw_PSD'] = np.zeros([nCases,self.nw])
-        
-            nrotors = self.fowtList[i].nrotors
 
-            # nacelle acceleration
-            self.results['case_metrics'][i]['AxRNA_avg'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['AxRNA_std'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['AxRNA_max'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['AxRNA_PSD'] = np.zeros([nCases,self.nw, nrotors]) 
-            # tower base bending moment
-            self.results['case_metrics'][i]['Mbase_avg'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['Mbase_std'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['Mbase_max'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['Mbase_PSD'] = np.zeros([nCases,self.nw, nrotors])
-            self.results['case_metrics'][i]['Mbase_DEL'] = np.zeros([nCases,nrotors])   
-            # rotor speed 
-            self.results['case_metrics'][i]['omega_avg'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['omega_std'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['omega_max'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['omega_PSD'] = np.zeros([nCases,self.nw, nrotors])
-            # generator torque 
-            self.results['case_metrics'][i]['torque_avg'] = np.zeros([nCases,nrotors])
-            self.results['case_metrics'][i]['torque_std'] = np.zeros([nCases,nrotors])   
-            self.results['case_metrics'][i]['torque_max'] = np.zeros([nCases,nrotors]) 
-            self.results['case_metrics'][i]['torque_PSD'] = np.zeros([nCases,self.nw, nrotors])
-            # rotor power  
-            self.results['case_metrics'][i]['power_avg'] = np.zeros([nCases,nrotors]) 
-            self.results['case_metrics'][i]['power_std'] = np.zeros([nCases,nrotors])    
-            self.results['case_metrics'][i]['power_max'] = np.zeros([nCases,nrotors])   
-            self.results['case_metrics'][i]['power_PSD'] = np.zeros([nCases,self.nw, nrotors]) 
-            # collective blade pitch
-            self.results['case_metrics'][i]['bPitch_avg'] = np.zeros([nCases,nrotors])   
-            self.results['case_metrics'][i]['bPitch_std'] = np.zeros([nCases,nrotors])    
-            self.results['case_metrics'][i]['bPitch_max'] = np.zeros([nCases,nrotors]) 
-            self.results['case_metrics'][i]['bPitch_PSD'] = np.zeros([nCases,self.nw, nrotors]) 
-
-            # wind and wave spectra for reference
-            self.results['case_metrics'][i]['wind_PSD'] = np.zeros([nCases, self.nw])
-            self.results['case_metrics'][i]['wave_PSD'] = np.zeros([nCases, self.nw])
-            
-            # FOWT-level mooring tensions
-            if self.fowtList[i].ms:
-                nLines = len(self.fowtList[i].ms.lineList)  # number of line in this FOWT's mooring system
-                self.results['case_metrics'][i]['Tmoor_avg'] = np.zeros([nCases, 2*nLines])
-                self.results['case_metrics'][i]['Tmoor_std'] = np.zeros([nCases, 2*nLines])    
-                self.results['case_metrics'][i]['Tmoor_max'] = np.zeros([nCases, 2*nLines])    
-                self.results['case_metrics'][i]['Tmoor_DEL'] = np.zeros([nCases, 2*nLines])    
-                self.results['case_metrics'][i]['Tmoor_PSD'] = np.zeros([nCases, 2*nLines, self.nw])    
-        
-        
-        # array-level mooring tensions
-        if self.ms:
-            nLines = len(self.ms.lineList)        
-            self.results['case_metrics']['array_mooring']['Tmoor_avg'] = np.zeros([nCases, 2*nLines]) # 2d array, for each line in each case?
-            self.results['case_metrics']['array_mooring']['Tmoor_std'] = np.zeros([nCases, 2*nLines])
-            self.results['case_metrics']['array_mooring']['Tmoor_max'] = np.zeros([nCases, 2*nLines])
-            self.results['case_metrics']['array_mooring']['Tmoor_DEL'] = np.zeros([nCases, 2*nLines])
-            self.results['case_metrics']['array_mooring']['Tmoor_PSD'] = np.zeros([nCases, 2*nLines, self.nw])
-        
         
         # calculate the system's constant properties
         '''  >>> this part needs to be made to work again, so that we have unloaded equilibrium <<<
@@ -401,35 +312,40 @@ class Model():
             
             # >>> need to decide if I want to store Xi0 and Xi in the FOWTs or work with them directly here. <<<
             
-            # process outputs that are specific to the floating unit       
+            # process outputs that are specific to the floating unit (initialize dictionary for case and turb index)
+            self.results['case_metrics'][iCase] = {}
             for i, fowt in enumerate(self.fowtList):
-                fowt.saveTurbineOutputs(self.results['case_metrics'][i], case, iCase)            
+                self.results['case_metrics'][iCase][i] = {}
+                fowt.saveTurbineOutputs(self.results['case_metrics'][iCase][i],case)            
                 nTowers = fowt.ntowers
                 nRotors = fowt.nrotors
                 
                 if display > 0:
         
-                    metrics = self.results['case_metrics'][i]
+                    metrics = self.results['case_metrics'][iCase][i]
                 
                     # print statistics table
                     print(f"-------------------- FOWT {i+1} Case {iCase+1} Statistics --------------------")
                     print("Response channel     Average     RMS         Maximum")
-                    print(f"surge (m)          {metrics['surge_avg'][iCase] :10.2e}  {metrics['surge_std'][iCase] :10.2e}  {metrics['surge_max'][iCase] :10.2e}")
-                    print(f"sway (m)           {metrics['sway_avg' ][iCase] :10.2e}  {metrics['sway_std' ][iCase] :10.2e}  {metrics['sway_max' ][iCase] :10.2e}")
-                    print(f"heave (m)          {metrics['heave_avg'][iCase] :10.2e}  {metrics['heave_std'][iCase] :10.2e}  {metrics['heave_max'][iCase] :10.2e}")
-                    print(f"roll (deg)         {metrics['roll_avg' ][iCase] :10.2e}  {metrics['roll_std' ][iCase] :10.2e}  {metrics['roll_max' ][iCase] :10.2e}")
-                    print(f"pitch (deg)        {metrics['pitch_avg'][iCase] :10.2e}  {metrics['pitch_std'][iCase] :10.2e}  {metrics['pitch_max'][iCase] :10.2e}")
-                    print(f"yaw (deg)          {metrics[  'yaw_avg'][iCase] :10.2e}  {metrics[  'yaw_std'][iCase] :10.2e}  {metrics['yaw_max'  ][iCase] :10.2e}")
+                    print(f"surge (m)          {metrics['surge_avg'] :10.2e}  {metrics['surge_std'] :10.2e}  {metrics['surge_max'] :10.2e}")
+                    print(f"sway (m)           {metrics['sway_avg' ] :10.2e}  {metrics['sway_std' ] :10.2e}  {metrics['sway_max' ] :10.2e}")
+                    print(f"heave (m)          {metrics['heave_avg'] :10.2e}  {metrics['heave_std'] :10.2e}  {metrics['heave_max'] :10.2e}")
+                    print(f"roll (deg)         {metrics['roll_avg' ] :10.2e}  {metrics['roll_std' ] :10.2e}  {metrics['roll_max' ] :10.2e}")
+                    print(f"pitch (deg)        {metrics['pitch_avg'] :10.2e}  {metrics['pitch_std'] :10.2e}  {metrics['pitch_max'] :10.2e}")
+                    print(f"yaw (deg)          {metrics[  'yaw_avg'] :10.2e}  {metrics[  'yaw_std'] :10.2e}  {metrics['yaw_max'  ] :10.2e}")
                     for i in range(nTowers):
-                        print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][iCase,i] :10.2e}  {metrics['AxRNA_std'][iCase,i] :10.2e}  {metrics['AxRNA_max'][iCase,i] :10.2e}")
+                        print(f"nacelle acc. (m/s)  {metrics['AxRNA_avg'][i] :10.2e} {metrics['AxRNA_std'][i] :10.2e}  {metrics['AxRNA_max'][i] :10.2e}")
                     for i in range(nTowers):
-                        print(f"tower bending (Nm) {metrics['Mbase_avg'][iCase,i] :10.2e}  {metrics['Mbase_std'][iCase,i] :10.2e}  {metrics['Mbase_max'][iCase,i] :10.2e}")
+                        print(f"tower bending (Nm) {metrics['Mbase_avg'][i] :10.2e}  {metrics['Mbase_std'][i] :10.2e}  {metrics['Mbase_max'][i] :10.2e}")
                     for i in range(nRotors):
-                        print(f"rotor speed (RPM)  {metrics['omega_avg'][iCase,i] :10.2e}  {metrics['omega_std'][iCase,i] :10.2e}  {metrics['omega_max'][iCase,i] :10.2e}")
-                    for i in range(nRotors):
-                        print(f"blade pitch (deg)  {metrics['bPitch_avg'][iCase,i] :10.2e}  {metrics['bPitch_std'][iCase,i] :10.2e} ")
-                    for i in range(nRotors):
-                        print(f"rotor power        {metrics['power_avg'][iCase,i] :10.2e} ")
+                        if fowt.rotorList[i].Zhub < 0:
+                            speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
+                        else:
+                            speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
+                        if fowt.rotorList[i].aeroServoMod > 1 and speed > 0.0:
+                            print(f"rotor speed (RPM)  {metrics['omega_avg'][i] :10.2e}  {metrics['omega_std'][i] :10.2e}  {metrics['omega_max'][i] :10.2e}")
+                            print(f"blade pitch (deg)  {metrics['bPitch_avg'][i] :10.2e}  {metrics['bPitch_std'][i] :10.2e} ")
+                            print(f"rotor power        {metrics['power_avg'][i] :10.2e} ")
                     #for i in range(nLine):  >>> could have the turbine's own mooring system results here <<<
                     #    j = i+nLine
                     #    print(f"line {i} tension (N) {metrics['Tmoor_avg'][iCase,j]:10.2e}  {metrics['Tmoor_std'][iCase,j]:10.2e}  {metrics['Tmoor_max'][iCase,j]:10.2e}")
@@ -438,10 +354,10 @@ class Model():
                
  
             # process array-level mooring tension outputs
-            
-            T_moor_amps = np.zeros([nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
-            
             if self.ms:
+                nLines = len(self.ms.lineList) 
+                T_moor_amps = np.zeros([nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
+                
                 C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
                 T_moor = self.ms.getTensions()  # get line end mean tensions
                 
@@ -450,24 +366,29 @@ class Model():
                     for iw in range(self.nw):
                         T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
             
-                self.results['case_metrics']['Tmoor_avg'][iCase,:] = T_moor
+                self.results['case_metrics'][iCase]['Tmoor_avg'] = T_moor
+                self.results['case_metrics'][iCase]['Tmoor_std'] = []
+                self.results['case_metrics'][iCase]['Tmoor_max'] = []
+                self.results['case_metrics'][iCase]['Tmoor_PSD'] = np.zeros([ self.nw, 2*nLines])
+                
+                
                 for iT in range(2*nLines):
                     TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
-                    self.results['case_metrics']['Tmoor_std'][iCase,iT] = TRMS
-                    self.results['case_metrics']['Tmoor_max'][iCase,iT] = T_moor[iT] + 3*TRMS
-                    self.results['case_metrics']['Tmoor_PSD'][iCase,iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
+                    self.results['case_metrics'][iCase]['Tmoor_std'].append(TRMS)
+                    self.results['case_metrics'][iCase]['Tmoor_max'].append(T_moor[iT] + 3*TRMS)
+                    self.results['case_metrics'][iCase]['Tmoor_PSD'][:,iT] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
                     #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
         
                 if display > 0:
             
-                    metrics = self.results['case_metrics']
+                    metrics = self.results['case_metrics'][iCase]
                 
                     # print statistics table
                     print(f"-------------------- Case {iCase+1} Statistics --------------------")
                     print("Response channel     Average     RMS         Maximum")
                     for i in range(nLines):
                         j = i+nLines
-                        print(f"line {i} tension (N) {metrics['Tmoor_avg'][iCase,j]:10.2e}  {metrics['Tmoor_std'][iCase,j]:10.2e}  {metrics['Tmoor_max'][iCase,j]:10.2e}")
+                        print(f"line {i} tension (N) {metrics['Tmoor_avg'][j]:10.2e}  {metrics['Tmoor_std'][j]:10.2e}  {metrics['Tmoor_max'][j]:10.2e}")
                     print(f"-----------------------------------------------------------")
                 
                 self.T_moor_amps = T_moor_amps  # save for future processing!
@@ -1326,17 +1247,17 @@ class Model():
         # loop through each FOWT and plot its response (on the same figure for now)
         for i in range(self.nFOWT):
         
-            metrics = self.results['case_metrics'][i]
-            nCases = len(metrics['surge_avg'])
+            
+            nCases = len(self.results['case_metrics'])
             
             for iCase in range(nCases):
-            
-                ax[0].plot(self.w/TwoPi, TwoPi*metrics['surge_PSD'][iCase,:]    )  # surge
-                ax[1].plot(self.w/TwoPi, TwoPi*metrics['heave_PSD'][iCase,:]    )  # heave
-                ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD'][iCase,:]    )  # pitch [deg]
-                ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD'][iCase,:]    )  # nacelle acceleration
-                ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD'][iCase,:]    )  # tower base bending moment (using FAST's kN-m)
-                ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ][iCase,:], label=f'FOWT {i+1}; Case {iCase+1}')  # wave spectrum
+                metrics = self.results['case_metrics'][iCase][i]
+                ax[0].plot(self.w/TwoPi, TwoPi*metrics['surge_PSD']    )  # surge
+                ax[1].plot(self.w/TwoPi, TwoPi*metrics['heave_PSD']    )  # heave
+                ax[2].plot(self.w/TwoPi, TwoPi*metrics['pitch_PSD']    )  # pitch [deg]
+                ax[3].plot(self.w/TwoPi, TwoPi*metrics['AxRNA_PSD']    )  # nacelle acceleration
+                ax[4].plot(self.w/TwoPi, TwoPi*metrics['Mbase_PSD']    )  # tower base bending moment (using FAST's kN-m)
+                ax[5].plot(self.w/TwoPi, TwoPi*metrics['wave_PSD' ], label=f'FOWT {i+1}; Case {iCase+1}')  # wave spectrum
 
                 # need a variable number of subplots for the mooring lines
                 #ax2[3].plot(model.w/2/np.pi, TwoPi*metrics['Tmoor_PSD'][0,3,:]  )  # fairlead tension
@@ -1368,10 +1289,10 @@ class Model():
         
         for i in range(self.nFOWT):
         
-            metrics = self.results['case_metrics'][i]
-            nCases = len(metrics['surge_avg'])
-        
+            nCases = len(self.results['case_metrics'])
+            
             for iCase in range(nCases):
+                metrics = self.results['case_metrics'][iCase][i]
                 with open(f'{outPath}_Case{iCase}_WT{i}.txt', 'w') as file:
                     # Write the header
                     file.write('Frequency [rad/s] \t')
@@ -1383,7 +1304,7 @@ class Model():
                     for iFreq in range(len(self.w)):
                         file.write(f'{self.w[iFreq]:.5f} \t')
                         for metric in chooseMetrics:
-                            file.write(f'{np.squeeze(metrics[metric][iCase, iFreq]):.5f} \t')
+                            file.write(f'{np.squeeze(metrics[metric][iFreq]):.5f} \t')
                         file.write('\n')
 
 
@@ -1395,20 +1316,20 @@ class Model():
         # loop through each FOWT and plot its response (on the same figure for now)
         for i in range(self.nFOWT):
         
-            metrics = self.results['case_metrics'][i]
-            nCases = len(metrics['surge_avg'])
-
+            nCases = len(self.results['case_metrics'])
+            
             for iCase in range(nCases):
-                ax[0].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][iCase, :])  # surge
-                ax[1].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][iCase, :])  # surge
-                ax[2].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][iCase, :])  # heave
-                ax[3].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][iCase, :])  # pitch [deg]
-                ax[4].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][iCase, :])  # pitch [deg]
-                ax[5].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][iCase, :])  # pitch [deg]
-                ax[6].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][iCase, :])  # nacelle acceleration
+                metrics = self.results['case_metrics'][iCase][i]
+                ax[0].plot(self.w / TwoPi, TwoPi * metrics['surge_PSD'][:])  # surge
+                ax[1].plot(self.w / TwoPi, TwoPi * metrics['sway_PSD'][:])  # surge
+                ax[2].plot(self.w / TwoPi, TwoPi * metrics['heave_PSD'][:])  # heave
+                ax[3].plot(self.w / TwoPi, TwoPi * metrics['pitch_PSD'][:])  # pitch [deg]
+                ax[4].plot(self.w / TwoPi, TwoPi * metrics['roll_PSD'][:])  # pitch [deg]
+                ax[5].plot(self.w / TwoPi, TwoPi * metrics['yaw_PSD'][:])  # pitch [deg]
+                ax[6].plot(self.w / TwoPi, TwoPi * metrics['AxRNA_PSD'][:])  # nacelle acceleration
                 ax[7].plot(self.w / TwoPi,
-                           TwoPi * metrics['Mbase_PSD'][iCase, :])  # tower base bending moment (using FAST's kN-m)
-                ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD'][iCase, :],
+                           TwoPi * metrics['Mbase_PSD'][:])  # tower base bending moment (using FAST's kN-m)
+                ax[8].plot(self.w / TwoPi, TwoPi * metrics['wave_PSD'][ :],
                            label=f'case {iCase + 1}')  # wave spectrum
 
                 # need a variable number of subplots for the mooring lines

@@ -366,22 +366,22 @@ class Model():
                     for iw in range(self.nw):
                         T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
             
-                self.results['case_metrics'][iCase]['Tmoor_avg'] = T_moor
-                self.results['case_metrics'][iCase]['Tmoor_std'] = []
-                self.results['case_metrics'][iCase]['Tmoor_max'] = []
-                self.results['case_metrics'][iCase]['Tmoor_PSD'] = np.zeros([ self.nw, 2*nLines])
+                self.results['case_metrics'][iCase]['array_mooring']['Tmoor_avg'] = T_moor
+                self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'] = np.zeros(2*nLines)
+                self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'] = np.zeros(2*nLines)
+                self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'] = np.zeros([ self.nw, 2*nLines])
                 
                 
                 for iT in range(2*nLines):
                     TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
-                    self.results['case_metrics'][iCase]['Tmoor_std'].append(TRMS)
-                    self.results['case_metrics'][iCase]['Tmoor_max'].append(T_moor[iT] + 3*TRMS)
-                    self.results['case_metrics'][iCase]['Tmoor_PSD'][:,iT] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
-                    #self.results['case_metrics']['Tmoor_DEL'][iCase,iT] = 
+                    self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'][iT] = TRMS
+                    self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'][iT] = T_moor[iT] + 3*TRMS
+                    self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'][:,iT] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
+                    #self.results['case_metrics']['array_mooring']['Tmoor_DEL'][iCase,iT] = 
         
                 if display > 0:
             
-                    metrics = self.results['case_metrics'][iCase]
+                    metrics = self.results['case_metrics'][iCase]['array_mooring']
                 
                     # print statistics table
                     print(f"-------------------- Case {iCase+1} Statistics --------------------")
@@ -1381,7 +1381,7 @@ class Model():
         self.fowtList[0].calcBEM(dw=dw, wMax=wMax, dz=dz, da=da)
 
 
-    def plot(self, ax=None, hideGrid=False, draw_body=True, color='k', nodes=0, 
+    def plot(self, ax=None, hideGrid=False, draw_body=True, color=None, nodes=0, 
              xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, airfoils=False, 
              station_plot=[], zorder=2, figsize=(6,4)):
         '''plots the whole model, including FOWTs and mooring system...'''
@@ -1427,7 +1427,7 @@ class Model():
         return fig, ax
     
     
-    def plot2d(self, ax=None, hideGrid=False, draw_body=True, color='k', 
+    def plot2d(self, ax=None, hideGrid=False, draw_body=True, color=None, 
                station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1], figsize=(6,4)):
         '''plots the whole model, including FOWTs and mooring system...'''
 

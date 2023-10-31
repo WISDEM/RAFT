@@ -12,7 +12,7 @@ from moorpy.helpers import transformPosition
 #  used during the model's operation.
 class Member:
 
-    def __init__(self, mi, nw, BEM=[]):
+    def __init__(self, mi, nw, BEM=[], heading=0):
         '''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
 
         PARAMETERS
@@ -23,7 +23,8 @@ class Member:
         nw : int
             Number of frequencies in the analysis - used for initializing.
         heading : float, optional
-            Rotation to apply to the coordinates when setting up the member - used for circular patterns of members.
+            Heading rotation to apply to the coordinates when setting up the 
+            member. Used for member arrangements or FOWT heading offsets [deg].
 
         '''
 
@@ -45,11 +46,16 @@ class Member:
         
 
         # heading feature for rotation members about the z axis (used for rotated patterns)
+        '''
         self.headings = getFromDict(mi, 'headings', shape=-1, default=0.0)
         self.heading = getFromDict(mi, 'heading', default=0.0)            # rotation about z axis to apply to the member [deg]
         if self.heading != 0.0:
             c = np.cos(np.deg2rad(self.heading))
             s = np.sin(np.deg2rad(self.heading))
+        '''
+        if heading != 0.0:
+            c = np.cos(np.deg2rad(heading))
+            s = np.sin(np.deg2rad(heading))
             rotMat = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
             self.rA0 = np.matmul(rotMat, self.rA0)
             self.rB0 = np.matmul(rotMat, self.rB0)
@@ -59,14 +65,22 @@ class Member:
         self.l = np.linalg.norm(rAB)                                # member length [m]
     
 
-        # station positions
-        n = len(mi['stations'])                                     # number of stations
+        # ----- process station positions and other distributed inputs -----
+        
+        # Station inputs are mapped linearly over the length of the member from
+        # end A to B. The inputted station list must be in increasing order.
+        st = np.array(mi['stations'], dtype=float)      # station input values (abritrary units/scale)
+        n = len(st)                                    # number of stations
+        
         if n < 2:
             raise ValueError("At least two stations entries must be provided")
-
-        A = np.array(mi['stations'], dtype=float)
-        self.stations = (A - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
-
+            
+        # ensure the stations are in ascending order (assumed to be from end A to B)
+        if not sorted(st) == st.tolist():
+            raise ValueError(f"Member {self.name}: the station list is not in ascending order.")
+        
+        # calculate station positions along the member axis from 0 to l [m]
+        self.stations = (st - st[0])/(st[-1] - st[0])*self.l
 
         # shapes
         if shape[0].lower() == 'c':
@@ -86,18 +100,38 @@ class Member:
             raise ValueError('The only allowable shape strings are circular and rectangular')
 
 
-        self.t         = getFromDict(mi, 't', shape=n)               # shell thickness of the nodes [m]
+        self.t         = getFromDict(mi, 't', shape=n)               # shell thickness at each station [m]
+        self.rho_shell = getFromDict(mi, 'rho_shell', shape=0, default=8500.) # shell mass density [kg/m^3]
         
-        self.l_fill    = getFromDict(mi, 'l_fill'  , shape=-1, default=0.0)   # length of member (from end A to B) filled with ballast [m]
-        self.rho_fill  = getFromDict(mi, 'rho_fill', shape=-1, default=0.0)   # density of ballast in member [kg/m^3]
         
-        if isinstance(self.l_fill, np.ndarray):
-            if len(self.l_fill) != n-1 or len(self.rho_fill) != n-1:
-                raise ValueError(f"Member '{self.name}': The number of stations ({n}) should always be 1 greater than the number of ballast sections, l_fill ({len(self.l_fill)}) and rho_fill ({len(self.rho_fill)})")
-        if np.array(mi['stations'], dtype=float)[-1] == 1:  # if the input stations are relative (i.e. [0, 1]), then that means the input ballast fill levels are also relative (i.e., <= 1.0)
-            self.l_fill *= self.l                            # if it's relative, multiply the ballast fill level amount (-) by the length to get units of (m)
+        # ----- ballast inputs (for each section between stations) -----
+        
+        # read the ballast fill level of each section (same units/scale as stations list)
+        st_fill = getFromDict(mi, 'l_fill'  , shape=n-1, default=0)   
+        
+        #ensure each ballast entry is valid (fill level doesn't exceed section length)
+        for i in range(n-1):
+            if st_fill[i] < 0: 
+                raise Exception(f"Member {self.name}: ballast level in section {i+1} is negative.")
+            if st_fill[i] > st[i+1] - st[i]: 
+                raise Exception(f"Member {self.name}: ballast level in section {i+1} exceeds section length."
+                                +f" ({st_fill[i]} > {st[i+1] - st[i]}).")
+        
+        # convert ballast fill levels into length units [m]
+        self.l_fill = st_fill/(st[-1] - st[0])*self.l  
 
-        self.rho_shell = getFromDict(mi, 'rho_shell', default=8500.) # shell mass density [kg/m^3]
+        # density of ballast in member [kg/m^3]
+        rho_fill = getFromDict(mi, 'rho_fill', shape=-1, default=1025)
+        
+        if np.isscalar(rho_fill):
+            self.rho_fill = np.zeros(n-1) + rho_fill
+        else:
+            if len(rho_fill) == n-1:
+                self.rho_fill = np.array(rho_fill)
+            else:
+                raise Exception(f"Member {self.name}: the number of provided ballast densities (rho_fill) must be 1 less than the number of stations.")
+        
+        # raise ValueError(f"Member '{self.name}': The number of stations ({n}) should always be 1 greater than the number of ballast sections, l_fill ({len(self.l_fill)}) and rho_fill ({len(self.rho_fill)})")
 
 
         # initialize member orientation variables
@@ -107,7 +141,7 @@ class Member:
         self.R = np.eye(3)                                          # rotation matrix from global x,y,z to member q,p1,p2
 
 
-        # store end cap and bulkhead info
+        # ----- end cap and bulkhead info -----
 
         cap_stations = getFromDict(mi, 'cap_stations', shape=-1, default=[])   # station location inputs before scaling
         if len(cap_stations) == 0:
@@ -117,7 +151,7 @@ class Member:
         else:
             self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape[0])   # thicknesses [m]
             self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape[0])   # inner diameter (if it isn't a solid plate) [m]
-            self.cap_stations = (cap_stations - A[0])/(A[-1] - A[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
+            self.cap_stations = (cap_stations - st[0])/(st[-1] - st[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
             
 
         # Drag coefficients
@@ -146,6 +180,8 @@ class Member:
             self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse1 added mass coefficient
             self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse2 added mass coefficient
         '''
+
+        # ----- Strip theory discretization -----
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair

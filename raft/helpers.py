@@ -548,8 +548,10 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None, index=None):
         The desired shape of the output. If not provided, assuming scalar output. If -1, any input shape is used.
     dtype : type
         Must be a python type than can serve as a function to format the input value to the right type.
-    default : number, optional
-        The default value to fill in if the item isn't in the dictionary. Otherwise will raise error if the key doesn't exist.
+    default : number or list, optional
+        The default value to fill in if the item isn't in the dictionary. 
+        Otherwise will raise error if the key doesn't exist. It may be a list
+        (to be tiled shape times if shape > 1) but may not be a numpy array.
     '''
     # in future could support nested keys   if type(key)==list: ...
 

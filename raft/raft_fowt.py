@@ -46,8 +46,6 @@ class FOWT():
 
         print("Making FOWT")
 
-        # >>> TODO: still need to apply heading_adjust <<<
-
         # from Joep: for muliple HAMS threads and multiple wave headings >>>
         #self.numThreads = int(getFromDict(design['settings'],'numThreads', default=8)) # number of threads to run HAMS
         #self.headsStored = np.empty(1)  
@@ -157,15 +155,12 @@ class FOWT():
             
             # create member object
             if np.isscalar(headings):
-                mi['heading'] = headings
-                self.memberList.append(Member(mi, self.nw))
-                mi['heading'] = [headings] # restore the headings dict value for next time
+                self.memberList.append(Member(mi, self.nw, heading=headings+heading_adjust))
             else:
                 for heading in headings:
-                    mi['heading'] = heading
-                    self.memberList.append(Member(mi, self.nw))
-                mi['heading'] = headings # set the headings dict value back to the yaml headings value, instead of the last one used
-
+                    self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust))
+        
+        
         # add tower(s) to member list if applicable
         for ti in range(self.ntowers):
             #tower['dlsMax'] = design['turbine']['tower']['dlsMax']     # for when we want to make a list of tower 'members' and have general inputs like dlsMax first
@@ -177,19 +172,7 @@ class FOWT():
 
         # this FOWT's own MoorPy system (may not be used)
         if design['mooring']:
-            '''
-            if 'file' in design['mooring']:
-                self.ms = mp.System(design['mooring']['file'], depth = design['mooring']['water_depth'])
-                self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
-                self.ms.transform(trans=[x_ref, y_ref])  # move mooring system according to the FOWT's reference position
-                self.ms.initialize()
-            else:
-                self.ms = mp.System()
-                self.ms.parseYAML(design['mooring'])
-                self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
-                self.ms.transform(trans=[x_ref, y_ref])  # move mooring system according to the FOWT's reference position
-                self.ms.initialize()
-            '''
+
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
             
@@ -207,7 +190,7 @@ class FOWT():
                 raise Exception("More than one body detected in FOWT mooring system.")
                 
             # move mooring system according to the FOWT's reference position
-            self.ms.transform(trans=[x_ref, y_ref])  
+            self.ms.transform(trans=[x_ref, y_ref], rot=heading_adjust)  
             self.ms.initialize()
 
         else:
@@ -1478,7 +1461,6 @@ class FOWT():
         if self.ms:
             nLines = len(self.ms.lineList)
             T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
-            
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
             T_moor = self.ms.getTensions()  # get line end mean tensions
             
@@ -1712,14 +1694,17 @@ class FOWT():
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
 
-    def plot(self, ax, color='k', nodes=0, plot_rotor=True, station_plot=[], airfoils=False, zorder=2):
+    def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], airfoils=False, zorder=2):
         '''plots the FOWT...'''
 
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
 
         if self.ms:
             self.ms.plot(ax=ax, color=color)
-
+        
+        if color==None:
+            color='k'
+        
         if plot_rotor:
             for rotor in self.rotorList:
                 coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + self.r6[:3]
@@ -1743,7 +1728,7 @@ class FOWT():
         # including hydro excitation vectors stored in each member
 
 
-    def plot2d(self, ax, color='k', station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1]):
+    def plot2d(self, ax, color=None, station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1]):
         '''plots the FOWT in 2d - only the platform and moorings so far...'''
 
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
@@ -1751,6 +1736,9 @@ class FOWT():
         if self.ms:
             self.ms.plot2d(ax=ax, color=color, Xuvec=Xuvec, Yuvec=Yuvec)
 
+        if color==None:
+            color='k'
+            
         # loop through each member and plot it
         for mem in self.memberList:
             mem.setPosition()

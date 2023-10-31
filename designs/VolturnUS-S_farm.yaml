@@ -43,7 +43,7 @@ array:         # new
 
     
 array_mooring:  # option for array-level mooring system
-    file: C:/Code/RAFT/designs/SharedMooring2.dat    # MoorDyn shared mooring input file (same as would be used in FAST.Farm)
+    file: SharedMooring2.dat    # MoorDyn shared mooring input file (same as would be used in FAST.Farm)
 
     
 turbine:

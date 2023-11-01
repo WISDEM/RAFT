@@ -1911,7 +1911,7 @@ class Model():
             
             self.turblist = turblist
     
-    def florisFindEquilibrium(self, path, updateCpCt = False):
+    def florisFindEquilibrium(self, path, plotting = True):
         
         if not hasattr(self, 'fi'):
             raise AttributeError("Need to initialize floris coupling first")
@@ -1978,7 +1978,50 @@ class Model():
                 xpositions.append([self.fowtList[nfowt].Xi0[0] + fowtInfo[nfowt]["x_location"] for nfowt in range(len(self.fowtList))])
                 ypositions.append( [self.fowtList[nfowt].Xi0[1] + fowtInfo[nfowt]["y_location"] for nfowt in range(len(self.fowtList))])
         
-        return(winds,xpositions, ypositions)           
+        #return FLORIS turbine powers (in order of turbine list)
+        turbine_powers = self.fi.get_turbine_powers()
+        
+        if plotting:
+            import floris.tools.visualization as wakeviz
+            horizontal_plane = self.fi.calculate_horizontal_plane(
+                x_resolution=200,
+                y_resolution=100,
+                height=90.0,
+                yaw_angles=yaw_angles,
+            )
+
+            y_plane = self.fi.calculate_y_plane(
+                x_resolution=200,
+                z_resolution=100,
+                crossstream_dist=0.0,
+                yaw_angles=yaw_angles,
+            )
+            cross_plane = self.fi.calculate_cross_plane(
+                y_resolution=100,
+                z_resolution=100,
+                downstream_dist=630.0,
+                yaw_angles=yaw_angles,
+            )
+
+            # Create the plots
+            fig, ax_list = plt.subplots(1, 1, figsize=(10, 8))
+            #ax_list = ax_list.flatten()
+            wakeviz.visualize_cut_plane(horizontal_plane, ax=ax_list)
+
+            cmap = plt.cm.get_cmap('viridis_r')
+            
+            #plot offset turbine positions for all iterations
+            for step in range(0, len(xpositions)):
+
+                ax_list.scatter(xpositions[step], ypositions[step], c=[
+                                cmap(step/len(xpositions))], s=100)
+                
+            #plot neutral turbine positions
+            for i in range(0, self.nFOWT):
+                ax_list.scatter(self.design['array']['data'][i][3], self.design['array']['data'][i][4],color = 'black',s = 100, marker = "x")
+
+        
+        return(winds,xpositions, ypositions, turbine_powers)           
 
 def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[]):
     '''

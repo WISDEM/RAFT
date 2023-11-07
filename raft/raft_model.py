@@ -261,7 +261,7 @@ class Model():
         # TODO: add printing of summary info here - mass, stiffnesses, etc
 
     
-    def analyzeCases(self, display=0, runPyHAMS=False, meshDir=os.path.join(os.getcwd(),'BEM'), RAO_plot=False):
+    def analyzeCases(self, display=0, meshDir=os.path.join(os.getcwd(),'BEM'), RAO_plot=False):
         '''This runs through all the specified load cases, building a dictionary of results.'''
         
         nCases = len(self.design['cases']['data'])
@@ -274,13 +274,12 @@ class Model():
 
         
         # calculate the system's constant properties
-        '''  >>> this part needs to be made to work again, so that we have unloaded equilibrium <<<
         for fowt in self.fowtList:
             fowt.calcStatics()
 
-        if runPyHAMS:
+        for i, fowt in enumerate(self.fowtList):
             fowt.calcBEM(meshDir=meshDir)
-        '''
+        
 
         # w_2nd = np.linspace(self.w[0], self.w[-1], 50)
         # k_2nd = np.zeros(len(w_2nd))
@@ -302,6 +301,9 @@ class Model():
             else:
                 nWaves = len(case['wave_heading'])
             
+            # initialize dictionary of case results
+            self.results['case_metrics'][iCase] = {}
+            
             # solve system operating point / mean offsets for this load case
             self.solveStatics(case, display=display)
             
@@ -313,7 +315,6 @@ class Model():
             # >>> need to decide if I want to store Xi0 and Xi in the FOWTs or work with them directly here. <<<
             
             # process outputs that are specific to the floating unit (initialize dictionary for case and turb index)
-            self.results['case_metrics'][iCase] = {}
             for i, fowt in enumerate(self.fowtList):
                 self.results['case_metrics'][iCase][i] = {}
                 fowt.saveTurbineOutputs(self.results['case_metrics'][iCase][i],case)            
@@ -355,6 +356,9 @@ class Model():
  
             # process array-level mooring tension outputs
             if self.ms:
+                
+                self.results['case_metrics'][iCase]['array_mooring'] = {}
+                
                 nLines = len(self.ms.lineList) 
                 T_moor_amps = np.zeros([nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
                 
@@ -369,14 +373,14 @@ class Model():
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_avg'] = T_moor
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'] = np.zeros(2*nLines)
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'] = np.zeros(2*nLines)
-                self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'] = np.zeros([ self.nw, 2*nLines])
+                self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'] = np.zeros([ 2*nLines, self.nw ])
                 
                 
                 for iT in range(2*nLines):
                     TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'][iT] = TRMS
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'][iT] = T_moor[iT] + 3*TRMS
-                    self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'][:,iT] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
+                    self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'][iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
                     #self.results['case_metrics']['array_mooring']['Tmoor_DEL'][iCase,iT] = 
         
                 if display > 0:
@@ -384,7 +388,7 @@ class Model():
                     metrics = self.results['case_metrics'][iCase]['array_mooring']
                 
                     # print statistics table
-                    print(f"-------------------- Case {iCase+1} Statistics --------------------")
+                    print(f"-------------------- Mooring Case {iCase+1} Statistics --------------------")
                     print("Response channel     Average     RMS         Maximum")
                     for i in range(nLines):
                         j = i+nLines

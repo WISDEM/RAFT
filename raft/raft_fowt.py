@@ -636,11 +636,27 @@ class FOWT():
             # read the HAMS WAMIT-style output files
             addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
             M, P, R, I, w3, heads  = ph.read_wamit3(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)   
+            
+            # process headings and sort frequencies
             self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using
+            '''
+            isort1 = np.argsort(w1)  # indices that will sort the radiation results
+            isort3 = np.argsort(w3)  # indices that will sort the diffraction results
+            w1        = np.take(w1, isort1)
+            w3        = np.take(w3, isort3)
+            addedMass = np.take(addedMass, isort1, axis=2)
+            damping   = np.take(damping  , isort1, axis=2)
+            M         = np.take(M        , isort3, axis=2)
+            P         = np.take(P        , isort3, axis=2)
+            R         = np.take(R        , isort3, axis=2)
+            I         = np.take(I        , isort3, axis=2)
+            '''
+            # interpolate to RAFT model frequencies
+            # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
             addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
             dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
-            fExRealInterp   = interp1d(w3,   R      , assume_sorted=False        )(self.w)
-            fExImagInterp   = interp1d(w3,   I      , assume_sorted=False        )(self.w)
+            fExRealInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       R, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
+            fExImagInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       I, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
             # note: fEx tensors are sized according to [nHeadings, 6 DOFs, frequencies]
             
             # copy results over to the FOWT's coefficient arrays

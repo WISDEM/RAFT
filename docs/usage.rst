@@ -480,7 +480,40 @@ Load-Case-Specific Outputs
 
 The load-case-specific outputs consist of motion and load response amplitude
 spectra, and statistics of these responses from which mean and extreme values
-can be estimated. Additional calculation of fatigue loads is planned for future work
+can be estimated. Additional calculation of fatigue loads is planned for future work.
+
+When interfacing with RAFT, the case results can be found in 'case_metrics'
+in the Model.results data structure. Case metrics is a dictionary containing
+sub-dictionaries for each turbine, identified by the numbers 0 to N-1 (where
+N is the number of turbines). In the case of an array-level mooring system,
+the mooring system results will be stored at the top level. Otherwise, they
+will be stored individually. A partial view of the case metrics data 
+structure is shown below. Typically, each of these entries will be an array
+of data, with entries corresponding to the different environmental cases.
+
+.. code-block:: yaml
+    case_metrics:
+        0:  # turbine 1 results
+            surge_avg  # FOWT's global response results
+            surge_std
+            surge_max
+            surge_PSD
+            sway_avg
+            ...
+            AxRNA_avg  # FOWT's turbine results
+            AxRNA_std
+            ...
+            Tmoor_avg  # FOWT's mooring results
+            Tmoor_std
+            ...
+        1:  # turbine 2 results
+            ...
+        array_mooring:  # array-level mooring results
+            Tmoor_avg
+            Tmoor_std
+            Tmoor_max
+            Tmoor_DEL
+            Tmoor_PSD
 
 The plots below show the power spectral densities of select responses calculated from
 several load cases (produced using the Model.plotResponse method).

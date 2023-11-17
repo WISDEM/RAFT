@@ -1002,7 +1002,8 @@ class Member:
         '''Get member cross sectional area and moments of inertia at a user-
         specified location along the member.'''
         
-        
+        A = 0
+        I = 0        
         
         return A, I
 

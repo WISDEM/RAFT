@@ -721,6 +721,8 @@ platform:
         CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  7850                      # [kg/m3]
+        l_fill    : 0.4473325
+        rho_fill  : 1025
 
       - name      :  column-W                 # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
@@ -737,6 +739,8 @@ platform:
         CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  7850                      # [kg/m3] 
+        l_fill    : 0.4473325
+        rho_fill  : 1025
       
       - name      :  column-S                 # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
@@ -753,6 +757,8 @@ platform:
         CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  7850                      # [kg/m3]
+        l_fill    : 0.4473325
+        rho_fill  : 1025
       
       - name      :  column-N                 # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    
@@ -769,6 +775,8 @@ platform:
         CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  7850                      # [kg/m3]
+        l_fill    : 0.4473325
+        rho_fill  : 1025
       
       - name      :  upper_brace-NE                # [-]    an identifier (no longer has to be number)       
         type      :  2                         # [-]    

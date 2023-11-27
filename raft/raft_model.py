@@ -275,6 +275,7 @@ class Model():
         
         # calculate the system's constant properties
         for fowt in self.fowtList:
+            fowt.setPosition([fowt.x_ref, fowt.y_ref,0,0,0,0])
             fowt.calcStatics()
 
         for i, fowt in enumerate(self.fowtList):
@@ -382,7 +383,10 @@ class Model():
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'][iT] = T_moor[iT] + 3*TRMS
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'][iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
                     #self.results['case_metrics']['array_mooring']['Tmoor_DEL'][iCase,iT] = 
-        
+                
+                # log the maximum line tensions predicted by RAFT for MoorPy use
+                # self.ms.saveMaxTensions(self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'])
+                
                 if display > 0:
             
                     metrics = self.results['case_metrics'][iCase]['array_mooring']

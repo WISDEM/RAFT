@@ -1494,7 +1494,9 @@ class FOWT():
                 results['Tmoor_std'].append(TRMS)
                 results['Tmoor_max'].append( T_moor[iT] + 3*TRMS)
                 results['Tmoor_PSD'][:,iT] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
-    
+            
+            # log the maximum line tensions predicted by RAFT for MoorPy use
+            # self.ms.saveMaxTensions(results['Tmoor_max']) 
         
         # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)
         XiHub = np.zeros([self.Xi.shape[0], self.nrotors, self.nw], dtype=complex)

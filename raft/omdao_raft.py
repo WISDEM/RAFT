@@ -643,13 +643,15 @@ class RAFT_OMDAO(om.ExplicitComponent):
             if outs[i][0].startswith('properties_'):
                 name = outs[i][0].split('properties_')[1]
                 outputs['properties_'+name] = results['properties'][name]
+            '''
+            Note: dynamic results should be taken from results['case metrics']
             elif outs[i][0].startswith('response_'):
                 name = outs[i][0].split('response_')[1]
                 if np.iscomplex(results['response'][name]).any():
                     outputs['response_'+name] = np.abs(results['response'][name])
                 else:
                     outputs['response_'+name] = results['response'][name]
-
+            '''
 
         # Pattern matching for case-by-case outputs
         names = ['surge','sway','heave','roll','pitch','yaw','AxRNA','Mbase','omega','torque','power','bPitch','Tmoor']
@@ -682,3 +684,24 @@ class RAFT_OMDAO(om.ExplicitComponent):
         outputs["platform_I_total"][:3] = np.r_[outputs['properties_roll inertia at subCG'][0],
                                            outputs['properties_pitch inertia at subCG'][0],
                                            outputs['properties_yaw inertia at subCG'][0]]
+
+        
+class RAFT_Group(om.Group):
+    def initialize(self):
+        self.options.declare('modeling_options')
+        self.options.declare('turbine_options')
+        self.options.declare('mooring_options')
+        self.options.declare('member_options')
+        self.options.declare('analysis_options')
+
+    def setup(self):
+        modeling_opt = self.options['modeling_options']
+        analysis_opt = self.options['analysis_options']
+        turbine_opt = self.options['turbine_options']
+        members_opt = self.options['member_options']
+        mooring_opt = self.options['mooring_options']
+        self.add_subsystem("raft", RAFT_OMDAO(modeling_options=modeling_opt,
+                                              analysis_options=analysis_opt,
+                                              turbine_options=turbine_opt,
+                                              mooring_options=mooring_opt,
+                                              member_options=members_opt), promotes=["*"])

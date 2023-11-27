@@ -1394,6 +1394,7 @@ class Model():
     def plot(self, ax=None, hideGrid=False, draw_body=True, color=None, nodes=0, 
              xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, airfoils=False, 
              station_plot=[], zorder=2, figsize=(6,4), plot_water=False, plot_soil=False):
+
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -1433,6 +1434,10 @@ class Model():
             ax.grid(b=None)
             ax.axis('off')
             ax.set_frame_on(False)
+
+        #vx = np.array( ax.get_xlim() )
+        #vy = np.array( ax.get_ylim() )
+        r = 75 #0.1*np.maximum(vx.max(), vy.max())
 
         if plot_water:
             water_color = (0.122, 0.4667, 0.706)

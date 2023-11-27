@@ -185,8 +185,7 @@ class Member:
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair
-        dlsMax = getFromDict(mi, 'dlsMax', shape=1, default=5.0)
-        #dlsMax = mi['dlsMax']
+        dlsMax = getFromDict(mi, 'dlsMax', shape=1, default=5)
         
         # start things off with the strip for end A
         ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
@@ -480,7 +479,7 @@ class Member:
                     m_fill = v_fill*rho_fill                # mass of the ballast in the submember [kg]
                     
                     # <<< The ballast is calculated as if it starts at the same end as the shell, however, if the end of the sub-member has an end cap,
-                    # then the ballast sits on top of the end cap. Depending on the thickness of the end cap, this can affect m_fill, hc_fill, and MoI_fill >>>>>
+                    # then the ballast sits on top of the end cap. Depending on the thickness of the end cap, this can affect m_fill, hc_fill, and MoI_fill >>>>
                     
                     mass = m_shell + m_fill                 # total mass of the submember [kg]
                     hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass       # total center of mass of the submember from the submember's rA location [m]

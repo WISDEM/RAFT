@@ -208,7 +208,6 @@ class FOWT():
             self.rotorList.append(Rotor(design['turbine'], self.w, ir))
             #self.rotorCoords.append(design['turbine']['rotorCoords'])
         
-        
         # initialize mean force arrays to zero, so the model can work before we calculate excitation
         self.f_aero0 = np.zeros([6, self.nrotors])
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
@@ -602,7 +601,7 @@ class FOWT():
         if len(panels) > 0:
             
             import pyhams.pyhams as ph  # import PyHAMS only if we're going to use it
-            
+
             pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
             
             #pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
@@ -714,7 +713,7 @@ class FOWT():
         #print(case)
         turbine_heading = getFromDict(case, 'turbine_heading', shape=0, dtype = float, default=0.0)  # [deg]
         turbine_status  = getFromDict(case, 'turbine_status', shape=0, dtype=str, default='operating')
-        
+
         # initialize arrays (can remain zero if aerodynamics are disabled)
         self.A_aero  = np.zeros([6,6,self.nw,self.nrotors])                      # frequency-dependent aero-servo added mass matrix    
         self.B_aero  = np.zeros([6,6,self.nw,self.nrotors])                      # frequency-dependent aero-servo damping matrix
@@ -911,9 +910,7 @@ class FOWT():
     def calcHydroExcitation(self, case, memberList=[], dgamma=0):
         '''This computes the wave kinematics and linear excitation for a given case.
         It calculates and F_BEM and F_hydro_iner, each with dimensions [wave headings, DOFs, frequencies].
-        
         '''
-
         # ----- set up sea state -----
         
         # JvS made support for a second set of case wave info for a different heading. Instead, to generalize,
@@ -1494,7 +1491,9 @@ class FOWT():
                 results['Tmoor_std'].append(TRMS)
                 results['Tmoor_max'].append( T_moor[iT] + 3*TRMS)
                 results['Tmoor_PSD'][:,iT] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
-    
+            
+            # log the maximum line tensions predicted by RAFT for MoorPy use
+            # self.ms.saveMaxTensions(results['Tmoor_max']) 
         
         # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)
         XiHub = np.zeros([self.Xi.shape[0], self.nrotors, self.nw], dtype=complex)
@@ -1553,6 +1552,7 @@ class FOWT():
                         + 1j*self.w *self.B_aero[0,0,:,ir] )*(self.hHub[ir] - zBase[ir])**2 *self.Xi[:,4,:]        
             dynamic_moment[:,ir,:] = M_I[:,ir,:] + M_w[:,ir,:] + M_F_aero + M_X_aero[:,ir,:]       # total tower base fore-aft bending moment [N-m]
             dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
+
             # fill in metrics
             results['Mbase_avg'].append(m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )# mean moment from weight and thrust
             results['Mbase_std'].append(dynamic_moment_RMS[ir])
@@ -1562,7 +1562,7 @@ class FOWT():
         
         # wave PSD for reference
         results['wave_PSD'] = getPSD(self.zeta, self.dw)        # wave elevation spectrum
-        
+
         '''
         # TEMPORARY CHECK>>>
         import matplotlib.pyplot as plt

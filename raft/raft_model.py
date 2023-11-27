@@ -277,6 +277,7 @@ class Model():
         
         # calculate the system's constant properties
         for fowt in self.fowtList:
+            fowt.setPosition([fowt.x_ref, fowt.y_ref,0,0,0,0])
             fowt.calcStatics()
 
         for i, fowt in enumerate(self.fowtList):
@@ -384,7 +385,10 @@ class Model():
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'][iT] = T_moor[iT] + 3*TRMS
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'][iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
                     #self.results['case_metrics']['array_mooring']['Tmoor_DEL'][iCase,iT] = 
-        
+                
+                # log the maximum line tensions predicted by RAFT for MoorPy use
+                # self.ms.saveMaxTensions(self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'])
+                
                 if display > 0:
             
                     metrics = self.results['case_metrics'][iCase]['array_mooring']
@@ -1389,8 +1393,7 @@ class Model():
 
     def plot(self, ax=None, hideGrid=False, draw_body=True, color=None, nodes=0, 
              xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, airfoils=False, 
-             station_plot=[], zorder=2, figsize=(6,4),
-             plot_water=False, plot_soil=False):
+             station_plot=[], zorder=2, figsize=(6,4), plot_water=False, plot_soil=False):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots

@@ -40,6 +40,11 @@ jobs:
               run: |
                   pip install -e .
 
+            - name: Example run
+              run: |
+                  cd examples
+                  python example_from_yaml.py false
+
             - name: Test run
               run: |
                   cd tests

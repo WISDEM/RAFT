@@ -1,5 +1,6 @@
 import os
 import numpy as np
+import matplotlib.pyplot as plt
 
 
 # ---------------------------- misc classes -----------------------------------
@@ -62,8 +63,27 @@ def FrustumVCV(dA, dB, H, rtn=0):
         return hc
 
 
-def getVelocity(r, Xi, ws):
-    '''Get node complex velocity spectrum based on platform motion's and relative position from PRP'''
+def getKinematics(r, Xi, ws):
+    '''Get node complex displacement, velocity, and acceleration complex 
+    amplitudes based on platform motion's and relative position from 
+    platform reference point PRP).
+    
+    Parameters
+    ----------
+    r : array
+        X, y, z coordinates of point of interest relative to PRP [m].
+    Xi : complex 2D array
+        Complex amplitudes of 6 degree of freedom as a function of frequency
+        (size 6 by nw).
+    ws : array
+        Frequency vector of length nw [rad/s].
+    
+    Returns
+    -------
+    dr, v, a : complex 2D array
+        Each is a 3 by nw array of the complex amplitudes of the point's
+        displacements, velocities, and accelerations, respectively.
+    '''
 
     nw = len(ws)
 
@@ -275,6 +295,7 @@ def getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81, rho=1025.0)
         p *= -1j * rho * (w1 - w2)
     return acc, p
 
+
 # calculate wave number based on wave frequency in rad/s and depth
 def waveNumber(omega, h, e=0.001):
 
@@ -321,6 +342,10 @@ def VecVecTrans(vec):
 
     return vvt
 
+
+def intrp(x, xA, xB, yA, yB):  
+    '''Do simple interpolation between two points.'''
+    return yA + (x-xA)*(yB-yA)/(xB-xA)
 
 # produce alternator matrix
 def getH(r):
@@ -498,12 +523,26 @@ def rotateMatrix6(Min, rotMat):
     rotMat : array(3,3)  
         rotation matrix (DCM)
     '''    
-    outMat = np.zeros([6,6])  # rotated matrix
+    outMat = np.zeros_like(Min)  # rotated matrix
 
-    outMat[:3,:3] = rotateMatrix3(Min[:3,:3], rotMat)    # mass matrix
-    outMat[:3,3:] = rotateMatrix3(Min[:3,3:], rotMat)    # product of inertia matrix
-    outMat[3:,:3] = outMat[:3,3:].T
-    outMat[3:,3:] = rotateMatrix3(Min[3:,3:], rotMat)    # moment of inertia matrix
+    shape = Min.shape
+    if not (shape[0]==6 and shape[1]==6):
+        raise Exception('The input matrix must be 6x6 (with an optional third dimension).')
+
+    if len(shape) == 2:
+        outMat[:3,:3] = rotateMatrix3(Min[:3,:3], rotMat)    # mass matrix
+        outMat[:3,3:] = rotateMatrix3(Min[:3,3:], rotMat)    # product of inertia matrix
+        outMat[3:,:3] = outMat[:3,3:].T
+        outMat[3:,3:] = rotateMatrix3(Min[3:,3:], rotMat)    # moment of inertia matrix
+    
+    elif len(shape) == 3:
+        for i in range(shape[2]):  # process each 6x6 slice
+            outMat[:3,:3, i] = rotateMatrix3(Min[:3,:3, i], rotMat)
+            outMat[:3,3:, i] = rotateMatrix3(Min[:3,3:, i], rotMat)
+            outMat[3:,:3, i] = outMat[:3,3:, i].T
+            outMat[3:,3:, i] = rotateMatrix3(Min[3:,3:, i], rotMat)
+    else:
+        raise Exception('Input matrix must be two- or three-dimensional.')
 
     return outMat
 
@@ -521,6 +560,25 @@ def rotateMatrix3(Min, rotMat):
     '''
     return np.matmul( np.matmul(rotMat, Min), rotMat.T )
 
+
+def RotFrm2Vect( A, B):
+    '''Rodriguez rotation function, which returns the rotation matrix 
+    that transforms vector A into Vector B.
+    '''
+    
+    
+    v = np.cross(A,B)
+    
+    if np.sum(v**2)==0:  # if something goes wrong (or A==B), no transformation
+        return np.eye(3)
+        
+    ssc = np.array([[0, -v[2], v[1]],
+                [v[2], 0, -v[0]],
+                [-v[1], v[0], 0]])
+         
+    R =  np.eye(3,3) + ssc + np.matmul(ssc,ssc)*(1-np.dot(A,B))/(np.linalg.norm(v)*np.linalg.norm(v))            
+
+    return R
 
 def getRMS(xi):
     '''Calculates standard deviation or RMS of inputted (complex) response amplitude vector.
@@ -547,7 +605,7 @@ def getPSD(xi, dw):
     return psd
 
 
-def JONSWAP(ws, Hs, Tp, Gamma=1.0):
+def JONSWAP(ws, Hs, Tp, Gamma=None):
     '''Returns the JONSWAP wave spectrum for the given frequencies and parameters.
 
     Parameters
@@ -575,6 +633,17 @@ def JONSWAP(ws, Hs, Tp, Gamma=1.0):
     on what's documented in IEC 61400-3.
     '''
 
+    # If peak shape parameter gamma is not specified, use the recommendation 
+    # from IEC 61400-3 as a function of Hs and Tp. For PM spectrum, use 1.
+    if not Gamma:
+        TpOvrSqrtHs = Tp/np.sqrt(Hs)
+        if TpOvrSqrtHs <= 3.6:
+            Gamma = 5.0
+        elif TpOvrSqrtHs >= 5.0:
+            Gamma = 1.0
+        else:
+            Gamma = np.exp( 5.75 - 1.15*TpOvrSqrtHs )
+    
     # handle both scalar and array inputs
     if isinstance(ws, (list, tuple, np.ndarray)):
         ws = np.array(ws)
@@ -620,8 +689,10 @@ def getFromDict(dict, key, shape=0, dtype=float, default=None, index=None):
         The desired shape of the output. If not provided, assuming scalar output. If -1, any input shape is used.
     dtype : type
         Must be a python type than can serve as a function to format the input value to the right type.
-    default : number, optional
-        The default value to fill in if the item isn't in the dictionary. Otherwise will raise error if the key doesn't exist.
+    default : number or list, optional
+        The default value to fill in if the item isn't in the dictionary. 
+        Otherwise will raise error if the key doesn't exist. It may be a list
+        (to be tiled shape times if shape > 1) but may not be a numpy array.
     '''
     # in future could support nested keys   if type(key)==list: ...
 

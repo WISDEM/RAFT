@@ -284,6 +284,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 
                 if n == 'Tmoor':
                     myval = np.zeros((n_cases, 2*nlines)) if s not in ['PSD'] else np.zeros((n_cases, nfreq, 2*nlines))
+                elif n == 'Mbase':
+                    myval = np.zeros(n_cases) if s not in ['PSD'] else np.zeros((n_cases, nfreq))
                 else:
                     myval = np.zeros(n_cases) if s not in ['PSD'] else np.zeros((n_cases, nfreq))
                 

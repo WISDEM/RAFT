@@ -7,7 +7,7 @@ import raft
 
 def run_example(plot_flag = False):
     # open the design YAML file and parse it into a dictionary for passing to raft
-    with open('./exampleS/VolturnUS-S_example.yaml') as file:
+    with open('VolturnUS-S_example.yaml') as file:
         design = yaml.load(file, Loader=yaml.FullLoader)
 
     # Create the RAFT model (will set up all model objects based on the design dict)

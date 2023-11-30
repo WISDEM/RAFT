@@ -1,4 +1,4 @@
-# example script for running RAFT from a YAML input file
+# example script for running RAFT with second-order loads computed internally with the slender-body approximation based on Rainey's equation
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,7 +29,9 @@ model.plotResponses()
 # Visualize the system in its most recently evaluated mean offset position
 model.plot(hideGrid=True)
 
-model.saveResponses(path.join(model.fowtList[0].outFolderQTF, flNm))
+# Save the response to a given output folder
+outFolder = './examples/'
+model.saveResponses(path.join(outFolder, flNm))
 
 plt.show()
 

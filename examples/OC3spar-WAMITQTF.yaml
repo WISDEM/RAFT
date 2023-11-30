@@ -1066,7 +1066,7 @@ platform:
     dz_BEM       : 3.0    #  [m]   axial discretization panel length target for BEM analysis
     da_BEM       : 2.0    #  [m]   azimuthal discretization panel length target for BEM analysis
     potSecOrder  : 2      # [int] master switch for computing second-order wave forces; 0=do not compute, 1=compute QTFs using slender body approximation, 2=read QTF file in WAMIT format (.11d or .12d)
-    qtfPath      : 'oc3_hywind.12d'      # path to the qtf file for the platform
+    qtfPath      : './examples/oc3_hywind.12d'      # path to the qtf file for the platform
     potModMaster : 1
     
     yaw_stiffness :   98340000.0      #  [N-m/rad]  additional yaw stiffness to apply if not modeling crowfoot in the mooring system

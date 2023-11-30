@@ -1729,12 +1729,6 @@ class FOWT():
         f[:, 0:-1] = f[:, 1:]
         f[:, -1] = 0
 
-        # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
-        # with open('examples/Sf_2nd.txt', 'w') as file:
-        #     mu_interp = self.w - self.w[0]
-        #     for w, Srow in zip(mu_interp, Sf_interp.T):
-        #         file.write(f'{w:.5f} {Srow[0]:.5f} {Srow[1]:.5f} {Srow[2]:.5f} {Srow[3]:.5f} {Srow[4]:.5f} {Srow[5]:.5f}\n')
-
         ident = 'WAMIT'
         if self.potSecOrder == 1:
             ident = 'slenderBody'

@@ -5,7 +5,7 @@ import pickle, os
 import copy
 from itertools import compress
 
-DEBUG_OMDAO = True  # use within WEIS
+DEBUG_OMDAO = False  # use within WEIS
 
 ndim = 3
 ndof = 6

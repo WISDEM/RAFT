@@ -1079,7 +1079,9 @@ class Rotor:
         ###### Initialize IEC Wind parameters #######
         iec_wind = pyIECWind_extreme()
         iec_wind.z_hub = HH
-        
+
+        # Turbulence can be either a string (IB) or a float (turbulence intensity, 0.1)
+        # If a TI is provided, the class defaults to I
         if isinstance(turbulence,str):
             # If a string, the options are I, II, III, IV
             Class = ''
@@ -1090,15 +1092,19 @@ class Rotor:
                     break
             
             if not Class:
-                raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {turbulence}")
+                Class = 'I'
+                try:
+                    turbulence = float(turbulence)
+                except:
+                    raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {turbulence}")
             else:
                 Categ = char
                 iec_wind.Turbulence_Class = Categ
 
-            try:
-                TurbMod = turbulence.split('_')[1]
-            except:
-                raise Exception(f"Error reading the turbulence model: {turbulence}")
+                try:
+                    TurbMod = turbulence.split('_')[1]
+                except:
+                    raise Exception(f"Error reading the turbulence model: {turbulence}")
 
             iec_wind.Turbine_Class = Class
         

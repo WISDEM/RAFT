@@ -48,11 +48,10 @@ class Rotor:
         self.coords = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0]])[ir]
         self.speed_gain = getFromDict(turbine, 'speed_gain', shape=turbine['nrotors'], default=1.0)[ir]
         
-        self.headings   = getFromDict(turbine, 'headings', shape=-1, default=[90,210,330])  # [deg]
-        if 'headings' not in turbine:
-            self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'], dtype=int)[ir]         # [-]
-        else:
-            self.nBlades = len(self.headings)
+        self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'], dtype=int)[ir]         # [-]
+        
+        default_headings    = list(np.arange(self.nBlades) * 360 / self.nBlades) # equally distribute blades
+        self.headings       = getFromDict(turbine, 'headings', shape=-1, default=default_headings)  # [deg]
 
         self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]  # unit vector of rotor axis, facing downflow [-]
 
@@ -1066,10 +1065,10 @@ class Rotor:
 
         if current:
             speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
-            turbulence = getFromDict(case, 'current_turbulence', shape=0, default=0.0)
+            turbulence = getFromDict(case, 'current_turbulence', shape=0, default=0.0,dtype=str)
         else:
             speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
-            turbulence = getFromDict(case, 'turbulence', shape=0, default=0.0)
+            turbulence = getFromDict(case, 'turbulence', shape=0, default=0.0,dtype=str)
 
         # Set inputs (f, V_ref, HH, Class, Categ, TurbMod, R)
         f = self.w / 2 / np.pi    # frequency in Hz
@@ -1080,7 +1079,9 @@ class Rotor:
         ###### Initialize IEC Wind parameters #######
         iec_wind = pyIECWind_extreme()
         iec_wind.z_hub = HH
-        
+
+        # Turbulence can be either a string (IB) or a float (turbulence intensity, 0.1)
+        # If a TI is provided, the class defaults to I
         if isinstance(turbulence,str):
             # If a string, the options are I, II, III, IV
             Class = ''
@@ -1091,15 +1092,19 @@ class Rotor:
                     break
             
             if not Class:
-                raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {turbulence}")
+                Class = 'I'
+                try:
+                    turbulence = float(turbulence)
+                except:
+                    raise Exception(f"Turbulence class must start with I, II, III, or IV: case['turbulence'] = {turbulence}")
             else:
                 Categ = char
                 iec_wind.Turbulence_Class = Categ
 
-            try:
-                TurbMod = turbulence.split('_')[1]
-            except:
-                raise Exception(f"Error reading the turbulence model: {turbulence}")
+                try:
+                    TurbMod = turbulence.split('_')[1]
+                except:
+                    raise Exception(f"Error reading the turbulence model: {turbulence}")
 
             iec_wind.Turbine_Class = Class
         

@@ -20,20 +20,21 @@ jobs:
 
         steps:
             - name: checkout repository
-              uses: actions/checkout@v3
+              uses: actions/checkout@v4
 
             - uses: conda-incubator/setup-miniconda@v2
               # https://github.com/marketplace/actions/setup-miniconda
               with:
-                  mamba-version: "*"
-                  miniconda-version: "latest"
-                  #auto-update-conda: true
+                  # To use mamba, uncomment here, comment out the miniforge line
+                  #mamba-version: "*"
+                  miniforge-version: "latest"
+                  auto-update-conda: true
                   python-version: ${{ matrix.python-version }}
                   environment-file: environment.yml
-                  channels: conda-forge
-                  channel-priority: true          
                   activate-environment: test
                   auto-activate-base: false
+                  channels: conda-forge
+                  channel-priority: true          
 
             # Install 
             - name: Conda Install RAFT

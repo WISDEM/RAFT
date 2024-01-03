@@ -3,8 +3,8 @@ requires = ["setuptools", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "RAFT"
-version = "1.2.0"
+name = "OpenRAFT"
+version = "1.3.0"
 description = "RAFT: Response Amplitudes of Floating Turbines"
 readme = "README.md"
 requires-python = ">=3.9"

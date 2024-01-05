@@ -1387,7 +1387,7 @@ class Model():
 
     def plot(self, ax=None, hideGrid=False, draw_body=True, color=None, nodes=0, 
              xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, airfoils=False, 
-             station_plot=[], zorder=2, figsize=(6,4)):
+             station_plot=[], zorder=2, figsize=(6,4), plot_fowt=True, plot_ms=True, shadow=True):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -1414,8 +1414,8 @@ class Model():
         # plot each FOWT
         for fowt in self.fowtList:
             fowt.plot(ax, color=color, zorder=zorder, nodes=nodes, 
-                      plot_rotor=plot_rotor, station_plot=station_plot, 
-                      airfoils=airfoils)
+                    plot_rotor=plot_rotor, station_plot=station_plot, 
+                    airfoils=airfoils, plot_ms=plot_ms, plot_fowt=plot_fowt, shadow=shadow)
         
         set_axes_equal(ax)
         

@@ -1434,8 +1434,8 @@ class Model():
 
     def plot(self, ax=None, hideGrid=False, draw_body=True, color=None, nodes=0, 
              xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, airfoils=False, 
-             station_plot=[], zorder=2, figsize=(6,4), plot_water=False, plot_soil=False):
-
+             station_plot=[], zorder=2, figsize=(6,4), plot_fowt=True, plot_ms=True, 
+             shadow=True, plot_water=False, plot_soil=False):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -1462,8 +1462,8 @@ class Model():
         # plot each FOWT
         for fowt in self.fowtList:
             fowt.plot(ax, color=color, zorder=zorder, nodes=nodes, 
-                      plot_rotor=plot_rotor, station_plot=station_plot, 
-                      airfoils=airfoils)
+                    plot_rotor=plot_rotor, station_plot=station_plot, 
+                    airfoils=airfoils, plot_ms=plot_ms, plot_fowt=plot_fowt, shadow=shadow)
         
         set_axes_equal(ax)
         
@@ -2182,13 +2182,11 @@ if __name__ == "__main__":
     ### Run a Reference FOWT Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
     
     ### Run a MHK Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/test2.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
     
     ### Run a RAFT Farm Model ###
     #model = runRAFTFarm(os.path.join(raft_dir,'designs/VolturnUS-S_farm.yaml'), plot=1)

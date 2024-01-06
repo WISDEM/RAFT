@@ -2024,36 +2024,38 @@ class FOWT():
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
 
-    def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], airfoils=False, zorder=2):
+    def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], airfoils=False, zorder=2,
+             plot_fowt=True, plot_ms=True, shadow=True):
         '''plots the FOWT...'''
 
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
 
-        if self.ms:
-            self.ms.plot(ax=ax, color=color)
+        if plot_ms:
+            if self.ms:
+                self.ms.plot(ax=ax, color=color, shadow=shadow)
         
         if color==None:
             color='k'
         
-        if plot_rotor:
-            for rotor in self.rotorList:
-                coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + self.r6[:3]
-                rotor.plot(ax, r_ptfm=coords, R_ptfm=R, color=color, airfoils=airfoils, zorder=zorder)
-                #rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
-                '''
-                for afmem in rotor.bladeMemberList:
-                    afmem.calcOrientation()
-                    afmem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, nodes=nodes, station_plot=station_plot)
-                '''
+        if plot_fowt:
+            if plot_rotor:
+                for rotor in self.rotorList:
+                    coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + self.r6[:3]
+                    rotor.plot(ax, r_ptfm=coords, R_ptfm=R, color=color, airfoils=airfoils, zorder=zorder)
+                    #rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
+                    '''
+                    for afmem in rotor.bladeMemberList:
+                        afmem.calcOrientation()
+                        afmem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, nodes=nodes, station_plot=station_plot)
+                    '''
 
+            # loop through each member and plot it
+            for mem in self.memberList:
 
-        # loop through each member and plot it
-        for mem in self.memberList:
+                mem.setPosition()  # offsets/rotations could be done in this function rather than in mem.plot <<<
 
-            mem.setPosition()  # offsets/rotations could be done in this function rather than in mem.plot <<<
-
-            mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, 
-                     nodes=nodes, station_plot=station_plot, zorder=zorder)
+                mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, 
+                        nodes=nodes, station_plot=station_plot, zorder=zorder)
 
         # in future should consider ability to animate mode shapes and also to animate response at each frequency
         # including hydro excitation vectors stored in each member

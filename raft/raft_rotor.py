@@ -555,28 +555,30 @@ class Rotor:
         
         # --- whole-rotor members approach ---
         for i,mem in enumerate(self.bladeMemberList):
-            # the input memberList is the rotor.bladeMemberList multiplied by nBlades (e.g. if len(rotor.bladeMemberList)=10, then this len(memberList)=30 for 3 blade rotor)
-            # adjust the heading/orientation of the each section of blade members by the corresponding heading in rotor.headings based on where in the list you are
-            j = i // int(len(self.bladeMemberList)/self.nBlades)     # i (from 0 to 30) // 10, which results in either j = 1, 2, or 3, for each blade heading
-            
-            rOG = np.array([mem.rA0, mem.rB0])
-            
-            # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
-            rUpdated = self.getBladeMemberPositions(self.headings[j], rOG) # blade node coords relative to hub
-            mem.rA0 = rUpdated[0]
-            mem.rB0 = rUpdated[-1]
-            
-            # apply a blade pitch angle to every blade member if applicable
-            mem.gamma = mem.gamma + dgamma
 
-            # run calcOrientation to ensure the p1 and p2 axes of the members are oriented the way they should be
-            mem.setPosition()
+            rOG = np.array([mem.rA0, mem.rB0])      # save the original position of the blade members
+
+            for theta in self.headings:             # for each blade member, repeat the process for each heading
+
+                # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
+                rUpdated = self.getBladeMemberPositions(theta, rOG) # blade node coords relative to hub
+                mem.rA0 = rUpdated[0]
+                mem.rB0 = rUpdated[-1]
+                
+                # apply a blade pitch angle to every blade member if applicable
+                mem.gamma = mem.gamma + dgamma
+
+                # run calcOrientation to ensure the p1 and p2 axes of the members are oriented the way they should be
+                mem.setPosition()
+                
+                # compute hydro added mass and inertial excitation terms relative to hub
+                A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True, rho=rho, g=g)
+                
+                A_hydro += A_hydro_i 
+                I_hydro += I_hydro_i
             
-            # compute hydro added mass and inertial excitation terms relative to hub
-            A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True, rho=rho, g=g)
-            
-            A_hydro += A_hydro_i 
-            I_hydro += I_hydro_i 
+            mem.rA0 = rOG[0]    # reset end positions of each blade member after rotating
+            mem.rB0 = rOG[1]
         
         # --- save hydro matrices (these are in global orientations) ---
         self.A_hydro = A_hydro

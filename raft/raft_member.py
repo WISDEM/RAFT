@@ -392,7 +392,7 @@ class Member:
                     y2 = (1/12)*p* ( (Wb-Wa)**3*H*(Lb/5 + La/20) + (Wb-Wa)**2*Wa*H(3*Lb/4 + La/4) + \
                                      (Wb-Wa)*Wa**2*H*(Lb + La/2) + Wa**3*H*(Lb/2 + La/2) )
 
-                    z2 = p*( Wb*Lb/5 + Wa*Lb/20 + La*Wb/20 + Wa*La*(8/15) )
+                    z2 = p*( Wb*Lb/5 + Wa*Lb/20 + La*Wb/20 + Wa*La*(1/30) ) * H**3
 
                     Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
                     Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
@@ -1002,7 +1002,8 @@ class Member:
         '''Get member cross sectional area and moments of inertia at a user-
         specified location along the member.'''
         
-        
+        A = 0
+        I = 0        
         
         return A, I
 

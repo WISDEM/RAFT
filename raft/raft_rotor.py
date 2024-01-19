@@ -850,7 +850,7 @@ class Rotor:
             b_inflow[0,0,:] = dT_dU
             
             # Excitation vector
-            f_inflow = np.zeros([6,len(self.w)])
+            f_inflow = np.zeros([6,len(self.w)], dtype=np.complex_)
             f_inflow[0,:] = dT_dU*self.V_w
             
             # Rotate to global orientations
@@ -1002,6 +1002,11 @@ class Rotor:
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0, color='k', 
              airfoils=False, zorder=2):
         '''Draws the rotor on the passed axes, considering optional platform offset and rotation matrix, and rotor azimuth angle'''
+
+        # support self color option
+        if color == 'self':
+            color = self.color  # attempt to allow custom colors
+        
 
         # ----- blade geometry ----------
 

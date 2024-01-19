@@ -44,26 +44,21 @@ class Member:
 
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
         
-
+        self.gamma = getFromDict(mi, 'gamma', default=0.)  # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
+        rAB = self.rB0-self.rA0       # The relative coordinates of upper node from lower node [m]
+        self.l = np.linalg.norm(rAB)  # member length [m]
+    
         # heading feature for rotation members about the z axis (used for rotated patterns)
-        '''
-        self.headings = getFromDict(mi, 'headings', shape=-1, default=0.0)
-        self.heading = getFromDict(mi, 'heading', default=0.0)            # rotation about z axis to apply to the member [deg]
-        if self.heading != 0.0:
-            c = np.cos(np.deg2rad(self.heading))
-            s = np.sin(np.deg2rad(self.heading))
-        '''
         if heading != 0.0:
             c = np.cos(np.deg2rad(heading))
             s = np.sin(np.deg2rad(heading))
             rotMat = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
             self.rA0 = np.matmul(rotMat, self.rA0)
             self.rB0 = np.matmul(rotMat, self.rB0)
+            
+            if rAB[0] == 0.0 and rAB[1] == 0:  # special case of vertical member
+                self.gamma += heading  # heading must be applied as twist about z
 
-
-        rAB = self.rB0-self.rA0                                     # The relative coordinates of upper node from lower node [m]
-        self.l = np.linalg.norm(rAB)                                # member length [m]
-    
 
         # ----- process station positions and other distributed inputs -----
         
@@ -87,14 +82,12 @@ class Member:
             self.shape = 'circular'
             self.d     = getFromDict(mi, 'd', shape=n)               # diameter of member nodes [m]  <<< should maybe check length of all of these
 
-            self.gamma = 0                                           # twist angle about the member's z-axis [degrees] (don't need this for a circular member)
+            self.gamma = 0  # zero any twist angle about axis (irrelevant for circular)
 
         elif shape[0].lower() == 'r':   # <<< this case not checked yet since update <<<
             self.shape = 'rectangular'
 
             self.sl    = getFromDict(mi, 'd', shape=[n,2])           # array of side lengths of nodes along member [m]
-
-            self.gamma = getFromDict(mi, 'gamma', default=0.)        # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
 
         else:
             raise ValueError('The only allowable shape strings are circular and rectangular')
@@ -983,7 +976,7 @@ class Member:
                     # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
                     self.Amat[il,:,:] = Amat_sides + Amat_end
                     self.Imat[il,:,:] = Imat_sides + Imat_end
-                    self.a_i[il] = a_i
+                    self.a_i[il] = a_i  # signed axial reference area for use in dynamic pressure force
                     
                     
                     # add to global added mass and inertial excitation matrices
@@ -1019,7 +1012,12 @@ class Member:
             Otherwise produces a 3d plot (default).
         
         '''
-
+        
+        # support self color option
+        if color == 'self':
+            color = self.color  # attempt to allow custom colors
+        
+        
         # --- get coordinates of member edges in member reference frame -------------------
 
         if not station_plot:

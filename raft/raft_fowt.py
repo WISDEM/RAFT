@@ -92,6 +92,17 @@ class FOWT():
             design['turbine']['mu_water'      ] = getFromDict(design['site'], 'mu_water', shape=0, default=1.0e-03)
             design['turbine']['shearExp_water'] = getFromDict(design['site'], 'shearExp_water', shape=0, default=0.12)
             
+            # Nacelle geometry (for hydro): if a single one (dictionary) is listed,
+            # replicate it into a list for all rotors.
+            if 'nacelle' in design['turbine']:
+                if isinstance(design['turbine']['nacelle'], dict): 
+                    design['turbine']['nacelle'] = [design['turbine']['nacelle']]*self.nrotors
+            
+            # Ensure the nacelle members have zero mass (it should instead by in mRNA)
+            #for mem in design['turbine']['nacelle']:
+            #    mem['rho_shell'] = 0
+            #    mem['rho_fill']  = 0
+            
             # turbine RNA description 
             self.mRNA    = getFromDict(design['turbine'], 'mRNA'   , shape=self.nrotors)
             self.IxRNA   = getFromDict(design['turbine'], 'IxRNA'  , shape=self.nrotors)
@@ -123,8 +134,7 @@ class FOWT():
         # <<<<<<<<<<< Should it be something like self.dlsMax?
         #design['turbine']['tower']['dlsMax'] = getFromDict(design['turbine']['tower'], 'dlsMax', shape=-1, default=5.0)
 
-        potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
-        self.potModMaster = potModMaster
+        self.potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
         dlsMax       = getFromDict(design['platform'], 'dlsMax'      , default=5.0)
         min_freq_BEM = getFromDict(design['platform'], 'min_freq_BEM', default=self.dw/2/np.pi)
         self.dw_BEM  = 2.0*np.pi*min_freq_BEM
@@ -141,9 +151,9 @@ class FOWT():
         for mi in design['platform']['members']:
 
             # prepare member info
-            if potModMaster==1:
+            if self.potModMaster in [1]:
                 mi['potMod'] = False
-            elif potModMaster==2:
+            elif self.potModMaster in [2,3]:
                 mi['potMod'] = True
                 
             if 'dlsMax' not in mi:    # apply the global dlsMax setting to any member that doesn't have its own setting
@@ -161,11 +171,14 @@ class FOWT():
         
         
         # add tower(s) to member list if applicable
-        for ti in range(self.ntowers):
-            #tower['dlsMax'] = design['turbine']['tower']['dlsMax']     # for when we want to make a list of tower 'members' and have general inputs like dlsMax first
-            self.memberList.append(Member(design['turbine']['tower'][ti], self.nw))
+        for mem in design['turbine']['tower']:
+            self.memberList.append(Member(mem, self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
-
+        
+        # Add nacelle(s) to member list if applicable
+        # for mem in design['turbine']['nacelle']:
+        #    self.memberList.append(Member(mem, self.nw)) #<<< should go elsewhere so that it can yaw
+        
         # array-level mooring system connection
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
@@ -213,8 +226,9 @@ class FOWT():
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
         self.D_hydro = np.zeros(6)      # initialize mean drag force from current - acts as a "static" force, like f_aero0
 
-        # flag to signal whether any BEM hydro modeling is done
+        # flag to signal whether any members will be modeled with BEM
         self.potMod = any([member['potMod']==True for member in design['platform']['members'] ])
+
 
         # initialize BEM arrays, whether or not a BEM solver is used
         # __, __, nWaveHeadings = getUniqueCaseHeadings(design['cases']['keys'], design['cases']['data'])  # identify how many wave headings need to be preprocessed
@@ -223,6 +237,16 @@ class FOWT():
         #self.X_BEM = np.zeros([self.nWaves, 6, self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
         #self.F_BEM = np.zeros([self.nWaves, 6, self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
         # <<< TODO: Set maximum of amount of headingsm for X_BEM and F_BEM and use interpolation of hydrodynamics. Or not?
+
+        # First-order linear hydro input file options (preexisting files option)
+        # when potFirstOrder > 0
+        self.potFirstOrder = getFromDict(design['platform'], 'potFirstOrder', dtype=int, default=0)
+        if self.potFirstOrder==1:
+            if not 'hydroPath' in design['platform']:
+                raise Exception('If potFirstOrder==1, then hydroPath must be specified in the platform input.')
+            self.hydroPath = design['platform']['hydroPath']
+            self.readHydro() #self.hydroPath)
+        
 
         # Add a flag to either not compute 2nd order hydro; read QTF; or compute it with a slender-body approximation
         # self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)
@@ -253,7 +277,8 @@ class FOWT():
         self.outFolderQTF = None
         if 'outFolderQTF' in design['platform']:
             self.outFolderQTF = design['platform']['outFolderQTF']
-                          
+    
+    
     def setPosition(self, r6):
         '''Updates the FOWT's (mean) position including all components.
         
@@ -596,30 +621,31 @@ class FOWT():
             incident wave headings to be considered, default [0] (deg). <<<<<<<< capability still needs to be added, after adjustments to pyHAMS
         '''
         
-        # go through members to be modeled with BEM and calculated their nodes and panels lists
-        nodes = []
-        panels = []
-
-        vertices = np.zeros([0,3])  # for GDF output
-
-        dz = self.dz_BEM if dz==0 else dz  # allow override if provided
-        da = self.da_BEM if da==0 else da
-
-        for mem in self.memberList:
-
-            if mem.potMod==True:
-                pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
-                        dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
-
-                # for GDF output
-                vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
-                vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
-
-
-        # only try to save a mesh and run HAMS if some members DO have potMod=True
-        if len(panels) > 0:
+        # try to make a mesh and run HAMS if we're supposed to (not in the case of potModMaster 3)
+        if self.potMod and self.potModMaster in [0, 2]:
             
             import pyhams.pyhams as ph  # import PyHAMS only if we're going to use it
+
+            # go through members to be modeled with BEM and calculated their nodes and panels lists
+            nodes = []
+            panels = []
+
+            vertices = np.zeros([0,3])  # for GDF output
+
+            dz = self.dz_BEM if dz==0 else dz  # allow override if provided
+            da = self.da_BEM if da==0 else da
+
+            for mem in self.memberList:
+                if mem.potMod:
+                    pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
+                            dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+
+                    # for GDF output
+                    vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                    vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
+
+            if len(panels) == 0:
+                print("WARNING: no panels to mesh.")
 
             pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
 
@@ -651,10 +677,21 @@ class FOWT():
 
             # execute the HAMS analysis
             ph.run_hams(meshDir)
+            
+            hydroPath = os.path.join(meshDir,'Output','Wamit_format','Buoy')
+            
+        elif self.potModMaster == 3: 
+            hydroPath = self.hydroPath
 
+        else:
+            return
+        
+        
+        if True:    
+            import pyhams.pyhams as ph
             # read the HAMS WAMIT-style output files
-            addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
-            M, P, R, I, w3, heads  = ph.read_wamit3(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)   
+            addedMass, damping, w1 = ph.read_wamit1(hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
+            M, P, R, I, w3, heads  = ph.read_wamit3(hydroPath+'.3', TFlag=True)   
             
             # process headings and sort frequencies
             self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using
@@ -684,7 +721,9 @@ class FOWT():
             X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
             
             
-            # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
+            # Transform excitation coefficients so that DOFs are always 
+            # relative to incident wave heading rather than global frame,
+            # for accurate magnitudes when interpolating between directions.
             self.X_BEM = np.zeros_like(X_BEM_temp)
             
             for ih in range(len(heads)):
@@ -698,7 +737,6 @@ class FOWT():
                 self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
                 self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
                 
-            
             # HAMS results error checks  >>> any more we should have? <<<
             if np.isnan(self.A_BEM).any():
                 #print("NaN values detected in HAMS calculations for added mass. Check the geometry.")
@@ -716,6 +754,65 @@ class FOWT():
             # TODO: add support for multiple wave headings <<<
             # note: RAFT will only be using finite-frequency potential flow coefficients
 
+    def readHydro(self):
+        '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's
+        added mass, damping, and excitation matrices. This is as an alternative 
+        to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.  NOT USED!!!'''
+        
+        import pyhams.pyhams as ph
+        
+        # read the preexisting WAMIT-style output files
+        addedMass, damping, w1 = ph.read_wamit1(self.hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
+        M, P, R, I, w3, heads  = ph.read_wamit3(self.hydroPath+'.3', TFlag=True)   
+        
+        # process headings and sort frequencies
+        self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using
+
+        # interpolate to RAFT model frequencies
+        # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
+        addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
+        dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
+        fExRealInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       R, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
+        fExImagInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       I, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
+        # note: fEx tensors are sized according to [nHeadings, 6 DOFs, frequencies]
+        
+        # copy results over to the FOWT's coefficient arrays
+        self.A_BEM = self.rho_water * addedMassInterp
+        self.B_BEM = self.rho_water * dampingInterp                                 
+        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
+        
+        
+        # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
+        self.X_BEM = np.zeros_like(X_BEM_temp)
+        
+        for ih in range(len(heads)):
+            sin_heading = np.sin(np.radians(heads[ih]))
+            cos_heading = np.cos(np.radians(heads[ih]))
+            
+            self.X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
+            self.X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]
+            self.X_BEM[ih,2,:] = X_BEM_temp[ih,2,:]
+            self.X_BEM[ih,3,:] =  cos_heading * X_BEM_temp[ih,3,:] + sin_heading * X_BEM_temp[ih,4,:]
+            self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
+            self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
+            
+        
+        # HAMS results error checks  >>> any more we should have? <<<
+        if np.isnan(self.A_BEM).any():
+            #print("NaN values detected in HAMS calculations for added mass. Check the geometry.")
+            #breakpoint()
+            raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
+        if np.isnan(self.B_BEM).any():
+            #print("NaN values detected in HAMS calculations for damping. Check the geometry.")
+            #breakpoint()
+            raise Exception("NaN values detected in HAMS calculations for damping. Check the geometry.")
+        if np.isnan(self.X_BEM).any():
+            #print("NaN values detected in HAMS calculations for excitation. Check the geometry.")
+            #breakpoint()
+            raise Exception("NaN values detected in HAMS calculations for excitation. Check the geometry.")
+
+        
+        
 
     def calcTurbineConstants(self, case, ptfm_pitch=0):
         '''This computes turbine linear terms (excluding hydrodynamic added 
@@ -813,105 +910,7 @@ class FOWT():
         # loop through each member
 
         for i,mem in enumerate(self.memberList):
-            '''
-
-            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
-            
-            # find the proper member node positions (mem.r) if this memberList is a bladeMemberList for underwater rotors. Otherwise, skip
-            if mem.type==3 and Rotor is not None:
-                
-                # save specific rotor variables and original positions of the blade member nodes
-                rotor = Rotor
-                rOG = [mem.rA0, mem.rB0]
-
-                # (without making any changes to the rest of the hydrodynamics calculations below)
-                # the input memberList is the rotor.bladeMemberList multiplied by nBlades (e.g. if len(rotor.bladeMemberList)=10, then this len(memberList)=30 for 3 blade rotor)
-                # adjust the heading/orientation of the each section of blade members by the corresponding heading in rotor.headings based on where in the list you are
-                j = i // int(len(memberList)/rotor.nBlades)     # i (from 0 to 30) // 10, which results in either j = 1, 2, or 3, for each blade heading
-
-                # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
-                rUpdated = rotor.getBladeMemberPositions(rotor.headings[j], rOG)
-                mem.rA0 = rUpdated[0]
-                mem.rB0 = rUpdated[-1]
-                
-                # apply a blade pitch angle to every blade member if applicable
-                mem.gamma = mem.gamma + dgamma
-
-                # run calcOrientation to ensure the p1 and p2 axes of the members are oriented the way they should be
-                mem.setPosition()
-
-                # >>>>>>> TODO (for added mass of underwater rotors) <<<<<<<<<<
-                # - Do we need to adjust any other methods in raft_fowt to account for added mass?
-                # - Do we need to make any changes to the pyHAMS code to account for rotor added mass?
-                # - How should we adjust the inclusion of member end effects of added mass knowing blade members are attached on ends to each other?
-            
-
-            # loop through each node of the member
-            for il in range(mem.ns):
-
-                # only process hydrodynamics if this node is submerged
-                if mem.r[il,2] < 0:
-                    
-                    # only compute inertial loads and added mass for members that aren't modeled with potential flow
-                    if mem.potMod==False:
-
-                        # interpolate coefficients for the current strip
-                        Ca_q   = np.interp( mem.ls[il], mem.stations, mem.Ca_q  )
-                        Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
-                        Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
-                        Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
-
-
-                        # ----- compute side effects (transverse only) -----
-
-                        if circ:
-                            v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
-                        else:
-                            v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
-
-                        if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
-                            v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
-                        
-                        # added mass (axial term explicitly excluded here - we aren't dealing with chains)
-                        Amat_sides = rho*v_i *( Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
-                        
-                        # inertial excitation - Froude-Krylov  (axial term explicitly excluded here - we aren't dealing with chains)
-                        Imat_sides = rho*v_i *(  (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix (note: the 1 is the Cp, dynamic pressure, term)
-                        
-
-                        # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
-                        # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
-
-                        if circ:
-                            v_i = np.pi/12.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
-                            a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
-                        else:
-                            v_i = np.pi/12.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
-                            a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
-                            # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
-
-                        # added mass
-                        Amat_end = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
-                        
-                        # inertial excitation
-                        Imat_end = rho*v_i * Ca_End*mem.qMat                         # local inertial excitation matrix (note, there is no 1 added to Ca_End because dynamic pressure is handled separately) 
-                        
-
-                        # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
-                        mem.Amat[il,:,:] = Amat_sides + Amat_end
-                        mem.Imat[il,:,:] = Imat_sides + Imat_end
-                        mem.a_i[il] = a_i
-                        
-                        
-                        # add to global added mass matrix for Morison members, which considers the mean offsets and is relative to the RPP with global orientation
-                        self.A_hydro_morison += translateMatrix3to6DOF(mem.Amat[il,:,:], mem.r[il,:] - self.r6[:3])    
-            
-
-            # reset the member.r variable if underwater blade members were used
-            if mem.type==3 and Rotor is not None:
-                mem.rA0 = rOG[0]
-                mem.rB0 = rOG[-1]
-            '''
+        
             # get member added mass matrix about PRP (also saves each member's inertial excitation coefficients)
             A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3])  
             
@@ -991,8 +990,9 @@ class FOWT():
         self.F_BEM = np.zeros([self.nWaves,6,self.nw], dtype=complex)
         self.F_hydro_iner = np.zeros([self.nWaves, 6, self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
-        # BEM-based wave excitation force on platform for each wave heading (will be zero if HAMS isn't run). This includes heading interpolation.
-        if self.potMod:
+        # BEM-based wave excitation force on platform for each wave heading 
+        # (will be zero if only using strip theory). Includes wave heading interpolation.
+        if self.potMod or self.potModMaster in [2,3]:
 
             for ih in range(self.nWaves):
                 
@@ -1029,33 +1029,38 @@ class FOWT():
                 
                 f1 = 1.0 - f2
                       
-                # interpolate excitation coefficients
-                X_prime = self.X_BEM[i1,:,:]*f1 + self.X_BEM[i2,:,:]*f2  # excitation coefficients (relative to wave direction)            
+                # interpolate excitation coefficients (which are coming in relative to their wave directions)
+                X_prime = self.X_BEM[i1,:,:]*f1 + self.X_BEM[i2,:,:]*f2        
                 
                 #self.beta[ih], self.BEM_headings, self.X_BEM[, period=360) * 
 
                 # rotate back to global frame
                 sin_beta = np.sin(self.beta[ih])   #  check that I'm right in assuming HAMS outputs degrees
                 cos_beta = np.cos(self.beta[ih])
-                
+                '''
                 self.X_BEM[ih,0,:] = X_prime[0,:]*cos_beta - X_prime[1,:]*sin_beta
                 self.X_BEM[ih,1,:] = X_prime[0,:]*sin_beta + X_prime[1,:]*cos_beta
                 self.X_BEM[ih,2,:] = X_prime[2,:]
                 self.X_BEM[ih,3,:] = X_prime[3,:]*cos_beta - X_prime[4,:]*sin_beta
                 self.X_BEM[ih,4,:] = X_prime[3,:]*sin_beta + X_prime[4,:]*cos_beta
                 self.X_BEM[ih,5,:] = X_prime[5,:]
+                '''
+                X_BEM_ih = np.zeros([6, self.nw], dtype=complex)
+                X_BEM_ih[0,:] = X_prime[0,:]*cos_beta - X_prime[1,:]*sin_beta
+                X_BEM_ih[1,:] = X_prime[0,:]*sin_beta + X_prime[1,:]*cos_beta
+                X_BEM_ih[2,:] = X_prime[2,:]
+                X_BEM_ih[3,:] = X_prime[3,:]*cos_beta - X_prime[4,:]*sin_beta
+                X_BEM_ih[4,:] = X_prime[3,:]*sin_beta + X_prime[4,:]*cos_beta
+                X_BEM_ih[5,:] = X_prime[5,:]
                 
                 # multiply excitation coefficients by wave elevation to get excitation forces and moments for this wave heading
-                self.F_BEM[ih,:,:] = self.X_BEM[ih,:,:] * self.zeta[ih,:] * phase_offset
-
+                self.F_BEM[ih,:,:] = X_BEM_ih * self.zeta[ih,:] * phase_offset
 
         # ----- strip-theory wave excitation force -----
         # loop through each member to compute strip-theory contributions
+        # This also saves the save wave kinematics over each member.
         for i,mem in enumerate(memberList):
             
-            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
-
-
             # loop through each node of the member
             for il in range(mem.ns):
 
@@ -1075,16 +1080,16 @@ class FOWT():
                     #mem.ud[il,:,:] = np.sum(ud  , axis=0)
                     #mem.pDyn[il,:] = np.sum(pDyn, axis=0)     
 
+                    if mem.potMod == False:
+                        # calculate the linear excitation forces on this node for each wave heading and frequency
+                        for ih in range(self.nWaves):
+                            for i in range(self.nw):
 
-                    # calculate the linear excitation forces on this node for each wave heading and frequency
-                    for ih in range(self.nWaves):
-                        for i in range(self.nw):
-
-                            # add dynamic pressure - positive with q if end A - determined by sign of a_i
-                            F_exc_iner_temp = np.matmul(mem.Imat[il,:,:], mem.ud[ih,il,:,i]) + mem.pDyn[ih,il,i]*mem.a_i[il]*mem.q 
-                            
-                            # add the excitation complex amplitude for this heading and frequency to the global excitation vector
-                            self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:] - self.r6[:3]) # (about PRP)
+                                # add dynamic pressure - positive with q if end A - determined by sign of a_i
+                                F_exc_iner_temp = np.matmul(mem.Imat[il,:,:], mem.ud[ih,il,:,i]) + mem.pDyn[ih,il,i]*mem.a_i[il]*mem.q 
+                                
+                                # add the excitation complex amplitude for this heading and frequency to the global excitation vector
+                                self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:] - self.r6[:3]) # (about PRP)
 
 
         # ----- inertial excitation on rotor(s) -----
@@ -1755,34 +1760,40 @@ class FOWT():
         results['surge_std'] = getRMS(self.Xi[:,0,:]) 
         results['surge_max'] = self.Xi0[0] + 3*results['surge_std']
         results['surge_PSD'] = getPSD(self.Xi[:,0,:], self.dw)
+        results['surge_RA' ] = self.Xi[:,0,:]
         
         results['sway_avg'] = self.Xi0[1]
         results['sway_std'] = getRMS(self.Xi[:,1,:])
         results['sway_max'] = self.Xi0[1] + 3*results['sway_std']
         results['sway_PSD'] = getPSD(self.Xi[:,1,:], self.dw)
+        results['sway_RA' ] = self.Xi[:,1,:]
         
         results['heave_avg'] = self.Xi0[2]
         results['heave_std'] = getRMS(self.Xi[:,2,:])
         results['heave_max'] = self.Xi0[2] + 3*results['heave_std']
         results['heave_PSD'] = getPSD(self.Xi[:,2,:], self.dw)
+        results['heave_RA' ] = self.Xi[:,2,:]
         
         roll_deg = rad2deg(self.Xi[:,3,:])
         results['roll_avg'] = rad2deg(self.Xi0[3])
         results['roll_std'] = getRMS(roll_deg)
         results['roll_max']  = rad2deg(self.Xi0[3]) + 3*results['roll_std']
         results['roll_PSD'] = getPSD(roll_deg, self.dw)
+        results['roll_RA' ] = rad2deg(self.Xi[:,3,:])
         
         pitch_deg = rad2deg(self.Xi[:,4,:])
         results['pitch_avg'] = rad2deg(self.Xi0[4])
         results['pitch_std'] = getRMS(pitch_deg)
         results['pitch_max'] = rad2deg(self.Xi0[4]) + 3*results['pitch_std']
         results['pitch_PSD'] = getPSD(pitch_deg, self.dw)
+        results['pitch_RA' ] = rad2deg(self.Xi[:,4,:])
         
         yaw_deg = rad2deg(self.Xi[:,5,:])
         results['yaw_avg'] = rad2deg(self.Xi0[5])
         results['yaw_std'] = getRMS(yaw_deg)
         results['yaw_max'] = rad2deg(self.Xi0[5]) + 3*results['yaw_std']
         results['yaw_PSD'] = getPSD(yaw_deg, self.dw)
+        results['yaw_RA' ] = rad2deg(self.Xi[:,5,:])
         
         # ----- turbine-level mooring outputs (similar code as array-level) -----
         if self.ms:
@@ -2024,10 +2035,11 @@ class FOWT():
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
 
-    def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], airfoils=False, zorder=2,
-             plot_fowt=True, plot_ms=True, shadow=True):
+    def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], 
+             airfoils=False, zorder=2, plot_fowt=True, plot_ms=True, 
+             shadow=True, mp_args={}):
         '''plots the FOWT...'''
-
+        
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
 
         if plot_ms:
@@ -2036,6 +2048,12 @@ class FOWT():
         
         if color==None:
             color='k'
+        else:
+            mp_args.update(dict(color=color))
+        
+        if self.ms:
+            self.ms.plot(ax=ax, **mp_args)
+        
         
         if plot_fowt:
             if plot_rotor:

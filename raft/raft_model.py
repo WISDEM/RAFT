@@ -81,7 +81,14 @@ class Model():
             
             # if array_mooring section exists, create an array-level MoorPy system
             if 'array_mooring' in design:
-                self.ms = mp.System(depth=self.depth)
+                
+                # quick hackish inclusion of bathymetry (should improve with better methods in MoorPy)
+                if 'bathymetry' in design['array_mooring']:
+                    print('Including bathymetry in array-level MoorPy.')
+                    bath_file = design['array_mooring']['bathymetry']
+                    self.ms = mp.System(depth=self.depth, bathymetry=bath_file)
+                else:
+                    self.ms = mp.System(depth=self.depth)
             
                 # set up a coupled MoorPy body for each FOWT
                 for i in range(self.nFOWT):
@@ -1435,8 +1442,12 @@ class Model():
     def plot(self, ax=None, hideGrid=False, draw_body=True, color=None, nodes=0, 
              xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, airfoils=False, 
              station_plot=[], zorder=2, figsize=(6,4), plot_fowt=True, plot_ms=True, 
-             shadow=True, plot_water=False, plot_soil=False):
-        '''plots the whole model, including FOWTs and mooring system...'''
+             shadow=True, plot_water=False, plot_soil=False, mp_args={}):
+        '''plots the whole model, including FOWTs and mooring system
+        
+        mp_args
+            additional arguments passed to the array-level MoorPy plot method.
+        '''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
         #self.ms.bodyList[0].setPosition(np.zeros(6))
@@ -1444,12 +1455,16 @@ class Model():
         
         #fig = plt.figure(figsize=(20/2.54,12/2.54))
         #ax = Axes3D(fig)
-
+        
+        # prepare arguments to MoorPy
+        mp_args2 = dict(color=color, draw_body=draw_body, xbounds=xbounds, ybounds=ybounds, zbounds=zbounds)
+        mp_args2.update(mp_args)
+        
+        
         # if axes not passed in, make a new figure
         if ax == None:    
             if self.ms:
-                fig, ax = self.ms.plot(color=color, draw_body=draw_body,figsize=figsize,
-                                       xbounds=xbounds, ybounds=ybounds, zbounds=zbounds)
+                fig, ax = self.ms.plot(figsize=figsize, **mp_args2)
             else:   
                 fig = plt.figure(figsize=figsize)
                 ax = plt.axes(projection='3d')
@@ -1457,13 +1472,13 @@ class Model():
         else:
             fig = ax.get_figure()
             if self.ms:
-                self.ms.plot(ax=ax, color=color, draw_body=draw_body, xbounds=xbounds, ybounds=ybounds, zbounds=zbounds)
+                self.ms.plot(ax=ax, **mp_args2)
 
         # plot each FOWT
         for fowt in self.fowtList:
             fowt.plot(ax, color=color, zorder=zorder, nodes=nodes, 
                     plot_rotor=plot_rotor, station_plot=station_plot, 
-                    airfoils=airfoils, plot_ms=plot_ms, plot_fowt=plot_fowt, shadow=shadow)
+                    airfoils=airfoils, plot_ms=plot_ms, plot_fowt=plot_fowt, shadow=shadow, mp_args=mp_args)
         
         set_axes_equal(ax)
         
@@ -2205,11 +2220,11 @@ if __name__ == "__main__":
     ### Run a Reference FOWT Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
     
     ### Run a MHK Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
     
     ### Run a RAFT Farm Model ###
     #model = runRAFTFarm(os.path.join(raft_dir,'designs/VolturnUS-S_farm.yaml'), plot=1)

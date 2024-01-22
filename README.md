@@ -24,28 +24,34 @@ RAFT uses a number of prerequisites, or other python package dependencies, to ru
 
 To install all required python packages to run RAFT, follow the steps below.
 
-1. Install most of the required python packages to run RAFT from the "requirements" yaml.
+1. Navigate to a directory of your choosing on your local machine and clone this RAFT repository to that new directory
 
-        (base) PS ANY_PATH> conda env create -f raft-env.yaml
+        (base) PS YOUR_PATH> git clone https://github.com/WISDEM/RAFT.git
+    
+    This will create new folder called "RAFT" that is a copy from the GitHub repository, located in your "YOUR_PATH" directory
+
+2. Create a new python virtual environment based on the "raft-env.yaml" file, which lists all the required python package dependencies needed to run RAFT
+
+        (base) PS YOUR_PATH> cd RAFTconda 
+        (base) PS YOUR_PATH/RAFT> conda env create -f raft-env.yaml
 
     This will create a new python virtual environment on a new user's local machine called "raft-env"
 
-2. Activate the new virtual environment
+3. Activate the new virtual environment
 
         (base) PS ANY_PATH> conda activate raft-env
 
-    This will activate the newly created virtual environment, where we will install the remaining dependencies
+    This will activate the newly created virtual environment, in which we will install the remaining dependencies
 
-3. Install the RAFT package
-    - Navigate to a directory of your choosing on your local machine and clone this RAFT repository to that new directory
+4. Install the RAFT package into the virtual environment
 
-            (raft-env) PS YOUR_PATH> git clone https://github.com/WISDEM/RAFT.git
+        (raft-env) PS YOUR_PATH/RAFT> pip install -e .
+
+    This allows different RAFT modules to be imported by new scripts
+
+    This also installs RAFT in its "editable" mode, meaning, if you save a change to your source code in the files in "YOUR_PATH/RAFT", future calls to RAFT modules will include those changes.
     
-    - Staying in the same directory, install the RAFT package in it's "editable" mode
-
-            (raft-env) PS YOUR_PATH/RAFT> pip install -e .
-
-4. Repeat Step 3 two more times, one for CCBlade, and one for MoorPy
+5. Repeat Steps 1 and 4 two more times, one for CCBlade, and one for MoorPy
 
         (raft-env) PS YOUR_PATH> git clone https://github.com/WISDEM/CCBlade.git
         (raft-env) PS YOUR_PATH/CCBlade> pip install -e .
@@ -58,7 +64,7 @@ To install all required python packages to run RAFT, follow the steps below.
 
 This new raft-env should now be compatible to run RAFT standalone. Dependencies like CCBlade and MoorPy are still under development, which is why for now, it will be easier to install them in their editable forms.
 
-The other main dependency, PyHAMS, is included within the raft-env.yaml file and is installed in Step 1.
+The other main dependency, PyHAMS, is included within the raft-env.yaml file and is installed in the first Step 1.
 
 Another point to note is that ```python setup.py develop``` has become outdated, and ```pip install -e .``` is preferred.
 

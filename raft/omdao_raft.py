@@ -421,7 +421,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['turbine']['tower']['rA'] = inputs['turbine_tower_rA']
         design['turbine']['tower']['rB'] = inputs['turbine_tower_rB']
         design['turbine']['tower']['shape'] = turbine_opt['shape']
-        design['turbine']['tower']['gamma'] = inputs['turbine_tower_gamma']
+        design['turbine']['tower']['gamma'] = inputs['turbine_tower_gamma'][0]
         design['turbine']['tower']['stations'] = inputs['turbine_tower_stations']
         if turbine_opt['scalar_diameters']:
             design['turbine']['tower']['d'] = float(inputs['turbine_tower_d'])
@@ -521,7 +521,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             design['platform']['members'][i]['rA'] = rA
             design['platform']['members'][i]['rB'] = rB
             design['platform']['members'][i]['shape'] = m_shape
-            design['platform']['members'][i]['gamma'] = float(inputs[m_name+'gamma'])
+            design['platform']['members'][i]['gamma'] = float(inputs[m_name+'gamma'][0])
             design['platform']['members'][i]['potMod'] = discrete_inputs[m_name+'potMod']
             design['platform']['members'][i]['stations'] = s_grid
             

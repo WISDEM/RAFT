@@ -1227,7 +1227,7 @@ mooring:
 
     line_types:
         - name: chain
-          diameter:         0.185
+          diameter:         0.333
           mass_density:   685.0
           stiffness:     3270e6
           breaking_load:    1e8

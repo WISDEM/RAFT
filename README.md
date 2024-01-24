@@ -64,7 +64,17 @@ To install all required python packages to run RAFT, follow the steps below.
 
 This new raft-env should now be compatible to run RAFT standalone. Dependencies like CCBlade and MoorPy are still under development, which is why for now, it will be easier to install them in their editable forms.
 
-The other main dependency, PyHAMS, is included within the raft-env.yaml file and is installed in the first Step 1.
+The other main dependency, pyHAMS, is included within the raft-env.yaml file and is installed in the first Step 1.
+
+- If for whatever reason, you want to install pyHAMS in editable mode, there are a couple additional packages that need to be installed (https://github.com/WISDEM/pyHAMS)
+
+        (raft-env) PS YOUR_PATH> git clone https://github.com/WISDEM/pyHAMS.git
+        (raft-env) PS YOUR_PATH/MoorPy> pip install meson-python
+        (raft-env) PS YOUR_PATH/MoorPy> pip install ninja
+        (raft-env) PS YOUR_PATH/MoorPy> pip install --no-build-isolation -e .
+
+- If there is still an error, you may have to run "pip install cmake", but you should be fine without it
+- Otherwise, it is recommended to not install pyHAMS in editable mode to avoid these extra dependencies
 
 Another point to note is that ```python setup.py develop``` has become outdated, and ```pip install -e .``` is preferred.
 

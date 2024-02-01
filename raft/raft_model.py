@@ -7,6 +7,7 @@ from matplotlib import cm
 from matplotlib.patches import Circle
 import mpl_toolkits.mplot3d.art3d as art3d
 import yaml
+import time 
 
 try:
     import pickle5 as pickle
@@ -978,6 +979,7 @@ class Model():
             print('Solving for system response to wave excitation in primary wave direction') 
 
             # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
+            # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process
             Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
             fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF]) # Keep that as a member because it will be used in the functions that compute mean displacements            
             if fowt.potSecOrder==2:
@@ -1027,21 +1029,19 @@ class Model():
                     # solve response (complex amplitude)
                     Xi[:,ii] = np.linalg.solve(Z[:,:,ii], F_tot[:,ii])
 
-                # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces
+                # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces.
                 # Rigorously, they should be computed at each iteration, but that would be very expensive. 
-                # We will assume that the first-order motions won't change that much after two iterations
-                # to impact the QTFs at a level that justifies the computational cost
-                if fowt.potSecOrder == 1 and iiter <= 1:
+                # We will assume that the first-order motions won't change that much, so they are computed only once
+                if fowt.potSecOrder == 1 and iiter == 0:
                     Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex) # RAOs (unit wave amplitude)
                     for iDoF in range(Xi_unitWave.shape[0]):
                         # get indices where fowt.zeta[ih,:] is not zero
                         idx = np.where(np.abs(fowt.zeta[0,:])>1e-6) # Is there an eps value to use instead of that?
                         Xi_unitWave[iDoF, idx] = Xi[i*6+iDoF, idx]/fowt.zeta[0,idx]
                     
-                    # Time the QTF computation
-                    import time 
+                    # Time the QTF computation                    
                     tic = time.perf_counter()
-                    fowt.calcQTF_slenderBody(0, Xi_unitWave)
+                    fowt.calcQTF_slenderBody(0, Xi0=Xi_unitWave)
                     toc = time.perf_counter()
                     print(f"\n Time to compute QTFs: {toc - tic:0.4f} seconds") 
                     _, Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:])
@@ -1141,13 +1141,13 @@ class Model():
             # TODO: Not very nice to keep the same code twice. Maybe we can move it to a function?
             if self.fowtList[0].potSecOrder == 1:
                 for i, fowt in enumerate(self.fowtList):
-                    if ih > 0: # Don't recompute the QTFs for the first wave because it was already done above. It would change slightly, but it's probably not worth the computational cost
+                    if ih > 0: # Don't recompute the QTFs for the first wave because it was already done above. It would change slightly, but it's probably not worth the computational cost              
                         Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)
                         for iDoF in range(Xi_unitWave.shape[0]):
                             # get indices where fowt.zeta[ih,:] is not zero
-                            idx = np.where(np.abs(fowt.zeta[ih,:])>1e-6) # Is there an eps value to use instead of that?
+                            idx = np.where(np.abs(fowt.zeta[ih,:])>1e-20) # Is there an eps value to use instead of that?
                             Xi_unitWave[iDoF, idx] = self.Xi[ih,i*6+iDoF, idx]/fowt.zeta[ih,idx]
-                        fowt.calcQTF_slenderBody(ih, Xi_unitWave)      
+                        fowt.calcQTF_slenderBody(ih, Xi0=Xi_unitWave)      
                     fowt.Fhydro_2nd_mean[ih, :], Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
                 
                 # Recompute the wave excitation forces and consequent motions to include second-order hydrodynamic forces

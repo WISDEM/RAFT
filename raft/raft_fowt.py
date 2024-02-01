@@ -4,6 +4,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d, interp2d, griddata
+from scipy.special import jn, yn, jv, kn, hankel1
 
 import raft.member2pnl as pnl
 from raft.helpers import *
@@ -1356,8 +1357,7 @@ class FOWT():
         ''' Only long crested seas are currently considered here, but multidirectional
             wave pairs can be considered in the functions that compute the accelerations'''
         if Xi0 is None:
-            Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)
-
+            Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)        
         rho = self.rho_water
         g   = self.g
         if beta is None:
@@ -1375,15 +1375,7 @@ class FOWT():
         F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
         F1st[0:3,:] = self.M_struc[0,0] * (-self.w1_2nd**2 * Xi[0:3,:]) # F_1stOrder = Mass * Acceleration_1stOrder
         F1st[3:6,:] = np.matmul(self.M_struc[3:,3:], (-self.w1_2nd**2 * Xi[3:,:]))
-        
-        # Print Xi in the same format as a WAMIT .4 file for comparison
-        if self.outFolderQTF is not None:
-            with open(os.path.join(self.outFolderQTF, 'raos-slender_body.4'), "w") as f:
-                ULEN = 1
-                for iDoF in range(self.nDOF):
-                    for w1, x in zip(self.w1_2nd, Xi[iDoF,:]):
-                        f.write(f"{2*np.pi/w1: 8.4e} {beta: 8.4e} {iDoF+1} {np.abs(x): 8.4e} {np.angle(x): 8.4e} {x.real: 8.4e} {x.imag: 8.4e}\n")
-                        
+                                
         # Variables to store different components for post-processing
         qtf_2ndPot = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
         qtf_axdv   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
@@ -1455,7 +1447,7 @@ class FOWT():
 
             # Loop through each pair of frequency
             for i1, (w1, k1) in enumerate(zip(self.w1_2nd, self.k1_2nd)):
-                print(f" Element {i+1} of {len(self.memberList)} - Line {i1+1:02d} of {len(self.w1_2nd):02d}", end='\r')            
+                print(f" Element {i+1} of {len(self.memberList)} - Row {i1+1:02d} of {len(self.w1_2nd):02d}", end='\r')            
                 for i2, (w2, k2) in enumerate(zip(self.w2_2nd, self.k2_2nd)):
                     F_2ndPot = np.zeros(6, dtype='complex')
                     F_conv   = np.zeros(6, dtype='complex')
@@ -1478,6 +1470,9 @@ class FOWT():
                         Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
                         Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
                         Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
+                        # Ca_p1=1
+                        # Ca_p2=1
+                        # Ca_End=1
 
 
                         # ----- compute side effects ---------------------------------------------------------
@@ -1513,11 +1508,11 @@ class FOWT():
                         aux     -= np.matmul(mem.qMat, aux) # remove axial component                            
                         f_rslb  += rho*v_i * aux
 
-                        # # Similar to the one above, but note that the order in which the axial part is removed is different
-                        # u1_aux  -= np.matmul(mem.qMat, u1_aux) # remove axial component
-                        # u2_aux  -= np.matmul(mem.qMat, u2_aux)
-                        # aux      = 0.25*(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(Vmatrix1, np.conj(u2_aux))) + np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(np.conj(Vmatrix2), u1_aux)))
-                        # f_rslb  += - rho*v_i * aux
+                        # # # Similar to the one above, but note that the order is different
+                        u1_aux  -= np.matmul(mem.qMat, u1_aux) # remove axial component
+                        u2_aux  -= np.matmul(mem.qMat, u2_aux)
+                        aux      = 0.25*(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(Vmatrix1, np.conj(u2_aux))) + np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(np.conj(Vmatrix2), u1_aux)))
+                        f_rslb  += - rho*v_i * aux
 
                                                     
                         # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
@@ -1536,8 +1531,7 @@ class FOWT():
                         f_nabla  += rho*v_i*Ca_End*np.matmul(mem.qMat, acc_nabla) # Gradient of first-order axial acceleration times displacement                                      
                         p_nabla   = 0.25*np.dot(grad_pres1st[:, i1, il], np.conj(dr[:, i2, il])) + 0.25*np.dot(np.conj(grad_pres1st[:, i2, il]), dr[:, i1, il])
                         f_nabla  += mem.a_i[il]*p_nabla*mem.q # Gradient of first-order pressure times displacement
-                        p_drop    = -0.25*0.5*rho*np.dot(u[:,i1, il]-nodeV[:, i1, il], np.conj(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u[:,i2, il]-nodeV[:, i2, il])))
-                        p_drop   += -0.25*0.5*rho*np.dot(np.conj(u[:,i2, il]-nodeV[:, i2, il]), np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u[:,i2, il]-nodeV[:, i2, il]))
+                        p_drop    = -2*0.25*0.5*rho*np.dot(np.matmul(mem.p1Mat + mem.p2Mat, u[:,i1, il]-nodeV[:, i1, il]), np.conj(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u[:,i2, il]-nodeV[:, i2, il])))
                         f_conv   += mem.a_i[il]*p_drop*mem.q
 
                         F_2ndPot += translateForce3to6DOF(f_2ndPot, mem.r[il,:])
@@ -1556,7 +1550,7 @@ class FOWT():
                             if i_wl != len(mem.ds)-1:
                                 d_wl = 0.5*(mem.ds[i_wl]+mem.ds[i_wl+1])
                             else:
-                                d_wl = mem.ds[iwl]
+                                d_wl = mem.ds[i_wl]
                             a_i = 0.25*np.pi*d_wl**2
                         else:
                             if i_wl != len(mem.ds)-1:
@@ -1577,7 +1571,8 @@ class FOWT():
                     F_eta = translateForce3to6DOF(f_eta, r_int)                    
                         
                     self.qtf[i1,i2,0,:] += F_2ndPot + F_axdv + F_conv + F_nabla + F_eta + F_rslb
-               
+
+                    # Save individual components for post-processing
                     qtf_2ndPot[i1,i2,0,:] += F_2ndPot
                     qtf_axdv[i1,i2,0,:]   += F_axdv
                     qtf_conv[i1,i2,0,:]   += F_conv
@@ -1585,19 +1580,161 @@ class FOWT():
                     qtf_nabla[i1,i2,0,:]  += F_nabla
                     qtf_rslb[i1,i2,0,:]   += F_rslb
 
+                    # Add Kim and Yue correction for the horizontal force
+                    # We add only the real part because the imaginary part of the force is already taken care by the slender-body approximation
+                    # Have a lot of restrictions for now. Want to make it less restrict in the future
+                    # 1) Needs to be circular
+                    # 2) Needs to be vertical
+                    # 3) Needs to be surface piercing
+                    # 4) Cannot be tapered
+                    F_KAY = np.zeros(6, dtype='complex')
+                    f_KAY = np.real(self.correction_KAY(mem, self.depth, w1, w2, rho, g, k1=k1, k2=k2, Nm=10, flag='F'))
+
+                    # The force calculated above considers a cylinder at (x,y)=(0,0), so we need to account for the wave phase
+                    # In this whole function, we assume that the wave direction is the same for both components, but I will leave this below
+                    # in case we want to expand to short-crested seas in the future
+                    cosB1, sinB1 = np.cos(beta), np.sin(beta) 
+                    cosB2, sinB2 = cosB1, sinB1 
+                    k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0])
+                    f_KAY *= np.exp(-1j*np.dot(k1_k2, r))
+
+                    # The force above is along the direction of the waves, so we need to get the components in the X and Y direction
+                    F_KAY[0] += f_KAY * cosB1 # Surge
+                    F_KAY[1] += f_KAY * sinB1 # Sway
+
+                    # It is applied at the intersection of the cylinder with the mean water line                                        
+                    self.qtf[i1,i2,0,:] += transformForce(F_KAY, offset=r_int)
+
         # Need a complete matrix due to interpolations that are used to computed the forces
         for i in range(self.nDOF):
             self.qtf[:,:,0,i] = self.qtf[:,:,0,i] + np.conj(self.qtf[:,:,0,i]).T - np.diag(np.diag(np.conj(self.qtf[:,:,0,i])))
 
         if self.outFolderQTF is not None:
-            self.writeQTF(self.qtf,   os.path.join(self.outFolderQTF, "qtf-slender_body-total.12d"))
-            # self.writeQTF(qtf_2ndPot, os.path.join(self.outFolderQTF, "qtf-slender_body-pot2.12d"))
-            # self.writeQTF(qtf_axdv,   os.path.join(self.outFolderQTF, "qtf-slender_body-axDv.12d"))
-            # self.writeQTF(qtf_conv,   os.path.join(self.outFolderQTF, "qtf-slender_body-conv.12d"))
-            # self.writeQTF(qtf_eta,    os.path.join(self.outFolderQTF, "qtf-slender_body-eta.12d"))
-            # self.writeQTF(qtf_nabla,  os.path.join(self.outFolderQTF, "qtf-slender_body-nabla.12d"))
-            # self.writeQTF(qtf_rslb,   os.path.join(self.outFolderQTF, "qtf-slender_body-rslb.12d"))
-            # self.writeQTF(qtf_rotN,   os.path.join(self.outFolderQTF, "qtf-slender_body-rotN.12d"))
+            self.writeQTF(self.qtf, os.path.join(self.outFolderQTF, f"qtf-slender_body-total.12d"))
+
+    
+    # For surface-piercing vertical cylinders, we can partially account for second-order diffraction effects
+    # by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinders obtained byÇ 
+    # For the difference-frequency loads: Kim and Yue (1990) The complete second-order diffraction solution for an axisymmetric body - Part 2. Bichromatic incident waves and body motions
+    # For the mean loads: Kim and Yue (1989) The complete second-order diffraction solution for an axisymmetric body - Part 1. Monochromatic incident waves
+    #
+    # For now, only long crested seas are considered. The resulting loads are:
+    # - Transversal force, which is in the same direction as the waves, or
+    # - Moment around the horizontal axis that is perpendicular to the propagation of the waves
+    # Those loads are assumed to be applied at the intersection of the cylinder with the mean water line.
+    # The loads are nondimensionalized as follows:
+    # Foutput = F / (Aj * Al), where Aj and Al are the complex amplitudes of the wave pair
+    def correction_KAY(self, member, h, w1, w2, rho, g, k1=None, k2=None, Nm=10, flag='F'):
+        F = 0
+           
+        # Check if member is circular
+        if member.shape != 'circular':
+            return F
+        
+        # Check if member is vertical
+        if member.q[2] < 0.99:
+            return F
+        
+        # Compute k1 and k2 if not provided
+        if k1 is None:
+            k1 = waveNumber(w1, h)
+        if k2 is None:
+            k2 = waveNumber(w2, h)
+
+        # Loop stations. For now, we only compute things for a station that satisfies the conditions below
+        radii = 0.5*np.array(member.d)
+        stations = member.stations
+        for i_s in range(1, len(radii)):
+            dz_s = stations[i_s] - stations[i_s-1]; # delta z
+            if dz_s == 0:
+                continue
+
+            z1 = member.r[0,2] + stations[i_s-1]
+            z2 = member.r[0,2] + stations[i_s]            
+        
+            R1 = radii[i_s-1]
+            R2 = radii[i_s]
+        
+            # Check if station is surface piercing
+            if z1*z2 > 0:
+                continue
+        
+            # Check if station is tapered
+            if R1 != R2:
+                continue
+
+            if z1 > z2:
+                z1, z2 = z2, z1
+           
+            if z2 > 0:
+                z2 = 0
+
+            # Get nondimensional values used in the analytical solution
+            R = R1 # Radius of the cylinder. Note that we use the radius of the second node, as the first and last node are different
+            k1R, k2R = k1*R, k2*R # Nondimensional wave numbers
+            H = h/R # Nondimensional water depth
+            wm = (w1-w2)/np.sqrt(g/h) # Nondimensional difference frequency
+
+            # Those two nondimensional numbers are more of a convenient parameter
+            k1h = k1R * H
+            k2h = k2R * H
+
+            factor = rho * g * R
+
+            # Mean load
+            if w1 == w2:                
+                for nn in range(Nm + 1):
+                    Jd_n = 0.5 * (jn(nn - 1, k1R) - jn(nn + 1, k1R))
+                    Jd_nM1 = 0.5 * (jn(nn, k1R) - jn(nn + 2, k1R))
+                    Yd_n = 0.5 * (yn(nn - 1, k1R) - yn(nn + 1, k1R))
+                    Yd_nM1 = 0.5 * (yn(nn, k1R) - yn(nn + 2, k1R))
+
+                    F += 4 / (np.pi**2 * k1R**3) * (1 + 2 * k1h / np.sinh(2 * k1h)) * \
+                        (1 - nn * (nn + 1) / k1R**2)**2 / (Jd_n**2 + Yd_n**2) / (Jd_nM1**2 + Yd_nM1**2)
+
+                if flag == 'M':
+                    force = F
+                    F = 0
+
+                    for nn in range(Nm + 1):
+                        H_n = 0.5 * (hankel1(nn - 1, k1R) - hankel1(nn + 1, k1R))
+                        H_nM1 = 0.5 * (hankel1(nn, k1R) - hankel1(nn + 2, k1R))
+                        Z = 0.25 + (2 * k1h * np.sinh(2 * k1h) - np.cosh(2 * k1h) + 1) / 8 / k1h**2
+
+                        F += np.real(-4j / np.pi / k1R**2 * 1 / H_n / H_nM1 * \
+                                    (-1 + 2 * k1h / np.sinh(2 * k1h) * ((nn * (nn + 1) / k1R**2 + 1) * Z - 0.5)))
+
+                    F -= force  # To change the reference to the intersection with the waterline
+
+            # Difference frequency load
+            else:
+                if flag == 'F':
+                    # Im = 0.5 * (np.sinh(k1h + k2h) / (k1h + k2h) - np.sinh(k1h - k2h) / (k1h - k2h))
+                    # Ip = 0.5 * (np.sinh(k1h + k2h) / (k1h + k2h) + np.sinh(k1h - k2h) / (k1h - k2h))
+                    Im = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
+                    Ip = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
+                else:
+                    factor *= h
+                    Im = 0.5 * ((1 - np.cosh(k1h + k2h)) / (k1h ** 2 + k2h ** 2 + 2 * k1h * k2h) - (1 - np.cosh(k1h - k2h)) / (k1h ** 2 + k2h ** 2 - 2 * k1h * k2h))
+                    Ip = 0.5 * ((1 - np.cosh(k1h + k2h)) / (k1h ** 2 + k2h ** 2 + 2 * k1h * k2h) + (1 - np.cosh(k1h - k2h)) / (k1h ** 2 + k2h ** 2 - 2 * k1h * k2h))
+     
+                for nn in range(Nm + 1):
+                    # Termo omega utiliza as derivadas da funcao de Hankel
+                    H_N_ii = 0.5 * (hankel1(nn - 1, k1R) - hankel1(nn + 1, k1R))
+                    H_N_jj = 0.5 * np.conj(hankel1(nn - 1, k2R) - hankel1(nn + 1, k2R))
+                    H_Nm1_ii = 0.5 * (hankel1(nn, k1R) - hankel1(nn + 2, k1R))
+                    H_Nm1_jj = 0.5 * np.conj(hankel1(nn, k2R) - hankel1(nn + 2, k2R))
+                    omega = 1 / (H_Nm1_ii * H_N_jj) - 1 / (H_N_ii * H_Nm1_jj)
+
+                    coshk1h = np.cosh(k1h)
+                    coshk2h = np.cosh(k2h)
+                    F = F - 2j/np.pi/(k1R*k2R) * omega * (1 - (k1h*k2h/np.sqrt(k1h*np.tanh(k1h))/np.sqrt(k2h*np.tanh(k2h))) * (Im+Ip*nn*(nn+1)/k1R/k2R)/coshk1h/coshk2h)
+
+                if k1R < k2R:
+                    F = np.conj(F)
+
+            return F*factor
+
 
     def readQTF(self, flPath):
         data = np.loadtxt(flPath)
@@ -1735,15 +1872,6 @@ class FOWT():
         # Displace f by one frequency so that it aligns with the frequency vector
         f[:, 0:-1] = f[:, 1:]
         f[:, -1] = 0
-
-        ident = 'WAMIT'
-        if self.potSecOrder == 1:
-            ident = 'slenderBody'
-
-        if self.outFolderQTF is not None: 
-            with open(os.path.join(self.outFolderQTF, 'f_2nd-'+ ident + '.txt'), 'w') as file:
-                for w, frow in zip(self.w, f.T):
-                    file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
         return f_mean, f
 
 

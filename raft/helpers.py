@@ -1214,6 +1214,41 @@ def adjustMooring(ms, design):
     
     return(design)
 
+def readWAMIT_p2(inFl, rho=1, L=1, g=1):
+    # Default values for rho, L and g are 1, so that the results are not dimensionalized    
+    data = np.loadtxt(inFl)
+
+    # Headings in the file
+    head    = np.unique(data[:,1]) # Array with the different headings
+    numHead = len(head)            # Number of different headings
+
+    # Periods in the file
+    period = np.unique(data[:,0])  # Array with the different periods
+
+    # Names of the variables that will be used for each of the six Degrees of Freedom
+    stringDoF = [ 'surge', 'sway', 'heave', 'roll', 'pitch', 'yaw']
+
+    # Power of ULEN to dimensionalize the results
+    k_ULEN = [2, 2, 2, 3, 3, 3]
+
+    #=== Loop the degrees of freedom provided by 'stringDoF'.
+    #=== Store the data in disctionaries whose names are given by the strings provided by 'stringDoF'
+    W2 = {}
+    for iDoF, DoF in enumerate(stringDoF):
+        dataAux = data[ data[:,2] == iDoF+1 , :]  # Get the data for the specified DoF
+        dataAux = dataAux[np.lexsort((dataAux[:,1], dataAux[:,0]))]  # Sort rows based on heading and wave period
+        
+        # Create matrices with the desired data, with:
+        # - the wave periods according to the rows;
+        # - and the wave headings to the columns.
+        reAux  = dataAux[:,5].reshape(-1,numHead) # real part
+        imAux  = dataAux[:,6].reshape(-1,numHead) # imaginary part
+        W2[DoF] = (reAux + 1j*imAux) * rho * g * L**k_ULEN[iDoF]
+
+    W2['period'] = period
+    W2['heading'] = head
+    
+    return W2
 
 if __name__ == '__main__':
     

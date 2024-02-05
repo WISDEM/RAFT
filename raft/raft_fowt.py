@@ -252,6 +252,7 @@ class FOWT():
         # Add a flag to either not compute 2nd order hydro; read QTF; or compute it with a slender-body approximation
         # self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)
         self.potSecOrder = getFromDict(design['platform'], 'potSecOrder', dtype=int, default=0)
+        self.qtf = None
         if self.potSecOrder==1:
             if (not 'min_freq2nd' in design['platform']) or (not 'max_freq2nd' in design['platform']):
                 raise Exception('If potSecOrder==1, then both min_freq2nd and max_freq2nd must be specified in the platform input.')
@@ -1352,12 +1353,122 @@ class FOWT():
 
         return D_hydro
 
+
+    def calcMotions(self, case='wn', XiStart=0, nIter=5, tol=0.01, conv_plot=0):
+        '''Calculate the motions of the FOWT for a given sea state.
+        If case=None, returns the RAOs computed for a white-noise wave with unit amplitude
+        '''
+
+        if case == 'wn':
+            case = {'wave_heading': 0, 'wave_spectrum': 'unit', 'wave_period': 1, 'wave_height': 1, 'wave_gamma': 0}
+           
+        # total FOWT complex response amplitudes (this gets updated each iteration)
+        XiLast = np.zeros([self.nDOF,self.nw], dtype=complex) + XiStart    # displacement and rotation complex amplitudes [m, rad]
+        
+        # calculate linear wave excitation forces for this case  (THIS IS A NEW WAY OF DOING THIS)<<<
+        self.calcHydroExcitation(case, memberList=self.memberList)
+
+        # add up coefficients for any number of turbines
+        if self.nrotors> 0:
+            M_turb = np.sum(self.A_aero, axis=3)
+            B_turb = np.sum(self.B_aero, axis=3)
+        else:
+            M_turb = np.zeros([6,6,self.nw])
+            B_turb = np.zeros([6,6,self.nw])
+            
+        # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
+        print('Solving for system response to wave excitation in primary wave direction')                     
+
+        # We can compute second-order hydrodynamic forces here if:
+        # 1) They are calculated using an external QTF file;
+        # 2) or if they were computed previously and stored in the FOWT object.
+        # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process
+        self.Fhydro_2nd = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex) 
+        self.Fhydro_2nd_mean = np.zeros([self.nWaves, self.nDOF])
+        if self.qtf is not None:
+            self.Fhydro_2nd_mean[0, :], self.Fhydro_2nd[0, :, :] = self.calcHydroForce_2ndOrd(self.beta[0], self.S[0,:])
+
+        # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
+        M_lin = M_turb + self.M_struc[:,:,None] + self.A_BEM + self.A_hydro_morison[:,:,None]         # mass
+        B_lin = B_turb + self.B_struc[:,:,None] + self.B_BEM + np.sum(self.B_gyro, axis=2)[:,:,None]  # damping
+        C_lin =          self.C_struc   + self.C_moor        + self.C_hydro                           # stiffness
+        F_lin = self.F_BEM[0,:,:] + self.F_hydro_iner[0,:,:] + self.Fhydro_2nd[0, :, :] # consider only excitation from the primary sea state in the load case for now
+                
+        # start fixed point iteration loop for dynamics of the individual FOWT
+        for iiter in range(nIter):
+            
+            # initialize/zero total system coefficient arrays
+            M_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
+            B_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total damping matrix [N-s/m, N-s, N-s-m]
+            C_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total stiffness matrix [N/m, N, N-m]
+            F_tot = np.zeros([self.nDOF,self.nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
+
+            Z  = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=complex)  # total  fowt impedance matrix
+            
+            # get linearized terms for the current turbine given latest amplitudes
+            B_linearized = self.calcHydroLinearization(XiLast)
+            F_linearized = self.calcDragExcitation(0)  # just looking at first sea state (wave heading) for the sake of linearization
+            
+            # calculate the response based on the latest linearized terms
+            Xi = np.zeros([self.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
+
+            # add fowt's terms to system matrices (BEM arrays are not yet included here)
+            M_tot[:,:,:] = M_lin
+            B_tot[:,:,:] = B_lin           + B_linearized[:,:,None]
+            C_tot[:,:,:] = C_lin[:,:,None]
+            F_tot[:  ,:] = F_lin           + F_linearized
+
+
+            for ii in range(self.nw):
+                # form impedance matrix
+                Z[:,:,ii] = -self.w[ii]**2 * M_tot[:,:,ii] + 1j*self.w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii]
+                
+                # solve response (complex amplitude)
+                Xi[:,ii] = np.linalg.solve(Z[:,:,ii], F_tot[:,ii])
+
+            if conv_plot:
+                # Convergence Plotting
+                # plots of surge response at each iteration for observing convergence
+                ax[0].plot(self.w, np.abs(Xi[0,:]) , color=c[iiter], label=f"iteration {iiter}")
+                ax[1].plot(self.w, np.real(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
+                ax[2].plot(self.w, np.imag(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
+    
+            # check for convergence
+            tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
+            if (tolCheck < tol).all():
+                print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
+                break
+            else:
+                XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
+                                                # (uses hard-coded successive under relaxation for now)
+                print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
+    
+            if iiter == nIter-1:
+                print("WARNING - solveDynamics iteration did not converge to the tolerance.")
+        
+        
+        if conv_plot:
+            # labels for convergence plots
+            ax[1].legend()
+            ax[0].set_ylabel("response magnitude")
+            ax[1].set_ylabel("response, real")
+            ax[2].set_ylabel("response, imag")
+            ax[2].set_xlabel("frequency (rad/s)")
+            fig.suptitle("Response convergence")
+        
+        # Save the FOWT's impedance matrix
+        self.Z = Z
+                    
+        return Xi
+
+
     def calcQTF_slenderBody(self, ih, Xi0=None, beta=None):
         '''This computes the second-order strip-theory-hydrodynamics terms'''
         ''' Only long crested seas are currently considered here, but multidirectional
             wave pairs can be considered in the functions that compute the accelerations'''
         if Xi0 is None:
             Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)        
+                    
         rho = self.rho_water
         g   = self.g
         if beta is None:
@@ -1370,12 +1481,20 @@ class FOWT():
         for iDoF in range(self.nDOF):
             Xi[iDoF,:] = np.interp(self.w1_2nd, self.w, Xi0[iDoF,:], left=0, right=0)
 
+        # Print Xi in the same format as a WAMIT .4 file for comparison
+        if self.outFolderQTF is not None:
+            with open(os.path.join(self.outFolderQTF, f'raos-slender_body.4'), "w") as f:
+                ULEN = 1
+                for iDoF in range(self.nDOF):
+                    for w1, x in zip(self.w1_2nd, Xi[iDoF,:]):
+                        f.write(f"{2*np.pi/w1: 8.4e} {beta: 8.4e} {iDoF+1} {np.abs(x): 8.4e} {np.angle(x): 8.4e} {x.real: 8.4e} {x.imag: 8.4e}\n")
+
         # First-order forces, which are used to compute Pinkster's IV term]
         # F1st = np.matmul(self.M_struc, -self.w1_2nd**2 * Xi)
         F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
         F1st[0:3,:] = self.M_struc[0,0] * (-self.w1_2nd**2 * Xi[0:3,:]) # F_1stOrder = Mass * Acceleration_1stOrder
         F1st[3:6,:] = np.matmul(self.M_struc[3:,3:], (-self.w1_2nd**2 * Xi[3:,:]))
-                                
+                                                            
         # Variables to store different components for post-processing
         qtf_2ndPot = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
         qtf_axdv   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
@@ -1613,18 +1732,20 @@ class FOWT():
             self.writeQTF(self.qtf, os.path.join(self.outFolderQTF, f"qtf-slender_body-total.12d"))
 
     
-    # For surface-piercing vertical cylinders, we can partially account for second-order diffraction effects
-    # by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinders obtained byÇ 
-    # For the difference-frequency loads: Kim and Yue (1990) The complete second-order diffraction solution for an axisymmetric body - Part 2. Bichromatic incident waves and body motions
-    # For the mean loads: Kim and Yue (1989) The complete second-order diffraction solution for an axisymmetric body - Part 1. Monochromatic incident waves
-    #
-    # For now, only long crested seas are considered. The resulting loads are:
-    # - Transversal force, which is in the same direction as the waves, or
-    # - Moment around the horizontal axis that is perpendicular to the propagation of the waves
-    # Those loads are assumed to be applied at the intersection of the cylinder with the mean water line.
-    # The loads are nondimensionalized as follows:
-    # Foutput = F / (Aj * Al), where Aj and Al are the complex amplitudes of the wave pair
     def correction_KAY(self, member, h, w1, w2, rho, g, k1=None, k2=None, Nm=10, flag='F'):
+        '''For surface-piercing vertical cylinders, we can partially account for second-order diffraction effects
+           by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinders obtained byÇ 
+           For the difference-frequency loads: Kim and Yue (1990) The complete second-order diffraction solution for an axisymmetric body - Part 2. Bichromatic incident waves and body motions
+           For the mean loads: Kim and Yue (1989) The complete second-order diffraction solution for an axisymmetric body - Part 1. Monochromatic incident waves
+    
+           For now, only long crested seas are considered. The resulting loads are:
+           - Transversal force, which is in the same direction as the waves, or
+           - Moment around the horizontal axis that is perpendicular to the propagation of the waves
+           Those loads are assumed to be applied at the intersection of the cylinder with the mean water line.
+           The loads are nondimensionalized as follows:
+           Foutput = F / (Aj * Al), where Aj and Al are the complex amplitudes of the wave pair
+        '''
+        
         F = 0
            
         # Check if member is circular
@@ -1799,11 +1920,11 @@ class FOWT():
                         
 
     def calcHydroForce_2ndOrd(self, beta, S0):
-    # Compute force due to 2nd order hydrodynamic loads
-    # See Pinkster (1980), Section IV.3
-    # We are losing the phases when computing forces from the spectrum.
-    # We should at least correct the phase of the incoming waves to account for different positions in arrays.
-    # Should just multiply things by exp(-1j*(k_j-j_l)*x_j)
+        ''' Compute force due to 2nd order hydrodynamic loads
+        See Pinkster (1980), Section IV.3
+        We are losing the phases when computing forces from the spectrum.
+        We should at least correct the phase of the incoming waves to account for different positions in arrays.
+        '''
         f = np.zeros([self.nDOF, self.nw], dtype=complex)
         f_mean = np.zeros([self.nDOF])
         interpMode = 'qtf'

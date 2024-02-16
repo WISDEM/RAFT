@@ -916,16 +916,19 @@ class FOWT():
         for i,mem in enumerate(self.memberList):
         
             # get member added mass matrix about PRP (also saves each member's inertial excitation coefficients)
-            A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3])  
-            
+            A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3], rho=rho, g=g)                      
             self.A_hydro_morison += A_hydro_i  # add to FOWT added mass matrix
+
+            # Compute Imat_MCF, which is stored in the member object
+            if mem.MCF:
+                mem.calcImat_MCF(rho=rho, g=g, k_array=self.k)
     
     
         # ----- Get hydrodynamic contributions from any underwater rotors ------
         for i, rot in enumerate(self.rotorList):
             
             # compute rotor hydro added mass/inertia properties
-            A_hydro_i, I_hydro_i = rot.calcHydroConstants(rho=self.rho_water, g=self.g)
+            A_hydro_i, I_hydro_i = rot.calcHydroConstants(rho=rho, g=g)
             
             # make relative to PRP and add to system added mass matrix
             self.A_hydro_morison += translateMatrix6to6DOF(A_hydro_i, rot.r3-self.r6[:3]) 
@@ -960,10 +963,10 @@ class FOWT():
         # make wave spectrum for each heading
         self.S = np.zeros([self.nWaves,self.nw])
         for ih in range(self.nWaves):
-            if case['wave_spectrum'][ih] == 'unit':
-                #self.zeta[ih,:] = np.tile(1, self.nw)
-                S         = np.tile(1, self.nw)
+            if case['wave_spectrum'][ih] == 'constant':
+                S = case['wave_height'][ih]
                 self.zeta[ih,:] = np.sqrt(2*S*self.dw)
+                # self.zeta[ih,:] = np.tile(case['wave_height'][ih], self.nw)
             elif case['wave_spectrum'][ih] == 'JONSWAP':
                 self.S[ih,:] = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        
                 self.zeta[ih,:] = np.sqrt(2*self.S[ih,:]*self.dw)    # wave elevation amplitudes (these are easiest to use)
@@ -1088,9 +1091,11 @@ class FOWT():
                         # calculate the linear excitation forces on this node for each wave heading and frequency
                         for ih in range(self.nWaves):
                             for i in range(self.nw):
-
-                                # add dynamic pressure - positive with q if end A - determined by sign of a_i
-                                F_exc_iner_temp = np.matmul(mem.Imat[il,:,:], mem.ud[ih,il,:,i]) + mem.pDyn[ih,il,i]*mem.a_i[il]*mem.q 
+                                Imat = mem.Imat[il,:,:]
+                                if mem.MCF:
+                                    Imat = mem.Imat_MCF[il,:,:, i]
+                                    # Imat = mem.Imat[il,:,:]
+                                F_exc_iner_temp = np.matmul(Imat, mem.ud[ih,il,:,i]) + mem.pDyn[ih,il,i]*mem.a_i[il]*mem.q 
                                 
                                 # add the excitation complex amplitude for this heading and frequency to the global excitation vector
                                 self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:] - self.r6[:3]) # (about PRP)
@@ -1354,19 +1359,33 @@ class FOWT():
         return D_hydro
 
 
-    def calcMotions(self, case='wn', XiStart=0, nIter=5, tol=0.01, conv_plot=0):
+    def calcMotions(self, case=None, XiStart=0, nIter=5, tol=0.01, conv_plot=0):
         '''Calculate the motions of the FOWT for a given sea state.
         If case=None, returns the RAOs computed for a white-noise wave with unit amplitude
         '''
 
-        if case == 'wn':
-            case = {'wave_heading': 0, 'wave_spectrum': 'unit', 'wave_period': 1, 'wave_height': 1, 'wave_gamma': 0}
+        if case is None:
+            case = {'wave_heading': 0, 'wave_spectrum': 'constant', 'wave_period': 1, 'wave_height': 1, 'wave_gamma': 0}
            
         # total FOWT complex response amplitudes (this gets updated each iteration)
         XiLast = np.zeros([self.nDOF,self.nw], dtype=complex) + XiStart    # displacement and rotation complex amplitudes [m, rad]
         
         # calculate linear wave excitation forces for this case  (THIS IS A NEW WAY OF DOING THIS)<<<
         self.calcHydroExcitation(case, memberList=self.memberList)
+
+        # Print the linear wave excitation following wamit .3 format
+        if self.outFolderQTF is not None and case['wave_spectrum'] == 'constant':
+            with open(os.path.join(self.outFolderQTF, f'force-slender_body.3'), "w") as f:
+                ULEN = 1
+                for iDoF in range(self.nDOF):
+                    for w, ampForce, ampWave in zip(self.w, self.F_hydro_iner[0,iDoF,:], self.zeta[0,:]):
+                        beta = 0                        
+                        if ampWave > 1e-6:
+                            x = ampForce/ampWave
+                        else:
+                            x = 0
+
+                        f.write(f"{2*np.pi/w: 8.4e} {beta: 8.4e} {iDoF+1} {np.abs(x): 8.4e} {np.angle(x): 8.4e} {x.real: 8.4e} {x.imag: 8.4e}\n")
 
         # add up coefficients for any number of turbines
         if self.nrotors> 0:
@@ -1382,7 +1401,7 @@ class FOWT():
         # We can compute second-order hydrodynamic forces here if:
         # 1) They are calculated using an external QTF file;
         # 2) or if they were computed previously and stored in the FOWT object.
-        # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process
+        # In some cases, they may be very relevant to the motion RMS values (e.g. short waves), so should be included in the drag linearization process
         self.Fhydro_2nd = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex) 
         self.Fhydro_2nd_mean = np.zeros([self.nWaves, self.nDOF])
         if self.qtf is not None:
@@ -1840,7 +1859,7 @@ class FOWT():
                     Ip = 0.5 * ((1 - np.cosh(k1h + k2h)) / (k1h ** 2 + k2h ** 2 + 2 * k1h * k2h) + (1 - np.cosh(k1h - k2h)) / (k1h ** 2 + k2h ** 2 - 2 * k1h * k2h))
      
                 for nn in range(Nm + 1):
-                    # Termo omega utiliza as derivadas da funcao de Hankel
+                    # Omega uses derivatives of the Hankel function
                     H_N_ii = 0.5 * (hankel1(nn - 1, k1R) - hankel1(nn + 1, k1R))
                     H_N_jj = 0.5 * np.conj(hankel1(nn - 1, k2R) - hankel1(nn + 1, k2R))
                     H_Nm1_ii = 0.5 * (hankel1(nn, k1R) - hankel1(nn + 2, k1R))

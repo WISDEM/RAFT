@@ -193,7 +193,7 @@ class Model():
 
 
     """
-    def setEnv(self, Hs=8, Tp=12, spectrum='unit', V=10, beta=0, Fthrust=0):
+    def setEnv(self, Hs=8, Tp=12, spectrum='constant', V=10, beta=0, Fthrust=0):
 
         self.env = Env()
         self.env.Hs       = Hs
@@ -314,7 +314,7 @@ class Model():
             # >>> add a flag that stores what case has had solveStatics to ensure consistency <<<
 
             # If computing the QTFs with RAFT, compute them here because we need to solve statics first            
-            # Do it for only the first case because the first-order motions probably won't change much.
+            # Do it for the first case only because the first-order motions probably won't change much.
             # TODO:
             # 1) need to take care of the case where we have multiple types of turbines
             # 2) Need to take care of different headings
@@ -324,7 +324,7 @@ class Model():
                     tic = time.perf_counter()
                     if i == 0: # Compute only for the first turbine. Assign the same for the others
                         # Need the RAOs to compute the QTFs
-                        Xi = fowt.calcMotions(case='wn')
+                        Xi = fowt.calcMotions(case=None)
                         Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)                        
                             
                         for iDoF in range(Xi_unitWave.shape[0]):                            
@@ -973,12 +973,9 @@ class Model():
             c = np.arange(nIter+1)      # adding 1 again here so that there are no RuntimeErrors
             c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))      # set up colormap to use to plot successive iteration results
 
-        # ::: a loop could be added here for an array :::             
         for i, fowt in enumerate(self.fowtList):
             _ = fowt.calcMotions(case=case, XiStart=XiStart, nIter=nIter, tol=tol, conv_plot=conv_plot)
         
-
-
         # Now that invididual FOWT impedences matrices have been found, construct the 
         # system-level matrices (in case of couplings) and compute the total response
         # including multiple excitation sources.

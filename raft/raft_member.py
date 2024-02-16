@@ -5,6 +5,7 @@ import numpy as np
 from raft.helpers import *
 
 from moorpy.helpers import transformPosition
+from scipy.special import hankel1
 
 ## This class represents linear (for now cylindrical and rectangular) components in the substructure.
 #  It is meant to correspond to Member objects in the WEIS substructure ontology, but containing only
@@ -43,6 +44,7 @@ class Member:
         shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
 
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
+        self.MCF    = getFromDict(mi, 'MCF', dtype=bool, default=False)
         
         self.gamma = getFromDict(mi, 'gamma', default=0.)  # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
         rAB = self.rB0-self.rA0       # The relative coordinates of upper node from lower node [m]
@@ -251,6 +253,7 @@ class Member:
         self.Amat = np.zeros([self.ns,3,3])
         self.Bmat = np.zeros([self.ns,3,3])
         self.Imat = np.zeros([self.ns,3,3])
+        self.Imat_MCF = np.zeros([self.ns,3,3, nw], dtype=complex)
 
 
     def setPosition(self, r6=np.zeros(6)):
@@ -990,6 +993,114 @@ class Member:
         else:
             return A_hydro
 
+    def calcImat_MCF(self, rho=1025, g=9.81, k_array=None):
+        '''Compute the Member's linear strip-theory-hydrodynamics excitation 
+        matrix, Imat_MCF, which is the term Cm=(1+Ca) from Morison's equation.
+        Optionally, Cm can be computed using the MacCamy-Fuchs correction for
+        a vertical circular cylinder if the wave number k is specified.
+        All computed quantities are in global orientations.
+        '''
+        
+        circ = self.shape=='circular'  # boolean for circular vs. rectangular
+        
+        MCF = False
+        if k_array is not None:
+            # Check if member:
+            # i) is circular
+            # ii) is vertical
+            # iii) is surface-piercing
+            if circ and self.q[2] >= 0.95 and self.r[0,2]*self.r[-1,2]<0 and self.MCF:
+                MCF = True
+            else:
+                print(f'MacCamy-Fuchs correction not applicable to member {self.name}')
+        
+            if len(k_array) != self.Imat_MCF.shape[3]:
+                raise ValueError(f'Number of elements in wave number vector ({len(k_array)}) must match the number of frequencies previously specified for member ({self.Imat.shape[3]}). ')
+        
+        if not MCF:
+            print(f'Computing calcImat_MCF without MCF correction for member {self.name}.')
+
+        # loop through each node of the member
+        for il in range(self.ns):
+
+            # only process hydrodynamics if this node is submerged
+            if self.r[il,2] < 0:
+                
+                # only compute inertial loads and added mass for members that aren't modeled with potential flow
+                if self.potMod==False:
+                    
+                    # interpolate coefficients for the current strip
+                    Ca_p1  = np.interp( self.ls[il], self.stations, self.Ca_p1 )
+                    Ca_p2  = np.interp( self.ls[il], self.stations, self.Ca_p2 )
+                    Ca_End = np.interp( self.ls[il], self.stations, self.Ca_End)
+
+
+                    # ----- compute side effects (transverse only) -----
+
+                    # volume assigned to this node
+                    if circ:
+                        v_i = 0.25*np.pi*self.ds[il]**2*self.dls[il]
+                    else:
+                        v_i = self.ds[il,0]*self.ds[il,1]*self.dls[il]  
+                        
+                    if self.r[il,2] + 0.5*self.dls[il] > 0:    # if member extends out of water 
+                        v_i = v_i * (0.5*self.dls[il] - self.r[il,2]) / self.dls[il]  # scale volume by the portion that is under water
+                                       
+                    # Local inertial excitation matrix
+                    Cm_p1_0, Cm_p2_0 = (1.+Ca_p1), (1.+Ca_p2)
+                    if MCF:
+                        Imat_sides = np.zeros([3, 3, len(k_array)], dtype=complex)
+                        for ik, k in enumerate(k_array):                            
+                            # The MCF correction only makes sense for short waves
+                            # We use the threshold lamda/D < 5 commonly adopted for the Morison equation,
+                            # but changing smoothly from the previous values using a ramp function
+                            R = self.ds[il]/2
+                            Tr = np.pi/5/R # Threshold value
+                            T0 = 0 # Value to start the transition
+                            ramp = 0.5*(1-np.cos(np.pi*(k-T0)/Tr)) if k<Tr else 1
+                            ramp = 0 if k<=T0 else ramp
+
+                            Hp1 = 0.5 * (hankel1(0, k*R) - hankel1(2, k*R)) # Derivative of the Hankel function o ffirst kind and order one
+                            Cm_p1 = 4j  / (np.pi * (k*R)**2 * Hp1)
+                            Cm_p2 = Cm_p1           
+
+                            Imat_sides[:, :, ik] = rho*v_i * ((Cm_p1*self.p1Mat + Cm_p2*self.p2Mat)*ramp + (Cm_p1_0*self.p1Mat + Cm_p2_0*self.p2Mat)*(1-ramp))
+
+                            # Cm_p1, Cm_p2 = (1.+Ca_p1), (1.+Ca_p2)
+                            # if np.pi/k/R < 5:
+                            #     Hp1 = 0.5 * (hankel1(0, k*R) - hankel1(2, k*R)) # Derivative of the Hankel function o ffirst kind and order one
+                            #     Cm_p1 = 4j  / (np.pi * (k*R)**2 * Hp1)
+                            #     Cm_p2 = Cm_p1                    
+                            # Imat_sides[:, :, ik] = rho*v_i *(  Cm_p1*self.p1Mat + Cm_p2*self.p2Mat ) 
+                    else:
+                        Imat_sides = rho*v_i *(Cm_p1_0*self.p1Mat + Cm_p2_0*self.p2Mat)
+
+
+                    # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
+                    # Note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+
+                    # compute volume assigned to this end surface, and
+                    # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                    if circ:
+                        v_i = np.pi/12.0 * abs(  (self.ds[il]+self.drs[il])**3 
+                                               - (self.ds[il]-self.drs[il])**3 )  
+                    else:
+                        v_i = np.pi/12.0 * (  (np.mean(self.ds[il]+self.drs[il]))**3 
+                                            - (np.mean(self.ds[il]-self.drs[il]))**3 )    # so far just using sphere eqn and taking mean of side lengths as d
+                        # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
+
+                    
+                    # Local inertial excitation matrix 
+                    # Note, there is no 1 added to Ca_End because dynamic pressure is handled separately
+                    Imat_end = rho*v_i * Ca_End*self.qMat  
+                    
+                    # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
+                    if MCF:
+                        self.Imat_MCF[il,:,:, :] = Imat_sides[:,:, :] + Imat_end[:,:, None]
+                    else:
+                        self.Imat_MCF[il,:,:, :] = Imat_sides[:,:, None] + Imat_end[:,:, None]
+
+        
 
     def getSectionProperties(self, station):
         '''Get member cross sectional area and moments of inertia at a user-

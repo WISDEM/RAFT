@@ -792,7 +792,7 @@ class Member:
                     slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
                     AWP = slWP[0]*slWP[1]                                      # waterplane area of rectangular member [m^2]
                     IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
-                    IyWP = (1/12)*slWP[0]**3*slWP[0]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+                    IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
                     I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
                     T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
                     I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as PRP
@@ -827,7 +827,9 @@ class Member:
 
                 # buoyancy force and moment about end A
                 Fz = rho*g* V_UWi
-                M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+                M = 0
+                if self.shape=='circular': # Need to find the equivalent of this for the rectangular case
+                    M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
                 Mx = M*dPhi_dThx
                 My = M*dPhi_dThy
 

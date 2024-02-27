@@ -1,0 +1,27 @@
+type: input file for RAFT
+name: surface piercing vertical rectangular cylinder
+comments: Used to perform some tests on member class functionality. This file should contain a single RAFT member.
+
+
+members:   # list all members here
+  - name      :  cylinder                    # [-]    an identifier (no longer has to be number)       
+    type      :  2                           # [-]    
+    dlsMax    :  0.1                         # maximum node splitting section amount for platform members; can't be 0
+    rA        :  [-12.500,  4.3301, -15.00]  # [m]    end A coordinates
+    rB        :  [  9.375, -3.2476,  11.25]  # [m]    and B coordinates
+    shape     :  rect                        # [-]    circular or rectangular
+    gamma     :  0.0                         # [deg]  twist angle about the member's z-axis
+    potMod    :  False                       # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+    MCF       :  False                       # [bool] Whether to correct the inertia coefficient using the MacCamy and Fuchs correction
+    # --- outer shell including hydro---
+    stations  :  [0, 35]                     # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+    d         :  [9.85, 6]                   # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+    t         :  0.05                        # [m]    wall thicknesses (scalar or list of same length as stations)
+    Cd        :  [2, 1]                      # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+    Ca        :  [1.50, 1.25]                # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+    CdEnd     :  0.6                         # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+    CaEnd     :  0.7                         # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+    rho_shell :  7850                        # [kg/m3]
+    # --- ballast ---
+    l_fill    :  2.71                        # [m]
+    rho_fill  :  5000                        # [kg/m3]

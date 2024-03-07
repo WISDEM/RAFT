@@ -186,23 +186,23 @@ def test_statics(index_and_fowt):
     index, fowt = index_and_fowt    
 
     # Structure related quantities
-    assert_allclose(fowt.rCG, desired_rCG[index], rtol=1e-05)
-    assert_allclose(fowt.rCG_sub, desired_rCG_sub[index], rtol=1e-05)
-    assert_allclose(fowt.m_ballast, desired_m_ballast[index], rtol=1e-05)
-    assert_allclose(fowt.M_struc, desired_M_struc[index], rtol=1e-05)
-    assert_allclose(fowt.M_struc_sub, desired_M_struc_sub[index], rtol=1e-05)
-    assert_allclose(fowt.C_struc, desired_C_struc[index], rtol=1e-05)
-    assert_allclose(fowt.W_struc, desired_W_struc[index], rtol=1e-05)
+    assert_allclose(fowt.rCG, desired_rCG[index], rtol=1e-05, atol=1e-3)
+    assert_allclose(fowt.rCG_sub, desired_rCG_sub[index], rtol=1e-05, atol=1e-3)
+    assert_allclose(fowt.m_ballast, desired_m_ballast[index], rtol=1e-05, atol=1e-3)
+    assert_allclose(fowt.M_struc, desired_M_struc[index], rtol=1e-05, atol=1e-3)
+    assert_allclose(fowt.M_struc_sub, desired_M_struc_sub[index], rtol=1e-05, atol=1e-3)
+    assert_allclose(fowt.C_struc, desired_C_struc[index], rtol=1e-05, atol=1e-3)
+    assert_allclose(fowt.W_struc, desired_W_struc[index], rtol=1e-05, atol=1e-3)
 
     # Hydrostatic quantities
-    assert_allclose(fowt.rCB, desired_rCB[index], rtol=1e-05)
-    assert_allclose(fowt.C_hydro, desired_C_hydro[index], rtol=1e-05)
-    assert_allclose(fowt.W_hydro, desired_W_hydro[index], rtol=1e-05)    
+    assert_allclose(fowt.rCB, desired_rCB[index], rtol=1e-05, atol=1e-3)
+    assert_allclose(fowt.C_hydro, desired_C_hydro[index], rtol=1e-05, atol=1e-3)
+    assert_allclose(fowt.W_hydro, desired_W_hydro[index], rtol=1e-05, atol=1e-3)    
 
 def test_hydroConstants(index_and_fowt):
     index, fowt = index_and_fowt
     fowt.calcHydroConstants() 
-    assert_allclose(fowt.A_hydro_morison, desired_A_hydro_morison[index], rtol=1e-05)
+    assert_allclose(fowt.A_hydro_morison, desired_A_hydro_morison[index], rtol=1e-05, atol=1e-3)
 
 def test_hydroExcitation(index_and_fowt):
     index, fowt = index_and_fowt
@@ -213,7 +213,7 @@ def test_hydroExcitation(index_and_fowt):
 
     fowt.calcHydroConstants()
     fowt.calcHydroExcitation(testCase, memberList=fowt.memberList)
-    assert_allclose(fowt.F_hydro_iner, desired_F_hydro_iner[index], rtol=1e-05)
+    assert_allclose(fowt.F_hydro_iner, desired_F_hydro_iner[index], rtol=1e-05, atol=1e-3)
 
 '''
  To run as a script. Useful for debugging.

@@ -15,9 +15,10 @@ test_dir = 'test_data'
 
 # List of input file names to be tested
 list_files = [
-    'VolturnUS-S-SlenderBody.yaml',
-    'OC3spar-SlenderBody.yaml',
+    'VolturnUS-S.yaml',
+    'OC3spar.yaml',
 ]
+
 
 # Get the directory of the current file
 current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -224,9 +225,4 @@ if __name__ == "__main__":
     test_statics((index,fowt))
     test_hydroConstants((index,fowt))
     test_hydroExcitation((index,fowt))
-
-    # fowt.setPosition(r6=[0,0,0, np.deg2rad(30), np.deg2rad(30), np.deg2rad(30)])
-    # print(fowt.rA)
-    # print(fowt.rB)
-
 

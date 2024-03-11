@@ -54,7 +54,7 @@ member_options:
     platform_member9_potMod: false
     platform_member10_potMod: false
 analysis_options:
-    general: {folder_output: /Users/dzalkind/Tools/WEIS-2/examples/15_RAFT_Studies/outputs/15_RAFT_optimization, fname_output: refturb_output}
+    general: {folder_output: 15_RAFT_optimization, fname_output: refturb_output}
     design_variables:
         floating:
             joints:

@@ -32,6 +32,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
             all_options['mooring_options']      = self.options['mooring_options']
             all_options['member_options']       = self.options['member_options']
             all_options['analysis_options']     = self.options['analysis_options']
+
+            # handle some paths for testing
+            gen_opt = all_options['analysis_options']['general']
+            gen_opt['folder_output'] = os.path.split(gen_opt['folder_output'])[-1]
+
             save_yaml(os.path.join(os.path.dirname(__file__), '../tests/test_data/'), 'weis_options.yaml', all_options)
 
 

@@ -85,7 +85,10 @@ class TestSpider(unittest.TestCase):
         prob['wind_reference_height'] = [90.0]
         prob['nBlades'] = 3
         prob['airfoils_name'] = ['DU40_A17', 'Cylinder', 'DU30_A17', 'DU21_A17', 'DU25_A17', 'DU35_A17', 'NACA64_A17']
-        prob['raft_dlcs'] = [[14.0, 0.0, 'IB_NTM', 'operating', 0, 'JONSWAP', 1.0, 7.0, 0.0], [16.0, 0.0, 'IB_NTM', 'operating', 0, 'JONSWAP', 2.0, 8.0, 0.0]]
+        opt['modeling']['raft_dlcs'] = [[14.0, 0.0, 'IB_NTM', 'operating', 0, 'JONSWAP', 1.0, 7.0, 0.0], [16.0, 0.0, 'IB_NTM', 'operating', 0, 'JONSWAP', 2.0, 8.0, 0.0]]
+        opt['modeling']['raft_dlcs_keys'] = ['wind_speed', 'wind_heading', 'turbulence',
+                                              'turbine_status', 'yaw_misalign', 'wave_spectrum',
+                                              'wave_period', 'wave_height', 'wave_heading']
 
         # -------------------------
         # turbine
@@ -144,10 +147,10 @@ class TestSpider(unittest.TestCase):
         # -------------------------
         # platform
         # -------------------------
-        prob['platform_member1_potMod'] = True
-        prob['platform_member2_potMod'] = False
-        prob['platform_member3_potMod'] = False
-        prob['platform_member4_potMod'] = False
+        opt['members']['platform_member1_potMod'] = True
+        opt['members']['platform_member2_potMod'] = False
+        opt['members']['platform_member3_potMod'] = False
+        opt['members']['platform_member4_potMod'] = False
         # member 1
         prob['platform_member1_Ca'] = [1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
         prob['platform_member1_CaEnd'] = [0.6, 0.6, 0.6, 0.6, 0.6, 0.6]
@@ -242,28 +245,28 @@ class TestSpider(unittest.TestCase):
         # -------------------------
         # mooring
         # -------------------------
-        prob['mooring_point1_name'] = 'line1_anchor'
-        prob['mooring_point2_name'] = 'line2_anchor'
-        prob['mooring_point3_name'] = 'line3_anchor'
-        prob['mooring_point4_name'] = 'line1_vessel'
-        prob['mooring_point5_name'] = 'line2_vessel'
-        prob['mooring_point6_name'] = 'line3_vessel'
-        prob['mooring_point1_type'] = 'fixed'
-        prob['mooring_point2_type'] = 'fixed'
-        prob['mooring_point3_type'] = 'fixed'
-        prob['mooring_point4_type'] = 'vessel'
-        prob['mooring_point5_type'] = 'vessel'
-        prob['mooring_point6_type'] = 'vessel'
-        prob['mooring_line1_endA'] = 'line1_anchor'
-        prob['mooring_line2_endA'] = 'line2_anchor'
-        prob['mooring_line3_endA'] = 'line3_anchor'
-        prob['mooring_line1_endB'] = 'line1_vessel'
-        prob['mooring_line2_endB'] = 'line2_vessel'
-        prob['mooring_line3_endB'] = 'line3_vessel'
-        prob['mooring_line1_type'] = 'main'
-        prob['mooring_line2_type'] = 'main'
-        prob['mooring_line3_type'] = 'main'
-        prob['mooring_line_type1_name'] = 'main'
+        opt['mooring']['mooring_point1_name'] = 'line1_anchor'
+        opt['mooring']['mooring_point2_name'] = 'line2_anchor'
+        opt['mooring']['mooring_point3_name'] = 'line3_anchor'
+        opt['mooring']['mooring_point4_name'] = 'line1_vessel'
+        opt['mooring']['mooring_point5_name'] = 'line2_vessel'
+        opt['mooring']['mooring_point6_name'] = 'line3_vessel'
+        opt['mooring']['mooring_point1_type'] = 'fixed'
+        opt['mooring']['mooring_point2_type'] = 'fixed'
+        opt['mooring']['mooring_point3_type'] = 'fixed'
+        opt['mooring']['mooring_point4_type'] = 'vessel'
+        opt['mooring']['mooring_point5_type'] = 'vessel'
+        opt['mooring']['mooring_point6_type'] = 'vessel'
+        opt['mooring']['mooring_line1_endA'] = 'line1_anchor'
+        opt['mooring']['mooring_line2_endA'] = 'line2_anchor'
+        opt['mooring']['mooring_line3_endA'] = 'line3_anchor'
+        opt['mooring']['mooring_line1_endB'] = 'line1_vessel'
+        opt['mooring']['mooring_line2_endB'] = 'line2_vessel'
+        opt['mooring']['mooring_line3_endB'] = 'line3_vessel'
+        opt['mooring']['mooring_line1_type'] = 'main'
+        opt['mooring']['mooring_line2_type'] = 'main'
+        opt['mooring']['mooring_line3_type'] = 'main'
+        opt['mooring']['mooring_line_type1_name'] = 'main'
         prob['mooring_line1_length'] = [902.2]
         prob['mooring_line2_length'] = [902.2]
         prob['mooring_line3_length'] = [902.2]

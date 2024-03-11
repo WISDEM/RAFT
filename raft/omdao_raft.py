@@ -5,7 +5,7 @@ import pickle, os
 import copy
 from itertools import compress
 
-DEBUG_OMDAO = False  # use within WEIS
+DEBUG_OMDAO = True  # use within WEIS
 
 ndim = 3
 ndof = 6
@@ -22,23 +22,6 @@ class RAFT_OMDAO(om.ExplicitComponent):
         self.options.declare('analysis_options')
 
     def setup(self):
-
-        # Save options for RAFT testing/debugging
-        if DEBUG_OMDAO:
-            from weis.aeroelasticse.FileTools import save_yaml
-            all_options = {}
-            all_options['modeling_options']     = self.options['modeling_options']
-            all_options['turbine_options']      = self.options['turbine_options']
-            all_options['mooring_options']      = self.options['mooring_options']
-            all_options['member_options']       = self.options['member_options']
-            all_options['analysis_options']     = self.options['analysis_options']
-
-            # handle some paths for testing
-            gen_opt = all_options['analysis_options']['general']
-            gen_opt['folder_output'] = os.path.split(gen_opt['folder_output'])[-1]
-
-            save_yaml(os.path.join(os.path.dirname(__file__), '../tests/test_data/'), 'weis_options.yaml', all_options)
-
 
         # unpack options
         modeling_opt = self.options['modeling_options']
@@ -365,6 +348,22 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # save inputs for RAFT testing/debugging
         if DEBUG_OMDAO:
             from weis.aeroelasticse.FileTools import save_yaml
+            # Options
+            all_options = {}
+            all_options['modeling_options']     = self.options['modeling_options']
+            all_options['turbine_options']      = self.options['turbine_options']
+            all_options['mooring_options']      = self.options['mooring_options']
+            all_options['member_options']       = self.options['member_options']
+            all_options['analysis_options']     = self.options['analysis_options']
+
+            # handle some paths for testing
+            gen_opt = all_options['analysis_options']['general']
+            gen_opt['folder_output'] = os.path.split(gen_opt['folder_output'])[-1]
+
+            save_yaml(os.path.join(os.path.dirname(__file__), '../tests/test_data/'), 'weis_options.yaml', all_options)
+
+
+            # Inputs
             input_list = self.list_inputs(out_stream=None)
             input_dict = {}
             for i in input_list:

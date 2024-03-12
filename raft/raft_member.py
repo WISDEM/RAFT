@@ -94,6 +94,12 @@ class Member:
         else:
             raise ValueError('The only allowable shape strings are circular and rectangular')
 
+        # We disable the MCF correction if the element is not circular
+        if self.MCF:
+            if not self.shape=='circular': # We check if it is surface piercing after setPosition
+                print(f'MacCamy-Fuchs correction not applicable to member {self.name}. Disabling MCF correction.')
+                self.MCF = False
+
 
         self.t         = getFromDict(mi, 't', shape=n)               # shell thickness at each station [m]
         self.rho_shell = getFromDict(mi, 'rho_shell', shape=0, default=8500.) # shell mass density [kg/m^3]
@@ -321,6 +327,14 @@ class Member:
         self.qMat  = VecVecTrans(self.q)
         self.p1Mat = VecVecTrans(self.p1)
         self.p2Mat = VecVecTrans(self.p2)
+
+        # We check if the member can use the MCF correction
+        # We just require the member to be circular and cross the water surface
+        if self.MCF:
+            if (not self.shape=='circular') or (not self.r[0,2]*self.r[-1,2]<0):
+                print(f'MacCamy-Fuchs correction not applicable to member {self.name}. Disabling MCF correction.')
+                self.MCF = False
+                
 
 
 
@@ -890,7 +904,7 @@ class Member:
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 
-    def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81):
+    def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81, k_array=None):
         '''Compute the Member's linear strip-theory-hydrodynamics terms, 
         related to drag and added mass, which are also a precursor to 
         excitation. All computed quantities are in global orientations.
@@ -905,16 +919,19 @@ class Member:
         
         Returns
         -------
-        A_hydro, I_hydro : 3x3 matrices
+        A_hydro, I_hydro : 6x6 matrices
             Hydrodynamic added mass and inertial excitation matrices.
         '''
         
-        # hydrodynamic added mass matrix from strip theory [kg, kg-m, kg-m^2]
+        # hydrodynamic added mass and excitation matrices from strip theory [kg, kg-m, kg-m^2]
         A_hydro = np.zeros([6,6])
         I_hydro = np.zeros([6,6])
 
         circ = self.shape=='circular'  # boolean for circular vs. rectangular
         
+        # Local inertial excitation matrix - Froude-Krylov.
+        # Calculated in a separate function to allow for cases with MacCamy-Fuchs correction.
+        self.calcImat(rho=rho, g=g, k_array=k_array)
 
         # loop through each node of the member
         for il in range(self.ns):
@@ -945,15 +962,9 @@ class Member:
                     
                     # Local added mass matrix (axial term explicitly excluded here - we aren't dealing with chains)
                     Amat_sides = rho*v_i *( Ca_p1*self.p1Mat + Ca_p2*self.p2Mat )
-                    
-                    # Local inertial excitation matrix - Froude-Krylov  
-                    # (axial term explicitly excluded here - we aren't dealing with chains)
-                    # Note, the 1 is the Cp, dynamic pressure, term.
-                    Imat_sides = rho*v_i *(  (1.+Ca_p1)*self.p1Mat + (1.+Ca_p2)*self.p2Mat ) 
-                    
-
+                                       
                     # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
-                    # Note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+                    # Note : v_i and a_i work out to zero for non-tapered sections or non-end sections
 
                     # compute volume assigned to this end surface, and
                     # signed end area (positive facing down) = mean diameter of strip * radius change of strip
@@ -971,14 +982,9 @@ class Member:
                     # Local added mass matrix
                     Amat_end = rho*v_i * Ca_End*self.qMat
                     
-                    # Local inertial excitation matrix 
-                    # Note, there is no 1 added to Ca_End because dynamic pressure is handled separately
-                    Imat_end = rho*v_i * Ca_End*self.qMat  
-                    
 
                     # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
                     self.Amat[il,:,:] = Amat_sides + Amat_end
-                    self.Imat[il,:,:] = Imat_sides + Imat_end
                     self.a_i[il] = a_i  # signed axial reference area for use in dynamic pressure force
                     
                     
@@ -993,9 +999,9 @@ class Member:
         else:
             return A_hydro
 
-    def calcImat_MCF(self, rho=1025, g=9.81, k_array=None):
+    def calcImat(self, rho=1025, g=9.81, k_array=None):
         '''Compute the Member's linear strip-theory-hydrodynamics excitation 
-        matrix, Imat_MCF, which is the term Cm=(1+Ca) from Morison's equation.
+        matrix, Imat, which is the term Cm=(1+Ca) from Morison's equation.
         Optionally, Cm can be computed using the MacCamy-Fuchs correction for
         a vertical circular cylinder if the wave number k is specified.
         All computed quantities are in global orientations.
@@ -1005,20 +1011,9 @@ class Member:
         
         MCF = False
         if k_array is not None:
-            # Check if member:
-            # i) is circular
-            # ii) is vertical
-            # iii) is surface-piercing
-            if circ and self.q[2] >= 0.95 and self.r[0,2]*self.r[-1,2]<0 and self.MCF:
-                MCF = True
-            else:
-                print(f'MacCamy-Fuchs correction not applicable to member {self.name}')
-        
-            if len(k_array) != self.Imat_MCF.shape[3]:
-                raise ValueError(f'Number of elements in wave number vector ({len(k_array)}) must match the number of frequencies previously specified for member ({self.Imat.shape[3]}). ')
-        
-        if not MCF:
-            print(f'Computing calcImat_MCF without MCF correction for member {self.name}.')
+            MCF = self.MCF
+            if len(k_array) != self.Imat_MCF.shape[3] and MCF:
+                raise ValueError(f'Number of elements in wave number vector ({len(k_array)}) must match the number of frequencies previously specified for member ({self.Imat.shape[3]}).')
 
         # loop through each node of the member
         for il in range(self.ns):
@@ -1046,38 +1041,23 @@ class Member:
                     if self.r[il,2] + 0.5*self.dls[il] > 0:    # if member extends out of water 
                         v_i = v_i * (0.5*self.dls[il] - self.r[il,2]) / self.dls[il]  # scale volume by the portion that is under water
                                        
-                    # Local inertial excitation matrix
-                    Cm_p1_0, Cm_p2_0 = (1.+Ca_p1), (1.+Ca_p2)
+                    # Local inertial excitation matrix - Froude-Krylov  
+                    # (axial term explicitly excluded here - we aren't dealing with chains)
+                    # Note, the 1 is the Cp, dynamic pressure, term.
                     if MCF:
                         Imat_sides = np.zeros([3, 3, len(k_array)], dtype=complex)
-                        for ik, k in enumerate(k_array):                            
-                            # The MCF correction only makes sense for short waves
-                            # We use the threshold lamda/D < 5 commonly adopted for the Morison equation,
-                            # but changing smoothly from the previous values using a ramp function
-                            R = self.ds[il]/2
-                            Tr = np.pi/5/R # Threshold value
-                            T0 = 0 # Value to start the transition
-                            ramp = 0.5*(1-np.cos(np.pi*(k-T0)/Tr)) if k<Tr else 1
-                            ramp = 0 if k<=T0 else ramp
+                        for ik, k in enumerate(k_array):
+                            # Apply MCF correction to the nodes of sections that cross the water surface
 
-                            Hp1 = 0.5 * (hankel1(0, k*R) - hankel1(2, k*R)) # Derivative of the Hankel function o ffirst kind and order one
-                            Cm_p1 = 4j  / (np.pi * (k*R)**2 * Hp1)
-                            Cm_p2 = Cm_p1           
-
-                            Imat_sides[:, :, ik] = rho*v_i * ((Cm_p1*self.p1Mat + Cm_p2*self.p2Mat)*ramp + (Cm_p1_0*self.p1Mat + Cm_p2_0*self.p2Mat)*(1-ramp))
-
-                            # Cm_p1, Cm_p2 = (1.+Ca_p1), (1.+Ca_p2)
-                            # if np.pi/k/R < 5:
-                            #     Hp1 = 0.5 * (hankel1(0, k*R) - hankel1(2, k*R)) # Derivative of the Hankel function o ffirst kind and order one
-                            #     Cm_p1 = 4j  / (np.pi * (k*R)**2 * Hp1)
-                            #     Cm_p2 = Cm_p1                    
-                            # Imat_sides[:, :, ik] = rho*v_i *(  Cm_p1*self.p1Mat + Cm_p2*self.p2Mat ) 
+                            Cm_p1, Cm_p2 = self.getCmSides(il, k=k)
+                            Imat_sides[:, :, ik] = rho*v_i * (Cm_p1*self.p1Mat + Cm_p2*self.p2Mat)
                     else:
-                        Imat_sides = rho*v_i *(Cm_p1_0*self.p1Mat + Cm_p2_0*self.p2Mat)
+                        Cm_p1, Cm_p2 = self.getCmSides(il, k=None)
+                        Imat_sides = rho*v_i *(Cm_p1*self.p1Mat + Cm_p2*self.p2Mat)
 
 
-                    # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
-                    # Note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+                    # ----- add axial/end effects for excitation ------
+                    # Note : v_i work out to zero for non-tapered sections or non-end sections
 
                     # compute volume assigned to this end surface, and
                     # signed end area (positive facing down) = mean diameter of strip * radius change of strip
@@ -1095,12 +1075,55 @@ class Member:
                     Imat_end = rho*v_i * Ca_End*self.qMat  
                     
                     # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
-                    if MCF:
+                    if MCF != 0:
                         self.Imat_MCF[il,:,:, :] = Imat_sides[:,:, :] + Imat_end[:,:, None]
                     else:
-                        self.Imat_MCF[il,:,:, :] = Imat_sides[:,:, None] + Imat_end[:,:, None]
+                        self.Imat[il,:,:] = Imat_sides[:,:] + Imat_end[:,:]
+    
 
-        
+    def getCmSides(self, il, k=None):
+        if il < 0 or il >= self.ns:
+            raise Exception(f"Member {self.name}: node outside range in getCm.")
+
+        MCF = False
+        if k is not None:
+            MCF = self.MCF
+
+        # Check if the node is part of a surface piercing section
+        z_st = self.r[0,2] + self.stations
+        idx = np.where(z_st[1:]*z_st[0:-1]<0)[0][0]
+
+        if il < self.stations[idx]:
+            MCF = False
+
+        Ca_p1  = np.interp( self.ls[il], self.stations, self.Ca_p1 )
+        Ca_p2  = np.interp( self.ls[il], self.stations, self.Ca_p2 )
+        Cm_p1_0, Cm_p2_0 = (1.+Ca_p1), (1.+Ca_p2)
+
+        if not MCF:
+            Cm_p1 = Cm_p1_0
+            Cm_p2 = Cm_p2_0
+
+        else:            
+            R = self.ds[il]/2
+            Hp1 = 0.5 * (hankel1(0, k*R) - hankel1(2, k*R)) # Derivative of the Hankel function o ffirst kind and order one
+            Cm_p1 = 4j  / (np.pi * (k*R)**2 * Hp1)
+            Cm_p2 = Cm_p1
+
+            # The MCF correction only makes sense for short waves
+            # We use the threshold lamda/D < 5 commonly adopted for the Morison equation,
+            # but changing smoothly from the previous values using a ramp function
+            # This is particularly useful for cases where the tuned value of Ca was too 
+            # different from the theoretical value of 1 (e.g. the OC4 Platform, with Ca = 0.63)
+            # and the user doesn't want want to tune it again
+            Tr = np.pi/5/R # Threshold value
+            T0 = 0 # Value to start the transition
+            ramp = 0.5*(1-np.cos(np.pi*(k-T0)/Tr)) if k<Tr else 1
+            ramp = 0 if k<=T0 else ramp 
+            Cm_p1 = Cm_p1 * ramp + Cm_p1_0 * (1-ramp)
+            Cm_p2 = Cm_p2 * ramp + Cm_p2_0 * (1-ramp)
+
+        return Cm_p1, Cm_p2
 
     def getSectionProperties(self, station):
         '''Get member cross sectional area and moments of inertia at a user-

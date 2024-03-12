@@ -916,13 +916,13 @@ class FOWT():
         for i,mem in enumerate(self.memberList):
         
             # get member added mass matrix about PRP (also saves each member's inertial excitation coefficients)
-            A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3], rho=rho, g=g)                      
-            self.A_hydro_morison += A_hydro_i  # add to FOWT added mass matrix
-
-            # Compute Imat_MCF, which is stored in the member object
             if mem.MCF:
-                mem.calcImat_MCF(rho=rho, g=g, k_array=self.k)
-    
+                k_array = self.k
+            else:
+                k_array = None
+
+            A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3], rho=rho, g=g, k_array=k_array)                      
+            self.A_hydro_morison += A_hydro_i  # add to FOWT added mass matrix
     
         # ----- Get hydrodynamic contributions from any underwater rotors ------
         for i, rot in enumerate(self.rotorList):
@@ -1091,10 +1091,10 @@ class FOWT():
                         # calculate the linear excitation forces on this node for each wave heading and frequency
                         for ih in range(self.nWaves):
                             for i in range(self.nw):
-                                Imat = mem.Imat[il,:,:]
                                 if mem.MCF:
                                     Imat = mem.Imat_MCF[il,:,:, i]
-                                    # Imat = mem.Imat[il,:,:]
+                                else:
+                                    Imat = mem.Imat[il,:,:]
                                 F_exc_iner_temp = np.matmul(Imat, mem.ud[ih,il,:,i]) + mem.pDyn[ih,il,i]*mem.a_i[il]*mem.q 
                                 
                                 # add the excitation complex amplitude for this heading and frequency to the global excitation vector
@@ -1753,7 +1753,7 @@ class FOWT():
     
     def correction_KAY(self, member, h, w1, w2, rho, g, k1=None, k2=None, Nm=10, flag='F'):
         '''For surface-piercing vertical cylinders, we can partially account for second-order diffraction effects
-           by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinders obtained byÇ 
+           by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinder. 
            For the difference-frequency loads: Kim and Yue (1990) The complete second-order diffraction solution for an axisymmetric body - Part 2. Bichromatic incident waves and body motions
            For the mean loads: Kim and Yue (1989) The complete second-order diffraction solution for an axisymmetric body - Part 1. Monochromatic incident waves
     
@@ -1766,7 +1766,10 @@ class FOWT():
         '''
         
         F = 0
-           
+
+        if not member.MCF:
+            return F
+
         # Check if member is circular
         if member.shape != 'circular':
             return F
@@ -1790,7 +1793,7 @@ class FOWT():
                 continue
 
             z1 = member.r[0,2] + stations[i_s-1]
-            z2 = member.r[0,2] + stations[i_s]            
+            z2 = member.r[0,2] + stations[i_s]
         
             R1 = radii[i_s-1]
             R2 = radii[i_s]

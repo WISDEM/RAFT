@@ -7,8 +7,8 @@ members:   # list all members here
   - name      :  cylinder                  # [-]    an identifier (no longer has to be number)       
     type      :  2                         # [-]
     dlsMax    :  0.1                       # maximum node splitting section amount for platform members; can't be 0
-    rA        :  [ 0, 0, -20]              # [m]    end A coordinates
-    rB        :  [ 0, 0,  15]              # [m]    and B coordinates
+    rA        :  [-17.5,  0, -20.0]  # [m]    end A coordinates
+    rB        :  [ 17.5,  0, -20.0]  # [m]    and B coordinates
     shape     :  circ                      # [-]    circular or rectangular
     gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
     potMod    :  False                     # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory

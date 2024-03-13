@@ -15,7 +15,7 @@ members:   # list all members here
     MCF       :  False                     # [bool] Whether to correct the inertia coefficient using the MacCamy and Fuchs correction
     # --- outer shell including hydro---
     stations  :  [0, 35]                   # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-    d         :  9.85                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+    d         :  [9.85, 4]                 # [m]    diameters if circular or side lengths if rectangular (can be pairs)
     t         :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
     Cd        :  0.6                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
     Ca        :  0.85                      # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)

@@ -23,5 +23,5 @@ members:   # list all members here
     CaEnd     :  0.7                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
     rho_shell :  7850                      # [kg/m3]
     # --- ballast ---
-    l_fill    :  2.71                      # [m]
+    l_fill    :  2.71                      
     rho_fill  :  5000                      # [kg/m3]

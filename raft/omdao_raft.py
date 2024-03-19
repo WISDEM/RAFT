@@ -23,18 +23,6 @@ class RAFT_OMDAO(om.ExplicitComponent):
 
     def setup(self):
 
-        # Save options for RAFT testing/debugging
-        if DEBUG_OMDAO:
-            from weis.aeroelasticse.FileTools import save_yaml
-            all_options = {}
-            all_options['modeling_options']     = self.options['modeling_options']
-            all_options['turbine_options']      = self.options['turbine_options']
-            all_options['mooring_options']      = self.options['mooring_options']
-            all_options['member_options']       = self.options['member_options']
-            all_options['analysis_options']     = self.options['analysis_options']
-            save_yaml(os.path.join(os.path.dirname(__file__), '../tests/test_data/'), 'weis_options.yaml', all_options)
-
-
         # unpack options
         modeling_opt = self.options['modeling_options']
         analysis_options = self.options['analysis_options']
@@ -151,13 +139,6 @@ class RAFT_OMDAO(om.ExplicitComponent):
         self.add_input("mu_air", val=1.81e-5, units="kg/(m*s)", desc="Dynamic viscosity of air")
         self.add_input("shear_exp", val=0.2, desc="Shear exponent of the wind.")
         self.add_input('rated_rotor_speed', val=0.0, units='rpm',  desc='rotor rotation speed at rated')
-
-        # DLCs
-        self.add_discrete_input('raft_dlcs', val=[[]]*n_cases, desc='DLC case table for RAFT with each row a new case and headings described by the keys')
-        self.add_discrete_input('raft_dlcs_keys', val=['wind_speed', 'wind_heading', 'turbulence',
-                                                       'turbine_status', 'yaw_misalign', 'wave_spectrum',
-                                                       'wave_period', 'wave_height', 'wave_heading'],
-                                desc='DLC case table column headings')
         
         # member inputs
         for i in range(1, nmembers + 1):
@@ -179,7 +160,6 @@ class RAFT_OMDAO(om.ExplicitComponent):
             self.add_input(m_name+'s_ghostB', val=1.0, desc='Non-dimensional location where overlap point begins at end B')
             self.add_input(m_name+'gamma', val=0.0, units='deg', desc='Twist angle about the member z axis')
             # ADD THIS AS AN OPTION IN WEIS
-            self.add_discrete_input(m_name+'potMod', val=False, desc='Whether to model the member with potential flow')
             self.add_input(m_name+'stations', val=np.zeros(mnpts), desc='Location of stations along axis, will be normalized from end A to B')
             # updated version to better handle 'diameters' between circular and rectangular members
             if mshape == 'circ' or mshape == 'square':
@@ -231,20 +211,14 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # connection points
         for i in range(1, nconnections + 1):
             pt_name = f'mooring_point{i}_'
-            self.add_discrete_input(pt_name+'name', val=f'line{i}', desc='Mooring point identifier')
-            self.add_discrete_input(pt_name+'type', val='fixed', desc='Mooring connection type')
             self.add_input(pt_name+'location', val=np.zeros(ndim), units='m', desc='Coordinates of mooring connection')
         # lines
         for i in range(1, nlines + 1):
             pt_name = f'mooring_line{i}_'
-            self.add_discrete_input(pt_name+'endA', val='default', desc='End A coordinates')
-            self.add_discrete_input(pt_name+'endB', val='default', desc='End B coordinates')
-            self.add_discrete_input(pt_name+'type', val='mooring_line_type1', desc='Mooring line type')
             self.add_input(pt_name+'length', val=0.0, units='m', desc='Length of line')
         # line types
         for i in range(1, nline_types + 1):
             lt_name = f'mooring_line_type{i}_'
-            self.add_discrete_input(lt_name+'name', val='default', desc='Name of line type')
             self.add_input(lt_name+'diameter', val=0.0, units='m', desc='Diameter of mooring line type')
             self.add_input(lt_name+'mass_density', val=0.0, units='kg/m**3', desc='Mass density of line type')
             self.add_input(lt_name+'stiffness', val=0.0, desc='Stiffness of line type')
@@ -374,6 +348,22 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # save inputs for RAFT testing/debugging
         if DEBUG_OMDAO:
             from weis.aeroelasticse.FileTools import save_yaml
+            # Options
+            all_options = {}
+            all_options['modeling_options']     = self.options['modeling_options']
+            all_options['turbine_options']      = self.options['turbine_options']
+            all_options['mooring_options']      = self.options['mooring_options']
+            all_options['member_options']       = self.options['member_options']
+            all_options['analysis_options']     = self.options['analysis_options']
+
+            # handle some paths for testing
+            gen_opt = all_options['analysis_options']['general']
+            gen_opt['folder_output'] = os.path.split(gen_opt['folder_output'])[-1]
+
+            save_yaml(os.path.join(os.path.dirname(__file__), '../tests/test_data/'), 'weis_options.yaml', all_options)
+
+
+            # Inputs
             input_list = self.list_inputs(out_stream=None)
             input_dict = {}
             for i in input_list:
@@ -522,7 +512,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             design['platform']['members'][i]['rB'] = rB
             design['platform']['members'][i]['shape'] = m_shape
             design['platform']['members'][i]['gamma'] = float(inputs[m_name+'gamma'])
-            design['platform']['members'][i]['potMod'] = discrete_inputs[m_name+'potMod']
+            design['platform']['members'][i]['potMod'] = members_opt[m_name+'potMod']
             design['platform']['members'][i]['stations'] = s_grid
             
             # updated version to better handle 'diameters' between circular and rectangular members
@@ -601,8 +591,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['mooring']['points'] = [dict() for m in range(nconnections)] #Note: doesn't work [{}]*nconnections
         for i in range(0, nconnections):
             pt_name = f'mooring_point{i+1}_'
-            design['mooring']['points'][i]['name'] = discrete_inputs[pt_name+'name']
-            design['mooring']['points'][i]['type'] = discrete_inputs[pt_name+'type']
+            design['mooring']['points'][i]['name'] = mooring_opt[pt_name+'name']
+            design['mooring']['points'][i]['type'] = mooring_opt[pt_name+'type']
             design['mooring']['points'][i]['location'] = inputs[pt_name+'location']
             if design['mooring']['points'][i]['type'].lower() == 'fixed':
                 design['mooring']['points'][i]['anchor_type'] = 'drag_embedment' #discrete_inputs[pt_name+'type']
@@ -611,14 +601,14 @@ class RAFT_OMDAO(om.ExplicitComponent):
         for i in range(0, nlines):
             ml_name = f'mooring_line{i+1}_'
             design['mooring']['lines'][i]['name'] = f'line{i+1}'
-            design['mooring']['lines'][i]['endA'] = discrete_inputs[ml_name+'endA']
-            design['mooring']['lines'][i]['endB'] = discrete_inputs[ml_name+'endB']
-            design['mooring']['lines'][i]['type'] = discrete_inputs[ml_name+'type']
+            design['mooring']['lines'][i]['endA'] = mooring_opt[ml_name+'endA']
+            design['mooring']['lines'][i]['endB'] = mooring_opt[ml_name+'endB']
+            design['mooring']['lines'][i]['type'] = mooring_opt[ml_name+'type']
             design['mooring']['lines'][i]['length'] = inputs[ml_name+'length']
         design['mooring']['line_types'] = [dict() for m in range(nline_types)] #Note: doesn't work [{}]*nline_types
         for i in range(0, nline_types):
             lt_name = f'mooring_line_type{i+1}_'
-            design['mooring']['line_types'][i]['name'] = discrete_inputs[lt_name+'name']
+            design['mooring']['line_types'][i]['name'] = mooring_opt[lt_name+'name']
             design['mooring']['line_types'][i]['diameter'] = float(inputs[lt_name+'diameter'])
             design['mooring']['line_types'][i]['mass_density'] = float(inputs[lt_name+'mass_density'])
             design['mooring']['line_types'][i]['stiffness'] = float(inputs[lt_name+'stiffness'])
@@ -637,15 +627,15 @@ class RAFT_OMDAO(om.ExplicitComponent):
 
         # DLCs
         # Only give RAFT valid RAFT cases, spectral wind
-        turb_ind = discrete_inputs['raft_dlcs_keys'].index('turbulence')
-        turb_type = [case_data[turb_ind] for case_data in discrete_inputs['raft_dlcs']]
+        turb_ind = modeling_opt['raft_dlcs_keys'].index('turbulence')
+        turb_type = [case_data[turb_ind] for case_data in modeling_opt['raft_dlcs']]
         case_mask = [
             ('NTM' in tt or 'ETM' in tt or 'EWM' in tt)
              for tt in turb_type]
 
         design['cases'] = {}
-        design['cases']['keys'] = discrete_inputs['raft_dlcs_keys']
-        design['cases']['data'] = list(compress(discrete_inputs['raft_dlcs'],case_mask))    # filter cases by case_mask
+        design['cases']['keys'] = modeling_opt['raft_dlcs_keys']
+        design['cases']['data'] = list(compress(modeling_opt['raft_dlcs'],case_mask))    # filter cases by case_mask
 
         # Debug
         if modeling_opt['save_designs']:

@@ -12,12 +12,112 @@ modeling_options:
     dls_max: 5
     min_freq_BEM: 0.0159
     runPyHAMS: true
-    BEM_dir: outputs/IEA_w_TMD_33/BEM
+    BEM_dir: /Users/dzalkind/Tools/WEIS-2/examples/15_RAFT_Studies/none/BEM
     model_potential: [false, false, false, false, false, false, false, false, false, false]
     nfreq: 20
     n_cases: 98
+    raft_dlcs:
+       -  [3.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
+       -  [5.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
+       -  [7.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
+       -  [9.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
+       -  [11.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
+       -  [13.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
+       -  [15.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
+       -  [17.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
+       -  [19.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
+       -  [21.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
+       -  [23.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
+       -  [25.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
+       -  [3.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
+       -  [3.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
+       -  [5.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
+       -  [5.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
+       -  [7.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
+       -  [7.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
+       -  [9.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
+       -  [9.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
+       -  [11.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
+       -  [11.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
+       -  [13.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
+       -  [13.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
+       -  [15.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
+       -  [15.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
+       -  [17.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
+       -  [17.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
+       -  [19.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
+       -  [19.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
+       -  [21.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
+       -  [21.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
+       -  [23.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
+       -  [23.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
+       -  [25.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
+       -  [25.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
+       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
+       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
+       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
+       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
+       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
+       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
+       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
+       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
+       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
+       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
+       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
+       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
+       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
+       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
+       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
+       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
+       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
+       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
+       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
+       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
+       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
+       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
+       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
+       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
+       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
+       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
+       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
+       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
+       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
+       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
+       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
+       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
+       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
+       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
+       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
+       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
+       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
+       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
+       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
+       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
+       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
+       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
+       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
+       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
+       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
+       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
+       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
+       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
+       -  [3.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 11.5, 6.3, 0.0]
+       -  [5.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.1, 7.15, 0.0]
+       -  [7.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.7, 8.0, 0.0]
+       -  [9.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.75, 8.05, 0.0]
+       -  [11.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.95, 8.3, 0.0]
+       -  [13.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 13.1, 8.5, 0.0]
+       -  [15.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 13.6, 9.15, 0.0]
+       -  [17.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
+       -  [19.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
+       -  [21.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
+       -  [23.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.850000000000001, 0.0]
+       -  [25.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.9, 0.0]
+       -  [70.0, 0.0, IB_EWM, parked, -8.0, JONSWAP, 14.2, 10.68, 0.0]
+       -  [70.0, 0.0, IB_EWM, parked, 8.0, JONSWAP, 14.2, 10.68, 0.0]
+    raft_dlcs_keys: [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading]
 turbine_options:
-    npts: 21
+    npts: 11
     scalar_thicknesses: false
     scalar_diameters: false
     scalar_coefficients: false
@@ -30,21 +130,31 @@ turbine_options:
     n_pc: 20
     n_af: 8
     af_used_names: [circular, circular, SNL-FFA-W3-500, FFA-W3-360, FFA-W3-330blend, FFA-W3-301, FFA-W3-270blend, FFA-W3-241, FFA-W3-211, FFA-W3-211]
-mooring_options: {nlines: 3, nline_types: 1, nconnections: 6}
+mooring_options: {nlines: 3, nline_types: 1, nconnections: 6, mooring_point1_name: line1_anchor, mooring_point1_type: fixed, mooring_point2_name: line2_anchor, mooring_point2_type: fixed, mooring_point3_name: line3_anchor, mooring_point3_type: fixed, mooring_point4_name: line1_vessel, mooring_point4_type: vessel, mooring_point5_name: line2_vessel, mooring_point5_type: vessel, mooring_point6_name: line3_vessel, mooring_point6_type: vessel, mooring_line1_endA: line1_anchor, mooring_line1_endB: line1_vessel, mooring_line1_type: main, mooring_line2_endA: line2_anchor, mooring_line2_endB: line2_vessel, mooring_line2_type: main, mooring_line3_endA: line3_anchor, mooring_line3_endB: line3_vessel, mooring_line3_type: main, mooring_line_type1_name: main}
 member_options:
     nmembers: 10
     npts: [4, 7, 7, 7, 2, 2, 2, 2, 2, 2]
     npts_lfill: &id001 [3, 6, 6, 6, 1, 1, 1, 1, 1, 1]
     npts_rho_fill: *id001
-    ncaps: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+    ncaps: [2, 4, 4, 4, 2, 2, 2, 2, 2, 2]
     nreps: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     shape: [circ, circ, circ, circ, circ, circ, circ, circ, circ, circ]
     scalar_thicknesses: &id002 [false, false, false, false, false, false, false, false, false, false]
     scalar_diameters: *id002
     scalar_coefficients: [false, false, false, false, false, false, false, false, false, false]
     n_ballast_type: 2
+    platform_member1_potMod: false
+    platform_member2_potMod: false
+    platform_member3_potMod: false
+    platform_member4_potMod: false
+    platform_member5_potMod: false
+    platform_member6_potMod: false
+    platform_member7_potMod: false
+    platform_member8_potMod: false
+    platform_member9_potMod: false
+    platform_member10_potMod: false
 analysis_options:
-    general: {folder_output: outputs/15_RAFT_Studies, fname_output: refturb_output}
+    general: {folder_output: 15_RAFT_optimization, fname_output: refturb_output}
     design_variables:
         floating:
             joints:
@@ -69,7 +179,7 @@ analysis_options:
                 twist: {flag: false, inverse: false, n_opt: 30, max_decrease: 0.1, max_increase: 0.1, index_start: 0, index_end: 8}
                 chord: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 af_positions: {flag: false, af_start: 4}
-                t/c: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
+                rthick: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 L/D: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 c_d: {flag: false, n_opt: 8, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 stall_margin: {flag: false, n_opt: 8, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
@@ -261,4 +371,5 @@ analysis_options:
         includes: ['*raft*', '*floating*', '*platform*']
         just_dvs: false
     inverse_design: {}
+    fname_input_analysis: /Users/dzalkind/Tools/WEIS-2/examples/15_RAFT_Studies/analysis_options.yaml
     opt_flag: true

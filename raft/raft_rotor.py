@@ -50,6 +50,9 @@ class Rotor:
         
         self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'], dtype=int)[ir]         # [-]
         
+        self.heading = 0  # heading of the rotor in radians
+        
+        # note: the below are not headings, they're blade azimuth angles -- need to rename
         default_headings    = list(np.arange(self.nBlades) * 360 / self.nBlades) # equally distribute blades
         self.headings       = getFromDict(turbine, 'headings', shape=-1, default=default_headings)  # [deg]
 
@@ -782,6 +785,8 @@ class Rotor:
         # inflow misalignment heading relative to turbine heading [deg]
         yaw_misalign =  turbine_heading - np.radians(heading)
         turbine_tilt = turbine_tilt
+        
+        self.heading = turbine_heading  # store for later use (since q doesn't yet account for nacelle yaw!)
 
         # call CCBlade
         loads, derivs = self.runCCBlade(speed, ptfm_pitch=turbine_tilt,
@@ -1000,9 +1005,20 @@ class Rotor:
         
         
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0, color='k', 
-             airfoils=False, zorder=2):
-        '''Draws the rotor on the passed axes, considering optional platform offset and rotation matrix, and rotor azimuth angle'''
+             airfoils=False, plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):
+        '''Draws the rotor on the passed axes, considering optional platform 
+        offset and rotation matrix, and rotor azimuth angle.
+        
+        Parameters
+        ----------        
+        plot2d: bool
+            If true, produces a 2d plot on the axes defined by Xuvec and Yuvec. 
+            Otherwise produces a 3d plot (default).
+        '''
 
+        Xuvec = np.array(Xuvec)
+        Yuvec = np.array(Yuvec)
+        
         # support self color option
         if color == 'self':
             color = self.color  # attempt to allow custom colors
@@ -1034,7 +1050,7 @@ class Rotor:
                 
         P = np.array([X, Y, Z])
         
-        # ----- rotation matricse ----- 
+        # ----- rotation matrices ----- 
         # (blade pitch would be a -rotation about local z)
         R_precone = rotationMatrix(0, -self.ccblade.precone, 0)  
         #R_azimuth = [rotationMatrix(azimuth + azi, 0, 0) for azi in 2*np.pi/3.*np.arange(3)]
@@ -1050,20 +1066,64 @@ class Rotor:
             P2 = P2 + np.array([-self.overhang, 0, self.Zhub])[:,None] # PRP to tower-shaft intersection point      # assumes overhang value is always positive
             P2 = np.matmul(R_ptfm, P2) + np.array(r_ptfm)[:,None]
           
-            # drawing airfoils                            
-            if airfoils:
-                for ii in range(m-1):
-                    ax.plot(P2[0, npts*ii:npts*(ii+1)], P2[1, npts*ii:npts*(ii+1)], P2[2, npts*ii:npts*(ii+1)], color=color, lw=0.4)  
-            # draw outline
-            ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], color=color, lw=0.4, zorder=zorder) # leading edge  
-            ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], color=color, lw=0.4, zorder=zorder)  # trailing edge
-            
-            
-        #for j in range(m):
-        #    linebit.append(ax.plot(Xs[j::m], Ys[j::m], Zs[j::m]            , color='k'))  # station rings
-        #
-        #return linebit
+            if plot2d:  # new 2d plotting option
+                
+                # apply any 3D to 2D transformation here to provide desired viewing angle
+                Xs2d = np.matmul(Xuvec, P2)
+                Ys2d = np.matmul(Yuvec, P2)
+                
+                if airfoils:
+                    for ii in range(m-1):
+                        ax.plot(Xs2d[npts*ii:npts*(ii+1)], Ys2d[npts*ii:npts*(ii+1)], color=color, lw=0.4)  
+                # draw outline
+                ax.plot(Xs2d[0:-1:npts], Ys2d[0:-1:npts], color=color, lw=0.4, zorder=zorder) # leading edge  
+                ax.plot(Xs2d[2:-1:npts], Ys2d[2:-1:npts], color=color, lw=0.4, zorder=zorder)  # trailing edge
 
+            
+            else:  # normal 3d case
+                # drawing airfoils                            
+                if airfoils:
+                    for ii in range(m-1):
+                        ax.plot(P2[0, npts*ii:npts*(ii+1)], P2[1, npts*ii:npts*(ii+1)], P2[2, npts*ii:npts*(ii+1)], color=color, lw=0.4)  
+                # draw outline
+                ax.plot(P2[0, 0:-1:npts], P2[1, 0:-1:npts], P2[2, 0:-1:npts], color=color, lw=0.4, zorder=zorder) # leading edge  
+                ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], color=color, lw=0.4, zorder=zorder)  # trailing edge
+
+        # ----- Also draw a circle -----
+        r = self.ccblade.r[-1]
+        x_shift = r * np.tan(self.ccblade.precone)  # shift forward of tips due to precone
+        
+        # lists to be filled with coordinates for plotting
+        X=[]
+        Y=[]
+        Z=[]
+        
+        n = 24                      # number of sides for a circle
+        for i in range(n+1):
+            y = np.cos(float(i)/float(n)*2.0*np.pi)    # x coordinates of a unit circle
+            z = np.sin(float(i)/float(n)*2.0*np.pi)    # y
+
+            X.append(0)
+            Y.append(r*y)
+            Z.append(r*z)
+
+        Pcirc = np.vstack([X, Y, Z])
+        P2 = np.matmul(R_tilt, Pcirc)
+        # PRP to tower-shaft intersection point 
+        # Assumes overhang value is always positive, also accounts for precurve
+        P2 = P2 + np.array([-self.overhang - x_shift, 0, self.Zhub])[:,None] 
+        P2 = np.matmul(R_ptfm, P2) + np.array(r_ptfm)[:,None]
+        
+        if plot2d:  # new 2d plotting option
+            # apply any 3D to 2D transformation here to provide desired viewing angle
+            Xs2d = np.matmul(Xuvec, P2)
+            Ys2d = np.matmul(Yuvec, P2)
+            ax.plot(Xs2d, Ys2d, color=color, lw=0.4, zorder=zorder)
+        
+        else:  # normal 3d case
+            ax.plot(P2[0,:], P2[1,:], P2[2,:], color=color, lw=0.4, zorder=zorder)
+        
+        
     
     def IECKaimal(self, case, current=False):        # 
         '''Calculates rotor-averaged turbulent wind spectrum based on inputted turbulence intensity or class.'''

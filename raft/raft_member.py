@@ -207,12 +207,12 @@ class Member:
                 ds  += [0.5*(dorsl[i-1] + dorsl[i])]               # set diameter as midpoint diameter
                 drs += [0.5*(dorsl[i] - dorsl[i-1])]
 
-            # finish things off with the strip for end B
-            dlstrip = 0
-            ls  += [self.stations[-1]]         
-            dls += [0.0]
-            ds  += [0.5*dorsl[-1]]
-            drs += [-0.5*dorsl[-1]]
+        # finish things off with the strip for end B
+        dlstrip = 0
+        ls  += [self.stations[-1]]         
+        dls += [0.0]
+        ds  += [0.5*dorsl[-1]]
+        drs += [-0.5*dorsl[-1]]
         
         # >>> may want to have a way to not have an end strip for members that intersect things <<<
         

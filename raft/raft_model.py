@@ -290,6 +290,7 @@ class Model():
 
         for i, fowt in enumerate(self.fowtList):
             fowt.calcBEM(meshDir=meshDir)
+        
             
         # loop through each case
         for iCase in range(nCases):
@@ -312,34 +313,9 @@ class Model():
             self.solveStatics(case, display=display)
             
             # >>> add a flag that stores what case has had solveStatics to ensure consistency <<<
-
-            # If computing the QTFs with RAFT, compute them here because we need to solve statics first            
-            # Do it for the first case only because the first-order motions probably won't change much.
-            # TODO:
-            # 1) need to take care of the case where we have multiple types of turbines
-            # 2) Need to take care of different headings
-            # Loop turbines, find how many different we have, compute different RAOs and QTFs and then assign?
-            if self.fowtList[0].potSecOrder == 1 and iCase == 0: 
-                for i, fowt in enumerate(self.fowtList):                    
-                    tic = time.perf_counter()
-                    if i == 0: # Compute only for the first turbine. Assign the same for the others
-                        # Need the RAOs to compute the QTFs
-                        Xi = fowt.calcMotions(case=None)
-                        Xi_unitWave = np.zeros([fowt.nDOF, fowt.nw], dtype=complex)                        
-                            
-                        for iDoF in range(Xi_unitWave.shape[0]):                            
-                            idx = np.where(np.abs(fowt.zeta[0,:])>1e-6) # get indices where fowt.zeta[ih,:] is not zero
-                            Xi_unitWave[iDoF, idx] = Xi[i*6+iDoF, idx]/fowt.zeta[0,idx]
-                                   
-                        # Computing the QTF for a single heading
-                        fowt.calcQTF_slenderBody(0, Xi0=Xi_unitWave)
-                        toc = time.perf_counter()
-                        print(f"\n Time to compute QTFs: {toc - tic:0.4f} seconds") 
-                    else:
-                        fowt.qtf = self.fowtList[0].qtf
-            
+          
             # solve system dynamics
-            self.solveDynamics(case, RAO_plot=RAO_plot)
+            self.solveDynamics(case, iCase, RAO_plot=RAO_plot)
 
             # Solve system operating point / mean offsets again, but now including mean wave forces
             self.solveStatics(case)            
@@ -367,7 +343,7 @@ class Model():
                     print(f"pitch (deg)        {metrics['pitch_avg'] :10.2e}  {metrics['pitch_std'] :10.2e}  {metrics['pitch_max'] :10.2e}")
                     print(f"yaw (deg)          {metrics[  'yaw_avg'] :10.2e}  {metrics[  'yaw_std'] :10.2e}  {metrics['yaw_max'  ] :10.2e}")
                     for i in range(nTowers):
-                        print(f"nacelle acc. (m/s)  {metrics['AxRNA_avg'][i] :10.2e} {metrics['AxRNA_std'][i] :10.2e}  {metrics['AxRNA_max'][i] :10.2e}")
+                        print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][i] :10.2e}  {metrics['AxRNA_std'][i] :10.2e}  {metrics['AxRNA_max'][i] :10.2e}")
                     for i in range(nTowers):
                         print(f"tower bending (Nm) {metrics['Mbase_avg'][i] :10.2e}  {metrics['Mbase_std'][i] :10.2e}  {metrics['Mbase_max'][i] :10.2e}")
                     for i in range(nRotors):
@@ -957,7 +933,7 @@ class Model():
         '''
         
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0):
+    def solveDynamics(self, case, iCase, tol=0.01, conv_plot=0, RAO_plot=0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -968,13 +944,136 @@ class Model():
         XiStart = self.XiStart
 
         # fowt matrices
+        M_lin = []
+        B_lin = []
+        C_lin = []
+        F_lin = []
+        
         if conv_plot:
             fig, ax = plt.subplots(3,1,sharex=True)
             c = np.arange(nIter+1)      # adding 1 again here so that there are no RuntimeErrors
             c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))      # set up colormap to use to plot successive iteration results
 
+        # ::: a loop could be added here for an array :::
+        # Loop through each fowt to calculate its independent response to wave excitation.
+        # This is the iterative linearization stage to get individual impedance matrices.
         for i, fowt in enumerate(self.fowtList):
-            _ = fowt.calcMotions(case=case, XiStart=XiStart, nIter=nIter, tol=tol, conv_plot=conv_plot)
+            i1 = i*6                                              # range of DOFs for the current turbine
+            i2 = i*6+6
+            
+            # total FOWT complex response amplitudes (this gets updated each iteration)
+            XiLast = np.zeros([fowt.nDOF,self.nw], dtype=complex) + XiStart    # displacement and rotation complex amplitudes [m, rad]
+            
+            # calculate linear wave excitation forces for this case  (THIS IS A NEW WAY OF DOING THIS)<<<
+            fowt.calcHydroExcitation(case, memberList=fowt.memberList)
+            
+            # add up coefficients for any number of turbines
+            if fowt.nrotors> 0:
+                M_turb = np.sum(fowt.A_aero, axis=3)
+                B_turb = np.sum(fowt.B_aero, axis=3)
+            else:
+                M_turb = np.zeros([6,6,self.nw])
+                B_turb = np.zeros([6,6,self.nw])
+                
+            # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
+            print('Solving for system response to wave excitation in primary wave direction') 
+
+            # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
+            # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process
+            fowt.Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
+            fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF])
+            if fowt.potSecOrder==2:
+                fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:])
+
+            # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
+            M_lin.append( M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]        ) # mass
+            B_lin.append( B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None] ) # damping
+            C_lin.append(          fowt.C_struc   + fowt.C_moor        + fowt.C_hydro                          ) # stiffness
+            F_lin.append( fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:] + fowt.Fhydro_2nd[0, :, :]) # consider only excitation from the primary sea state in the load case for now
+            
+            #F_lin = np.sum(fowt.F_aero, axis=2) + fowt.F_BEM + np.sum(fowt.F_hydro_iner, axis=0) # excitation
+            
+            # start fixed point iteration loop for dynamics of the individual FOWT
+            for iiter in range(nIter):
+                
+                # initialize/zero total system coefficient arrays
+                M_tot = np.zeros([fowt.nDOF,fowt.nDOF,self.nw])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
+                B_tot = np.zeros([fowt.nDOF,fowt.nDOF,self.nw])       # total damping matrix [N-s/m, N-s, N-s-m]
+                C_tot = np.zeros([fowt.nDOF,fowt.nDOF,self.nw])       # total stiffness matrix [N/m, N, N-m]
+                F_tot = np.zeros([fowt.nDOF,self.nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
+
+                Z  = np.zeros([fowt.nDOF,fowt.nDOF,self.nw], dtype=complex)  # total  fowt impedance matrix
+
+
+                # a loop could be added here for an array
+                # fowt = self.fowtList[0]  <<< so far I'm thinking iterative for individual FOWTs rather than whole system... exception would be very stiff shared moorings
+                
+                # get linearized terms for the current turbine given latest amplitudes
+                B_linearized = fowt.calcHydroLinearization(XiLast)
+                F_linearized = fowt.calcDragExcitation(0)  # just looking at first sea state (wave heading) for the sake of linearization
+                
+                # calculate the response based on the latest linearized terms
+                Xi = np.zeros([fowt.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
+
+                # add fowt's terms to system matrices (BEM arrays are not yet included here)
+                M_tot[:,:,:] = M_lin[i]
+                B_tot[:,:,:] = B_lin[i]           + B_linearized[:,:,None]
+                C_tot[:,:,:] = C_lin[i][:,:,None]
+                F_tot[:  ,:] = F_lin[i]           + F_linearized
+
+
+                for ii in range(self.nw):
+                    # form impedance matrix
+                    Z[:,:,ii] = -self.w[ii]**2 * M_tot[:,:,ii] + 1j*self.w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii]
+                    
+                    # solve response (complex amplitude)
+                    Xi[:,ii] = np.linalg.solve(Z[:,:,ii], F_tot[:,ii])
+
+                # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces.
+                # Rigorously, the QTFs should be computed at each iteration, but that would be very expensive. 
+                # We will assume that the QTFs won't change much with the first-order motions within this linearization loop, so they are computed only once.
+                # In any case, they are reevaluated after this loop considering the final first-order motions.
+                if fowt.potSecOrder == 1 and iiter == 0:
+                    print(' Computing QTF for drag linearization process.') 
+
+                    Xi0 = getRAO(Xi[i1:i2, :], fowt.zeta[0,:])
+                    fowt.calcQTF_slenderBody(waveHeadInd=0, Xi0=Xi0, verbose=False)
+                    _, fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:])
+                    F_lin[i1:i2] += fowt.Fhydro_2nd[0, :, :]
+
+                if conv_plot:
+                    # Convergence Plotting
+                    # plots of surge response at each iteration for observing convergence
+                    ax[0].plot(self.w, np.abs(Xi[0,:]) , color=c[iiter], label=f"iteration {iiter}")
+                    ax[1].plot(self.w, np.real(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
+                    ax[2].plot(self.w, np.imag(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
+        
+                # check for convergence
+                tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
+                if (tolCheck < tol).all():
+                    print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
+                    break
+                else:
+                    XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
+                                                    # (uses hard-coded successive under relaxation for now)
+                    print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
+        
+                if iiter == nIter-1:
+                    print("WARNING - solveDynamics iteration did not converge to the tolerance.")
+            
+            
+            if conv_plot:
+                # labels for convergence plots
+                ax[1].legend()
+                ax[0].set_ylabel("response magnitude")
+                ax[1].set_ylabel("response, real")
+                ax[2].set_ylabel("response, imag")
+                ax[2].set_xlabel("frequency (rad/s)")
+                fig.suptitle("Response convergence")
+        
+        
+            # Save the FOWT's impedance matrix
+            fowt.Z = Z
         
         # Now that invididual FOWT impedences matrices have been found, construct the 
         # system-level matrices (in case of couplings) and compute the total response
@@ -1022,14 +1121,38 @@ class Model():
             F_wave = np.zeros([self.nDOF, self.nw], dtype=complex)  # system wave excitation vector for this wave
         
             for i, fowt in enumerate(self.fowtList):
+                i1, i2 = i*6, i*6+6
+                
                 # calculate linear and nonlinear wave excitation for this FOWT and case (consider phasing due to position in array)
                 fowt.calcHydroExcitation(case, memberList=fowt.memberList)
                 F_linearized = fowt.calcDragExcitation(ih)
-                F_wave[i*6:i*6+6] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih,:,:]
+                if fowt.potSecOrder==2:
+                    fowt.Fhydro_2nd_mean[ih, :], fowt.Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+                F_wave[i1:i2] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih,:,:]
                 
             # compute system response
             for iw in range(self.nw):
                 self.Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+        
+
+            # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces, which were computed above
+            # TODO: Not very nice to keep the same code twice. Maybe we can move it to a function?            
+            for i, fowt in enumerate(self.fowtList):
+                i1, i2 = i*6, i*6+6
+                if fowt.potSecOrder == 1:
+                    Xi0 = getRAO(self.Xi[ih,i1:i2, :], fowt.zeta[ih,:])
+                    
+                    tic = time.perf_counter()
+                    fowt.calcQTF_slenderBody(waveHeadInd=ih, Xi0=Xi0, verbose=True, iCase=iCase)
+                    toc = time.perf_counter()
+                    print(f"\n Time to compute QTFs for fowt {i} and wave {ih}: {toc - tic:0.4f} seconds") 
+                    
+                    fowt.Fhydro_2nd_mean[ih, :], fowt.Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+            
+                    # Recompute the wave excitation forces and consequent motions to include second-order hydrodynamic forces
+                    F_wave[i1:i2] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih, :, :]
+                    for iw in range(self.nw):
+                        self.Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
         
         # rotor excitation
         '''

@@ -4,7 +4,6 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d, interp2d, griddata
-from scipy.special import jn, yn, jv, kn, hankel1
 
 import raft.member2pnl as pnl
 from raft.helpers import *
@@ -252,7 +251,6 @@ class FOWT():
         # Add a flag to either not compute 2nd order hydro; read QTF; or compute it with a slender-body approximation
         # self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)
         self.potSecOrder = getFromDict(design['platform'], 'potSecOrder', dtype=int, default=0)
-        self.qtf = None
         if self.potSecOrder==1:
             if (not 'min_freq2nd' in design['platform']) or (not 'max_freq2nd' in design['platform']):
                 raise Exception('If potSecOrder==1, then both min_freq2nd and max_freq2nd must be specified in the platform input.')
@@ -1359,140 +1357,25 @@ class FOWT():
         return D_hydro
 
 
-    def calcMotions(self, case=None, XiStart=0, nIter=5, tol=0.01, conv_plot=0):
-        '''Calculate the motions of the FOWT for a given sea state.
-        If case=None, returns the RAOs computed for a white-noise wave with unit amplitude
+    def calcQTF_slenderBody(self, waveHeadInd, Xi0=None, verbose=False, iCase=None):
+        '''This computes the second-order strip-theory-hydrodynamics terms
+           Only long crested seas are currently considered here.
+           Options:
+           - Xi0: motion RAOs. If not specified, the body is considered fixed
+           - waveHeadInd: Get wave heading from the list in self.beta
+           - waveHead: Specify the wave heading directly
+           If neither waveHeadInd nor waveHead are specified, the wave heading is assumed to be zero.
         '''
+        # TODO: I think a lot of the calculations below should move to the member class
 
-        if case is None:
-            case = {'wave_heading': 0, 'wave_spectrum': 'constant', 'wave_period': 1, 'wave_height': 1, 'wave_gamma': 0}
-           
-        # total FOWT complex response amplitudes (this gets updated each iteration)
-        XiLast = np.zeros([self.nDOF,self.nw], dtype=complex) + XiStart    # displacement and rotation complex amplitudes [m, rad]
-        
-        # calculate linear wave excitation forces for this case  (THIS IS A NEW WAY OF DOING THIS)<<<
-        self.calcHydroExcitation(case, memberList=self.memberList)
-
-        # Print the linear wave excitation following wamit .3 format
-        if self.outFolderQTF is not None and case['wave_spectrum'] == 'constant':
-            with open(os.path.join(self.outFolderQTF, f'force-slender_body.3'), "w") as f:
-                ULEN = 1
-                for iDoF in range(self.nDOF):
-                    for w, ampForce, ampWave in zip(self.w, self.F_hydro_iner[0,iDoF,:], self.zeta[0,:]):
-                        beta = 0                        
-                        if ampWave > 1e-6:
-                            x = ampForce/ampWave
-                        else:
-                            x = 0
-
-                        f.write(f"{2*np.pi/w: 8.4e} {beta: 8.4e} {iDoF+1} {np.abs(x): 8.4e} {np.angle(x): 8.4e} {x.real: 8.4e} {x.imag: 8.4e}\n")
-
-        # add up coefficients for any number of turbines
-        if self.nrotors> 0:
-            M_turb = np.sum(self.A_aero, axis=3)
-            B_turb = np.sum(self.B_aero, axis=3)
-        else:
-            M_turb = np.zeros([6,6,self.nw])
-            B_turb = np.zeros([6,6,self.nw])
-            
-        # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
-        print('Solving for system response to wave excitation in primary wave direction')                     
-
-        # We can compute second-order hydrodynamic forces here if:
-        # 1) They are calculated using an external QTF file;
-        # 2) or if they were computed previously and stored in the FOWT object.
-        # In some cases, they may be very relevant to the motion RMS values (e.g. short waves), so should be included in the drag linearization process
-        self.Fhydro_2nd = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex) 
-        self.Fhydro_2nd_mean = np.zeros([self.nWaves, self.nDOF])
-        if self.qtf is not None:
-            self.Fhydro_2nd_mean[0, :], self.Fhydro_2nd[0, :, :] = self.calcHydroForce_2ndOrd(self.beta[0], self.S[0,:])
-
-        # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
-        M_lin = M_turb + self.M_struc[:,:,None] + self.A_BEM + self.A_hydro_morison[:,:,None]         # mass
-        B_lin = B_turb + self.B_struc[:,:,None] + self.B_BEM + np.sum(self.B_gyro, axis=2)[:,:,None]  # damping
-        C_lin =          self.C_struc   + self.C_moor        + self.C_hydro                           # stiffness
-        F_lin = self.F_BEM[0,:,:] + self.F_hydro_iner[0,:,:] + self.Fhydro_2nd[0, :, :] # consider only excitation from the primary sea state in the load case for now
-                
-        # start fixed point iteration loop for dynamics of the individual FOWT
-        for iiter in range(nIter):
-            
-            # initialize/zero total system coefficient arrays
-            M_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
-            B_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total damping matrix [N-s/m, N-s, N-s-m]
-            C_tot = np.zeros([self.nDOF,self.nDOF,self.nw])       # total stiffness matrix [N/m, N, N-m]
-            F_tot = np.zeros([self.nDOF,self.nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
-
-            Z  = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=complex)  # total  fowt impedance matrix
-            
-            # get linearized terms for the current turbine given latest amplitudes
-            B_linearized = self.calcHydroLinearization(XiLast)
-            F_linearized = self.calcDragExcitation(0)  # just looking at first sea state (wave heading) for the sake of linearization
-            
-            # calculate the response based on the latest linearized terms
-            Xi = np.zeros([self.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
-
-            # add fowt's terms to system matrices (BEM arrays are not yet included here)
-            M_tot[:,:,:] = M_lin
-            B_tot[:,:,:] = B_lin           + B_linearized[:,:,None]
-            C_tot[:,:,:] = C_lin[:,:,None]
-            F_tot[:  ,:] = F_lin           + F_linearized
-
-
-            for ii in range(self.nw):
-                # form impedance matrix
-                Z[:,:,ii] = -self.w[ii]**2 * M_tot[:,:,ii] + 1j*self.w[ii]*B_tot[:,:,ii] + C_tot[:,:,ii]
-                
-                # solve response (complex amplitude)
-                Xi[:,ii] = np.linalg.solve(Z[:,:,ii], F_tot[:,ii])
-
-            if conv_plot:
-                # Convergence Plotting
-                # plots of surge response at each iteration for observing convergence
-                ax[0].plot(self.w, np.abs(Xi[0,:]) , color=c[iiter], label=f"iteration {iiter}")
-                ax[1].plot(self.w, np.real(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
-                ax[2].plot(self.w, np.imag(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
-    
-            # check for convergence
-            tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
-            if (tolCheck < tol).all():
-                print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
-                break
-            else:
-                XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
-                                                # (uses hard-coded successive under relaxation for now)
-                print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
-    
-            if iiter == nIter-1:
-                print("WARNING - solveDynamics iteration did not converge to the tolerance.")
-        
-        
-        if conv_plot:
-            # labels for convergence plots
-            ax[1].legend()
-            ax[0].set_ylabel("response magnitude")
-            ax[1].set_ylabel("response, real")
-            ax[2].set_ylabel("response, imag")
-            ax[2].set_xlabel("frequency (rad/s)")
-            fig.suptitle("Response convergence")
-        
-        # Save the FOWT's impedance matrix
-        self.Z = Z
-                    
-        return Xi
-
-
-    def calcQTF_slenderBody(self, ih, Xi0=None, beta=None):
-        '''This computes the second-order strip-theory-hydrodynamics terms'''
-        ''' Only long crested seas are currently considered here, but multidirectional
-            wave pairs can be considered in the functions that compute the accelerations'''
         if Xi0 is None:
             Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)        
-                    
         rho = self.rho_water
         g   = self.g
-        if beta is None:
-            beta = self.beta[ih]
+
+        beta = self.beta[waveHeadInd]
         self.heads_2nd = [beta] # Need that to print the QTF
+        whead = f"{np.degrees(beta)%360:.2f}".replace('.', 'p') # String with heading in range of 0-360 [deg] for output files
 
         # Resample Xi0, which is input in the same frequency as the first-order loads,
         # to the frequencies of the 2nd order hydrodynamic forces
@@ -1501,8 +1384,14 @@ class FOWT():
             Xi[iDoF,:] = np.interp(self.w1_2nd, self.w, Xi0[iDoF,:], left=0, right=0)
 
         # Print Xi in the same format as a WAMIT .4 file for comparison
-        if self.outFolderQTF is not None:
-            with open(os.path.join(self.outFolderQTF, f'raos-slender_body.4'), "w") as f:
+        if self.outFolderQTF is not None and verbose:
+            # Check if the file exists. If so, append a number to the end of the file name
+            if isinstance(iCase, int):
+                outPath = os.path.join(self.outFolderQTF, f"raos-slender_body_Head{whead}_Case{iCase}.4")
+            else:
+                outPath = os.path.join(self.outFolderQTF, f"raos-slender_body_Head{whead}.4")
+
+            with open(outPath, "w") as f:
                 ULEN = 1
                 for iDoF in range(self.nDOF):
                     for w1, x in zip(self.w1_2nd, Xi[iDoF,:]):
@@ -1513,7 +1402,7 @@ class FOWT():
         F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
         F1st[0:3,:] = self.M_struc[0,0] * (-self.w1_2nd**2 * Xi[0:3,:]) # F_1stOrder = Mass * Acceleration_1stOrder
         F1st[3:6,:] = np.matmul(self.M_struc[3:,3:], (-self.w1_2nd**2 * Xi[3:,:]))
-                                                            
+                                
         # Variables to store different components for post-processing
         qtf_2ndPot = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
         qtf_axdv   = np.zeros([len(self.w1_2nd), len(self.w1_2nd), 1, self.nDOF], dtype=complex)
@@ -1525,7 +1414,9 @@ class FOWT():
           
         # Initialize qtf that will actually be used by the solver
         self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)  # Need this fourth dimension for conformity with the case where the QTFs are read from a file
-        print(f"Computing QTF for heading {beta:.2f}")
+
+        if verbose:
+            print(f"Computing QTF for heading {beta:.2f}")
 
         # Start with the force due to rotation of first-order wave forces
         # This component depends on the forces on the whole body, hence it is outside of the member loop
@@ -1536,12 +1427,12 @@ class FOWT():
                 F_rotN = np.zeros(6, dtype='complex')    
                 F_rotN[0:3] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
                 F_rotN[3: ] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[3: ,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[3: ,i1]))
-                self.qtf[i1,i2,0,:] = F_rotN
-                qtf_rotN[i1,i2,0,:] = F_rotN
+                self.qtf[i1,i2,waveHeadInd,:] = F_rotN
+                qtf_rotN[i1,i2,waveHeadInd,:] = F_rotN
 
         # Loop for each member to pre-compute quantities that are used in the QTF computation
         for i,mem in enumerate(self.memberList):
-            if mem.r[-1,2] > 0 and mem.r[0,2] > 0:
+            if mem.rA[2] > 0 and mem.rB[2] > 0:
                 continue
 
             circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections              
@@ -1585,7 +1476,8 @@ class FOWT():
 
             # Loop through each pair of frequency
             for i1, (w1, k1) in enumerate(zip(self.w1_2nd, self.k1_2nd)):
-                print(f" Element {i+1} of {len(self.memberList)} - Row {i1+1:02d} of {len(self.w1_2nd):02d}", end='\r')            
+                if verbose:
+                     print(f" Element {i+1} of {len(self.memberList)} - Row {i1+1:02d} of {len(self.w1_2nd):02d}", end='\r')            
                 for i2, (w2, k2) in enumerate(zip(self.w2_2nd, self.k2_2nd)):
                     F_2ndPot = np.zeros(6, dtype='complex')
                     F_conv   = np.zeros(6, dtype='complex')
@@ -1680,6 +1572,7 @@ class FOWT():
                                                         
                     # Force acting at the intersection of the member with the mean waterline
                     f_eta = np.zeros(3, dtype=complex)
+                    F_eta = np.zeros(6, dtype=complex)
                     if mem.r[-1,2] * mem.r[0,2] < 0:
                         # Need just the cross section area, as the length is the relative wave elevation
                         # Get the area of the cross section at the mean waterline
@@ -1705,178 +1598,33 @@ class FOWT():
                         f_eta -= rho*a_i*np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, a_eta)
                         f_eta -= 0.25*rho*a_i * (g_e1[:,i1]*np.conj(eta_r[i2])+np.conj(g_e1[:,i2])*eta_r[i1])
 
-
-                    F_eta = translateForce3to6DOF(f_eta, r_int)                    
+                        F_eta = translateForce3to6DOF(f_eta, r_int)                    
                         
-                    self.qtf[i1,i2,0,:] += F_2ndPot + F_axdv + F_conv + F_nabla + F_eta + F_rslb
+                    self.qtf[i1,i2,waveHeadInd,:] += F_2ndPot + F_axdv + F_conv + F_nabla + F_eta + F_rslb
 
                     # Save individual components for post-processing
-                    qtf_2ndPot[i1,i2,0,:] += F_2ndPot
-                    qtf_axdv[i1,i2,0,:]   += F_axdv
-                    qtf_conv[i1,i2,0,:]   += F_conv
-                    qtf_eta[i1,i2,0,:]    += F_eta
-                    qtf_nabla[i1,i2,0,:]  += F_nabla
-                    qtf_rslb[i1,i2,0,:]   += F_rslb
+                    qtf_2ndPot[i1,i2,waveHeadInd,:] += F_2ndPot
+                    qtf_axdv[i1,i2,waveHeadInd,:]   += F_axdv
+                    qtf_conv[i1,i2,waveHeadInd,:]   += F_conv
+                    qtf_eta[i1,i2,waveHeadInd,:]    += F_eta
+                    qtf_nabla[i1,i2,waveHeadInd,:]  += F_nabla
+                    qtf_rslb[i1,i2,waveHeadInd,:]   += F_rslb
 
                     # Add Kim and Yue correction for the horizontal force
-                    # We add only the real part because the imaginary part of the force is already taken care by the slender-body approximation
-                    # Have a lot of restrictions for now. Want to make it less restrict in the future
-                    # 1) Needs to be circular
-                    # 2) Needs to be vertical
-                    # 3) Needs to be surface piercing
-                    # 4) Cannot be tapered
-                    F_KAY = np.zeros(6, dtype='complex')
-                    f_KAY = np.real(self.correction_KAY(mem, self.depth, w1, w2, rho, g, k1=k1, k2=k2, Nm=10, flag='F'))
-
-                    # The force calculated above considers a cylinder at (x,y)=(0,0), so we need to account for the wave phase
-                    # In this whole function, we assume that the wave direction is the same for both components, but I will leave this below
-                    # in case we want to expand to short-crested seas in the future
-                    cosB1, sinB1 = np.cos(beta), np.sin(beta) 
-                    cosB2, sinB2 = cosB1, sinB1 
-                    k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0])
-                    f_KAY *= np.exp(-1j*np.dot(k1_k2, r))
-
-                    # The force above is along the direction of the waves, so we need to get the components in the X and Y direction
-                    F_KAY[0] += f_KAY * cosB1 # Surge
-                    F_KAY[1] += f_KAY * sinB1 # Sway
-
-                    # It is applied at the intersection of the cylinder with the mean water line                                        
-                    self.qtf[i1,i2,0,:] += transformForce(F_KAY, offset=r_int)
+                    # We add only the real part because the imaginary part of the force is already taken care by the slender-body approximation                                   
+                    self.qtf[i1,i2,waveHeadInd,:] += np.real(mem.correction_KAY(self.depth, w1, w2, beta, rho=rho, g=g, k1=k1, k2=k2, Nm=10))
 
         # Need a complete matrix due to interpolations that are used to computed the forces
         for i in range(self.nDOF):
-            self.qtf[:,:,0,i] = self.qtf[:,:,0,i] + np.conj(self.qtf[:,:,0,i]).T - np.diag(np.diag(np.conj(self.qtf[:,:,0,i])))
+            self.qtf[:,:, waveHeadInd, i] = self.qtf[:,:, waveHeadInd,i] + np.conj(self.qtf[:,:, waveHeadInd,i]).T - np.diag(np.diag(np.conj(self.qtf[:,:, waveHeadInd,i])))
 
-        if self.outFolderQTF is not None:
-            self.writeQTF(self.qtf, os.path.join(self.outFolderQTF, f"qtf-slender_body-total.12d"))
-
-    
-    def correction_KAY(self, member, h, w1, w2, rho, g, k1=None, k2=None, Nm=10, flag='F'):
-        '''For surface-piercing vertical cylinders, we can partially account for second-order diffraction effects
-           by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinder. 
-           For the difference-frequency loads: Kim and Yue (1990) The complete second-order diffraction solution for an axisymmetric body - Part 2. Bichromatic incident waves and body motions
-           For the mean loads: Kim and Yue (1989) The complete second-order diffraction solution for an axisymmetric body - Part 1. Monochromatic incident waves
-    
-           For now, only long crested seas are considered. The resulting loads are:
-           - Transversal force, which is in the same direction as the waves, or
-           - Moment around the horizontal axis that is perpendicular to the propagation of the waves
-           Those loads are assumed to be applied at the intersection of the cylinder with the mean water line.
-           The loads are nondimensionalized as follows:
-           Foutput = F / (Aj * Al), where Aj and Al are the complex amplitudes of the wave pair
-        '''
-        
-        F = 0
-
-        if not member.MCF:
-            return F
-
-        # Check if member is circular
-        if member.shape != 'circular':
-            return F
-        
-        # Check if member is vertical
-        if member.q[2] < 0.99:
-            return F
-        
-        # Compute k1 and k2 if not provided
-        if k1 is None:
-            k1 = waveNumber(w1, h)
-        if k2 is None:
-            k2 = waveNumber(w2, h)
-
-        # Loop stations. For now, we only compute things for a station that satisfies the conditions below
-        radii = 0.5*np.array(member.d)
-        stations = member.stations
-        for i_s in range(1, len(radii)):
-            dz_s = stations[i_s] - stations[i_s-1]; # delta z
-            if dz_s == 0:
-                continue
-
-            z1 = member.r[0,2] + stations[i_s-1]
-            z2 = member.r[0,2] + stations[i_s]
-        
-            R1 = radii[i_s-1]
-            R2 = radii[i_s]
-        
-            # Check if station is surface piercing
-            if z1*z2 > 0:
-                continue
-        
-            # Check if station is tapered
-            if R1 != R2:
-                continue
-
-            if z1 > z2:
-                z1, z2 = z2, z1
-           
-            if z2 > 0:
-                z2 = 0
-
-            # Get nondimensional values used in the analytical solution
-            R = R1 # Radius of the cylinder. Note that we use the radius of the second node, as the first and last node are different
-            k1R, k2R = k1*R, k2*R # Nondimensional wave numbers
-            H = h/R # Nondimensional water depth
-            wm = (w1-w2)/np.sqrt(g/h) # Nondimensional difference frequency
-
-            # Those two nondimensional numbers are more of a convenient parameter
-            k1h = k1R * H
-            k2h = k2R * H
-
-            factor = rho * g * R
-
-            # Mean load
-            if w1 == w2:                
-                for nn in range(Nm + 1):
-                    Jd_n = 0.5 * (jn(nn - 1, k1R) - jn(nn + 1, k1R))
-                    Jd_nM1 = 0.5 * (jn(nn, k1R) - jn(nn + 2, k1R))
-                    Yd_n = 0.5 * (yn(nn - 1, k1R) - yn(nn + 1, k1R))
-                    Yd_nM1 = 0.5 * (yn(nn, k1R) - yn(nn + 2, k1R))
-
-                    F += 4 / (np.pi**2 * k1R**3) * (1 + 2 * k1h / np.sinh(2 * k1h)) * \
-                        (1 - nn * (nn + 1) / k1R**2)**2 / (Jd_n**2 + Yd_n**2) / (Jd_nM1**2 + Yd_nM1**2)
-
-                if flag == 'M':
-                    force = F
-                    F = 0
-
-                    for nn in range(Nm + 1):
-                        H_n = 0.5 * (hankel1(nn - 1, k1R) - hankel1(nn + 1, k1R))
-                        H_nM1 = 0.5 * (hankel1(nn, k1R) - hankel1(nn + 2, k1R))
-                        Z = 0.25 + (2 * k1h * np.sinh(2 * k1h) - np.cosh(2 * k1h) + 1) / 8 / k1h**2
-
-                        F += np.real(-4j / np.pi / k1R**2 * 1 / H_n / H_nM1 * \
-                                    (-1 + 2 * k1h / np.sinh(2 * k1h) * ((nn * (nn + 1) / k1R**2 + 1) * Z - 0.5)))
-
-                    F -= force  # To change the reference to the intersection with the waterline
-
-            # Difference frequency load
+        if self.outFolderQTF is not None and verbose:
+            # Check if the file exists. If so, append a number to the end of the file name
+            if isinstance(iCase, int):
+                outPath = os.path.join(self.outFolderQTF, f"qtf-slender_body-total_Head{whead}_Case{iCase}.12d")
             else:
-                if flag == 'F':
-                    # Im = 0.5 * (np.sinh(k1h + k2h) / (k1h + k2h) - np.sinh(k1h - k2h) / (k1h - k2h))
-                    # Ip = 0.5 * (np.sinh(k1h + k2h) / (k1h + k2h) + np.sinh(k1h - k2h) / (k1h - k2h))
-                    Im = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
-                    Ip = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
-                else:
-                    factor *= h
-                    Im = 0.5 * ((1 - np.cosh(k1h + k2h)) / (k1h ** 2 + k2h ** 2 + 2 * k1h * k2h) - (1 - np.cosh(k1h - k2h)) / (k1h ** 2 + k2h ** 2 - 2 * k1h * k2h))
-                    Ip = 0.5 * ((1 - np.cosh(k1h + k2h)) / (k1h ** 2 + k2h ** 2 + 2 * k1h * k2h) + (1 - np.cosh(k1h - k2h)) / (k1h ** 2 + k2h ** 2 - 2 * k1h * k2h))
-     
-                for nn in range(Nm + 1):
-                    # Omega uses derivatives of the Hankel function
-                    H_N_ii = 0.5 * (hankel1(nn - 1, k1R) - hankel1(nn + 1, k1R))
-                    H_N_jj = 0.5 * np.conj(hankel1(nn - 1, k2R) - hankel1(nn + 1, k2R))
-                    H_Nm1_ii = 0.5 * (hankel1(nn, k1R) - hankel1(nn + 2, k1R))
-                    H_Nm1_jj = 0.5 * np.conj(hankel1(nn, k2R) - hankel1(nn + 2, k2R))
-                    omega = 1 / (H_Nm1_ii * H_N_jj) - 1 / (H_N_ii * H_Nm1_jj)
-
-                    coshk1h = np.cosh(k1h)
-                    coshk2h = np.cosh(k2h)
-                    F = F - 2j/np.pi/(k1R*k2R) * omega * (1 - (k1h*k2h/np.sqrt(k1h*np.tanh(k1h))/np.sqrt(k2h*np.tanh(k2h))) * (Im+Ip*nn*(nn+1)/k1R/k2R)/coshk1h/coshk2h)
-
-                if k1R < k2R:
-                    F = np.conj(F)
-
-            return F*factor
+                outPath = os.path.join(self.outFolderQTF, f"qtf-slender_body-total_Head{whead}.12d")
+            self.writeQTF(self.qtf, outPath)
 
 
     def readQTF(self, flPath):
@@ -1916,10 +1664,6 @@ class FOWT():
             # Fill the other half of the matrix (which is equal to the conjugate of its symmetric element)
             if not indw1[0] == indw2[0]:
                 self.qtf[indw2[0], indw1[0], indhead[0], indDOF] = factor*(row[7]-1j*row[8])
-        
-
-        # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))    
-
 
 
     def writeQTF(self, qtfIn, outPath, w=None):

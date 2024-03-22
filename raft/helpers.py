@@ -664,6 +664,27 @@ def JONSWAP(ws, Hs, Tp, Gamma=None):
 
     return  0.5/np.pi *C* 0.3125*Hs*Hs*fpOvrf4/f *np.exp( -1.25*fpOvrf4 )* Gamma**Alpha
 
+def getRAO(Xi, zeta):
+    '''Calculates the response amplitude operator (RAO).
+    It is simply the reponse (motion, load, anything) for unitary wave amplitude.
+    Xi can have any number of dimensions, but the last dimension must be the same length as zeta.
+    '''
+    # Check if zeta is a 1D array
+    if len(zeta.shape) != 1:
+        raise Exception("zeta must be a 1D array")
+    
+    # Check if the last dimension of Xi is the same length as zeta
+    if Xi.shape[-1] != len(zeta):
+        raise Exception("The last dimension of Xi must be the same length as zeta")
+
+    # Is there an eps value to use instead?
+    idx = np.where(np.abs(zeta)>1e-20)    
+    
+    # Reshape zeta to be able to broadcast along the frequency dimension
+    RAO = np.zeros_like(Xi, dtype=complex)
+    RAO[..., idx] = Xi[..., idx] / zeta[idx]
+
+    return RAO
 
 def printMat(mat):
     '''Print a matrix'''

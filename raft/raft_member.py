@@ -5,7 +5,7 @@ import numpy as np
 from raft.helpers import *
 
 from moorpy.helpers import transformPosition
-from scipy.special import hankel1
+from scipy.special import jn, yn, jv, kn, hankel1
 
 ## This class represents linear (for now cylindrical and rectangular) components in the substructure.
 #  It is meant to correspond to Member objects in the WEIS substructure ontology, but containing only
@@ -96,8 +96,8 @@ class Member:
 
         # We disable the MCF correction if the element is not circular
         if self.MCF:
-            if not self.shape=='circular': # We check if it is surface piercing after setPosition
-                print(f'MacCamy-Fuchs correction not applicable to member {self.name}. Disabling MCF correction.')
+            if not self.shape=='circular':
+                print(f'MacCamy-Fuchs correction not applicable to member {self.name}. Member needs to be circular. Disabling MCF correction.')
                 self.MCF = False
 
 
@@ -215,12 +215,12 @@ class Member:
                 ds  += [0.5*(dorsl[i-1] + dorsl[i])]               # set diameter as midpoint diameter
                 drs += [0.5*(dorsl[i] - dorsl[i-1])]
 
-            # finish things off with the strip for end B
-            dlstrip = 0
-            ls  += [self.stations[-1]]         
-            dls += [0.0]
-            ds  += [0.5*dorsl[-1]]
-            drs += [-0.5*dorsl[-1]]
+        # finish things off with the strip for end B
+        dlstrip = 0
+        ls  += [self.stations[-1]]         
+        dls += [0.0]
+        ds  += [0.5*dorsl[-1]]
+        drs += [-0.5*dorsl[-1]]
         
         # >>> may want to have a way to not have an end strip for members that intersect things <<<
         
@@ -326,16 +326,7 @@ class Member:
         # matrices of vector multiplied by vector transposed, used in computing force components
         self.qMat  = VecVecTrans(self.q)
         self.p1Mat = VecVecTrans(self.p1)
-        self.p2Mat = VecVecTrans(self.p2)
-
-        # We check if the member can use the MCF correction
-        # We just require the member to be circular and cross the water surface
-        if self.MCF:
-            if (not self.shape=='circular') or (not self.r[0,2]*self.r[-1,2]<0):
-                print(f'MacCamy-Fuchs correction not applicable to member {self.name}. Disabling MCF correction.')
-                self.MCF = False
-                
-
+        self.p2Mat = VecVecTrans(self.p2)                 
 
 
     def getInertia(self, rPRP=np.zeros(3)):
@@ -1048,7 +1039,6 @@ class Member:
                         Imat_sides = np.zeros([3, 3, len(k_array)], dtype=complex)
                         for ik, k in enumerate(k_array):
                             # Apply MCF correction to the nodes of sections that cross the water surface
-
                             Cm_p1, Cm_p2 = self.getCmSides(il, k=k)
                             Imat_sides[:, :, ik] = rho*v_i * (Cm_p1*self.p1Mat + Cm_p2*self.p2Mat)
                     else:
@@ -1089,13 +1079,6 @@ class Member:
         if k is not None:
             MCF = self.MCF
 
-        # Check if the node is part of a surface piercing section
-        z_st = self.r[0,2] + self.stations
-        idx = np.where(z_st[1:]*z_st[0:-1]<0)[0][0]
-
-        if il < self.stations[idx]:
-            MCF = False
-
         Ca_p1  = np.interp( self.ls[il], self.stations, self.Ca_p1 )
         Ca_p2  = np.interp( self.ls[il], self.stations, self.Ca_p2 )
         Cm_p1_0, Cm_p2_0 = (1.+Ca_p1), (1.+Ca_p2)
@@ -1106,7 +1089,7 @@ class Member:
 
         else:            
             R = self.ds[il]/2
-            Hp1 = 0.5 * (hankel1(0, k*R) - hankel1(2, k*R)) # Derivative of the Hankel function o ffirst kind and order one
+            Hp1 = 0.5 * (hankel1(0, k*R) - hankel1(2, k*R)) # Derivative of the Hankel function of first kind and order one
             Cm_p1 = 4j  / (np.pi * (k*R)**2 * Hp1)
             Cm_p2 = Cm_p1
 
@@ -1124,6 +1107,142 @@ class Member:
             Cm_p2 = Cm_p2 * ramp + Cm_p2_0 * (1-ramp)
 
         return Cm_p1, Cm_p2
+
+    def correction_KAY(self, h, w1, w2, beta, rho=1025, g=9.81, k1=None, k2=None, Nm=10):
+        '''For surface-piercing vertical cylinders, we can partially account for second-order diffraction loads
+           by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinder. 
+           For the mean loads: Kim and Yue (1989) The complete second-order diffraction solution for an axisymmetric body - Part 1. Monochromatic incident waves
+           For the difference-frequency loads: Kim and Yue (1990) The complete second-order diffraction solution for an axisymmetric body - Part 2. Bichromatic incident waves and body motions
+    
+           For now, only long crested seas are considered. The resulting loads are:
+           - Transversal force, which is in the same direction as the waves, or
+           - Moment around the horizontal axis that is perpendicular to the propagation of the waves
+           Those loads are assumed to be applied at the intersection of the cylinder with the mean water line.
+           The loads are nondimensionalized as follows:
+           Foutput = F / (Aj * Al), where Aj and Al are the complex amplitudes of the wave pair
+        '''
+
+        # Omega is a convenience variable used in the analytical solution
+        def omega(k1R, k2R, n):
+            # Derivatives of the Hankel function
+            H_N_ii = 0.5 * (hankel1(n - 1, k1R) - hankel1(n + 1, k1R))
+            H_N_jj = 0.5 * np.conj(hankel1(n - 1, k2R) - hankel1(n + 1, k2R))
+            H_Nm1_ii = 0.5 * (hankel1(n, k1R) - hankel1(n + 2, k1R))
+            H_Nm1_jj = 0.5 * np.conj(hankel1(n, k2R) - hankel1(n + 2, k2R))
+
+            return 1 / (H_Nm1_ii * H_N_jj) - 1 / (H_N_ii * H_Nm1_jj)
+
+        F = np.zeros(6, dtype=complex)
+        if not self.MCF:
+            return F
+
+        # Check if member is circular
+        if self.shape != 'circular':
+            return F
+                
+        # Compute k1 and k2 if not provided
+        if k1 is None:
+            k1 = waveNumber(w1, h)
+        if k2 is None:
+            k2 = waveNumber(w2, h)
+
+        # In this whole function, we assume that the wave direction is the same for both components, but I will leave this below
+        # in case we want to expand to short-crested seas in the future    
+        cosB1, sinB1 = np.cos(beta), np.sin(beta) 
+        cosB2, sinB2 = cosB1, sinB1    
+        k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0]) # For the phase    
+
+        # The force is derived for a vertical cylinder and, in the original solution, it is aligned with the waves.
+        # We will say that it is perpendicular to the cylinder axis but aligned with the wave direction
+        beta_vec = np.array([cosB1, sinB1, 0])
+        # if np.linalg.norm(k1_k2)!=0:
+        #     beta_vec = k1_k2 / np.linalg.norm(k1_k2) # Unit vector in the direction of the wave group
+        pforce = np.dot(beta_vec, self.p1)*self.p1 + np.dot(beta_vec, self.p2)*self.p2
+        pforce = pforce / np.linalg.norm(pforce) # Normalize the force
+                
+        # # #==== Component due to the relative wave elevation. Lumped at the intersection with the mean waterline
+        if self.rA[2]*self.rB[2] < 0:           
+            # Find intersection with the mean waterline (z=0) and its radius
+            rwl = self.rA + (self.rB - self.rA) * (0 - self.rA[2]) / (self.rB[2] - self.rA[2])
+            radii = 0.5*np.array(self.ds)
+            R = np.interp(0, self.r[:,2], radii)
+
+            # Compute force lumped at the intersection with the mean waterline
+            k1R, k2R = k1*R, k2*R
+            Fwl = 0+0j
+            if k1R >= np.pi/10 or k2R >= np.pi/10:
+                for nn in range(Nm + 1):
+                    Fwl += -rho*g*R*2j/np.pi/(k1R*k2R) * omega(k1R, k2R, nn)
+            
+            Fwl *= np.exp(-1j*np.dot(k1_k2, rwl))
+            F += translateForce3to6DOF(Fwl*pforce, rwl)
+
+
+        #==== Component due to the quadratic velocity in Bernoullis equation
+        # The integration along the member is very sensitive. So, we perform the 
+        # integration analytically around each node.
+        if self.rA[2]*self.rB[2] < 0:
+            for il, r1 in enumerate(self.r[:-1]): # The integration is based on the bottom node, so we skip the last one
+                # No point in computing for nodes above the mean water line
+                z1 = r1[2]
+                if z1 > 0:
+                    continue
+
+                r2 = self.r[il+1]
+                z1, z2 = r1[2], r2[2]
+                z2 = 0 if z2 > 0 else z2
+
+                # Get values used in the analytical solution
+                R1 = self.ds[il]/2
+                if self.dls[il] == 0: # If this is an end node, the diameter was divided by two
+                    R1 = self.ds[il]
+
+                R2 = self.ds[il+1]/2
+                if self.dls[il+1] == 0:
+                    R2 = self.ds[il]
+                
+                R = 0.5*(R1 + R2) # Consider the mean radius
+                k1R, k2R = k1*R, k2*R # Nondimensional wave numbers
+                H = h/R # Nondimensional water depth
+                wm = (w1-w2)/np.sqrt(g/h) # Nondimensional difference frequency
+                k1h, k2h = k1R*H, k2R*H
+
+                # We do not want to use the diffraction correction for very long waves
+                # because it is already well captured by the slender-body approximation
+                # and because it could render the results worse.
+                if k1R < np.pi/10 and k2R < np.pi/10:
+                    continue
+                
+                # For mean loads
+                dF = 0+0j  # Force per unit length. Assumed to be aligned with the wave propagation direction
+                if w1 == w2:                
+                    for nn in range(Nm + 1):
+                        dF += 0 # TODO: Implement the mean load
+
+                # For difference-frequency loads
+                else:
+                    coshk1h, coshk2h = np.cosh(k1h), np.cosh(k2h)                    
+                    Im = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
+                    Ip = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
+                    for nn in range(Nm + 1):
+                        coshk1h = np.cosh(k1h)
+                        coshk2h = np.cosh(k2h)
+
+                        dF += rho*g*R*2j/np.pi/(k1R*k2R) * omega(k1R, k2R, nn) * (k1h*k2h/np.sqrt(k1h*np.tanh(k1h))/np.sqrt(k2h*np.tanh(k2h)) * (Im + Ip*nn*(nn+1)/k1R/k2R)/coshk1h/coshk2h)
+
+                        
+                # The force calculated above considers a cylinder at (x,y)=(0,0), so we need to account for the wave phase
+                r = 0.5*(r1 + r2)
+                dF *= np.exp(-1j*np.dot(k1_k2, r))
+                
+                # Project it along the the directino computed above and add it to the total force
+                F += translateForce3to6DOF(dF*pforce, r)
+
+        if k1 < k2:
+            F = np.conj(F)
+        
+        return F
+
 
     def getSectionProperties(self, station):
         '''Get member cross sectional area and moments of inertia at a user-

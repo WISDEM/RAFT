@@ -7,7 +7,7 @@ channels:
 dependencies:
   - matplotlib
   - numpy
-  - openmdao
+  - openmdao > 3.30
   - pip
   - python
   - pyyaml

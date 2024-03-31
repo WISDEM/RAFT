@@ -8,7 +8,7 @@ dependencies:
   - matplotlib
   - moorpy
   - numpy
-  - openmdao
+  - openmdao > 3.30
   - pyhams
   - pip
   - python

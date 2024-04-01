@@ -38,7 +38,8 @@ jobs:
 
             - name: Extras
               run: |
-                  conda install -y pytest meson ninja
+                  conda install -y pytest meson ninja nlopt
+                  conda info
 
             - name: Conda Install RAFT
               run: |

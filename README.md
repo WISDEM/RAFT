@@ -10,6 +10,11 @@ RAFT v1.0.0 includes the capabilities described above, and further development i
 Installation with [Anaconda](https://www.anaconda.com) is the recommended approach because of the ability to create self-contained environments suitable for testing and analysis.  RAFT requires [Anaconda 64-bit](https://www.anaconda.com/distribution/).  However, the `conda` command has begun to show its age and we now recommend the one-for-one replacement with the [Miniforge3 distribution](https://github.com/conda-forge/miniforge?tab=readme-ov-file#miniforge3), which is much more lightweight and more easily solves for the RAFT package dependencies.
 
 
+## Using RAFT as a Library
+
+If you would like to use RAFT as a library, without direct interaction with the source code, then you can install it directly via `conda install raft` (preferred) or `pip install raft`.
+
+
 ## Getting Started
 
 New users of RAFT as a standalone model are recommended to begin by looking at the input file and script provided in the examples folder, and seeking further information from the [RAFT documentation](https://openraft.readthedocs.io/en/latest/). For use as part of the WEIS toolset, information will be provided once this capability is completed in the [WEIS documentation](https://weis.readthedocs.io/en/latest/). For now, the following will help get started with running RAFT as a standalone model.

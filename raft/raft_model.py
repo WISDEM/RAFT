@@ -976,25 +976,31 @@ class Model():
                 B_turb = np.zeros([6,6,self.nw])
                 
             # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
-            print('Solving for system response to wave excitation in primary wave direction') 
+            print('Solving for system response to wave excitation in primary wave direction')
 
             # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
-            # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process
+            # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process            
             fowt.Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
             fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF])
             if fowt.potSecOrder==2:
-                fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:])
+                fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:], iCase=iCase, iWT=i)
+
+            # We use this flag when fowt.potSecOrder==1, so that we compute the QTFs including first-order motions only
+            flagComputedQTF = False
+
 
             # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
             M_lin.append( M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]        ) # mass
             B_lin.append( B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None] ) # damping
             C_lin.append(          fowt.C_struc   + fowt.C_moor        + fowt.C_hydro                          ) # stiffness
             F_lin.append( fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:] + fowt.Fhydro_2nd[0, :, :]) # consider only excitation from the primary sea state in the load case for now
+
             
             #F_lin = np.sum(fowt.F_aero, axis=2) + fowt.F_BEM + np.sum(fowt.F_hydro_iner, axis=0) # excitation
             
             # start fixed point iteration loop for dynamics of the individual FOWT
-            for iiter in range(nIter):
+            iiter = 0
+            while iiter < nIter:
                 
                 # initialize/zero total system coefficient arrays
                 M_tot = np.zeros([fowt.nDOF,fowt.nDOF,self.nw])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
@@ -1029,18 +1035,6 @@ class Model():
                     # solve response (complex amplitude)
                     Xi[:,ii] = np.linalg.solve(Z[:,:,ii], F_tot[:,ii])
 
-                # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces.
-                # Rigorously, the QTFs should be computed at each iteration, but that would be very expensive. 
-                # We will assume that the QTFs won't change much with the first-order motions within this linearization loop, so they are computed only once.
-                # In any case, they are reevaluated after this loop considering the final first-order motions.
-                if fowt.potSecOrder == 1 and iiter == 0:
-                    print(' Computing QTF for drag linearization process.') 
-
-                    Xi0 = getRAO(Xi[i1:i2, :], fowt.zeta[0,:])
-                    fowt.calcQTF_slenderBody(waveHeadInd=0, Xi0=Xi0, verbose=False)
-                    _, fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:])
-                    F_lin[i1:i2] += fowt.Fhydro_2nd[0, :, :]
-
                 if conv_plot:
                     # Convergence Plotting
                     # plots of surge response at each iteration for observing convergence
@@ -1052,7 +1046,27 @@ class Model():
                 tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
                 if (tolCheck < tol).all():
                     print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
-                    break
+
+                    if fowt.potSecOrder != 1 or flagComputedQTF:
+                        break
+                    else:
+                        iiter = 0
+
+                        # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces.
+                        # So, we compute the QTFs considering the first-order motions computed with the linearized drag and then we loop again
+                        # to make sure the second-order motions are considered in the linearization procedure. 
+                        # This is important for cases where the second-order motions are large compared to the first-order motions.
+                        print(f"Resolving for system response in primary wave direction, now with second-order wave loads.")
+                        Xi0 = getRAO(Xi[i1:i2, :], fowt.zeta[0,:])
+                                                
+                        tic = time.perf_counter()                        
+                        fowt.calcQTF_slenderBody(waveHeadInd=0, Xi0=Xi0, verbose=True, iCase=iCase, iWT=i)
+                        toc = time.perf_counter()
+                        print(f"\n Time to compute QTFs for fowt {i}: {toc - tic:0.4f} seconds")
+
+                        fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:], iCase=iCase, iWT=i)
+                        F_lin[i1:i2] += fowt.Fhydro_2nd[0, :, :]
+                        flagComputedQTF = True                         
                 else:
                     XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
                                                     # (uses hard-coded successive under relaxation for now)
@@ -1060,7 +1074,8 @@ class Model():
         
                 if iiter == nIter-1:
                     print("WARNING - solveDynamics iteration did not converge to the tolerance.")
-            
+
+                iiter += 1
             
             if conv_plot:
                 # labels for convergence plots
@@ -1140,15 +1155,13 @@ class Model():
             for i, fowt in enumerate(self.fowtList):
                 i1, i2 = i*6, i*6+6
                 if fowt.potSecOrder == 1:
-                    Xi0 = getRAO(self.Xi[ih,i1:i2, :], fowt.zeta[ih,:])
-                    
-                    tic = time.perf_counter()
-                    fowt.calcQTF_slenderBody(waveHeadInd=ih, Xi0=Xi0, verbose=True, iCase=iCase)
-                    toc = time.perf_counter()
-                    print(f"\n Time to compute QTFs for fowt {i} and wave {ih}: {toc - tic:0.4f} seconds") 
-                    
-                    fowt.Fhydro_2nd_mean[ih, :], fowt.Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
-            
+                    # Don't recompute the QTFs for the first wave because it was already done above.
+                    # Also, we would end up including second-order motions if we computed it again.
+                    if ih > 0: 
+                        Xi0 = getRAO(self.Xi[ih,i1:i2, :], fowt.zeta[ih,:])                        
+                        fowt.calcQTF_slenderBody(waveHeadInd=ih, Xi0=Xi0, verbose=True, iCase=iCase, iWT=i)                        
+                        fowt.Fhydro_2nd_mean[ih, :], fowt.Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+                
                     # Recompute the wave excitation forces and consequent motions to include second-order hydrodynamic forces
                     F_wave[i1:i2] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih, :, :]
                     for iw in range(self.nw):

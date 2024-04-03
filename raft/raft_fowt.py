@@ -1357,7 +1357,7 @@ class FOWT():
         return D_hydro
 
 
-    def calcQTF_slenderBody(self, waveHeadInd, Xi0=None, verbose=False, iCase=None):
+    def calcQTF_slenderBody(self, waveHeadInd, Xi0=None, verbose=False, iCase=None, iWT=None):
         '''This computes the second-order strip-theory-hydrodynamics terms
            Only long crested seas are currently considered here.
            Options:
@@ -1369,7 +1369,8 @@ class FOWT():
         # TODO: I think a lot of the calculations below should move to the member class
 
         if Xi0 is None:
-            Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)        
+            Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)
+        # Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)
         rho = self.rho_water
         g   = self.g
 
@@ -1386,8 +1387,8 @@ class FOWT():
         # Print Xi in the same format as a WAMIT .4 file for comparison
         if self.outFolderQTF is not None and verbose:
             # Check if the file exists. If so, append a number to the end of the file name
-            if isinstance(iCase, int):
-                outPath = os.path.join(self.outFolderQTF, f"raos-slender_body_Head{whead}_Case{iCase}.4")
+            if isinstance(iCase, int) and isinstance(iWT, int):
+                outPath = os.path.join(self.outFolderQTF, f"raos-slender_body_Head{whead}_Case{iCase+1}_WT{iWT}.4")
             else:
                 outPath = os.path.join(self.outFolderQTF, f"raos-slender_body_Head{whead}.4")
 
@@ -1416,7 +1417,7 @@ class FOWT():
         self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)  # Need this fourth dimension for conformity with the case where the QTFs are read from a file
 
         if verbose:
-            print(f"Computing QTF for heading {beta:.2f}")
+            print(f" Computing QTF for heading {beta:.2f}")
 
         # Start with the force due to rotation of first-order wave forces
         # This component depends on the forces on the whole body, hence it is outside of the member loop
@@ -1500,10 +1501,6 @@ class FOWT():
                         Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
                         Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
                         Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
-                        # Ca_p1=1
-                        # Ca_p2=1
-                        # Ca_End=1
-
 
                         # ----- compute side effects ---------------------------------------------------------
                         if circ:
@@ -1610,9 +1607,8 @@ class FOWT():
                     qtf_nabla[i1,i2,waveHeadInd,:]  += F_nabla
                     qtf_rslb[i1,i2,waveHeadInd,:]   += F_rslb
 
-                    # Add Kim and Yue correction for the horizontal force
-                    # We add only the real part because the imaginary part of the force is already taken care by the slender-body approximation                                   
-                    self.qtf[i1,i2,waveHeadInd,:] += np.real(mem.correction_KAY(self.depth, w1, w2, beta, rho=rho, g=g, k1=k1, k2=k2, Nm=10))
+                    # Add Kim and Yue correction                                                     
+                    self.qtf[i1,i2,waveHeadInd,:] += mem.correction_KAY(self.depth, w1, w2, beta, rho=rho, g=g, k1=k1, k2=k2, Nm=10)
 
         # Need a complete matrix due to interpolations that are used to computed the forces
         for i in range(self.nDOF):
@@ -1620,8 +1616,8 @@ class FOWT():
 
         if self.outFolderQTF is not None and verbose:
             # Check if the file exists. If so, append a number to the end of the file name
-            if isinstance(iCase, int):
-                outPath = os.path.join(self.outFolderQTF, f"qtf-slender_body-total_Head{whead}_Case{iCase}.12d")
+            if isinstance(iCase, int) and isinstance(iWT, int):
+                outPath = os.path.join(self.outFolderQTF, f"qtf-slender_body-total_Head{whead}_Case{iCase+1}_WT{iWT}.12d")
             else:
                 outPath = os.path.join(self.outFolderQTF, f"qtf-slender_body-total_Head{whead}.12d")
             self.writeQTF(self.qtf, outPath)
@@ -1685,7 +1681,7 @@ class FOWT():
                             f.write(f"{2*np.pi/w1[i1]: 8.4e} {2*np.pi/w2[i2]: 8.4e} {self.heads_2nd[ih]: 8.4e} {self.heads_2nd[ih]: 8.4e} {iDoF+1} {np.abs(F): 8.4e} {np.angle(F): 8.4e} {F.real: 8.4e} {F.imag: 8.4e}\n")
                         
 
-    def calcHydroForce_2ndOrd(self, beta, S0):
+    def calcHydroForce_2ndOrd(self, beta, S0, iCase=None, iWT=None):
         ''' Compute force due to 2nd order hydrodynamic loads
         See Pinkster (1980), Section IV.3
         We are losing the phases when computing forces from the spectrum.
@@ -1759,6 +1755,16 @@ class FOWT():
         # Displace f by one frequency so that it aligns with the frequency vector
         f[:, 0:-1] = f[:, 1:]
         f[:, -1] = 0
+
+        ident = 'WAMIT'
+        if self.potSecOrder == 1:
+            ident = 'slenderBody'
+
+        if self.outFolderQTF is not None:             
+            with open(os.path.join(self.outFolderQTF, f'f_2nd-{ ident }_Case{ iCase }_WT{ iWT }.txt'), 'w') as file:
+                for w, frow in zip(self.w, f.T):
+                    file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
+
         return f_mean, f
 
 

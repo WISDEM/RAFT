@@ -677,14 +677,14 @@ def getRAO(Xi, zeta):
     if Xi.shape[-1] != len(zeta):
         raise Exception("The last dimension of Xi must be the same length as zeta")
 
-    # Is there an eps value to use instead?
-    idx = np.where(np.abs(zeta)>1e-20)    
+    # # Is there an eps value to use instead?
+    idx = np.where(np.abs(zeta)>1e-6)    
     
     # Reshape zeta to be able to broadcast along the frequency dimension
     RAO = np.zeros_like(Xi, dtype=complex)
     RAO[..., idx] = Xi[..., idx] / zeta[idx]
-
     return RAO
+
 
 def printMat(mat):
     '''Print a matrix'''

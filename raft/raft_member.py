@@ -97,7 +97,7 @@ class Member:
         # We disable the MCF correction if the element is not circular
         if self.MCF:
             if not self.shape=='circular':
-                print(f'MacCamy-Fuchs correction not applicable to member {self.name}. Member needs to be circular. Disabling MCF correction.')
+                print(f'MacCamy-Fuchs correction not applicable to member {self.name}. Member needs to be circular. Disabling MCF.')
                 self.MCF = False
 
 
@@ -1135,10 +1135,6 @@ class Member:
         F = np.zeros(6, dtype=complex)
         if not self.MCF:
             return F
-
-        # Check if member is circular
-        if self.shape != 'circular':
-            return F
                 
         # Compute k1 and k2 if not provided
         if k1 is None:
@@ -1170,11 +1166,12 @@ class Member:
             # Compute force lumped at the intersection with the mean waterline
             k1R, k2R = k1*R, k2*R
             Fwl = 0+0j
-            if k1R >= np.pi/10 or k2R >= np.pi/10:
-                for nn in range(Nm + 1):
-                    Fwl += -rho*g*R*2j/np.pi/(k1R*k2R) * omega(k1R, k2R, nn)
+            # if k1R >= np.pi/10 or k2R >= np.pi/10:
+            for nn in range(Nm + 1):
+                Fwl += -rho*g*R*2j/np.pi/(k1R*k2R) * omega(k1R, k2R, nn)
             
-            Fwl *= np.exp(-1j*np.dot(k1_k2, rwl))
+            Fwl = np.real(Fwl) # Get only the part related to diffraction effects to avoid double counting with Rainey's equation
+            Fwl *= np.exp(-1j*np.dot(k1_k2, rwl)) # Solution considers cylinder at (0,0). Displace it to actual location
             F += translateForce3to6DOF(Fwl*pforce, rwl)
 
 
@@ -1210,30 +1207,28 @@ class Member:
                 # We do not want to use the diffraction correction for very long waves
                 # because it is already well captured by the slender-body approximation
                 # and because it could render the results worse.
-                if k1R < np.pi/10 and k2R < np.pi/10:
-                    continue
+                # if k1R < np.pi/10 and k2R < np.pi/10:
+                #     continue
                 
                 # For mean loads
                 dF = 0+0j  # Force per unit length. Assumed to be aligned with the wave propagation direction
-                if w1 == w2:                
-                    for nn in range(Nm + 1):
-                        dF += 0 # TODO: Implement the mean load
+                if w1 == w2:
+                    Im = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) - (z2+h)/h - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) + (z1+h)/h)
+                    Ip = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) + (z2+h)/h - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) - (z1+h)/h)                    
 
-                # For difference-frequency loads
                 else:
-                    coshk1h, coshk2h = np.cosh(k1h), np.cosh(k2h)                    
                     Im = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
-                    Ip = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
-                    for nn in range(Nm + 1):
-                        coshk1h = np.cosh(k1h)
-                        coshk2h = np.cosh(k2h)
+                    Ip = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))                    
 
-                        dF += rho*g*R*2j/np.pi/(k1R*k2R) * omega(k1R, k2R, nn) * (k1h*k2h/np.sqrt(k1h*np.tanh(k1h))/np.sqrt(k2h*np.tanh(k2h)) * (Im + Ip*nn*(nn+1)/k1R/k2R)/coshk1h/coshk2h)
+                coshk1h, coshk2h = np.cosh(k1h), np.cosh(k2h)                    
+                for nn in range(Nm + 1):
+                    dF += rho*g*R*2j/np.pi/(k1R*k2R) * omega(k1R, k2R, nn) * (k1h*k2h/np.sqrt(k1h*np.tanh(k1h))/np.sqrt(k2h*np.tanh(k2h)) * (Im + Ip*nn*(nn+1)/k1R/k2R)/coshk1h/coshk2h)
 
                         
                 # The force calculated above considers a cylinder at (x,y)=(0,0), so we need to account for the wave phase
                 r = 0.5*(r1 + r2)
-                dF *= np.exp(-1j*np.dot(k1_k2, r))
+                dF = np.real(dF) # Get only the part related to diffraction effects to avoid double counting with Rainey's equation
+                dF *= np.exp(-1j*np.dot(k1_k2, rwl)) # Solution considers cylinder at (0,0). Displace it to actual location
                 
                 # Project it along the the directino computed above and add it to the total force
                 F += translateForce3to6DOF(dF*pforce, r)

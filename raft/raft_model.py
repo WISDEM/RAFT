@@ -1510,7 +1510,8 @@ class Model():
     
     
     def plot2d(self, ax=None, hideGrid=False, draw_body=True, color=None, 
-               station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1], figsize=(6,4)):
+               station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1], figsize=(6,4),
+               plot_rotor=2):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -1534,7 +1535,7 @@ class Model():
 
         # plot each FOWT
         for fowt in self.fowtList:
-            fowt.plot2d(ax, color=color, station_plot=station_plot, Xuvec=Xuvec, Yuvec=Yuvec)
+            fowt.plot2d(ax, color=color, plot_rotor=plot_rotor, Xuvec=Xuvec, Yuvec=Yuvec)
         
         ax.axis("equal")
         

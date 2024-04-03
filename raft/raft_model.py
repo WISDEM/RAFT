@@ -871,7 +871,8 @@ class Model():
 
             #self.ms.plot()
 
-            print(f"Found mean offets of FOWT {i+1} with with surge = {fowt.Xi0[0]:.2f} m and pitch = {fowt.Xi0[4]*180/np.pi:.2f} deg.")
+            print(f"Found mean offets of FOWT {i+1} with surge = {fowt.Xi0[0]:.2f} m,    sway = {fowt.Xi0[1]:.2f}, and heave = {fowt.Xi0[2]:.2f} m")
+            print(f"                                     roll  = {fowt.Xi0[3]*180/np.pi:.2f} deg, pitch = {fowt.Xi0[4]*180/np.pi:.2f}, and yaw   = {fowt.Xi0[2]*180/np.pi:.2f} deg")
         
         #dsolvePlot(info) # plot solver convergence trajectories
         

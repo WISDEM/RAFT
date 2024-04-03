@@ -56,8 +56,6 @@ class Rotor:
         default_headings    = list(np.arange(self.nBlades) * 360 / self.nBlades) # equally distribute blades
         self.headings       = getFromDict(turbine, 'headings', shape=-1, default=default_headings)  # [deg]
 
-        self.axis       = getFromDict(turbine, 'axis', shape=turbine['nrotors'], default=[1,0,0])[ir]  # unit vector of rotor axis, facing downflow [-]
-
         self.Zhub       = getFromDict(turbine, 'hHub', shape=turbine['nrotors'])[ir]            # [m]
         self.Rhub       = getFromDict(turbine, 'Rhub', shape=turbine['nrotors'])[ir]            # [m]
         self.precone    = getFromDict(turbine, 'precone', shape=turbine['nrotors'])[ir]         # [m]
@@ -66,13 +64,21 @@ class Rotor:
         self.aeroServoMod = getFromDict(turbine, 'aeroServoMod', shape=turbine['nrotors'], default=1)[ir]  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
 
         self.yaw = 0   # the relative yaw rotation of this rotor, as from a yaw drive [rad]
+
+        # Unit vector of rotor axis, facing downflow [-]. Relative to the FOWT. Includes shaft tilt and initial yaw
+        if 'axis' in turbine:
+            self.axis = getFromDict(turbine, 'axis', shape=turbine['nrotors'])[ir]
+        else:
+            self.axis = np.matmul(rotationMatrix(0, self.shaft_tilt, self.yaw), np.array([1,0,0]) )        
         
         # how nacelle yaw is handled: 0=assume aligned, 1=use case info, 2=use self.yaw value
         self.yaw_mode = getFromDict(turbine, 'yaw_mode', shape=turbine['nrotors'], dtype=int, default=0)[ir]
 
         # initialize absolute position/orientation variables
-        self.r3 = np.zeros(3)  # instantaneous global position of rotor hub location
-        self.q  = np.array([1,0,0]) # instantaneous unit vector of rotor axis, downflow
+        self.r3 = np.zeros(3)  # instantaneous global position of rotor hub location       
+        self.q0 = self.axis    # instantaneous unit vector of rotor axis WITHOUT nacelle yaw
+        self.q  = self.q0    # instantaneous unit vector of rotor axis WITH nacelle yaw
+
         self.R  = np.ones(3)  # rotation matrix for platform orientation 
         
         self.rHub = np.array([self.coords[0], self.coords[1], self.Zhub])  # save the rotor's hub coordinates in the platform reference frame [m]
@@ -353,8 +359,8 @@ class Rotor:
             self.R = rotationMatrix(*r6[3:])
             
         # apply platform rotation to rotor axis and position relative to PRP
-        self.q = np.matmul(self.R, self.axis)  # axis unit vector in global orientation
-        r3_rel = np.matmul(self.R, self.rHub)  
+        self.q0 = np.matmul(self.R, self.axis)  # axis unit vector in global orientation
+        r3_rel  = np.matmul(self.R, self.rHub)  
         
         self.r3 = r6[:3] + self.rHub  # absolute hub coordinate [m]
         
@@ -779,8 +785,8 @@ class Rotor:
         self.yaw = nac_yaw  # save the nacelle yaw value just in case it's useful later
         
         # find turbine global heading and tilt
-        turbine_heading = np.arctan2(self.q[1], self.q[0]) + nac_yaw  # [rad]
-        turbine_tilt    = np.arctan2(self.q[2], self.q[0])  # [rad] front facing up is positive
+        turbine_heading = np.arctan2(self.q0[1], self.q0[0]) + nac_yaw  # [rad]
+        turbine_tilt    = np.arctan2(self.q0[2], self.q0[0])  # [rad] front facing up is positive
         
         # inflow misalignment heading relative to turbine heading [deg]
         yaw_misalign =  turbine_heading - np.radians(heading)
@@ -788,19 +794,22 @@ class Rotor:
         
         self.heading = turbine_heading  # store for later use (since q doesn't yet account for nacelle yaw!)
 
+        # Update axis vector to include turbine heading
+        self.q = np.matmul(rotationMatrix(0,0,turbine_heading), self.q0)
+        self.axis = np.matmul(self.R.T, self.q)  # also update the axis with respect to the platform orientation
+
         # call CCBlade
         loads, derivs = self.runCCBlade(speed, ptfm_pitch=turbine_tilt,
                                         yaw_misalign=yaw_misalign)
-        
-        
+                
         # ----- Set up rotation matrices to re-orient the results -----
         
         # Rotation matrix from rotor axis orientation to wind inflow direction
         R_inflow = rotationMatrix(0, turbine_tilt, yaw_misalign)  # <<< double check directions/signs
         
         # Rotation matrix from FOWT orientation to rotor axis oriention 
-        R_axis = rotationMatrix(0, np.arctan2(self.axis[2], self.axis[0]),
-                                   np.arctan2(self.axis[1], self.axis[0]) ) 
+        R_axis = rotationMatrix(0, np.arctan2(self.q[2], self.q[0]),
+                                   np.arctan2(self.q[1], self.q[0]) ) 
         
         # ----- Process derivatives of interest -----
         dT_dU  = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))
@@ -814,7 +823,7 @@ class Rotor:
 
         # ----- Process steady rotor forces and moments -----
         
-        # Set up vectors in axis frame (Assuming CCBlade forces (but not 
+        # Set up vectors in axis frame. Assuming CCBlade forces (but not 
         # moments) are relative to inflow direction.
         forces_inflow = np.array([loads["T"][0], loads["Y"][0], loads["Z" ][0]])
         moments_axis = np.array([loads["My"][0], loads["Q"][0], loads["Mz"][0]])

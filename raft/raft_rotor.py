@@ -76,8 +76,8 @@ class Rotor:
 
         # initialize absolute position/orientation variables
         self.r3 = np.zeros(3)  # instantaneous global position of rotor hub location       
-        self.q0 = self.axis    # instantaneous unit vector of rotor axis WITHOUT nacelle yaw
-        self.q  = self.q0    # instantaneous unit vector of rotor axis WITH nacelle yaw
+        self.q  = self.axis    # instantaneous unit vector of rotor axis
+
 
         self.R  = np.ones(3)  # rotation matrix for platform orientation 
         
@@ -359,8 +359,8 @@ class Rotor:
             self.R = rotationMatrix(*r6[3:])
             
         # apply platform rotation to rotor axis and position relative to PRP
-        self.q0 = np.matmul(self.R, self.axis)  # axis unit vector in global orientation
-        r3_rel  = np.matmul(self.R, self.rHub)  
+        self.q = np.matmul(self.R, self.axis)  # axis unit vector in global orientation
+        r3_rel = np.matmul(self.R, self.rHub) 
         
         self.r3 = r6[:3] + self.rHub  # absolute hub coordinate [m]
         
@@ -785,8 +785,8 @@ class Rotor:
         self.yaw = nac_yaw  # save the nacelle yaw value just in case it's useful later
         
         # find turbine global heading and tilt
-        turbine_heading = np.arctan2(self.q0[1], self.q0[0]) + nac_yaw  # [rad]
-        turbine_tilt    = np.arctan2(self.q0[2], self.q0[0])  # [rad] front facing up is positive
+        turbine_heading = np.arctan2(self.q[1], self.q[0]) + nac_yaw  # [rad]
+        turbine_tilt    = np.arctan2(self.q[2], self.q[0])  # [rad] front facing up is positive
         
         # inflow misalignment heading relative to turbine heading [deg]
         yaw_misalign =  turbine_heading - np.radians(heading)
@@ -794,9 +794,9 @@ class Rotor:
         
         self.heading = turbine_heading  # store for later use (since q doesn't yet account for nacelle yaw!)
 
-        # Update axis vector to include turbine heading
-        self.q = np.matmul(rotationMatrix(0,0,turbine_heading), self.q0)
-        self.axis = np.matmul(self.R.T, self.q)  # also update the axis with respect to the platform orientation
+        # Aply nacelle yaw to rotor axis
+        axis = np.matmul(rotationMatrix(0,0, nac_yaw), self.axis)
+        q    = np.matmul(self.R, axis)
 
         # call CCBlade
         loads, derivs = self.runCCBlade(speed, ptfm_pitch=turbine_tilt,

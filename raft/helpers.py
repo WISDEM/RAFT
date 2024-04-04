@@ -562,7 +562,7 @@ def rotateMatrix3(Min, rotMat):
 
 
 def RotFrm2Vect( A, B):
-    '''Rodriguez rotation function, which returns the rotation matrix 
+    '''Rodrigues rotation function, which returns the rotation matrix 
     that transforms vector A into Vector B.
     '''
     

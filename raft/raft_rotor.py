@@ -765,39 +765,44 @@ class Rotor:
             speed = getFromDict(case, 'wind_speed', shape=0, default=10)
             heading = getFromDict(case, 'wind_heading', shape=0, default=0.0)
         
+        # Horizontal angle between the shaft (without nacelle yaw) and the global X direction.
+        # For a conventional upwind turbine, for which the rotor shaft is aligned with the local XZ plane,
+        # this angle is the same as the platform heading. For other rotor configurations, this angle
+        # is the platform heading plus the initial orientation of the rotor shaft with respect to the platform.
+        platform_heading = np.arctan2(self.q[1], self.q[0])
+
         # Figure out relative inflow angles considering platform orientation,
         # rotor axis angles, nacelle yaw, and inflow direction
         
         # Apply nacelle yaw depending on the yaw mode 
         # (this does not consider if the axis has a permanent lateral angle)
         if self.yaw_mode == 0:  # assume aligned
-            nac_yaw = np.radians(heading)
-            
+            turbine_heading = np.radians(heading) # Horizontal angle between the shaft and the global X direction
+            nac_yaw = turbine_heading - platform_heading # Nacelle yaw measured from the initial rotor orientation
+                        
         elif self.yaw_mode == 1:  # use case info
-            turbine_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
-            nac_yaw = np.radians(turbine_heading - heading)
+            turbine_heading = np.radians(getFromDict(case, 'turbine_heading', shape=0, default=0.0))  # [rad]
+            nac_yaw = turbine_heading - platform_heading
             
         elif self.yaw_mode == 2:  # use self.yaw value
             nac_yaw = self.yaw
+            turbine_heading = turbine_platform + nac_yaw
+            
         else:
             raise Exception('Unsupported yaw_mode value. Must be 0, 1, or 2.')
-        
-        self.yaw = nac_yaw  # save the nacelle yaw value just in case it's useful later
-        
-        # find turbine global heading and tilt
-        turbine_heading = np.arctan2(self.q[1], self.q[0]) + nac_yaw  # [rad]
-        turbine_tilt    = np.arctan2(self.q[2], self.q[0])  # [rad] front facing up is positive
+
+        # Save in case these are useful later
+        self.yaw = nac_yaw
+        self.heading = turbine_heading
+
+        # Aply nacelle yaw to rotor shaft axis
+        axis = np.matmul(rotationMatrix(0,0, nac_yaw), self.axis) # Rotation in the local frame
+        q    = np.matmul(self.R, axis) # Write in the global frame        
         
         # inflow misalignment heading relative to turbine heading [deg]
         yaw_misalign =  turbine_heading - np.radians(heading)
-        turbine_tilt = turbine_tilt
-        
-        self.heading = turbine_heading  # store for later use (since q doesn't yet account for nacelle yaw!)
-
-        # Aply nacelle yaw to rotor axis
-        axis = np.matmul(rotationMatrix(0,0, nac_yaw), self.axis)
-        q    = np.matmul(self.R, axis)
-
+        turbine_tilt = np.arctan2(q[2], q[0])
+                
         # call CCBlade
         loads, derivs = self.runCCBlade(speed, ptfm_pitch=turbine_tilt,
                                         yaw_misalign=yaw_misalign)
@@ -808,8 +813,8 @@ class Rotor:
         R_inflow = rotationMatrix(0, turbine_tilt, yaw_misalign)  # <<< double check directions/signs
         
         # Rotation matrix from FOWT orientation to rotor axis oriention 
-        R_axis = rotationMatrix(0, np.arctan2(self.q[2], self.q[0]),
-                                   np.arctan2(self.q[1], self.q[0]) ) 
+        R_axis = rotationMatrix(0, np.arctan2(q[2], q[0]),
+                                   np.arctan2(q[1], q[0]) ) 
         
         # ----- Process derivatives of interest -----
         dT_dU  = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))

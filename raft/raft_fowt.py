@@ -2102,11 +2102,21 @@ class FOWT():
         # including hydro excitation vectors stored in each member
 
 
-    def plot2d(self, ax, color=None, station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1]):
-        '''plots the FOWT in 2d - only the platform and moorings so far...'''
+    def plot2d(self, ax, color=None, plot_rotor=1, 
+        Xuvec=[1,0,0], Yuvec=[0,0,1]):
+        '''plots the FOWT in 22.
+        
+        Parameters
+        ----------
+        plot_rotor : int
+            0 : don't plot; 1: plot 3D view; 2: plot a simple line
+        '''
 
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
-
+        
+        Xuvec = np.array(Xuvec)
+        Yuvec = np.array(Yuvec)
+        
         if self.ms:
             self.ms.plot2d(ax=ax, color=color, Xuvec=Xuvec, Yuvec=Yuvec)
 
@@ -2117,3 +2127,40 @@ class FOWT():
         for mem in self.memberList:
             mem.setPosition()
             mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, plot2d=True, Xuvec=Xuvec, Yuvec=Yuvec)
+
+        # Plot the rotor(s)
+        if plot_rotor == 1:
+            for rotor in self.rotorList:
+                coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + self.r6[:3]
+                rotor.plot(ax, r_ptfm=coords, R_ptfm=R, color=color, plot2d=True,
+                Xuvec=Xuvec, Yuvec=Yuvec)
+                
+        elif plot_rotor == 2:
+            # simple circle/line plot of rotor, ignoring precone or tilt
+            for rotor in self.rotorList:
+                r = rotor.ccblade.r[-1]  # rotor tip radius [m]
+                
+                X=[]  # lists to be filled with coordinates for plotting
+                Y=[]
+                Z=[]
+                
+                n = 24  # number of sides for a circle
+                for i in range(n+1):
+                    y = np.cos(float(i)/float(n)*2.0*np.pi)    # x coordinates of a unit circle
+                    z = np.sin(float(i)/float(n)*2.0*np.pi)    # y
+
+                    X.append(0)
+                    Y.append(r*y)
+                    Z.append(r*z)
+                    
+                R_heading = rotationMatrix(0, 0, rotor.heading)  # rotation matrix for rotor heading
+                
+                P2 = np.vstack([X, Y, Z])  # combine into a matrix of coordinates
+                #P2 = P2 + np.array([-rotor.overhang, 0, rotor.Zhub])[:,None]  # overhang and height
+                #P2 = np.matmul(np.matmul(R, R_heading), P2) + rotor.r3[:,None]  # with ptm rotation
+                P2 = np.matmul(R_heading, P2) + rotor.r3[:,None]  # with only heading
+                
+                # apply any 3D to 2D transformation here to provide desired viewing angle
+                Xs2d = np.matmul(Xuvec, P2)
+                Ys2d = np.matmul(Yuvec, P2)
+                ax.plot(Xs2d, Ys2d, color=color, lw=1.0)

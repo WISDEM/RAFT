@@ -872,7 +872,8 @@ class Model():
 
             #self.ms.plot()
 
-            print(f"Found mean offets of FOWT {i+1} with with surge = {fowt.Xi0[0]:.2f} m and pitch = {fowt.Xi0[4]*180/np.pi:.2f} deg.")
+            print(f"Found mean offets of FOWT {i+1} with surge = {fowt.Xi0[0]:.2f} m,    sway = {fowt.Xi0[1]:.2f}, and heave = {fowt.Xi0[2]:.2f} m")
+            print(f"                                     roll  = {fowt.Xi0[3]*180/np.pi:.2f} deg, pitch = {fowt.Xi0[4]*180/np.pi:.2f}, and yaw   = {fowt.Xi0[2]*180/np.pi:.2f} deg")
         
         #dsolvePlot(info) # plot solver convergence trajectories
         
@@ -1522,7 +1523,8 @@ class Model():
     
     
     def plot2d(self, ax=None, hideGrid=False, draw_body=True, color=None, 
-               station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1], figsize=(6,4)):
+               station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1], figsize=(6,4),
+               plot_rotor=2):
         '''plots the whole model, including FOWTs and mooring system...'''
 
         # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
@@ -1546,7 +1548,7 @@ class Model():
 
         # plot each FOWT
         for fowt in self.fowtList:
-            fowt.plot2d(ax, color=color, station_plot=station_plot, Xuvec=Xuvec, Yuvec=Yuvec)
+            fowt.plot2d(ax, color=color, plot_rotor=plot_rotor, Xuvec=Xuvec, Yuvec=Yuvec)
         
         ax.axis("equal")
         

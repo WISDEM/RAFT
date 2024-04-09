@@ -1370,7 +1370,7 @@ class FOWT():
 
         if Xi0 is None:
             Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)
-        # Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)
+        
         rho = self.rho_water
         g   = self.g
 
@@ -1761,7 +1761,7 @@ class FOWT():
             ident = 'slenderBody'
 
         if self.outFolderQTF is not None:             
-            with open(os.path.join(self.outFolderQTF, f'f_2nd-{ ident }_Case{ iCase }_WT{ iWT }.txt'), 'w') as file:
+            with open(os.path.join(self.outFolderQTF, f'f_2nd-{ ident }_Case{ iCase+1 }_WT{ iWT }.txt'), 'w') as file:
                 for w, frow in zip(self.w, f.T):
                     file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
 

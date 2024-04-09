@@ -281,6 +281,7 @@ class Model():
         # set up output arrays for load cases >>> put these into an initialization function <<<
         
         self.results['case_metrics'] = {}
+        self.results['mean_offsets'] = []
 
         
         # calculate the system's constant properties
@@ -299,7 +300,7 @@ class Model():
             print(self.design['cases']['data'][iCase])
         
             # form dictionary of case parameters
-            case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))   
+            case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))            
             
             if np.isscalar(case['wave_heading']):  # deal with the typical case of just one set of waves specified
                 nWaves = 1
@@ -315,10 +316,17 @@ class Model():
             # >>> add a flag that stores what case has had solveStatics to ensure consistency <<<
           
             # solve system dynamics
-            self.solveDynamics(case, iCase, RAO_plot=RAO_plot)
+            case['iCase'] = iCase # We use iCase in solveDynamics to name the output files
+            self.solveDynamics(case, RAO_plot=RAO_plot)
 
-            # Solve system operating point / mean offsets again, but now including mean wave forces
-            self.solveStatics(case)            
+            # Solve system operating point / mean offsets again, but now including mean wave forces.
+            # We need to do this after solveDynamics due to the option of computing the QTFs in there.
+            self.solveStatics(case)
+
+            # zero out the mean wave forces to avoid before entering the next case
+            for i, fowt in enumerate(self.fowtList): 
+                fowt.Fhydro_2nd_mean *= 0
+
             
             # >>> need to decide if I want to store Xi0 and Xi in the FOWTs or work with them directly here. <<<
             
@@ -608,10 +616,16 @@ class Model():
                 
                 fowt.calcTurbineConstants(case, ptfm_pitch=0)  # for turbine forces >>> still need to update to use current fowt pose <<<
                 fowt.calcHydroConstants()
-                #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater) ??
-                    #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)                   ??
-                # wave mean drift to be added
+                #for rotor in fowt.rotorList:    # for blade ifmembers (bladeMemberList will be empty if rotors are not underwater) ??
+                    #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)                   ??                
                 F_env_constant[6*i:6*i+6] = np.sum(fowt.f_aero0, axis=1) + fowt.calcCurrentLoads(case)
+
+                # Add mean drift if it was already computed.
+                # For multiple waves in a given case, it is simply the sum of the mean drifts for each wave.
+                # This is not strictly correct, as we would need to compute the QTFs for the combinations between wave headings, but this is a starting point
+                if hasattr(fowt, 'Fhydro_2nd_mean'):
+                    F_meandrift = np.sum(fowt.Fhydro_2nd_mean, axis=0)
+                    F_env_constant[6*i:6*i+6] += F_meandrift
                 
                 if display > 0:  print(" F_env_constant"+"  ".join(["{:+8.2e}"]*6).format(*F_env_constant[6*i:6*i+6]))
         
@@ -700,13 +714,17 @@ class Model():
                             case['wind_speed'] = caseorig['wind_speed'][i]
                         
                         fowt.calcTurbineConstants(case, ptfm_pitch=r6[4])  # for turbine forces >>> still need to update to use current fowt pose <<<
-                        fowt.calcHydroConstants(case, memberList=fowt.memberList) # prep for drag force (and eventually mean drift)
+                        fowt.calcHydroConstants(case, memberList=fowt.memberList) # prep for drag force
                         #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater) ??
                             #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)                   ??
                     
-                        Fnet[6*i:6*i+6] += np.sum(fowt.f_aero0, axis=1)  # sum mean turbine force across turbines
-                        # F_meanDrift = self.fowtList[0].Fhydro_2nd_mean[iCase, :]  # wave mean drift to be added
+                        Fnet[6*i:6*i+6] += np.sum(fowt.f_aero0, axis=1)  # sum mean turbine force across turbines                        
                         Fnet[6*i:6*i+6] += fowt.calcCurrentLoads(case)  # current drag force  i.e. fowt.D_hydro
+
+                        # mean drift force
+                        if hasattr(fowt, 'Fhydro_2nd_mean'):
+                            F_meandrift = np.sum(fowt.Fhydro_2nd_mean, axis=0) 
+                            Fnet[6*i:6*i+6] += F_meandrift 
 
                         
                     # This could eventually include FLORIS. If it's slow, FLORIS could be updated only every 5 or 10 iterations...
@@ -848,6 +866,8 @@ class Model():
         self.Xs2 = info['Xs']    # List of positions as it finds equilibrium for every iteration
         self.Es2 = info['Es']    # List of errors that the forces are away from 0, which in this case, is the same as the forces
         
+        if case and 'iCase' in case:
+            self.results['mean_offsets'].append(self.Xs2[-1])  # save the final equilibrium position for this case
         
         
         
@@ -872,8 +892,9 @@ class Model():
 
             #self.ms.plot()
 
-            print(f"Found mean offets of FOWT {i+1} with surge = {fowt.Xi0[0]:.2f} m,    sway = {fowt.Xi0[1]:.2f}, and heave = {fowt.Xi0[2]:.2f} m")
-            print(f"                                     roll  = {fowt.Xi0[3]*180/np.pi:.2f} deg, pitch = {fowt.Xi0[4]*180/np.pi:.2f}, and yaw   = {fowt.Xi0[2]*180/np.pi:.2f} deg")
+            print(f"Found mean offets of FOWT {i+1} with surge = {fowt.Xi0[0]: .2f} m,  sway  = {fowt.Xi0[1]: .2f},  and heave = {fowt.Xi0[2]: .2f} m")
+            print(f"                                 roll  = {fowt.Xi0[3]*180/np.pi: .2f} deg, pitch = {fowt.Xi0[4]*180/np.pi: .2f}, and yaw   = {fowt.Xi0[5]*180/np.pi: .2f} deg")
+
         
         #dsolvePlot(info) # plot solver convergence trajectories
         
@@ -934,13 +955,17 @@ class Model():
         '''
         
 
-    def solveDynamics(self, case, iCase, tol=0.01, conv_plot=0, RAO_plot=0):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
         nIter = 2  # maximum number of iterations to allow
         '''
         
+        iCase = None
+        if 'iCase' in case:
+            iCase = case['iCase']
+
         nIter = int(self.nIter) + 1         # maybe think of a better name for the first nIter
         XiStart = self.XiStart
 
@@ -1142,7 +1167,7 @@ class Model():
                 # calculate linear and nonlinear wave excitation for this FOWT and case (consider phasing due to position in array)
                 fowt.calcHydroExcitation(case, memberList=fowt.memberList)
                 F_linearized = fowt.calcDragExcitation(ih)
-                if fowt.potSecOrder==2:
+                if fowt.potSecOrder==2 and ih > 0:
                     fowt.Fhydro_2nd_mean[ih, :], fowt.Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
                 F_wave[i1:i2] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih,:,:]
                 
@@ -1364,7 +1389,7 @@ class Model():
             
             for iCase in range(nCases):
                 metrics = self.results['case_metrics'][iCase][i]
-                with open(f'{outPath}_Case{iCase}_WT{i}.txt', 'w') as file:
+                with open(f'{outPath}_Case{iCase+1}_WT{i}.txt', 'w') as file:
                     # Write the header
                     file.write('Frequency [rad/s] \t')
                     for metric, unit in zip(chooseMetrics, metricUnit):
@@ -1377,6 +1402,12 @@ class Model():
                         for metric in chooseMetrics:
                             file.write(f'{np.squeeze(metrics[metric][iFreq]):.5f} \t')
                         file.write('\n')
+
+                # Save mean offsets
+                with open(f'{outPath}_Case{iCase+1}_WT{i}_meanOffsets.txt', 'w') as file:
+                    file.write('Surge [m] \t Sway [m] \t Heave [m] \t Pitch [deg] \t Roll [deg] \t Yaw [deg] \n')
+                    mean_offsets = self.results['mean_offsets'][iCase]
+                    file.write(f'{mean_offsets[0]:.5f} \t {mean_offsets[1]:.5f} \t {mean_offsets[2]:.5f} \t {mean_offsets[3]:.5f} \t {mean_offsets[4]:.5f} \t {mean_offsets[5]:.5f} \n')
 
 
     def plotResponses_extended(self):

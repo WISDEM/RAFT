@@ -171,8 +171,9 @@ class FOWT():
         
         
         # add tower(s) to member list if applicable
-        for mem in design['turbine']['tower']:
-            self.memberList.append(Member(mem, self.nw))
+        if 'turbine' in design:
+            for mem in design['turbine']['tower']:
+                self.memberList.append(Member(mem, self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
         
         # Add nacelle(s) to member list if applicable

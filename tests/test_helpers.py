@@ -27,7 +27,7 @@ def test_getKinematics():
     # Arbitrary inputs
     r = [2, 2, 2] # Point of interest
     w  = np.array([0.5, 0.75]) # Frequencies
-    Xi = np.array([[1, 2+1j], [0.1+0.2j, 0.3+0.4j], [0.5+0.6j, 0.7+0.8j], [0.9+1.0j, 1.1+1.2j], [1.3+1.4j, 1.5+1.6j], [1.7+1.8j, 1.9+2.0j]])   #Motion amplitudes
+    Xi = np.array([[1, 2+1j], [0.1+0.2j, 0.3+0.4j], [0.5+0.6j, 0.7+0.8j], [0.9+1.0j, 1.1+1.2j], [1.3+1.4j, 1.5+1.6j], [1.7+1.8j, 1.9+2.0j]])   #Motion amplitudes. These high angles don't make physical sense, but ok for testing
     
     desired_values = np.array([
             [[ 0.2-8.00000000e-01j,  1.2+2.00000000e-01j] , [ 1.7+1.80000000e+00j,  1.9+2.00000000e+00j], [-0.3-2.00000000e-01j, -0.1-2.22044605e-16j]],

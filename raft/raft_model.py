@@ -320,12 +320,15 @@ class Model():
             self.solveDynamics(case, RAO_plot=RAO_plot)
 
             # Solve system operating point / mean offsets again, but now including mean wave forces.
-            # We need to do this after solveDynamics due to the option of computing the QTFs in there.
-            self.solveStatics(case)
+            # We actually wouldn't need to do that if the QTFs are computed externally, but all the wave information 
+            # is currently computed only when solveDynamics is called. Should work on that
+            if any(fowt.potSecOrder > 0 for fowt in self.fowtList):
+                print('Recomputing equilibrium position, now with wave mean drift')
+                self.solveStatics(case)
 
-            # zero out the mean wave forces to avoid before entering the next case
-            for i, fowt in enumerate(self.fowtList): 
-                fowt.Fhydro_2nd_mean *= 0
+                # zero out the mean wave forces to avoid using old values in the next case
+                for i, fowt in enumerate(self.fowtList): 
+                    fowt.Fhydro_2nd_mean *= 0
 
             
             # >>> need to decide if I want to store Xi0 and Xi in the FOWTs or work with them directly here. <<<

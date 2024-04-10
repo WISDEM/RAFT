@@ -962,8 +962,8 @@ class FOWT():
         self.S = np.zeros([self.nWaves,self.nw])
         for ih in range(self.nWaves):
             if case['wave_spectrum'][ih] == 'constant':
-                S = case['wave_height'][ih]
-                self.zeta[ih,:] = np.sqrt(2*S*self.dw)
+                self.S[ih,:] = case['wave_height'][ih]
+                self.zeta[ih,:] = np.sqrt(2*self.S*self.dw)
                 # self.zeta[ih,:] = np.tile(case['wave_height'][ih], self.nw)
             elif case['wave_spectrum'][ih] == 'JONSWAP':
                 self.S[ih,:] = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        

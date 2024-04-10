@@ -1066,11 +1066,9 @@ platform:
     dz_BEM       : 3.0    #  [m]   axial discretization panel length target for BEM analysis
     da_BEM       : 2.0    #  [m]   azimuthal discretization panel length target for BEM analysis
     potModMaster : 1
-    potSecOrder  : 1      # [int] master switch for computing second-order wave forces; 0=do not compute, 1=compute QTFs using slender body approximation, 2=read QTF file in WAMIT format (.11d or .12d)
-    min_freq2nd  :  0.040     # [Hz] minimum frequency for second-order wave forces
-    df_freq2nd   :  0.008     # [Hz] frequency step for second-order wave forces
-    max_freq2nd  :  0.350     # [Hz] maximum frequency for second-order wave forces
-    outFolderQTF : './examples' # Output folder for storing the QTFs computed by RAFT. Written in .12d format.
+    potSecOrder  : 2      # [int] master switch for computing second-order wave forces; 0=do not compute, 1=compute QTFs using slender body approximation, 2=read QTF file in WAMIT format (.11d or .12d)
+    qtfPath      : './marin_semi.12d'      # path to the qtf file for the platform
+
 
 
     members:   # list all members here

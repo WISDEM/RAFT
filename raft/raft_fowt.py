@@ -962,10 +962,12 @@ class FOWT():
         # make wave spectrum for each heading
         self.S = np.zeros([self.nWaves,self.nw])
         for ih in range(self.nWaves):
-            if case['wave_spectrum'][ih] == 'constant':
+            if case['wave_spectrum'][ih] == 'unit':
+                self.S[ih,:] = np.tile(1, self.nw)
+                self.zeta[ih,:] = np.sqrt(2*self.S[ih,:]*self.dw)    # wave elevation amplitudes (these are easiest to use)
+            elif case['wave_spectrum'][ih] == 'constant':
                 self.S[ih,:] = case['wave_height'][ih]
                 self.zeta[ih,:] = np.sqrt(2*self.S*self.dw)
-                # self.zeta[ih,:] = np.tile(case['wave_height'][ih], self.nw)
             elif case['wave_spectrum'][ih] == 'JONSWAP':
                 self.S[ih,:] = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        
                 self.zeta[ih,:] = np.sqrt(2*self.S[ih,:]*self.dw)    # wave elevation amplitudes (these are easiest to use)

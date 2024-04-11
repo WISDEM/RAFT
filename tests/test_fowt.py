@@ -278,7 +278,7 @@ if __name__ == "__main__":
     fowt = create_fowt(list_files[index])
 
     # test_statics((index,fowt))
-    # test_hydroConstants((index,fowt))
-    # test_hydroExcitation((index,fowt))
-    test_hydroLinearization((index,fowt))
+    # # test_hydroConstants((index,fowt))
+    test_hydroExcitation((index,fowt))
+    # test_hydroLinearization((index,fowt))
 

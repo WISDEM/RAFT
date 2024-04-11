@@ -20,5 +20,10 @@ raft/platform.gdf
 tests/BEM/
 tests/platform.gdf
 
+# Tests generated data
+none
+outputs
+reports
+
 # Emacs
 *~

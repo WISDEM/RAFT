@@ -334,7 +334,7 @@ def SmallRotate(r, th):
 # given a size-3 vector, vec, return the matrix from the multiplication vec * vec.transpose
 def VecVecTrans(vec):
 
-    vvt = np.zeros([3,3])
+    vvt = np.zeros([3,3], dtype=vec.dtype)
 
     for i in range(3):
         for j in range(3):
@@ -565,7 +565,8 @@ def RotFrm2Vect( A, B):
     '''Rodrigues rotation function, which returns the rotation matrix 
     that transforms vector A into Vector B.
     '''
-    
+    A = A/np.linalg.norm(A)
+    B = B/np.linalg.norm(B)
     
     v = np.cross(A,B)
     

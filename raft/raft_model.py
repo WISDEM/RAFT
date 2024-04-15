@@ -301,6 +301,7 @@ class Model():
         
             # form dictionary of case parameters
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))            
+            case['iCase'] = iCase # We use iCase to name the output files
             
             if np.isscalar(case['wave_heading']):  # deal with the typical case of just one set of waves specified
                 nWaves = 1
@@ -315,8 +316,7 @@ class Model():
             
             # >>> add a flag that stores what case has had solveStatics to ensure consistency <<<
           
-            # solve system dynamics
-            case['iCase'] = iCase # We use iCase in solveDynamics to name the output files
+            # solve system dynamics            
             self.solveDynamics(case, RAO_plot=RAO_plot)
 
             # Solve system operating point / mean offsets again, but now including mean wave forces.
@@ -1406,11 +1406,11 @@ class Model():
                             file.write(f'{np.squeeze(metrics[metric][iFreq]):.5f} \t')
                         file.write('\n')
 
-                # Save mean offsets
-                with open(f'{outPath}_Case{iCase+1}_WT{i}_meanOffsets.txt', 'w') as file:
-                    file.write('Surge [m] \t Sway [m] \t Heave [m] \t Pitch [deg] \t Roll [deg] \t Yaw [deg] \n')
-                    mean_offsets = self.results['mean_offsets'][iCase]
-                    file.write(f'{mean_offsets[0]:.5f} \t {mean_offsets[1]:.5f} \t {mean_offsets[2]:.5f} \t {mean_offsets[3]:.5f} \t {mean_offsets[4]:.5f} \t {mean_offsets[5]:.5f} \n')
+                # if self.results['mean_offsets']:
+                #     with open(f'{outPath}_Case{iCase+1}_WT{i}_meanOffsets.txt', 'w') as file:
+                #         file.write('Surge [m] \t Sway [m] \t Heave [m] \t Pitch [deg] \t Roll [deg] \t Yaw [deg] \n')
+                #         mean_offsets = self.results['mean_offsets'][iCase]
+                #         file.write(f'{mean_offsets[0]:.5f} \t {mean_offsets[1]:.5f} \t {mean_offsets[2]:.5f} \t {mean_offsets[3]:.5f} \t {mean_offsets[4]:.5f} \t {mean_offsets[5]:.5f} \n')
 
 
     def plotResponses_extended(self):

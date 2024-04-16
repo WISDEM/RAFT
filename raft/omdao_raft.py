@@ -4,6 +4,7 @@ import numpy as np
 import pickle, os
 import copy
 from itertools import compress
+from wisdem.inputs import write_yaml
 
 DEBUG_OMDAO = False  # use within WEIS
 
@@ -375,7 +376,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # set up design
         design = {}
         design['type'] = ['input dictionary for RAFT']
-        design['name'] = ['spiderfloat']
+        design['name'] = [analysis_options['general']['fname_output']]
         design['comments'] = ['none']
         
         design['settings'] = {}
@@ -450,7 +451,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['turbine']['blade']['Rtip']        = float(inputs['blade_Rtip'])
         design['turbine']['blade']['precurveTip'] = float(inputs['blade_precurveTip'])
         design['turbine']['blade']['presweepTip'] = float(inputs['blade_presweepTip'])
-        design['turbine']['blade']['airfoils']    = list(zip(inputs['airfoils_position'], turbine_opt['af_used_names']))
+        airfoil_pos = [float(ap) for ap in inputs['airfoils_position']]     # Cast to float for yaml saving purposes
+        design['turbine']['blade']['airfoils']    = list(zip(airfoil_pos, turbine_opt['af_used_names']))
         # airfoils data
         n_af = turbine_opt['n_af']
         design['turbine']['airfoils'] = [dict() for m in range(n_af)] #Note: doesn't work [{}]*n_af
@@ -604,7 +606,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             design['mooring']['lines'][i]['endA'] = mooring_opt[ml_name+'endA']
             design['mooring']['lines'][i]['endB'] = mooring_opt[ml_name+'endB']
             design['mooring']['lines'][i]['type'] = mooring_opt[ml_name+'type']
-            design['mooring']['lines'][i]['length'] = inputs[ml_name+'length']
+            design['mooring']['lines'][i]['length'] = float(inputs[ml_name+'length'])
         design['mooring']['line_types'] = [dict() for m in range(nline_types)] #Note: doesn't work [{}]*nline_types
         for i in range(0, nline_types):
             lt_name = f'mooring_line_type{i+1}_'
@@ -639,10 +641,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
 
         # Debug
         if modeling_opt['save_designs']:
-            with open(
-                os.path.join(analysis_options['general']['folder_output'],'raft_designs',
-                f'raft_design_{self.i_design}.pkl'), 'wb') as handle:
+            file_base = os.path.join(analysis_options['general']['folder_output'],'raft_designs',f'raft_design_{self.i_design}')
+            with open(f'{file_base}.pkl', 'wb') as handle:
                 pickle.dump(design, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+            write_yaml(design,f'{file_base}.yaml')
             self.i_design += 1
                 
         # set up the model
@@ -651,6 +654,37 @@ class RAFT_OMDAO(om.ExplicitComponent):
             ballast= modeling_opt['trim_ballast'], 
             heave_tol = modeling_opt['heave_tol']
             )
+
+        if modeling_opt['plot_designs']:
+            fig, axs = model.plot()
+
+            if True:
+                
+                print('Set breakpoint here and find nice camera angle')
+
+                azm=axs.azim
+                ele=axs.elev
+
+                xlm=axs.get_xlim3d() #These are two tupples
+                ylm=axs.get_ylim3d() #we use them in the next
+                zlm=axs.get_zlim3d() #graph to reproduce the magnification from mousing
+
+                print(f'axs.azim = {axs.azim}')
+                print(f'axs.elev = {axs.elev}')
+                print(f'axs.set_xlim3d({xlm})')
+                print(f'axs.set_ylim3d({ylm})')
+                print(f'axs.set_zlim3d({zlm})')
+
+            else:
+                print('Setting ')
+                axs.azim = -143.27922077922082
+                axs.elev = 6.62337662337643
+                axs.set_xlim3d((-33.479380470031096, 33.479380470031096))
+                axs.set_ylim3d((-11.01295410198392, 11.01295410198392))
+                axs.set_zlim3d((-30.005888228174538, -19.994111771825473))
+
+                print('here')
+    
         
         # option to generate seperate HAMS data for level 2 or 3, with higher res settings
         if False: #preprocessBEM:

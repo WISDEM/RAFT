@@ -1156,7 +1156,7 @@ class FOWT():
 
                 # get node complex velocity spectrum based on platform motion's and relative position from PRP
                 # node displacement, velocity, and acceleration (each [3 x nw])
-                drnode, vnode, anode = getKinematics(mem.r[il,:], Xi, self.w)
+                drnode, vnode, anode = getKinematics(mem.r[il,:] - self.r6[:3], Xi, self.w)
 
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:

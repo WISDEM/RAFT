@@ -665,6 +665,27 @@ def JONSWAP(ws, Hs, Tp, Gamma=None):
 
     return  0.5/np.pi *C* 0.3125*Hs*Hs*fpOvrf4/f *np.exp( -1.25*fpOvrf4 )* Gamma**Alpha
 
+def getRAO(Xi, zeta):
+    '''Calculates the response amplitude operator (RAO).
+    It is simply the reponse (motion, load, anything) for unitary wave amplitude.
+    Xi can have any number of dimensions, but the last dimension must be the same length as zeta.
+    '''
+    # Check if zeta is a 1D array
+    if len(zeta.shape) != 1:
+        raise Exception("zeta must be a 1D array")
+    
+    # Check if the last dimension of Xi is the same length as zeta
+    if Xi.shape[-1] != len(zeta):
+        raise Exception("The last dimension of Xi must be the same length as zeta")
+
+    # # Is there an eps value to use instead?
+    idx = np.where(np.abs(zeta)>1e-6)    
+    
+    # Reshape zeta to be able to broadcast along the frequency dimension
+    RAO = np.zeros_like(Xi, dtype=complex)
+    RAO[..., idx] = Xi[..., idx] / zeta[idx]
+    return RAO
+
 
 def printMat(mat):
     '''Print a matrix'''
@@ -1215,6 +1236,41 @@ def adjustMooring(ms, design):
     
     return(design)
 
+def readWAMIT_p2(inFl, rho=1, L=1, g=1):
+    # Default values for rho, L and g are 1, so that the results are not dimensionalized    
+    data = np.loadtxt(inFl)
+
+    # Headings in the file
+    head    = np.unique(data[:,1]) # Array with the different headings
+    numHead = len(head)            # Number of different headings
+
+    # Periods in the file
+    period = np.unique(data[:,0])  # Array with the different periods
+
+    # Names of the variables that will be used for each of the six Degrees of Freedom
+    stringDoF = [ 'surge', 'sway', 'heave', 'roll', 'pitch', 'yaw']
+
+    # Power of ULEN to dimensionalize the results
+    k_ULEN = [2, 2, 2, 3, 3, 3]
+
+    #=== Loop the degrees of freedom provided by 'stringDoF'.
+    #=== Store the data in disctionaries whose names are given by the strings provided by 'stringDoF'
+    W2 = {}
+    for iDoF, DoF in enumerate(stringDoF):
+        dataAux = data[ data[:,2] == iDoF+1 , :]  # Get the data for the specified DoF
+        dataAux = dataAux[np.lexsort((dataAux[:,1], dataAux[:,0]))]  # Sort rows based on heading and wave period
+        
+        # Create matrices with the desired data, with:
+        # - the wave periods according to the rows;
+        # - and the wave headings to the columns.
+        reAux  = dataAux[:,5].reshape(-1,numHead) # real part
+        imAux  = dataAux[:,6].reshape(-1,numHead) # imaginary part
+        W2[DoF] = (reAux + 1j*imAux) * rho * g * L**k_ULEN[iDoF]
+
+    W2['period'] = period
+    W2['heading'] = head
+    
+    return W2
 
 if __name__ == '__main__':
     

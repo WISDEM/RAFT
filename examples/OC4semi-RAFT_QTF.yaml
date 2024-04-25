@@ -1,5 +1,5 @@
 type: input file for RAFT
-name: 5MW with OC3-Hywind spar
+name: 5MW with OC4-DeepCWind semi-sub
 
 
 settings:                   # global Settings
@@ -16,20 +16,22 @@ site:
     shearExp    : 0.12       #          shear exponent
     
 cases:
-    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading  ]
+    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, current_speed, wave_gamma ]
     data :  #   m/s        deg    % or e.g. 2B_NTM    string            deg         string          (s)         (m)         (deg)
-        -  [    0,         0,            0,       operating,          0,        JONSWAP,         10,        6,           0        ]
+        -  [    0,         0,            0,       operating,          0,        constant,             0,          5,           0,            0, 0]
+
+
 
 
 turbine:
-    
+       
     mRNA          :     350000        #  [kg]       RNA mass 
     IxRNA         :   35444067        #  [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
     IrRNA         :   26159984.0      #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
     xCG_RNA       :          0        #  [m]        x location of RNA center of mass [m] (Actual is ~= -0.27 m)
     hHub          :         90.0      #  [m]        hub height above water line [m]
     Fthrust       :        800.0E3    #  [N]        temporary thrust force to use
-    
+
     I_drivetrain: 318628138.0   # full rotor + drivetrain inertia as felt on the high-speed shaft <<< not correct! <<<
 
     nBlades     : 3          # number of blades
@@ -41,9 +43,9 @@ turbine:
     aeroServoMod : 1          # 0 aerodynamics off; 1 aerodynamics on (no control); 2 aerodynamics and control on
 
     env: 
-        rho     : 1.225   # air density [kg/m^3]
-        mu      : 1.81e-05   # air dynamic viscosity
-        shearExp: 0.2  # shear exponent
+        rho      : 1.225   # air density [kg/m^3]
+        mu       : 1.81e-05   # air dynamic viscosity
+        shearExp : 0.2  # shear exponent
 
     blade: 
         precurveTip : 0.0  # 
@@ -1014,7 +1016,6 @@ turbine:
 
 
 
-
     pitch_control:   # NOTE: these values from IEA 15 - not updated for NREL 5 MW yet
       GS_Angles: [0.08951732571568687, 0.11113133201402342, 0.12982917355231283, 0.1466420801733839, 0.16211366466881905, 0.17655839335287876, 0.19019635501633186, 0.2031735797715147, 0.2155988980768675, 0.22755610891787487, 0.23910432007046029, 0.25029505429019794, 0.261175108296815, 0.2717701141434908, 0.2821130743895577, 0.2922299908966622, 0.30213155066939196, 0.3118425748263288, 0.32137789704483055, 0.3307503670667345, 0.3399699865577445, 0.3490461860239008, 0.3579880322509144, 0.3668047339186282, 0.37550289814624044, 0.3840890078940221, 0.3925675520014984, 0.4009446279452681]
       GS_Kp: [-1.3577105502989462, -1.2022843685437077, -1.0708549194177244, -0.9582630743745694, -0.8607297095205451, -0.7754232092569442, -0.7001800303510133, -0.6333186502486411, -0.5735124113109392, -0.5197005998242658, -0.47102498684717165, -0.42678371240552293, -0.3863972240349146, -0.3493827470593987, -0.3153348933114633, -0.2839107527034031, -0.25481830344353146, -0.22780730986914496, -0.20266210648191768, -0.17919582739515136, -0.1572457543239439, -0.13666953808436225, -0.11734210805288207, -0.09915312775509398, -0.0820048872139108, -0.06581054702303714, -0.05049266752014871, -0.035981970477687836]
@@ -1059,7 +1060,6 @@ turbine:
         #cap_d_in     :  [    ]                 # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
 
 
-
 platform:
 
     min_freq_BEM : 0.03   #  [Hz]  lowest frequency and frequency interval to use in BEM analysis
@@ -1069,98 +1069,121 @@ platform:
     potSecOrder  : 1      # [int] master switch for computing second-order wave forces; 0=do not compute, 1=compute QTFs using slender body approximation, 2=read QTF file in WAMIT format (.11d or .12d)
     min_freq2nd  :  0.040     # [Hz] minimum frequency for second-order wave forces
     df_freq2nd   :  0.008     # [Hz] frequency step for second-order wave forces
-    max_freq2nd  :  0.400     # [Hz] maximum frequency for second-order wave forces
+    max_freq2nd  :  0.350     # [Hz] maximum frequency for second-order wave forces
     outFolderQTF : '.' # Output folder for storing the QTFs computed by RAFT. Written in .12d format.
-    
-    yaw_stiffness :   98340000.0      #  [N-m/rad]  additional yaw stiffness to apply if not modeling crowfoot in the mooring system
+
 
     members:   # list all members here
         
-      - name      :  center_spar               # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0, 0, -120]             # [m]    end A coordinates
+      - name      :  main_column               # [-]    an identifier (no longer has to be number)
+        type      :  2                         # [-]    (1=turbine, >1=substructure, for now)
+        rA        :  [ 0, 0,  -20]             # [m]    end A coordinates
         rB        :  [ 0, 0,   10]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        
+        MCF       :  True
         # --- outer shell including hydro---
-        stations  :  [-120, -12,  -4,  10 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  [ 9.4, 9.4, 6.5,  6.5]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.027                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        # (neglecting axial coefficients for now)
-        CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  8500                      # [kg/m3] 
-        
-        # --- ballast ---
-        l_fill    :  [52.9, 0.0, 0.0]          # [m]
-        rho_fill  :  [1800.0, 0.0, 0.0]        # [kg/m3]
-        
+        stations  :  [-20, 10 ]                # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  [ 6.5,  6.5]              # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        t         :  0.03                      # [m]    wall thicknesses (scalar or list of same length as stations)
+        Cd        :  0.56                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  0.63                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd     :  0.6                         # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  1.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell :  7850                      # [kg/m3]   material density
         # --- handling of end caps or any internal structures if we need them ---
         # (These will only be *within* the inner diameter of the outer shell, so they don't interrupt the outer shell.)
-        cap_stations :  [-120  ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
-        cap_t        :  [ 0.2  ]               # [m]  thickness of any internal structures
-        cap_d_in     :  [ 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+        cap_stations :  [ -20 ]                # [m]  location along member of any inner structures (in same scaling as set by 'stations')
+        cap_t        :  [ 0.03  ]              # [m]  thickness of any internal structures
+        cap_d_in     :  [ 0  ]                 # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+      
+      
+      - name      :  offset_column             # [-]    an identifier (no longer has to be number)       
+        type      :  3                         # [-]    (1=turbine, >1=substructure, for now)
+        rA        :  [ 28.86 , 0,  -20]        # [m]    end A coordinates
+        rB        :  [ 28.86 , 0,   12]        # [m]    and B coordinates
+        heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
+        shape     :  circ                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
+        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        MCF       :  True
+        # --- outer shell including hydro---
+        stations  :  [-20, -14, -14, 12 ]      # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  [ 24, 24, 12,  12]        # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        t         :  0.06                      # [m]    wall thicknesses (scalar or list of same length as stations)
+        Cd        :  [0.68, 0.68, 0.61, 0.61]  # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  [0.4, 0.4, 0.63, 0.63]                      # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd     :  2.3                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  0.7                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell :  7850                      # [kg/m3]   material density
+        # --- ballast ---
+        l_fill    :  [5.0418, 0, 7.77]         # [m]
+        rho_fill  :  [1025.0, 0, 1025.0]       # [kg/m3]
+        # --- handling of end caps or any internal structures if we need them ---
+        # (These will only be *within* the inner diameter of the outer shell, so they don't interrupt the outer shell.)
+        cap_stations :  [ -20, -14, -14, 12]             # [m]  location along member of any inner structures (in same scaling as set by 'stations')
+        cap_t        :  [ 0.06, 0.06, 0.06, 0.06  ]      # [m]  thickness of any internal structures
+        cap_d_in     :  [ 0 , 12, 0, 0   ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+
+    # temporarily removed bracing members <<<
 
 
 mooring:
-    water_depth: 320                                  # [m]       uniform water depth
+    water_depth: 200                                  # [m]       uniform water depth
     
     points:
         - name: line1_anchor
           type: fixed
-          location: [853.87, 0.0, -320.0]
+          location: [418.8, 725.38, -200.0]
           anchor_type: drag_embedment
 
         - name: line2_anchor
           type: fixed
-          location: [-426.935, 739.47311, -320.0]
+          location: [-837.6, 0.0, -200.0]
           anchor_type: drag_embedment
 
         - name: line3_anchor
           type: fixed
-          location: [-426.935, -739.47311, -320.0]
+          location: [418.8, -725.38, -200.0]
           anchor_type: drag_embedment
 
         - name: line1_vessel
           type: vessel
-          location: [5.2,      0.0,     -70.0]
+          location: [20.434,    35.393,     -14.0]
 
         - name: line2_vessel
           type: vessel
-          location: [-2.6,      4.5033,     -70.0]
+          location: [-40.868,   0.0,     -14.0]
 
         - name: line3_vessel
           type: vessel
-          location: [-2.6,     -4.5033,     -70.0]
+          location: [20.434,     -35.393,     -14.0]
 
     lines:
         - name: line1
           endA: line1_anchor
           endB: line1_vessel
           type: main
-          length: 902.2
+          length: 835.5
 
         - name: line2
           endA: line2_anchor
           endB: line2_vessel
           type: main
-          length: 902.2
+          length: 835.5
 
         - name: line3
           endA: line3_anchor
           endB: line3_vessel
           type: main
-          length: 902.2
+          length: 835.5
 
     line_types:
         - name: main
-          diameter: 0.09
-          mass_density: 77.7066
-          stiffness: 384.243e6
+          diameter: 0.0766
+          mass_density: 113.35
+          stiffness: 753.6e6
           breaking_load: 1e8
           cost: 100.0
           transverse_added_mass: 1.0

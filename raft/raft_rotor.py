@@ -682,7 +682,7 @@ class Rotor:
         
         # evaluate aero loads and derivatives with CCBlade
         loads, derivs = self.ccblade.evaluate(Uhub, Omega_rpm, pitch_deg, coefficients=True)
-        
+
         # organize and save the relevant outputs...
         self.U_case         = Uhub
         self.Omega_case     = Omega_rpm
@@ -722,7 +722,6 @@ class Rotor:
         J["T","Omega_rpm"] = np.atleast_1d(np.diag(dT["dOmega"]))
 
         self.J = J
-
         return loads, derivs
 
 
@@ -784,9 +783,13 @@ class Rotor:
             turbine_heading = np.radians(getFromDict(case, 'turbine_heading', shape=0, default=0.0))  # [rad]
             nac_yaw = turbine_heading - platform_heading
             
-        elif self.yaw_mode == 2:  # use self.yaw value
+        elif self.yaw_mode == 2:  # use self.yaw value *** turbine_platform is not defined
             nac_yaw = self.yaw
-            turbine_heading = turbine_platform + nac_yaw
+            turbine_heading = platform_heading + nac_yaw
+            
+        elif self.yaw_mode == 3: # use self.yaw value as global heading
+            turbine_heading = self.yaw
+            nac_yaw = turbine_heading - platform_heading
             
         else:
             raise Exception('Unsupported yaw_mode value. Must be 0, 1, or 2.')
@@ -830,9 +833,12 @@ class Rotor:
         
         # Set up vectors in axis frame. Assuming CCBlade forces (but not 
         # moments) are relative to inflow direction.
-        forces_inflow = np.array([loads["T"][0], loads["Y"][0], loads["Z" ][0]])
-        moments_axis = np.array([loads["My"][0], loads["Q"][0], loads["Mz"][0]])
-        forces_axis = np.matmul(R_inflow, forces_inflow)
+        # forces_inflow = np.array([loads["T"][0], loads["Y"][0], loads["Z" ][0]])
+        # forces_axis = np.matmul(R_inflow, forces_inflow)
+
+        # Assuming they are relative to rotor axis
+        forces_axis = np.array([loads["T"][0], loads["Y"][0], loads["Z" ][0]])
+        moments_axis = np.array([loads["My"][0], loads["Q"][0], loads["Mz"][0]])        
         
         # Rotate forces and moments to be relative to FOWT orientations
         self.f0[:3] = np.matmul(R_axis, forces_axis)
@@ -849,7 +855,7 @@ class Rotor:
         _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD [(m/s)^2/rad]
         
         # convert from power spectral density to complex amplitudes (FFT)
-        self.V_w = np.array(np.sqrt(S_rot), dtype=complex)   
+        self.V_w = np.array(np.sqrt(S_rot), dtype=complex)  # Is there a factor of 2 missing here?
 
         # Do we need to worry about scaling by dot prod of rotor axis and
         # inflow direction?  *np.cos(turbine_tilt)*np.cos(yaw_misalign) <<<

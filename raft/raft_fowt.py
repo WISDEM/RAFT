@@ -956,7 +956,7 @@ class FOWT():
         case['wave_gamma']   = getFromDict(case, 'wave_gamma'    , shape=self.nWaves, dtype=float, default=0)
         
         
-        self.beta = case['wave_heading']   # [rad] array of wave headings
+        self.beta = deg2rad(case['wave_heading'])   # array of wave headings. Input in [deg], but the code uses [rad]
         self.zeta = np.zeros([self.nWaves,self.nw], dtype=complex)
 
         # make wave spectrum for each heading
@@ -1634,7 +1634,7 @@ class FOWT():
         # Consider only unidirectional QTFs
         if not (data[:,2] == data[:,3]).all():
             raise ValueError("Only unidirectional QTFs are supported for now.")
-        self.heads_2nd = np.sort(np.unique(data[:,2]))
+        self.heads_2nd = deg2rad(np.sort(np.unique(data[:,2])))
         nheads = len(self.heads_2nd)
 
         # Both frequency vectors should contain the same frequencies,
@@ -1681,7 +1681,7 @@ class FOWT():
                     for i1 in range(len(w1)):
                         for i2 in range(i1, len(w2)):
                             F = qtf[i1,i2]/(self.rho_water*self.g*ULEN)
-                            f.write(f"{2*np.pi/w1[i1]: 8.4e} {2*np.pi/w2[i2]: 8.4e} {self.heads_2nd[ih]: 8.4e} {self.heads_2nd[ih]: 8.4e} {iDoF+1} {np.abs(F): 8.4e} {np.angle(F): 8.4e} {F.real: 8.4e} {F.imag: 8.4e}\n")
+                            f.write(f"{2*np.pi/w1[i1]: 8.4e} {2*np.pi/w2[i2]: 8.4e} {rad2deg(self.heads_2nd[ih]): 8.4e} {rad2deg(self.heads_2nd[ih]): 8.4e} {iDoF+1} {np.abs(F): 8.4e} {np.angle(F): 8.4e} {F.real: 8.4e} {F.imag: 8.4e}\n")
                         
 
     def calcHydroForce_2ndOrd(self, beta, S0, iCase=None, iWT=None):

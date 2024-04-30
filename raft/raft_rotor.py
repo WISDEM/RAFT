@@ -1025,7 +1025,8 @@ class Rotor:
         
         
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=np.eye(3), azimuth=0, color='k', 
-             airfoils=False, plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):
+             airfoils=False, draw_circle=False,
+             plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):
         '''Draws the rotor on the passed axes, considering optional platform 
         offset and rotation matrix, and rotor azimuth angle.
         
@@ -1034,6 +1035,8 @@ class Rotor:
         plot2d: bool
             If true, produces a 2d plot on the axes defined by Xuvec and Yuvec. 
             Otherwise produces a 3d plot (default).
+        draw_circle : bool
+            If true, draw circle of rotor circumference.
         '''
 
         Xuvec = np.array(Xuvec)
@@ -1110,38 +1113,39 @@ class Rotor:
                 ax.plot(P2[0, 2:-1:npts], P2[1, 2:-1:npts], P2[2, 2:-1:npts], color=color, lw=0.4, zorder=zorder)  # trailing edge
 
         # ----- Also draw a circle -----
-        r = self.ccblade.r[-1]
-        x_shift = r * np.tan(self.ccblade.precone)  # shift forward of tips due to precone
-        
-        # lists to be filled with coordinates for plotting
-        X=[]
-        Y=[]
-        Z=[]
-        
-        n = 24                      # number of sides for a circle
-        for i in range(n+1):
-            y = np.cos(float(i)/float(n)*2.0*np.pi)    # x coordinates of a unit circle
-            z = np.sin(float(i)/float(n)*2.0*np.pi)    # y
+        if draw_circle:
+            r = self.ccblade.r[-1]
+            x_shift = r * np.tan(self.ccblade.precone)  # shift forward of tips due to precone
+            
+            # lists to be filled with coordinates for plotting
+            X=[]
+            Y=[]
+            Z=[]
+            
+            n = 24                      # number of sides for a circle
+            for i in range(n+1):
+                y = np.cos(float(i)/float(n)*2.0*np.pi)    # x coordinates of a unit circle
+                z = np.sin(float(i)/float(n)*2.0*np.pi)    # y
 
-            X.append(0)
-            Y.append(r*y)
-            Z.append(r*z)
+                X.append(0)
+                Y.append(r*y)
+                Z.append(r*z)
 
-        Pcirc = np.vstack([X, Y, Z])
-        P2 = np.matmul(R_tilt, Pcirc)
-        # PRP to tower-shaft intersection point 
-        # Assumes overhang value is always positive, also accounts for precurve
-        P2 = P2 + np.array([-self.overhang - x_shift, 0, self.Zhub])[:,None] 
-        P2 = np.matmul(R_ptfm, P2) + np.array(r_ptfm)[:,None]
-        
-        if plot2d:  # new 2d plotting option
-            # apply any 3D to 2D transformation here to provide desired viewing angle
-            Xs2d = np.matmul(Xuvec, P2)
-            Ys2d = np.matmul(Yuvec, P2)
-            ax.plot(Xs2d, Ys2d, color=color, lw=0.4, zorder=zorder)
-        
-        else:  # normal 3d case
-            ax.plot(P2[0,:], P2[1,:], P2[2,:], color=color, lw=0.4, zorder=zorder)
+            Pcirc = np.vstack([X, Y, Z])
+            P2 = np.matmul(R_tilt, Pcirc)
+            # PRP to tower-shaft intersection point 
+            # Assumes overhang value is always positive, also accounts for precurve
+            P2 = P2 + np.array([-self.overhang - x_shift, 0, self.Zhub])[:,None] 
+            P2 = np.matmul(R_ptfm, P2) + np.array(r_ptfm)[:,None]
+            
+            if plot2d:  # new 2d plotting option
+                # apply any 3D to 2D transformation here to provide desired viewing angle
+                Xs2d = np.matmul(Xuvec, P2)
+                Ys2d = np.matmul(Yuvec, P2)
+                ax.plot(Xs2d, Ys2d, color=color, lw=0.4, zorder=zorder)
+            
+            else:  # normal 3d case
+                ax.plot(P2[0,:], P2[1,:], P2[2,:], color=color, lw=0.4, zorder=zorder)
         
         
     

@@ -932,6 +932,92 @@ class FOWT():
             # make relative to PRP and add to system added mass matrix
             self.A_hydro_morison += translateMatrix6to6DOF(A_hydro_i, rot.r3-self.r6[:3]) 
     
+    
+    def solveEigen(self):
+        '''Compute the natural frequencies and mode shapes of the FOWT.
+        This considers the FOWT and any attached mooring lines, but it
+        does not account for coupling with other FOWTs as could occur
+        with an array-level MoorPy instance with shared lines or 
+        suspended cables.
+        
+        Returns
+        -------
+        fns : array
+            List of natural frequencies [Hz].
+        modes : 2D array
+            List of mode shapes (eigenvectors) corresponding to the natural 
+            frequencies.
+        '''
+
+        M_tot = np.zeros([6,6])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
+        C_tot = np.zeros([6,6])       # total stiffness matrix [N/m, N, N-m]
+
+        # add in mooring stiffness from MoorPy system
+        C_tot += self.C_moor
+        # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
+        C_tot[5,5] += self.yawstiff
+        # add system-level stiffness effect if it exists...
+        if self.body:
+            C_tot += self.body.getStiffness()  # in future should make an analytic body function for this
+
+        # add floating unit terms to system matrices
+        M_tot += self.M_struc + self.A_hydro_morison   # mass  (BEM option not supported yet)
+        C_tot += self.C_struc + self.C_hydro   # stiffness
+        
+        '''
+        # rotor and controll added mass effects
+        if self.nrotors> 0:
+            M_turb = np.sum(self.A_aero, axis=3)
+        else:
+            M_turb = np.zeros([6,6,self.nw])
+        '''
+
+        # check viability of matrices
+        message=''
+        for i in range(self.nDOF):
+            if M_tot[i,i] < 1.0:
+                message += f'Diagonal entry {i} of system mass matrix is less than 1 ({M_tot[i,i]}). '
+            if C_tot[i,i] < 1.0:
+                message += f'Diagonal entry {i} of system stiffness matrix is less than 1 ({C_tot[i,i]}). '
+                
+        if len(message) > 0:
+            raise RuntimeError('System matrices computed by RAFT have one or more small or negative diagonals: '+message)
+
+        # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
+        eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+
+        if any(eigenvals <= 0.0):
+            raise RuntimeError("Error: zero or negative system eigenvalues detected.")
+
+        # sort to normal DOF order based on which DOF is largest in each eigenvector
+        ind_list = []
+        for i in range(5,-1, -1):
+            vec = np.abs(eigenvectors[i,:])  # look at each row (DOF) at a time (use reverse order to pick out rotational DOFs first)
+
+            for j in range(6):               # now do another loop in case the index was claimed previously
+
+                ind = np.argmax(vec)         # find the index of the vector with the largest value of the current DOF
+
+                if ind in ind_list:          # if a previous vector claimed this DOF, set it to zero in this vector so that we look at the other vectors
+                    vec[ind] = 0.0
+                else:
+                    ind_list.append(ind)     # if it hasn't been claimed before, assign this vector to the DOF
+                    break
+
+        ind_list.reverse()   # reverse the index list since we made it in reverse order
+
+        fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
+        modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
+
+        print("")
+        print("--------- Natural frequencies and mode shapes -------------")
+        print("Mode        1         2         3         4         5         6")
+        print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
+        print("")
+        for i in range(6):
+            print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(6)]))
+        print("-----------------------------------------------------------")
+    
 
     def calcHydroExcitation(self, case, memberList=[], dgamma=0):
         '''This computes the wave kinematics and linear excitation for a given case.
@@ -2107,7 +2193,7 @@ class FOWT():
 
     def plot2d(self, ax, color=None, plot_rotor=1, 
         Xuvec=[1,0,0], Yuvec=[0,0,1]):
-        '''plots the FOWT in 22.
+        '''Plot the FOWT in 2D based on specified axes.
         
         Parameters
         ----------

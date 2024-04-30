@@ -418,51 +418,41 @@ class Model():
                     print(f"-----------------------------------------------------------")
                 
                 self.T_moor_amps = T_moor_amps  # save for future processing!
-        
-
-    """
-    def calcSystemConstantProps(self):
-        '''This gets the various static/constant calculations of each FOWT done. (Those that don't depend on load case.)'''
-
-        for fowt in self.fowtList:
-            fowt.calcBEM()
-            fowt.calcStatics()
-            #fowt.calcDynamicConstants()
-        
-        # First get mooring system characteristics about undisplaced platform position (useful for baseline and verification)
-        try:
-            self.C_moor0 = self.ms.getCoupledStiffness(lines_only=True)                             # this method accounts for eqiuilibrium of free objects in the system
-            self.F_moor0 = self.ms.getForces(DOFtype="coupled", lines_only=True)
-        except Exception as e:
-            raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
-        
-        self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
-    """    
-    
-       
     
 
     def solveEigen(self):
-        '''finds natural frequencies of system'''
-
+        '''Compute the natural frequencies and mode shapes of the floating 
+        system. When there is a single FOWT, this should give the same result
+        as FOWT.solveEigen.
+        
+        Returns
+        -------
+        fns : array
+            List of natural frequencies [Hz].
+        modes : 2D array
+            List of mode shapes (eigenvectors) corresponding to the natural 
+            frequencies.
+        '''
 
         # total system coefficient arrays
         M_tot = np.zeros([self.nDOF,self.nDOF])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
         C_tot = np.zeros([self.nDOF,self.nDOF])       # total stiffness matrix [N/m, N, N-m]
-
-        # add in mooring stiffness from MoorPy system
-        C_tot += np.array(self.C_moor0)
-
-        # ::: a loop could be added here for an array :::
-        fowt = self.fowtList[0]
-
-        # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
-        C_tot[5,5] += fowt.yawstiff     # will need to be put in calcSystemProps() once there is more than 1 fowt in a model
-
-        # add fowt's terms to system matrices (BEM arrays are not yet included here)
-        M_tot += fowt.M_struc + fowt.A_hydro_morison   # mass
-        C_tot += fowt.C_struc + fowt.C_hydro           # stiffness
-
+        
+        # include each FOWT's individual mass and stiffness
+        for i, fowt in enumerate(self.fowtList):
+            i1 = i*6                                              # range of DOFs for the current turbine
+            i2 = i*6+6
+            
+            M_tot[i1:i2, i1:i2] += fowt.M_struc + fowt.A_hydro_morison  # mass (BEM option not supported yet)
+            C_tot[i1:i2, i1:i2] += fowt.C_struc + fowt.C_hydro + fowt.C_moor
+            
+            # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
+            C_tot[i1+5, i1+5] += fowt.yawstiff
+            
+        # include array-level mooring stiffness
+        if self.ms:
+            C_tot += self.ms.getCoupledStiffnessA(lines_only=True)
+        
         # check viability of matrices
         message=''
         for i in range(self.nDOF):
@@ -482,10 +472,10 @@ class Model():
 
         # sort to normal DOF order based on which DOF is largest in each eigenvector
         ind_list = []
-        for i in range(5,-1, -1):
+        for i in range(self.nDOF-1,-1, -1):
             vec = np.abs(eigenvectors[i,:])  # look at each row (DOF) at a time (use reverse order to pick out rotational DOFs first)
 
-            for j in range(6):               # now do another loop in case the index was claimed previously
+            for j in range(self.nDOF):       # now do another loop in case the index was claimed previously
 
                 ind = np.argmax(vec)         # find the index of the vector with the largest value of the current DOF
 
@@ -502,53 +492,20 @@ class Model():
 
         print("")
         print("--------- Natural frequencies and mode shapes -------------")
-        print("Mode        1         2         3         4         5         6")
+        print("Mode   "+"".join([f"{i+10:3d}"  for i in range(self.nDOF)]))
         print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
         print("")
-        for i in range(6):
-            print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(6)]))
+        for i in range(self.nDOF):
+            print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(self.nDOF)]))
         print("-----------------------------------------------------------")
-        
-        '''
-        print("natural frequencies from eigen values")
-        printVec(fns)
-        print(1/fns)
-        print("mode shapes from eigen values")
-        printMat(modes)
-        
-        # alternative attempt to calculate natural frequencies based on diagonal entries (and taking pitch and roll about CG)
-        if C_tot[0,0] == 0.0:
-            zMoorx = 0.0
-        else:
-            zMoorx = C_tot[0,4]/C_tot[0,0]  # effective z elevation of mooring system reaction forces in x and y directions
 
-        if C_tot[1,1] == 0.0:
-            zMoory = 0.0
-        else:
-            zMoory = C_tot[1,3]/C_tot[1,1]
-
-        zCG  = fowt.rCG_TOT[2]                    # center of mass in z
-        zCMx = M_tot[0,4]/M_tot[0,0]              # effective z elevation of center of mass and added mass in x and y directions
-        zCMy = M_tot[1,3]/M_tot[1,1]
-
-        print("natural frequencies with added mass")
-        fn = np.zeros(6)
-        fn[0] = np.sqrt( C_tot[0,0] / M_tot[0,0] )/ 2.0/np.pi
-        fn[1] = np.sqrt( C_tot[1,1] / M_tot[1,1] )/ 2.0/np.pi
-        fn[2] = np.sqrt( C_tot[2,2] / M_tot[2,2] )/ 2.0/np.pi
-        fn[5] = np.sqrt( C_tot[5,5] / M_tot[5,5] )/ 2.0/np.pi
-        fn[3] = np.sqrt( (C_tot[3,3] + C_tot[1,1]*((zCMy-zMoory)**2 - zMoory**2) ) / (M_tot[3,3] - M_tot[1,1]*zCMy**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-        fn[4] = np.sqrt( (C_tot[4,4] + C_tot[0,0]*((zCMx-zMoorx)**2 - zMoorx**2) ) / (M_tot[4,4] - M_tot[0,0]*zCMx**2 ))/ 2.0/np.pi     # this contains adjustments to reflect rotation about the CG rather than PRP
-        # note that the above lines use off-diagonal term rather than parallel axis theorem since rotation will not be exactly at CG due to effect of added mass
-        printVec(fn)
-        print(1/fn)
-        '''
-                
         # store results
         self.results['eigen'] = {}   # signal this data is available by adding a section to the results dictionary
         self.results['eigen']['frequencies'] = fns
         self.results['eigen']['modes'      ] = modes
   
+        return fns, modes
+    
     
     def solveStatics(self, case, display=0):
         '''

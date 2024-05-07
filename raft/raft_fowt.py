@@ -695,6 +695,7 @@ class FOWT():
             # read the HAMS WAMIT-style output files
             addedMass, damping, w1 = ph.read_wamit1(hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
             M, P, R, I, w3, heads  = ph.read_wamit3(hydroPath+'.3', TFlag=True)   
+            # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
             
             # process headings and sort frequencies
             self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using

@@ -4,6 +4,7 @@ import pytest
 import numpy as np
 from numpy.testing import assert_allclose
 import yaml
+import pickle
 import raft
 import os
 
@@ -237,16 +238,44 @@ def test_hydroConstants(index_and_fowt):
 
 
 def test_hydroExcitation(index_and_fowt):
-    index, fowt = index_and_fowt
+    index, fowt = index_and_fowt    
+
+    # Set this flag to true to replace the true values file
+    flagSaveValues = False
+    true_values_file = list_files[index].replace('.yaml', '_true_hydroExcitation.pkl')
+    output_true_values = []
     
-    # Create case dictionary. The other necessary fields have default values within calcHydroExcitation.
-    # Using the default values is useful to check if they were changed.
-    testCase = {'wave_heading': 0, 'wave_period': 10, 'wave_height': 2}
+    list_wave_heading = [0, 45, 90, 135, 180, 225, 270, 315, 360]
+    list_wave_period  = [5, 10, 15, 20]
+    list_wave_height  = [1, 2]
+    
+    idxTrueValues = 0
+    for wave_heading in list_wave_heading:
+        for wave_period in list_wave_period:
+            for wave_height in list_wave_height:
+                # Create case dictionary. The other necessary fields have default values within calcHydroExcitation.
+                # Using the default values is useful to check if they were changed.
+                testCase = {'wave_heading': wave_heading, 'wave_period': wave_period, 'wave_height': wave_height}
 
-    fowt.calcHydroConstants()
-    fowt.calcHydroExcitation(testCase, memberList=fowt.memberList)
-    assert_allclose(fowt.F_hydro_iner, desired_F_hydro_iner[index], rtol=1e-05, atol=1e-3)
+                fowt.calcHydroConstants()
+                fowt.calcHydroExcitation(testCase, memberList=fowt.memberList)
 
+                if flagSaveValues:
+                    output_true_values.append({
+                        'case': testCase,
+                        'w': fowt.w,
+                        'F_hydro_iner': fowt.F_hydro_iner,
+                    })
+                else:
+                    with open(true_values_file, 'rb') as f:
+                        true_values = pickle.load(f)
+
+                    assert_allclose(fowt.F_hydro_iner, true_values[idxTrueValues]['F_hydro_iner'], rtol=1e-05, atol=1e-3)                    
+                idxTrueValues += 1
+
+    if flagSaveValues:
+        with open(true_values_file, 'wb') as f:
+            pickle.dump(output_true_values, f)
 
 def test_hydroLinearization(index_and_fowt):
     index, fowt = index_and_fowt

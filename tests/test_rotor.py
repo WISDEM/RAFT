@@ -81,13 +81,16 @@ def index_and_rotor(request):
  Test functions
 '''
 def test_calcAero(index_and_rotor):    
+    '''
+    Verify rotor.calcAero for many combinations of wind speed, heading, TI, and yaw mode.
+    Some combinations seem to be outside the validity of CCBlade (e.g., yaw_mode=1, wind direction=90, and turbine_heading=0),
+    but they are tested nonetheless.
+    '''
     index, rotor = index_and_rotor
     rotor.setPosition()
 
     # Set this flag to true to replace the true values file
     flagSaveValues = False
-    true_values_file = list_files[index].replace('.yaml', '_true_calcAero.pkl')
-    output_true_values = []
 
     if 'IEA15MW' in list_files[index]:
         U_rated = 10.59
@@ -97,70 +100,58 @@ def test_calcAero(index_and_rotor):
         U_rated = 12
         print(f'Unknown turbine. Considering U_rated = {U_rated} m/s.')
 
-    # We are going to loop through the following values to test a broader range of cases
+    # We are going to loop through the following values to test a broad range of cases
     wind_speeds = np.sort(np.append(np.arange(3, 25, 3), U_rated))
     wind_headings = [-90, -45, 0, 45, 90]
-    TI            = [0, 0.14, 0.5]
-    yaw_misaligns = [-90, -45, 0, 45, 90]
-
-    idxTrueValues = 0
-    for ws in wind_speeds:
-        for wh in wind_headings:
-            for ti in TI:
-                for yaw in yaw_misaligns:
-                    thisCase = {'wind_speed': ws, 'wind_heading': wh, 'turbulence': ti, 'turbine_status': 'operating', 'yaw_misalign': yaw}
-                    f_aero0, f_aero, a_aero, b_aero = rotor.calcAero(thisCase)
-
-                    if flagSaveValues:
-                        output_true_values.append({
-                            'case': thisCase,
-                            'f_aero0': f_aero0,
-                            'f_aero': f_aero,
-                            'a_aero': a_aero,
-                            'b_aero': b_aero
-                        })
-
-                    else:
-                        with open(true_values_file, 'rb') as f:
-                            true_values = pickle.load(f)
-
-                        assert_allclose(f_aero0, true_values[idxTrueValues]['f_aero0'], rtol=1e-5, atol=1e-5)
-                        assert_allclose(f_aero, true_values[idxTrueValues]['f_aero'], rtol=1e-5, atol=1e-5)
-                        assert_allclose(a_aero, true_values[idxTrueValues]['a_aero'], rtol=1e-5, atol=1e-5)
-                        assert_allclose(b_aero, true_values[idxTrueValues]['b_aero'], rtol=1e-5, atol=1e-5)
-                    idxTrueValues += 1
-
-    if flagSaveValues:
-        with open(true_values_file, 'wb') as f:
-            pickle.dump(output_true_values, f)
-    # thisCase = {'wind_speed': U_below, 'wind_heading': 0, 'turbulence': 0.20, 'turbine_status': 'operating', 'yaw_misalign': 0}
-    # f_aero0, f_aero, a_aero, b_aero = rotor.calcAero(thisCase)
-    # a = 1
+    TI            = [0, 0.5]
+    yaw_modes     = [0, 1, 2, 3]
+    values4control = [  # Values used for yaw misalignment or turbine heading depending on yaw_mode. One list per yaw_mode
+                     [0],
+                     [-90, -45, 0, 45, 90],
+                     [-90, -45, 0, 45, 90],
+                     [-90, -45, 0, 45, 90],
+                     ] 
     
+    for idx_ym, ym in enumerate(yaw_modes):
+        rotor.yaw_mode = ym
+    
+        true_values_file = list_files[index].replace('.yaml', f'_true_calcAero-yaw_mode{ym:d}.pkl')
+        output_true_values = []
+        idxTrueValues = 0
+
+        for ws in wind_speeds:
+            for wh in wind_headings:
+                for ti in TI:
+                    for v4c in values4control[idx_ym]:
+                        if ym == 1: # This one needs turbine_heading
+                            thisCase = {'wind_speed': ws, 'wind_heading': wh, 'turbulence': ti, 'turbine_status': 'operating', 'turbine_heading': v4c}
+                        else:
+                            thisCase = {'wind_speed': ws, 'wind_heading': wh, 'turbulence': ti, 'turbine_status': 'operating', 'yaw_misalign': v4c}
+                        f_aero0, f_aero, a_aero, b_aero = rotor.calcAero(thisCase)
+
+                        if flagSaveValues:
+                            output_true_values.append({
+                                'case': thisCase,
+                                'f_aero0': f_aero0,
+                                'f_aero': f_aero,
+                                'a_aero': a_aero,
+                                'b_aero': b_aero
+                            })
+
+                        else:
+                            with open(true_values_file, 'rb') as f:
+                                true_values = pickle.load(f)
+
+                            assert_allclose(f_aero0, true_values[idxTrueValues]['f_aero0'], rtol=1e-5, atol=1e-5)
+                            assert_allclose(f_aero, true_values[idxTrueValues]['f_aero'], rtol=1e-5, atol=1e-5)
+                            assert_allclose(a_aero, true_values[idxTrueValues]['a_aero'], rtol=1e-5, atol=1e-5)
+                            assert_allclose(b_aero, true_values[idxTrueValues]['b_aero'], rtol=1e-5, atol=1e-5)
+                        idxTrueValues += 1
+
+            if flagSaveValues:
+                with open(true_values_file, 'wb') as f:
+                    pickle.dump(output_true_values, f)
     # Do something similar for turbine class
-
-def tempVerify(index_and_rotor):
-    index, rotor = index_and_rotor
-    rotor.setPosition()
-
-    U_below = 8
-    U_above = 18
-    if 'IEA15MW' in list_files[index]:
-        U_rated = 10.59
-    elif 'NREL5MW' in list_files[index]:
-        U_rated = 11.4
-    else:
-        raise NotImplementedError(f'Please specify the rated wind speed for turbine in {list_files[index]}.')
-
-    wind_speeds   = [U_below, U_rated, U_above]
-    wind_headings = [90, -45, 0, 45, 90]
-    TI            = [0, 0.14, 0.5]
-    yaw_misaligns = [90, -45, 0, 45, 90]
-
-    thisCase = {'wind_speed': U_below, 'wind_heading': 0, 'turbulence': 0.20, 'turbine_status': 'operating', 'yaw_misalign': 0}
-    f_aero0, f_aero, a_aero, b_aero = rotor.calcAero(thisCase)
-    a = 1
-
 
 '''
  To run as a script. Useful for debugging.

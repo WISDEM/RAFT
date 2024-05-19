@@ -205,16 +205,28 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 self.add_input(m_name+'t', val=0.0, units='m', desc='Wall thicknesses')
             else:
                 self.add_input(m_name+'t', val=np.zeros(mnpts), units='m', desc='Wall thicknesses')
+            if mshape == "circ":
+                if scalar_coeff:
+                    self.add_input(m_name+'Cd', val=0.0, desc='Transverse drag coefficient')
+                    self.add_input(m_name+'Ca', val=0.0, desc='Transverse added mass coefficient')
+                else:
+                    self.add_input(m_name+'Cd', val=np.zeros(mnpts), desc='Transverse drag coefficient')
+                    self.add_input(m_name+'Ca', val=np.zeros(mnpts), desc='Transverse added mass coefficient')
+            elif mshape == "rect" or mshape == 'square':
+                if scalar_coeff:
+                    self.add_input(m_name+'Cd', val=[0.0, 0.0], desc='Transverse drag coefficient')
+                    self.add_input(m_name+'Ca', val=[0.0, 0.0], desc='Transverse added mass coefficient')
+                else:
+                    self.add_input(m_name+'Cd', val=np.zeros([mnpts,2]), desc='Transverse drag coefficient')
+                    self.add_input(m_name+'Ca', val=np.zeros([mnpts,2]), desc='Transverse added mass coefficient')
+
             if scalar_coeff:
-                self.add_input(m_name+'Cd', val=0.0, desc='Transverse drag coefficient')
-                self.add_input(m_name+'Ca', val=0.0, desc='Transverse added mass coefficient')
                 self.add_input(m_name+'CdEnd', val=0.0, desc='End axial drag coefficient')
                 self.add_input(m_name+'CaEnd', val=0.0, desc='End axial added mass coefficient')
             else:
-                self.add_input(m_name+'Cd', val=np.zeros(mnpts), desc='Transverse drag coefficient')
-                self.add_input(m_name+'Ca', val=np.zeros(mnpts), desc='Transverse added mass coefficient')
                 self.add_input(m_name+'CdEnd', val=np.zeros(mnpts), desc='End axial drag coefficient')
                 self.add_input(m_name+'CaEnd', val=np.zeros(mnpts), desc='End axial added mass coefficient')
+
             self.add_input(m_name+'rho_shell', val=0.0, units='kg/m**3', desc='Material density')
             # optional
             self.add_input(m_name+'l_fill', val=np.zeros(mnpts_lfill), units='m', desc='Fill heights of ballast in each section')
@@ -533,7 +545,9 @@ class RAFT_OMDAO(om.ExplicitComponent):
                     design['platform']['members'][i]['d'] = np.interp(s_grid, s_0, inputs[m_name+'d'])
             elif m_shape == 'rect':
                 if member_scalar_d[i]:
-                    design['platform']['members'][i]['d'] = [inputs[m_name+'d']]*mnpts
+                    design['platform']['members'][i]['d'] = np.zeros([mnpts,2])
+                    design['platform']['members'][i]['d'][:,0] = [inputs[m_name+'d'][0]]*mnpts
+                    design['platform']['members'][i]['d'][:,1] = [inputs[m_name+'d'][1]]*mnpts
                 else:
                     design['platform']['members'][i]['d'] = np.zeros([len(s_grid),2])
                     design['platform']['members'][i]['d'][:,0] = np.interp(s_grid, s_0, inputs[m_name+'d'][:,0])
@@ -548,14 +562,32 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 design['platform']['members'][i]['t'] = float(inputs[m_name+'t'])
             else:
                 design['platform']['members'][i]['t'] = np.interp(s_grid, s_0, inputs[m_name+'t'])
+            
+            if m_shape == "circ":
+                if member_scalar_coeff[i]:
+                    design['platform']['members'][i]['Cd'] = float(inputs[m_name+'Cd'])
+                    design['platform']['members'][i]['Ca'] = float(inputs[m_name+'Ca'])
+                else:
+                    design['platform']['members'][i]['Cd'] = np.interp(s_grid, s_0, inputs[m_name+'Cd'])
+                    design['platform']['members'][i]['Ca'] = np.interp(s_grid, s_0, inputs[m_name+'Ca'])
+            elif m_shape == "rect":
+                if member_scalar_coeff[i]:
+                    design['platform']['members'][i]['Cd'][0] = float(inputs[m_name+'Cd'][0])
+                    design['platform']['members'][i]['Cd'][1] = float(inputs[m_name+'Cd'][1])
+                    design['platform']['members'][i]['Ca'][0] = float(inputs[m_name+'Ca'][0])
+                    design['platform']['members'][i]['Ca'][1] = float(inputs[m_name+'Ca'][1])
+                else:
+                    design['platform']['members'][i]['Cd'] = np.zeros([len(s_grid),2])
+                    design['platform']['members'][i]['Ca'] = np.zeros([len(s_grid),2])
+                    design['platform']['members'][i]['Cd'][:,0] = np.interp(s_grid, s_0, inputs[m_name+'Cd'][:,0])
+                    design['platform']['members'][i]['Cd'][:,1] = np.interp(s_grid, s_0, inputs[m_name+'Cd'][:,1])
+                    design['platform']['members'][i]['Ca'][:,0] = np.interp(s_grid, s_0, inputs[m_name+'Ca'][:,0])
+                    design['platform']['members'][i]['Ca'][:,1] = np.interp(s_grid, s_0, inputs[m_name+'Ca'][:,1])
+
             if member_scalar_coeff[i]:
-                design['platform']['members'][i]['Cd'] = float(inputs[m_name+'Cd'])
-                design['platform']['members'][i]['Ca'] = float(inputs[m_name+'Ca'])
                 design['platform']['members'][i]['CdEnd'] = float(inputs[m_name+'CdEnd'])
                 design['platform']['members'][i]['CaEnd'] = float(inputs[m_name+'CaEnd'])
             else:
-                design['platform']['members'][i]['Cd'] = np.interp(s_grid, s_0, inputs[m_name+'Cd'])
-                design['platform']['members'][i]['Ca'] = np.interp(s_grid, s_0, inputs[m_name+'Ca'])
                 design['platform']['members'][i]['CdEnd'] = np.interp(s_grid, s_0, inputs[m_name+'CdEnd'])
                 design['platform']['members'][i]['CaEnd'] = np.interp(s_grid, s_0, inputs[m_name+'CaEnd'])
             design['platform']['members'][i]['rho_shell'] = float(inputs[m_name+'rho_shell'])

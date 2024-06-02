@@ -1,0 +1,17 @@
+name: test
+
+channels:
+  - conda-forge
+  - defaults
+
+dependencies:
+  - matplotlib
+  - numpy
+  - openmdao > 3.30
+  - pip
+  - python
+  - pyyaml
+  - ruamel.yaml
+  - scipy
+  - setuptools
+

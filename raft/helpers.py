@@ -121,7 +121,7 @@ def getWaveKin(zeta0, beta, w, k, h, r, nw, rho=1025.0, g=9.81):
         z = r[2]
 
         # only process wave kinematics if this node is submerged
-        if z < 0:
+        if z <= 0:
 
             # Calculate SINH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/SINH( k*h ) and COSH( k*( z + h ) )/COSH( k*h )
             # given the wave number, k, water depth, h, and elevation z, as inputs.
@@ -153,6 +153,147 @@ def getWaveKin(zeta0, beta, w, k, h, r, nw, rho=1025.0, g=9.81):
 
     return u, ud, pDyn
 
+# Matrix of gradient of wave velocity
+def getWaveKin_grad_u1(w, k, beta, h, r):
+    grad = np.zeros([3, 3], dtype="complex")
+    x,y,z = r[0], r[1], r[2]
+
+    # More friendly notation
+    cosBeta = np.cos(deg2rad(beta))
+    sinBeta = np.sin(deg2rad(beta))
+    khz_xy = 0
+    khz_z = 0
+
+    if z <= 0 and k > 0:
+        # When k*h is too high, which happens for deep water/short waves, sinh(k*h) and cosh(k*h) become too large and are considered "inf".
+        # Hence, we chose a threshold of 10, above which the deep water approximation is employed.
+        if k*h >= 10:
+            khz_xy = np.exp(k*z)
+            khz_z = khz_xy
+        else:
+            khz_xy = np.cosh(k * (z + h)) / np.sinh(k*h)
+            khz_z = np.sinh(k * (z + h)) / np.sinh(k*h)
+
+
+            # u[0,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.cos(beta)
+            # u[1,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.sin(beta)
+            # u[2,i] = 1j*w[i]* zeta[i]*SINHNumOvrSIHNDen
+
+        # Along x direction
+        aux = w * cosBeta * np.exp( -1j*(k*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))
+        grad[0,0] = -1j*aux * khz_xy * k*cosBeta # du/dx
+        grad[0,1] = -1j*aux * khz_xy * k*sinBeta # du/dy
+        grad[0,2] = aux * k * khz_z              # du/dz
+
+        # Along y direction
+        aux = w * sinBeta * np.exp( -1j*(k*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))
+        grad[1,0] = grad[0,1]                    # dv/dx = du/dy
+        grad[1,1] = -1j*aux * khz_xy * k*sinBeta # dv/dy
+        grad[1,2] = aux * k * khz_z              # dv/dz
+
+        # Along z direction
+        aux = 1j * w * np.exp( -1j*(k*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))
+        grad[2,0] = grad[0,2]         # dw/dx = du/dz
+        grad[2,1] = grad[0,1]         # dw/dy = dv/dz
+        grad[2,2] = aux * k * khz_xy  # dw/dz
+
+    return grad
+
+# Matrix of gradient of wave acceleration
+def getWaveKin_grad_dudt(w, k, beta, h, r):
+    return 1j*w*getWaveKin_grad_u1(w, k, beta, h, r)
+
+# Gradient of first order pressure
+def getWaveKin_grad_pres1st(k, beta, h, r, rho=1025, g=9.81):
+    grad = np.zeros(3, dtype="complex")
+    z = r[2]
+
+    # More friendly notation
+    cosBeta = np.cos(deg2rad(beta))
+    sinBeta = np.sin(deg2rad(beta))
+    khz_xy = 0
+    khz_z = 0
+
+    if z <= 0 and k > 0:
+        # When k*h is too high, which happens for deep water/short waves, sinh(k*h) and cosh(k*h) become too large and are considered "inf".
+        # Hence, we chose a threshold of 10, above which the deep water approximation is employed.
+        if k*h >= 10:
+            khz_xy = np.exp(k*z)
+            khz_z = khz_xy
+        else:
+            khz_xy = np.cosh(k * (z + h)) / np.cosh(k*h)
+            khz_z = np.sinh(k * (z + h)) / np.cosh(k*h)
+
+        grad[0] = rho*g*khz_xy*np.exp(-1j*(k*(cosBeta*r[0] + sinBeta*r[1])))*(-1j*k*cosBeta)
+        grad[1] = rho*g*khz_xy*np.exp(-1j*(k*(cosBeta*r[0] + sinBeta*r[1])))*(-1j*k*sinBeta)
+        grad[2] = rho*g*khz_z *np.exp(-1j*(k*(cosBeta*r[0] + sinBeta*r[1])))*k
+    return grad
+
+# Axial-divergence acceleration
+def getWaveKin_axdivAcc(w1, w2, k1, k2, beta1, beta2, h, r, vel1, vel2, q, g=9.81):
+    acc = np.zeros(3, dtype=complex)
+
+    aux = np.matmul(getWaveKin_grad_u1(w1, k1, beta1, h, r), q)
+    dwdz1 = np.dot(np.squeeze(aux), np.squeeze(q))
+    u1, _, _ = getWaveKin(np.ones([1,1]), beta1, w1*np.ones([1,1]), k1*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
+    u1 = np.squeeze(u1)
+   
+    aux = np.matmul(getWaveKin_grad_u1(w2, k2, beta2, h, r), q)
+    dwdz2 = np.dot(np.squeeze(aux), np.squeeze(q))
+    u2, _, _ = getWaveKin(np.ones([1,1]), beta2, w2*np.ones([1,1]), k2*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
+    u2 = np.squeeze(u2)
+
+    vel1 -= np.dot(vel1, q) * q
+    vel2 -= np.dot(vel2, q) * q
+    u1   -= np.dot(u1, q) * q
+    u2   -= np.dot(u2, q) * q
+
+    acc = 0.25*(dwdz1*np.conj(u2 - vel2)+np.conj(dwdz2)*(u1 - vel1))
+
+    # There can't be any axial-divergence acceleration in the axial direction
+    acc -= np.dot(acc, q) * q
+
+    return acc
+
+# Acceleration and pressure due to second-order potential
+def getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta1, beta2, h, r, g=9.81, rho=1025.0):
+    acc = np.zeros(3, dtype=complex)
+    p = 0+0j
+
+    if w1 == w2: # The difference-frequency second-order potential does not contribute to the mean forces 
+        return acc, p
+        
+    b1 = deg2rad(beta1)
+    cosB1 = np.cos(b1)
+    sinB1 = np.sin(b1)
+
+    b2 = deg2rad(beta2)
+    cosB2 = np.cos(b2)
+    sinB2 = np.sin(b2)
+    
+    z = r[2]
+
+    if (z <= 0 and k1 > 0 and k2 > 0):
+        k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0])
+        norm_k1_k2 = np.linalg.norm(k1_k2)
+
+        gamma_12 = (-1j*g/(2*w1)) * ( (k1**2)*(1-np.tanh(k1*h)**2) - 2*k1*k2*(1+np.tanh(k1*h)*np.tanh(k2*h)) ) / ((w1-w2)**2/g - norm_k1_k2*np.tanh(norm_k1_k2*h))
+        gamma_21 = (-1j*g/(2*w2)) * ( (k2**2)*(1-np.tanh(k2*h)**2) - 2*k2*k1*(1+np.tanh(k2*h)*np.tanh(k1*h)) ) / ((w2-w1)**2/g - norm_k1_k2*np.tanh(norm_k1_k2*h))
+        aux   = 0.5*(gamma_21+np.conj(gamma_12))
+
+        khz_xy = np.cosh(norm_k1_k2 * (z + h)) / np.cosh(norm_k1_k2 * h)
+        khz_z  = np.sinh(norm_k1_k2 * (z + h)) / np.cosh(norm_k1_k2 * h)
+        
+        acc[0:2] = aux * khz_xy * np.exp(-1j*np.dot(k1_k2, r))
+        acc[0]  *= (w1 - w2) * (k1 * cosB1 - k2 * cosB2)
+        acc[1]  *= (w1 - w2) * (k1 * sinB1 - k2 * sinB2)
+
+        acc[2] = aux * khz_z * np.exp(-1j*np.dot(k1_k2, r))
+        acc[2] *= 1j * (w1 - w2) * norm_k1_k2
+
+        p = aux * khz_xy * np.exp(-1j*np.dot(k1_k2, r))
+        p *= -1j * rho * (w1 - w2)
+    return acc, p
 
 
 # calculate wave number based on wave frequency in rad/s and depth
@@ -193,7 +334,7 @@ def SmallRotate(r, th):
 # given a size-3 vector, vec, return the matrix from the multiplication vec * vec.transpose
 def VecVecTrans(vec):
 
-    vvt = np.zeros([3,3])
+    vvt = np.zeros([3,3], dtype=vec.dtype)
 
     for i in range(3):
         for j in range(3):
@@ -421,10 +562,11 @@ def rotateMatrix3(Min, rotMat):
 
 
 def RotFrm2Vect( A, B):
-    '''Rodriguez rotation function, which returns the rotation matrix 
+    '''Rodrigues rotation function, which returns the rotation matrix 
     that transforms vector A into Vector B.
     '''
-    
+    A = A/np.linalg.norm(A)
+    B = B/np.linalg.norm(B)
     
     v = np.cross(A,B)
     
@@ -522,6 +664,27 @@ def JONSWAP(ws, Hs, Tp, Gamma=None):
     Alpha = np.exp( -0.5*((f*Tp - 1.0)/Sigma)**2 )
 
     return  0.5/np.pi *C* 0.3125*Hs*Hs*fpOvrf4/f *np.exp( -1.25*fpOvrf4 )* Gamma**Alpha
+
+def getRAO(Xi, zeta):
+    '''Calculates the response amplitude operator (RAO).
+    It is simply the reponse (motion, load, anything) for unitary wave amplitude.
+    Xi can have any number of dimensions, but the last dimension must be the same length as zeta.
+    '''
+    # Check if zeta is a 1D array
+    if len(zeta.shape) != 1:
+        raise Exception("zeta must be a 1D array")
+    
+    # Check if the last dimension of Xi is the same length as zeta
+    if Xi.shape[-1] != len(zeta):
+        raise Exception("The last dimension of Xi must be the same length as zeta")
+
+    # # Is there an eps value to use instead?
+    idx = np.where(np.abs(zeta)>1e-6)    
+    
+    # Reshape zeta to be able to broadcast along the frequency dimension
+    RAO = np.zeros_like(Xi, dtype=complex)
+    RAO[..., idx] = Xi[..., idx] / zeta[idx]
+    return RAO
 
 
 def printMat(mat):
@@ -1073,6 +1236,41 @@ def adjustMooring(ms, design):
     
     return(design)
 
+def readWAMIT_p2(inFl, rho=1, L=1, g=1):
+    # Default values for rho, L and g are 1, so that the results are not dimensionalized    
+    data = np.loadtxt(inFl)
+
+    # Headings in the file
+    head    = np.unique(data[:,1]) # Array with the different headings
+    numHead = len(head)            # Number of different headings
+
+    # Periods in the file
+    period = np.unique(data[:,0])  # Array with the different periods
+
+    # Names of the variables that will be used for each of the six Degrees of Freedom
+    stringDoF = [ 'surge', 'sway', 'heave', 'roll', 'pitch', 'yaw']
+
+    # Power of ULEN to dimensionalize the results
+    k_ULEN = [2, 2, 2, 3, 3, 3]
+
+    #=== Loop the degrees of freedom provided by 'stringDoF'.
+    #=== Store the data in disctionaries whose names are given by the strings provided by 'stringDoF'
+    W2 = {}
+    for iDoF, DoF in enumerate(stringDoF):
+        dataAux = data[ data[:,2] == iDoF+1 , :]  # Get the data for the specified DoF
+        dataAux = dataAux[np.lexsort((dataAux[:,1], dataAux[:,0]))]  # Sort rows based on heading and wave period
+        
+        # Create matrices with the desired data, with:
+        # - the wave periods according to the rows;
+        # - and the wave headings to the columns.
+        reAux  = dataAux[:,5].reshape(-1,numHead) # real part
+        imAux  = dataAux[:,6].reshape(-1,numHead) # imaginary part
+        W2[DoF] = (reAux + 1j*imAux) * rho * g * L**k_ULEN[iDoF]
+
+    W2['period'] = period
+    W2['heading'] = head
+    
+    return W2
 
 if __name__ == '__main__':
     

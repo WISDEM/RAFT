@@ -1064,14 +1064,14 @@ turbine:
     
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
         type      :  1                         # [-]    
-        rA        :  [ 0, 0, -2.5]              # [m]    end A coordinates
-        rB        :  [ 0, 0, -33.5]          # [m]    and B coordinates
+        rA        :  [ 0, 0, -33.5]              # [m]    end A coordinates
+        rB        :  [ 0, 0, -2.5]          # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
         
         # --- outer shell including hydro---
-        stations  :  [ -2.5,  -31,  -33.5 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  [ 1.25,  1.25,  .25 ]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        stations  :  [ -33.5,  -31,  -2.5 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  [ .25,  1.25,  1.25 ]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  [ 0.03,  0.03,  0.03 ]                     # [m]    wall thicknesses (scalar or list of same length as stations)
         Cd        :  1.1                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
@@ -1219,7 +1219,7 @@ mooring:
 
     line_types:
         - name: chain
-          diameter:         0.185
+          diameter:         0.333
           mass_density:   40.0
           stiffness:     3270e6
           breaking_load:    1e8

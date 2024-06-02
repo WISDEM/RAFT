@@ -188,6 +188,7 @@ class FOWT():
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
+            self.ms.moorMod = getFromDict(design['mooring'], 'moorMod', default=1)
             
             # ensure proper setup with one coupled Body tied to this FOWT
             if len(self.ms.bodyList) == 0:

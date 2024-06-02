@@ -964,6 +964,15 @@ class Model():
                 
             # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
             print('Solving for system response to wave excitation in primary wave direction')
+            
+            M_moor, A_moor, B_moor, C_moor = (np.zeros([6,6]) for _ in range(4))
+            if fowt.ms.moorMod == 1:
+                C_moor = fowt.C_moor
+            elif fowt.ms.moorMod == 2:
+                M_moor, A_moor, B_moor, C_moor = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
+            elif fowt.ms.moorMod == 3:
+                C_moor = fowt.C_moor
+                M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
 
             # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
             # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process            
@@ -977,9 +986,9 @@ class Model():
 
 
             # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
-            M_lin.append( M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]        ) # mass
-            B_lin.append( B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None] ) # damping
-            C_lin.append(          fowt.C_struc   + fowt.C_moor        + fowt.C_hydro                          ) # stiffness
+            M_lin.append( M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]        + M_moor[:,:,None] + A_moor[:,:,None] ) # mass
+            B_lin.append( B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None] + B_moor[:,:,None]) # damping
+            C_lin.append(          fowt.C_struc                          + fowt.C_hydro                        + C_moor ) # stiffness
             F_lin.append( fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:] + fowt.Fhydro_2nd[0, :, :]) # consider only excitation from the primary sea state in the load case for now
 
             
@@ -1145,7 +1154,7 @@ class Model():
                     # Don't recompute the QTFs for the first wave because it was already done above.
                     # Also, we would end up including second-order motions if we computed it again.
                     if ih > 0: 
-                        Xi0 = getRAO(self.Xi[ih,i1:i2, :], fowt.zeta[ih,:])                        
+                        Xi0 = getRAO(self.Xi[ih,i1:i2, :], fowt.zeta[ih,:])
                         fowt.calcQTF_slenderBody(waveHeadInd=ih, Xi0=Xi0, verbose=True, iCase=iCase, iWT=i)                        
                         fowt.Fhydro_2nd_mean[ih, :], fowt.Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
                 

@@ -6,7 +6,7 @@ import copy
 from itertools import compress
 from wisdem.inputs import write_yaml, simple_types
 
-DEBUG_OMDAO = False  # use within WEIS
+DEBUG_OMDAO = False  # use within WEIS, test file generated using examples/15_RAFT_Studies/weis_driver_raft_opt.py
 
 ndim = 3
 ndof = 6
@@ -352,11 +352,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
             from weis.aeroelasticse.FileTools import save_yaml
             # Options
             all_options = {}
-            all_options['modeling_options']     = self.options['modeling_options']
-            all_options['turbine_options']      = self.options['turbine_options']
-            all_options['mooring_options']      = self.options['mooring_options']
-            all_options['member_options']       = self.options['member_options']
-            all_options['analysis_options']     = self.options['analysis_options']
+            all_options['modeling_options']     = copy.deepcopy(self.options['modeling_options'])
+            all_options['turbine_options']      = copy.deepcopy(self.options['turbine_options'])
+            all_options['mooring_options']      = copy.deepcopy(self.options['mooring_options'])
+            all_options['member_options']       = copy.deepcopy(self.options['member_options'])
+            all_options['analysis_options']     = copy.deepcopy(self.options['analysis_options'])
 
             # handle some paths for testing
             gen_opt = all_options['analysis_options']['general']

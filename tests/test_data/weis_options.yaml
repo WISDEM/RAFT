@@ -11,6 +11,7 @@ modeling_options:
     nIter: 15
     dls_max: 5
     min_freq_BEM: 0.0159
+    plot_designs: false
     runPyHAMS: true
     BEM_dir: /Users/dzalkind/Tools/WEIS-2/examples/15_RAFT_Studies/none/BEM
     model_potential: [false, false, false, false, false, false, false, false, false, false]
@@ -184,11 +185,8 @@ analysis_options:
                 c_d: {flag: false, n_opt: 8, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 stall_margin: {flag: false, n_opt: 8, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 z: {flag: false, n_opt: 3, lower_bound: -1.0, upper_bound: 1.0}
-            structure:
-                spar_cap_ss: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
-                spar_cap_ps: {flag: false, equal_to_suction: true, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
-                te_ss: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
-                te_ps: {flag: false, equal_to_suction: true, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
+            n_opt_struct: [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
+            structure: []
         control:
             tsr: {flag: false, minimum: 0.0, maximum: 0.0, min_gain: 0.5, max_gain: 1.5}
             flaps:
@@ -306,7 +304,13 @@ analysis_options:
             stall: {flag: false, margin: 0.05233}
             chord: {flag: false, max: 4.75}
             root_circle_diameter: {flag: false, max_ratio: 1.0}
-            frequency: {flap_3P: false, edge_3P: false}
+            frequency:
+                flap_3P: false
+                edge_3P: false
+                first_flap: &id006 {flag: false, target: 0.0, acceptable_error: 0.01}
+                first_edge: *id006
+                first_torsion: *id006
+            mass: {flag: false, target: 0.0, acceptable_error: 0.0}
             moment_coefficient: {flag: false, min: 0.15, max: 0.15}
             match_cl_cd: {flag_cl: false, flag_cd: false, filename: ''}
             match_L_D: {flag_L: false, flag_D: false, filename: ''}
@@ -314,35 +318,35 @@ analysis_options:
             thrust_coeff: {flag: false}
         tower:
             height_constraint: {flag: false, lower_bound: 0.01, upper_bound: 0.01}
-            stress: &id006 {flag: false}
-            global_buckling: &id007 {flag: false}
-            shell_buckling: &id008 {flag: false}
-            slope: &id009 {flag: false}
-            thickness_slope: &id010 {flag: false}
-            d_to_t: &id011 {flag: false, lower_bound: 50.0, upper_bound: 50.0}
-            taper: &id012 {flag: false, lower_bound: 0.5}
+            stress: &id007 {flag: false}
+            global_buckling: &id008 {flag: false}
+            shell_buckling: &id009 {flag: false}
+            slope: &id010 {flag: false}
+            thickness_slope: &id011 {flag: false}
+            d_to_t: &id012 {flag: false, lower_bound: 50.0, upper_bound: 50.0}
+            taper: &id013 {flag: false, lower_bound: 0.5}
             frequency: {flag: false}
-            frequency_1: &id013 {flag: false, lower_bound: 0.1, upper_bound: 0.1}
-        monopile: &id014
-            stress: *id006
-            global_buckling: *id007
-            shell_buckling: *id008
-            slope: *id009
-            thickness_slope: *id010
-            d_to_t: *id011
-            taper: *id012
-            frequency_1: *id013
+            frequency_1: &id014 {flag: false, lower_bound: 0.1, upper_bound: 0.1}
+        monopile: &id015
+            stress: *id007
+            global_buckling: *id008
+            shell_buckling: *id009
+            slope: *id010
+            thickness_slope: *id011
+            d_to_t: *id012
+            taper: *id013
+            frequency_1: *id014
             pile_depth: {flag: false, lower_bound: 0.0}
             tower_diameter_coupling: {flag: false}
-        jacket: *id014
+        jacket: *id015
         hub:
             hub_diameter: {flag: false}
         drivetrain:
-            lss: *id006
-            hss: *id006
-            bedplate: *id006
-            mb1: &id015 {flag: false}
-            mb2: *id015
+            lss: *id007
+            hss: *id007
+            bedplate: *id007
+            mb1: &id016 {flag: false}
+            mb2: *id016
             length: {flag: false}
             height: {flag: false}
             access: {flag: false, lower_bound: 2.0}
@@ -351,12 +355,13 @@ analysis_options:
             stator_deflection: {flag: false, upper_bound: 0.0001}
             stator_angle: {flag: false, upper_bound: 0.001}
             ecc: {flag: false}
+        user: []
         damage:
             tower_base: {flag: false, max: 1.0, log: false}
         openfast_failed: {flag: false}
     merit_figure: platform_mass
     driver:
-        optimization: {flag: true, solver: LN_COBYLA, tol: 0.01, max_iter: 2, max_major_iter: 10, max_minor_iter: 100, time_limit: 0, max_function_calls: 100000, step_size: 0.001, form: central, step_calc: None, debug_print: false}
+        optimization: {flag: false, solver: LN_COBYLA, tol: 0.01, max_iter: 2, max_major_iter: 10, max_minor_iter: 100, time_limit: 0, max_function_calls: 100000, step_size: 0.001, form: central, step_calc: None, debug_print: false}
         design_of_experiments: {flag: false, run_parallel: true, generator: Uniform, num_samples: 5, seed: 2, levels: 2, criterion: center, iterations: 2, debug_print: false}
         step_size_study:
             flag: false
@@ -370,6 +375,7 @@ analysis_options:
         file_name: log_opt.sql
         includes: ['*raft*', '*floating*', '*platform*']
         just_dvs: false
+    merit_figure_user: {name: '', ref: 1, max_flag: false}
     inverse_design: {}
     fname_input_analysis: /Users/dzalkind/Tools/WEIS-2/examples/15_RAFT_Studies/analysis_options.yaml
-    opt_flag: true
+    opt_flag: false

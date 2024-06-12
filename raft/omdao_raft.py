@@ -4,12 +4,13 @@ import numpy as np
 import pickle, os
 import copy
 from itertools import compress
-from wisdem.inputs import write_yaml
+from wisdem.inputs import write_yaml, simple_types
 
 DEBUG_OMDAO = False  # use within WEIS
 
 ndim = 3
 ndof = 6
+
 class RAFT_OMDAO(om.ExplicitComponent):
     """
     RAFT OpenMDAO Wrapper API
@@ -458,7 +459,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['turbine']['airfoils'] = [dict() for m in range(n_af)] #Note: doesn't work [{}]*n_af
         for i in range(n_af):
             design['turbine']['airfoils'][i]['name'] = discrete_inputs['airfoils_name'][i]
-            design['turbine']['airfoils'][i]['relative_thickness'] = inputs['airfoils_r_thick'][i]
+            design['turbine']['airfoils'][i]['relative_thickness'] = float(inputs['airfoils_r_thick'][i])
             design['turbine']['airfoils'][i]['data'] = np.c_[inputs['airfoils_aoa'] * raft.helpers.rad2deg(1),
                                                              inputs['airfoils_cl'][i,:,0,0],
                                                              inputs['airfoils_cd'][i,:,0,0],
@@ -645,6 +646,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             with open(f'{file_base}.pkl', 'wb') as handle:
                 pickle.dump(design, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+            design = simple_types(design)
             write_yaml(design,f'{file_base}.yaml')
             self.i_design += 1
                 

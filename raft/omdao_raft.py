@@ -412,6 +412,10 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['turbine']['tower']['type'] = 1
         design['turbine']['tower']['rA'] = inputs['turbine_tower_rA']
         design['turbine']['tower']['rB'] = inputs['turbine_tower_rB']
+        # RAFT always wants rA below rB, this needs to be flipped for MHKs
+        if design['turbine']['tower']['rA'][2] > design['turbine']['tower']['rB'][2]:
+            design['turbine']['tower']['rA'] = inputs['turbine_tower_rB']
+            design['turbine']['tower']['rB'] = inputs['turbine_tower_rA']
         design['turbine']['tower']['shape'] = turbine_opt['shape']
         design['turbine']['tower']['gamma'] = inputs['turbine_tower_gamma']
         design['turbine']['tower']['stations'] = inputs['turbine_tower_stations']

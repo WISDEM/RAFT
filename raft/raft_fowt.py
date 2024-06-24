@@ -1069,7 +1069,7 @@ class FOWT():
         # TODO: consider current and viscous drift <<<
         
         # resize members' wave kinematics arrays for this case's sea states
-        for i,mem in enumerate(memberList):
+        for i,mem in enumerate(memberList+self.rotorList[0].bladeMemberList):
             mem.u    = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
             mem.ud   = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
             mem.pDyn = np.zeros([self.nWaves, mem.ns,    self.nw], dtype=complex)
@@ -1154,7 +1154,7 @@ class FOWT():
         # ----- strip-theory wave excitation force -----
         # loop through each member to compute strip-theory contributions
         # This also saves the save wave kinematics over each member.
-        for i,mem in enumerate(memberList):
+        for i,mem in enumerate(memberList + self.rotorList[0].bladeMemberList):
             
             # loop through each node of the member
             for il in range(mem.ns):
@@ -1241,7 +1241,7 @@ class FOWT():
         ih = 0  # we will only consider the first sea state in this linearization process
 
         # loop through each member
-        for mem in self.memberList:
+        for mem in self.memberList + self.rotorList[0].bladeMemberList:
 
             circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
 

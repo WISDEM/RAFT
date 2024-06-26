@@ -188,7 +188,7 @@ class FOWT():
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
-            self.ms.moorMod = getFromDict(design['mooring'], 'moorMod', default=1)
+            self.ms.moorMod = getFromDict(design['mooring'], 'moorMod', default=0)
             
             # ensure proper setup with one coupled Body tied to this FOWT
             if len(self.ms.bodyList) == 0:
@@ -1044,7 +1044,7 @@ class FOWT():
         
         
         self.beta = deg2rad(case['wave_heading'])   # array of wave headings. Input in [deg], but the code uses [rad]
-        self.zeta = np.zeros([self.nWaves,self.nw], dtype=complex)
+        self.zeta = np.zeros([self.nWaves,self.nw])
 
         # make wave spectrum for each heading
         self.S = np.zeros([self.nWaves,self.nw])
@@ -2025,25 +2025,54 @@ class FOWT():
         results['yaw_RA' ] = rad2deg(self.Xi[:,5,:])
         
         # ----- turbine-level mooring outputs (similar code as array-level) -----
-        if self.ms:
+        if self.ms:            
             nLines = len(self.ms.lineList)
-            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
+            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each wave component and line end
+            T_moor_psd  = np.zeros([2*nLines, self.nw], dtype=float)
+            T_moor_std  = np.zeros([2*nLines], dtype=float)
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
-            T_moor = self.ms.getTensions()  # get line end mean tensions
+            C_moor_2 = self.ms.getCoupledStiffnessA(lines_only=True, tensions=False) # get stiffness matrix and tension jacobian matrix
+            T_moor = self.ms.getTensions()  # get line end mean tensions                        
+            if self.ms.moorMod == 0:
+                for ih in range(self.nWaves+1):
+                    for iw in range(self.nw):
+                        T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
+
+                for iT in range(2*nLines):
+                    T_moor_psd[iT,:]  = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
+                    T_moor_std[iT] = getRMS(T_moor_amps[:,iT,:])
             
-            for ih in range(self.nWaves+1):
-                for iw in range(self.nw):
-                    T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
-        
+            else:
+                for il, line in enumerate(self.ms.lineList):                    
+                    for ih in range(self.nWaves):
+                        # Compute RAO of fairlead
+                        RAO = getRAO(self.Xi[ih,:], self.zeta[ih,:])
+                        RAO_fl, _, _ = getKinematics(line.rB - self.r6[:3], RAO, self.w)
+
+                        # Get tension along the mooring line
+                        T_nodes_amp, T_nodes_psd, T_nodes_std, s, r_static, r_dynamic, r_total, X = line.dynamicSolve(self.w, self.S[ih,:], RAO_A=0, RAO_B=RAO_fl.T, depth=self.depth, kbot=0,cbot=0, tol = 0.01, conv_time=False)
+
+                        # Tension at the end nodes of the line
+                        T_moor_amps[ih, il, :] += T_nodes_amp[:,0]
+                        T_moor_amps[ih, il+nLines,:] += T_nodes_amp[:,-1]
+                        T_moor_std[il] += T_nodes_std[0]**2
+                        T_moor_std[il+nLines] += T_nodes_std[-1]**2
+
+                # Compute PSD and std from the different wave component
+                for iT in range(2*nLines):
+                    T_moor_psd[iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0])                
+                    T_moor_std[iT] = np.sqrt(T_moor_std[iT])
+
+                
             results['Tmoor_avg'] = T_moor
             results['Tmoor_std'] = []
             results['Tmoor_max'] = []
             results['Tmoor_PSD'] =  np.zeros([ self.nw, 2*nLines])
             for iT in range(2*nLines):
-                TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
+                TRMS = T_moor_std[iT]
                 results['Tmoor_std'].append(TRMS)
                 results['Tmoor_max'].append( T_moor[iT] + 3*TRMS)
-                results['Tmoor_PSD'][:,iT] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
+                results['Tmoor_PSD'][:,iT] = T_moor_psd[iT,:] # PSD in N^2/(rad/s)
             
             # log the maximum line tensions predicted by RAFT for MoorPy use
             # self.ms.saveMaxTensions(results['Tmoor_max']) 

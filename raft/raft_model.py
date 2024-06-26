@@ -965,12 +965,16 @@ class Model():
             # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
             print('Solving for system response to wave excitation in primary wave direction')
             
+
+            # TODO: Need to iterate the dynamic matrices as well due to the drag force on the moorings
+            # We would need to pass the motions of the extremities of the mooring lines within getCoupledDynamicMatrices
+            # I think this would be straightforward for lines connecting the fairlead to the anchor, but not sure about cases with buoys
             M_moor, A_moor, B_moor, C_moor = (np.zeros([6,6]) for _ in range(4))
-            if fowt.ms.moorMod == 1:
+            if fowt.ms.moorMod == 0:
                 C_moor = fowt.C_moor
-            elif fowt.ms.moorMod == 2:
+            elif fowt.ms.moorMod == 1:
                 M_moor, A_moor, B_moor, C_moor = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
-            elif fowt.ms.moorMod == 3:
+            elif fowt.ms.moorMod == 2:
                 C_moor = fowt.C_moor
                 M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
 
@@ -1109,7 +1113,17 @@ class Model():
         
         # include array-level mooring stiffness
         if self.ms:
-            Z_sys += self.ms.getCoupledStiffnessA(lines_only=True)[:,:,None]
+            M_moor, A_moor, B_moor, C_moor = (np.zeros([6,6]) for _ in range(4))
+            if fowt.ms.moorMod == 0:
+                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)[:,:,None]
+            elif fowt.ms.moorMod == 1:
+                M_moor, A_moor, B_moor, C_moor = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
+            elif fowt.ms.moorMod == 2:
+                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)[:,:,None]
+                M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
+
+            for ii in range(self.nw):
+                Z[:,:,ii] += -self.w[ii]**2 *(M_moor+A_moor) + 1j*self.w[ii]*B_moor[:,:,ii] + C_moor[:,:,ii]
         
         
         # >>> For arrays, we would want a sparse solver for Zinv. <<<

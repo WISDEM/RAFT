@@ -887,7 +887,7 @@ class Rotor:
 
             # Torque control gains, need to get these from somewhere
             kp_tau = self.kp_tau * (self.kp_beta == 0)  #     -38609162.66552     ! VS_KP				- Proportional gain for generator PI torque controller [1/(rad/s) Nm]. (Only used in the transitional 2.5 region if VS_ControlMode =/ 2)
-            ki_tau = self.kp_tau  * (self.kp_beta == 0)   #    -4588245.18720      ! VS_KI	
+            ki_tau = self.ki_tau  * (self.ki_beta == 0)   #    -4588245.18720      ! VS_KI	
             
             a_aer = np.zeros_like(self.w)
             b_aer = np.zeros_like(self.w)

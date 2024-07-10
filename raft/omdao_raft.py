@@ -690,6 +690,9 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 axs.set_zlim3d((-30.005888228174538, -19.994111771825473))
 
                 print('here')
+
+            # Save figure
+            fig.savefig(file_base+'.png')
     
         
         # option to generate seperate HAMS data for level 2 or 3, with higher res settings

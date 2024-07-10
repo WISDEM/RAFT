@@ -25,6 +25,7 @@ class TestSpider(unittest.TestCase):
         opt['modeling']['trim_ballast'] = 0
         opt['modeling']['heave_tol'] = 1
         opt['modeling']['save_designs'] = False
+        opt['modeling']['plot_designs'] = False
         opt['modeling']['runPyHAMS'] = True
         opt['modeling']['BEM_dir'] = 'none/BEM'
         opt['modeling']['model_potential'] = [True,False, False,False]
@@ -68,6 +69,7 @@ class TestSpider(unittest.TestCase):
         opt['analysis'] = {}
         opt['analysis']['general'] = {}
         opt['analysis']['general']['folder_output'] = 'output'
+        opt['analysis']['general']['fname_output'] = 'spiderfloat'
 
         prob = om.Problem()
         prob.model = RAFT_Group(modeling_options=opt['modeling'],

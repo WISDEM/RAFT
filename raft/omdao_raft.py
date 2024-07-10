@@ -4,11 +4,13 @@ import numpy as np
 import pickle, os
 import copy
 from itertools import compress
+from wisdem.inputs import write_yaml, simple_types
 
-DEBUG_OMDAO = False  # use within WEIS
+DEBUG_OMDAO = False  # use within WEIS, test file generated using examples/15_RAFT_Studies/weis_driver_raft_opt.py
 
 ndim = 3
 ndof = 6
+
 class RAFT_OMDAO(om.ExplicitComponent):
     """
     RAFT OpenMDAO Wrapper API
@@ -350,11 +352,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
             from weis.aeroelasticse.FileTools import save_yaml
             # Options
             all_options = {}
-            all_options['modeling_options']     = self.options['modeling_options']
-            all_options['turbine_options']      = self.options['turbine_options']
-            all_options['mooring_options']      = self.options['mooring_options']
-            all_options['member_options']       = self.options['member_options']
-            all_options['analysis_options']     = self.options['analysis_options']
+            all_options['modeling_options']     = copy.deepcopy(self.options['modeling_options'])
+            all_options['turbine_options']      = copy.deepcopy(self.options['turbine_options'])
+            all_options['mooring_options']      = copy.deepcopy(self.options['mooring_options'])
+            all_options['member_options']       = copy.deepcopy(self.options['member_options'])
+            all_options['analysis_options']     = copy.deepcopy(self.options['analysis_options'])
 
             # handle some paths for testing
             gen_opt = all_options['analysis_options']['general']
@@ -375,7 +377,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # set up design
         design = {}
         design['type'] = ['input dictionary for RAFT']
-        design['name'] = ['spiderfloat']
+        design['name'] = [analysis_options['general']['fname_output']]
         design['comments'] = ['none']
         
         design['settings'] = {}
@@ -410,6 +412,10 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['turbine']['tower']['type'] = 1
         design['turbine']['tower']['rA'] = inputs['turbine_tower_rA']
         design['turbine']['tower']['rB'] = inputs['turbine_tower_rB']
+        # RAFT always wants rA below rB, this needs to be flipped for MHKs
+        if design['turbine']['tower']['rA'][2] > design['turbine']['tower']['rB'][2]:
+            design['turbine']['tower']['rA'] = inputs['turbine_tower_rB']
+            design['turbine']['tower']['rB'] = inputs['turbine_tower_rA']
         design['turbine']['tower']['shape'] = turbine_opt['shape']
         design['turbine']['tower']['gamma'] = inputs['turbine_tower_gamma']
         design['turbine']['tower']['stations'] = inputs['turbine_tower_stations']
@@ -450,13 +456,14 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['turbine']['blade']['Rtip']        = float(inputs['blade_Rtip'])
         design['turbine']['blade']['precurveTip'] = float(inputs['blade_precurveTip'])
         design['turbine']['blade']['presweepTip'] = float(inputs['blade_presweepTip'])
-        design['turbine']['blade']['airfoils']    = list(zip(inputs['airfoils_position'], turbine_opt['af_used_names']))
+        airfoil_pos = [float(ap) for ap in inputs['airfoils_position']]     # Cast to float for yaml saving purposes
+        design['turbine']['blade']['airfoils']    = list(zip(airfoil_pos, turbine_opt['af_used_names']))
         # airfoils data
         n_af = turbine_opt['n_af']
         design['turbine']['airfoils'] = [dict() for m in range(n_af)] #Note: doesn't work [{}]*n_af
         for i in range(n_af):
             design['turbine']['airfoils'][i]['name'] = discrete_inputs['airfoils_name'][i]
-            design['turbine']['airfoils'][i]['relative_thickness'] = inputs['airfoils_r_thick'][i]
+            design['turbine']['airfoils'][i]['relative_thickness'] = float(inputs['airfoils_r_thick'][i])
             design['turbine']['airfoils'][i]['data'] = np.c_[inputs['airfoils_aoa'] * raft.helpers.rad2deg(1),
                                                              inputs['airfoils_cl'][i,:,0,0],
                                                              inputs['airfoils_cd'][i,:,0,0],
@@ -604,7 +611,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             design['mooring']['lines'][i]['endA'] = mooring_opt[ml_name+'endA']
             design['mooring']['lines'][i]['endB'] = mooring_opt[ml_name+'endB']
             design['mooring']['lines'][i]['type'] = mooring_opt[ml_name+'type']
-            design['mooring']['lines'][i]['length'] = inputs[ml_name+'length']
+            design['mooring']['lines'][i]['length'] = float(inputs[ml_name+'length'])
         design['mooring']['line_types'] = [dict() for m in range(nline_types)] #Note: doesn't work [{}]*nline_types
         for i in range(0, nline_types):
             lt_name = f'mooring_line_type{i+1}_'
@@ -639,10 +646,12 @@ class RAFT_OMDAO(om.ExplicitComponent):
 
         # Debug
         if modeling_opt['save_designs']:
-            with open(
-                os.path.join(analysis_options['general']['folder_output'],'raft_designs',
-                f'raft_design_{self.i_design}.pkl'), 'wb') as handle:
+            file_base = os.path.join(analysis_options['general']['folder_output'],'raft_designs',f'raft_design_{self.i_design}')
+            with open(f'{file_base}.pkl', 'wb') as handle:
                 pickle.dump(design, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+            design = simple_types(design)
+            write_yaml(design,f'{file_base}.yaml')
             self.i_design += 1
                 
         # set up the model
@@ -651,6 +660,40 @@ class RAFT_OMDAO(om.ExplicitComponent):
             ballast= modeling_opt['trim_ballast'], 
             heave_tol = modeling_opt['heave_tol']
             )
+
+        if modeling_opt['plot_designs']:
+            fig, axs = model.plot()
+
+            if True:
+                
+                print('Set breakpoint here and find nice camera angle')
+
+                azm=axs.azim
+                ele=axs.elev
+
+                xlm=axs.get_xlim3d() #These are two tupples
+                ylm=axs.get_ylim3d() #we use them in the next
+                zlm=axs.get_zlim3d() #graph to reproduce the magnification from mousing
+
+                print(f'axs.azim = {axs.azim}')
+                print(f'axs.elev = {axs.elev}')
+                print(f'axs.set_xlim3d({xlm})')
+                print(f'axs.set_ylim3d({ylm})')
+                print(f'axs.set_zlim3d({zlm})')
+
+            else:
+                print('Setting ')
+                axs.azim = -143.27922077922082
+                axs.elev = 6.62337662337643
+                axs.set_xlim3d((-33.479380470031096, 33.479380470031096))
+                axs.set_ylim3d((-11.01295410198392, 11.01295410198392))
+                axs.set_zlim3d((-30.005888228174538, -19.994111771825473))
+
+                print('here')
+
+            # Save figure
+            fig.savefig(file_base+'.png')
+    
         
         # option to generate seperate HAMS data for level 2 or 3, with higher res settings
         if False: #preprocessBEM:

@@ -13,7 +13,7 @@ modeling_options:
     min_freq_BEM: 0.0159
     plot_designs: false
     runPyHAMS: true
-    BEM_dir: /Users/dzalkind/Tools/WEIS-2/examples/15_RAFT_Studies/none/BEM
+    BEM_dir: /Users/dzalkind/Tools/WEIS-Main/examples/15_RAFT_Studies/none/BEM
     model_potential: [false, false, false, false, false, false, false, false, false, false]
     nfreq: 20
     n_cases: 98
@@ -139,7 +139,7 @@ member_options:
     npts_rho_fill: *id001
     ncaps: [2, 4, 4, 4, 2, 2, 2, 2, 2, 2]
     nreps: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
-    shape: [circ, circ, circ, circ, circ, circ, circ, circ, circ, circ]
+    shape: [circ, circ, circ, circ, circ, circ, circ, rect, rect, rect]
     scalar_thicknesses: &id002 [false, false, false, false, false, false, false, false, false, false]
     scalar_diameters: *id002
     scalar_coefficients: [false, false, false, false, false, false, false, false, false, false]
@@ -155,7 +155,7 @@ member_options:
     platform_member9_potMod: false
     platform_member10_potMod: false
 analysis_options:
-    general: {folder_output: 15_RAFT_optimization, fname_output: refturb_output}
+    general: {folder_output: 15_RAFT_Rect, fname_output: refturb_output}
     design_variables:
         floating:
             joints:
@@ -377,5 +377,5 @@ analysis_options:
         just_dvs: false
     merit_figure_user: {name: '', ref: 1, max_flag: false}
     inverse_design: {}
-    fname_input_analysis: /Users/dzalkind/Tools/WEIS-2/examples/15_RAFT_Studies/analysis_options.yaml
+    fname_input_analysis: /Users/dzalkind/Tools/WEIS-Main/examples/15_RAFT_Studies/analysis_options.yaml
     opt_flag: false

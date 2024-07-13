@@ -1,4 +1,4 @@
-mport openmdao.api as om
+import openmdao.api as om
 import raft
 import numpy as np
 import pickle, os

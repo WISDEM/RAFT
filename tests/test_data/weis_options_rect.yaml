@@ -11,114 +11,13 @@ modeling_options:
     nIter: 15
     dls_max: 5
     min_freq_BEM: 0.0159
-    plot_designs: false
     runPyHAMS: true
-    BEM_dir: /Users/dzalkind/Tools/WEIS-Main/examples/15_RAFT_Studies/none/BEM
+    BEM_dir: outputs/IEA_w_TMD_33/BEM
     model_potential: [false, false, false, false, false, false, false, false, false, false]
     nfreq: 20
     n_cases: 98
-    raft_dlcs:
-       -  [3.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [5.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [7.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [9.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [11.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [13.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [15.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [17.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [19.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [21.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [23.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [25.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [3.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [3.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [5.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [5.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [7.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [7.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [9.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [9.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [11.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [11.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [13.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [13.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [15.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [15.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [17.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [17.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [19.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [19.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [21.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [21.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [23.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [23.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [25.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [25.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [3.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 11.5, 6.3, 0.0]
-       -  [5.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.1, 7.15, 0.0]
-       -  [7.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.7, 8.0, 0.0]
-       -  [9.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.75, 8.05, 0.0]
-       -  [11.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.95, 8.3, 0.0]
-       -  [13.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 13.1, 8.5, 0.0]
-       -  [15.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 13.6, 9.15, 0.0]
-       -  [17.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
-       -  [19.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
-       -  [21.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
-       -  [23.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.850000000000001, 0.0]
-       -  [25.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.9, 0.0]
-       -  [70.0, 0.0, IB_EWM, parked, -8.0, JONSWAP, 14.2, 10.68, 0.0]
-       -  [70.0, 0.0, IB_EWM, parked, 8.0, JONSWAP, 14.2, 10.68, 0.0]
-    raft_dlcs_keys: [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading]
 turbine_options:
-    npts: 11
+    npts: 21
     scalar_thicknesses: false
     scalar_diameters: false
     scalar_coefficients: false
@@ -131,31 +30,21 @@ turbine_options:
     n_pc: 20
     n_af: 8
     af_used_names: [circular, circular, SNL-FFA-W3-500, FFA-W3-360, FFA-W3-330blend, FFA-W3-301, FFA-W3-270blend, FFA-W3-241, FFA-W3-211, FFA-W3-211]
-mooring_options: {nlines: 3, nline_types: 1, nconnections: 6, mooring_point1_name: line1_anchor, mooring_point1_type: fixed, mooring_point2_name: line2_anchor, mooring_point2_type: fixed, mooring_point3_name: line3_anchor, mooring_point3_type: fixed, mooring_point4_name: line1_vessel, mooring_point4_type: vessel, mooring_point5_name: line2_vessel, mooring_point5_type: vessel, mooring_point6_name: line3_vessel, mooring_point6_type: vessel, mooring_line1_endA: line1_anchor, mooring_line1_endB: line1_vessel, mooring_line1_type: main, mooring_line2_endA: line2_anchor, mooring_line2_endB: line2_vessel, mooring_line2_type: main, mooring_line3_endA: line3_anchor, mooring_line3_endB: line3_vessel, mooring_line3_type: main, mooring_line_type1_name: main}
+mooring_options: {nlines: 3, nline_types: 1, nconnections: 6}
 member_options:
     nmembers: 10
     npts: [4, 7, 7, 7, 2, 2, 2, 2, 2, 2]
     npts_lfill: &id001 [3, 6, 6, 6, 1, 1, 1, 1, 1, 1]
     npts_rho_fill: *id001
-    ncaps: [2, 4, 4, 4, 2, 2, 2, 2, 2, 2]
+    ncaps: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
     nreps: [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]
     shape: [circ, circ, circ, circ, circ, circ, circ, rect, rect, rect]
     scalar_thicknesses: &id002 [false, false, false, false, false, false, false, false, false, false]
     scalar_diameters: *id002
     scalar_coefficients: [false, false, false, false, false, false, false, false, false, false]
     n_ballast_type: 2
-    platform_member1_potMod: false
-    platform_member2_potMod: false
-    platform_member3_potMod: false
-    platform_member4_potMod: false
-    platform_member5_potMod: false
-    platform_member6_potMod: false
-    platform_member7_potMod: false
-    platform_member8_potMod: false
-    platform_member9_potMod: false
-    platform_member10_potMod: false
 analysis_options:
-    general: {folder_output: 15_RAFT_Rect, fname_output: refturb_output}
+    general: {folder_output: outputs/15_RAFT_Studies, fname_output: refturb_output}
     design_variables:
         floating:
             joints:
@@ -180,13 +69,16 @@ analysis_options:
                 twist: {flag: false, inverse: false, n_opt: 30, max_decrease: 0.1, max_increase: 0.1, index_start: 0, index_end: 8}
                 chord: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 af_positions: {flag: false, af_start: 4}
-                rthick: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
+                t/c: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 L/D: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 c_d: {flag: false, n_opt: 8, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 stall_margin: {flag: false, n_opt: 8, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 z: {flag: false, n_opt: 3, lower_bound: -1.0, upper_bound: 1.0}
-            n_opt_struct: [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
-            structure: []
+            structure:
+                spar_cap_ss: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
+                spar_cap_ps: {flag: false, equal_to_suction: true, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
+                te_ss: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
+                te_ps: {flag: false, equal_to_suction: true, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
         control:
             tsr: {flag: false, minimum: 0.0, maximum: 0.0, min_gain: 0.5, max_gain: 1.5}
             flaps:
@@ -304,13 +196,7 @@ analysis_options:
             stall: {flag: false, margin: 0.05233}
             chord: {flag: false, max: 4.75}
             root_circle_diameter: {flag: false, max_ratio: 1.0}
-            frequency:
-                flap_3P: false
-                edge_3P: false
-                first_flap: &id006 {flag: false, target: 0.0, acceptable_error: 0.01}
-                first_edge: *id006
-                first_torsion: *id006
-            mass: {flag: false, target: 0.0, acceptable_error: 0.0}
+            frequency: {flap_3P: false, edge_3P: false}
             moment_coefficient: {flag: false, min: 0.15, max: 0.15}
             match_cl_cd: {flag_cl: false, flag_cd: false, filename: ''}
             match_L_D: {flag_L: false, flag_D: false, filename: ''}
@@ -318,35 +204,35 @@ analysis_options:
             thrust_coeff: {flag: false}
         tower:
             height_constraint: {flag: false, lower_bound: 0.01, upper_bound: 0.01}
-            stress: &id007 {flag: false}
-            global_buckling: &id008 {flag: false}
-            shell_buckling: &id009 {flag: false}
-            slope: &id010 {flag: false}
-            thickness_slope: &id011 {flag: false}
-            d_to_t: &id012 {flag: false, lower_bound: 50.0, upper_bound: 50.0}
-            taper: &id013 {flag: false, lower_bound: 0.5}
+            stress: &id006 {flag: false}
+            global_buckling: &id007 {flag: false}
+            shell_buckling: &id008 {flag: false}
+            slope: &id009 {flag: false}
+            thickness_slope: &id010 {flag: false}
+            d_to_t: &id011 {flag: false, lower_bound: 50.0, upper_bound: 50.0}
+            taper: &id012 {flag: false, lower_bound: 0.5}
             frequency: {flag: false}
-            frequency_1: &id014 {flag: false, lower_bound: 0.1, upper_bound: 0.1}
-        monopile: &id015
-            stress: *id007
-            global_buckling: *id008
-            shell_buckling: *id009
-            slope: *id010
-            thickness_slope: *id011
-            d_to_t: *id012
-            taper: *id013
-            frequency_1: *id014
+            frequency_1: &id013 {flag: false, lower_bound: 0.1, upper_bound: 0.1}
+        monopile: &id014
+            stress: *id006
+            global_buckling: *id007
+            shell_buckling: *id008
+            slope: *id009
+            thickness_slope: *id010
+            d_to_t: *id011
+            taper: *id012
+            frequency_1: *id013
             pile_depth: {flag: false, lower_bound: 0.0}
             tower_diameter_coupling: {flag: false}
-        jacket: *id015
+        jacket: *id014
         hub:
             hub_diameter: {flag: false}
         drivetrain:
-            lss: *id007
-            hss: *id007
-            bedplate: *id007
-            mb1: &id016 {flag: false}
-            mb2: *id016
+            lss: *id006
+            hss: *id006
+            bedplate: *id006
+            mb1: &id015 {flag: false}
+            mb2: *id015
             length: {flag: false}
             height: {flag: false}
             access: {flag: false, lower_bound: 2.0}
@@ -355,13 +241,12 @@ analysis_options:
             stator_deflection: {flag: false, upper_bound: 0.0001}
             stator_angle: {flag: false, upper_bound: 0.001}
             ecc: {flag: false}
-        user: []
         damage:
             tower_base: {flag: false, max: 1.0, log: false}
         openfast_failed: {flag: false}
     merit_figure: platform_mass
     driver:
-        optimization: {flag: false, solver: LN_COBYLA, tol: 0.01, max_iter: 2, max_major_iter: 10, max_minor_iter: 100, time_limit: 0, max_function_calls: 100000, step_size: 0.001, form: central, step_calc: None, debug_print: false}
+        optimization: {flag: true, solver: LN_COBYLA, tol: 0.01, max_iter: 2, max_major_iter: 10, max_minor_iter: 100, time_limit: 0, max_function_calls: 100000, step_size: 0.001, form: central, step_calc: None, debug_print: false}
         design_of_experiments: {flag: false, run_parallel: true, generator: Uniform, num_samples: 5, seed: 2, levels: 2, criterion: center, iterations: 2, debug_print: false}
         step_size_study:
             flag: false
@@ -375,7 +260,5 @@ analysis_options:
         file_name: log_opt.sql
         includes: ['*raft*', '*floating*', '*platform*']
         just_dvs: false
-    merit_figure_user: {name: '', ref: 1, max_flag: false}
     inverse_design: {}
-    fname_input_analysis: /Users/dzalkind/Tools/WEIS-Main/examples/15_RAFT_Studies/analysis_options.yaml
-    opt_flag: false
+    opt_flag: true

@@ -61,6 +61,13 @@ class Rotor:
         self.Zhub = self.hHub
         
         self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]  # rotor offset in +x before yaw [m]
+        if self.overhang > 0:
+            print("WARNING: The turbine overhang input was positive.")
+            print("The sign convention is now along +x (opposite of before)")
+            print("so that would be a downwind rotor. RAFT is flipping the")
+            print("sign, guessing that you wanted an upwind rotor.")
+            self.overhang = - self.overhang
+            
         self.xCG_RNA = getFromDict(turbine, 'xCG_RNA', shape=turbine['nrotors'])[ir]  # RNA CG offset in +x before yaw [m]
         
         # mass/inertia
@@ -111,6 +118,9 @@ class Rotor:
         self.r_RRP = np.array(self.r_rel)  # RNA reference point
         self.r_CG  = np.array(self.r_rel)  # RNA CG location
         self.r_hub = np.array(self.r_rel)  # rotor hub coordinates in global [m]
+
+        # Call setPosition to properly initialize various location parameters
+        self.setPosition()
 
         # support if blade and wt_ops are each a single dictionary or a list of dictionaries for each rotor
         # note: this would only be done on the first turbine  >>> we may want to move this stuff up a level, outside of each Rotor object
@@ -363,7 +373,7 @@ class Rotor:
         
         # pull control gains out of dictionary
         self.setControlGains(turbine)
-
+        
         # create a member list of blade sections, only if rotor is underwater
         if self.r3[2] + self.R_rot < 0:
             #self.bladeAirfoil2Member()

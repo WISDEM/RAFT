@@ -1933,8 +1933,8 @@ class FOWT():
         results['AxRNA_avg'] = []
         results['AxRNA_max'] = []
         
-        for ir in range(self.nrotors):
-            XiHub[:,ir,:] = self.Xi[:,0,:] + self.hHub[ir]*self.Xi[:,4,:]  
+        for ir, rotor in enumerate(self.rotorList):
+            XiHub[:,ir,:] = self.Xi[:,0,:] + rotor.r_rel[2]*self.Xi[:,4,:]  # planar approximation; to improve <<<
         
             # nacelle acceleration
             results['AxRNA_std'].append(getRMS(XiHub[:,ir,:]*self.w**2))
@@ -1960,11 +1960,12 @@ class FOWT():
         results['Mbase_std'] = []
         results['Mbase_PSD'] = np.zeros([self.nw, self.nrotors])
         results['Mbase_max'] = []
-        for ir in range(self.nrotors):
+        
+        for ir, rotor in enumerate(self.rotorList):
             # mass and moment arm >>> should three-dimensionalize <<<
-            m_turbine[ir] = self.mtower[ir] + self.mRNA[ir]                        # total masses of each turbine
+            m_turbine[ir] = self.mtower[ir] + rotor.mRNA  # total masses of each turbine
             zCG_turbine[ir] = (self.rCG_tow[ir][2]*self.mtower[ir]                 # CoG of each turbine
-                                + self.hHub[ir]*self.mRNA[ir])/m_turbine[ir]
+                                + rotor.r_rel[2]*rotor.mRNA)/m_turbine[ir]
             zBase[ir] = self.memberList[self.nplatmems + ir].rA[2]                  # tower base elevation [m]
             hArm[ir] = zCG_turbine[ir] - zBase[ir]                                 # vertical distance from tower base to turbine CG [m]
 
@@ -1972,7 +1973,7 @@ class FOWT():
 
             # turbine pitch moment of inertia about CG [kg-m^2]
             ICG_turbine[ir] = (translateMatrix6to6DOF(self.memberList[self.nplatmems+ir].M_struc, [0,0,-zCG_turbine[ir]])[4,4] # tower MOI about turbine CG
-                        + self.mRNA[ir]*(self.hHub[ir]-zCG_turbine[ir])**2 + self.IrRNA[ir]   )                          # RNA MOI with parallel axis theorem
+                        + rotor.mRNA*(rotor.r_rel[2]-zCG_turbine[ir])**2 + rotor.IrRNA)  # RNA MOI with parallel axis theorem
             # moment components and summation (all complex amplitudes)
             M_I[:,ir,:] = -m_turbine[ir]*aCG_turbine[:,ir,:]*hArm[ir] - ICG_turbine[ir]*(-self.w**2 *self.Xi[:,4,:] ) # tower base inertial reaction moment
             M_w[:,ir,:] =  m_turbine[ir]*self.g * hArm[ir]*self.Xi[:,4]                                    # tower base weight moment
@@ -1980,7 +1981,7 @@ class FOWT():
             M_F_aero = 0.0 # <<<<self.f_aero[0,:]*(self.hHub - zBase)  # tower base moment from turbulent wind excitation  <<<<<<<<<<<<<
             
             M_X_aero[:,ir,:] = -(-self.w**2 *self.A_aero[0,0,:,ir]                                 # tower base aero reaction moment
-                        + 1j*self.w *self.B_aero[0,0,:,ir] )*(self.hHub[ir] - zBase[ir])**2 *self.Xi[:,4,:]        
+                        + 1j*self.w *self.B_aero[0,0,:,ir] )*(rotor.r_rel[2] - zBase[ir])**2 *self.Xi[:,4,:]        
             dynamic_moment[:,ir,:] = M_I[:,ir,:] + M_w[:,ir,:] + M_F_aero + M_X_aero[:,ir,:]       # total tower base fore-aft bending moment [N-m]
             dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
 

@@ -550,6 +550,8 @@ def rotateMatrix6(Min, rotMat):
 def rotateMatrix3(Min, rotMat):
     '''apply a rotation to a 3-by-3 mass matrix or any other second order tensor   
     overall operation is [m'] = [a]*[m]*[a]^T
+    where [a] is a matrix that would rotate the original axes to the
+    rotated axes by the multiplication [x'] = [a][x].
     
     PARAMETERS
     ----------

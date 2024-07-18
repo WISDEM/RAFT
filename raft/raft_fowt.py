@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d, RegularGridInterpolator, griddata
 
-import raft.member2pnl as pnl
+import raft.member2pnl_rectangular as pnl
 from raft.helpers import *
 from raft.raft_member import Member
 from raft.raft_rotor import Rotor
@@ -565,7 +565,7 @@ class FOWT():
         self.props['Izz_sub'] = M_sub[5,5]
 
 
-    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, headings=[0], meshDir=os.path.join(os.getcwd(),'BEM')):
+    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, dh=0, headings=[0], meshDir=os.path.join(os.getcwd(),'BEM')):
         '''This generates a mesh for the platform and runs a BEM analysis on it
         using pyHAMS. It can also write adjusted .1 and .3 output files suitable
         for use with OpenFAST.
@@ -603,22 +603,27 @@ class FOWT():
 
             dz = self.dz_BEM if dz==0 else dz  # allow override if provided
             da = self.da_BEM if da==0 else da
+            #dh = self.dh_BEM if dh==0 else dh
 
             for mem in self.memberList:
-                if mem.potMod:
-                    pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
-                            dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+                widths = [9.4, 9.4, 9.4, 9.4]  
+                heights = [9.4, 9.4, 9.4, 9.4]   
+                if mem.potMod ==True:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
+                    pnl.meshRectangularMember(mem.stations, widths, heights, mem.rA, mem.rB,
+                                            dz_max=dz, dw_max=da, dh_max=dh, savedNodes=nodes, savedPanels=panels) #
 
                     # for GDF output
-                    vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                    vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
                     vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
 
+
+                    
             if len(panels) == 0:
                 print("WARNING: no panels to mesh.")
 
             pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
 
-            #pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
+            pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
 
             ph.create_hams_dirs(meshDir)                #
 

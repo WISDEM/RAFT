@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.interpolate import interp1d, RegularGridInterpolator, griddata
 
-import raft.member2pnl_rectangular as pnl
+import raft.member2pnl as pnl
 from raft.helpers import *
 from raft.raft_member import Member
 from raft.raft_rotor import Rotor
@@ -605,17 +605,21 @@ class FOWT():
             da = self.da_BEM if da==0 else da
             #dh = self.dh_BEM if dh==0 else dh
 
-            for mem in self.memberList:
-                widths = [9.4, 9.4, 9.4, 9.4]  
-                heights = [9.4, 9.4, 9.4, 9.4]   
-                if mem.potMod ==True:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
-                    pnl.meshRectangularMember(mem.stations, widths, heights, mem.rA, mem.rB,
-                                            dz_max=dz, dw_max=da, dh_max=dh, savedNodes=nodes, savedPanels=panels) #
-
-                    # for GDF output
-                    vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
-                    vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
-
+            for mem in self.memberList: 
+                if mem.potMod:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
+                    if mem.shape == "circular":
+                        pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+                        # for GDF output
+                        vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                        vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
+                    elif mem.shape == "rectangular":
+                        widths = mem.sl[:, 0]
+                        heights = mem.sl[:, 1]
+                        pnl.meshRectangularMember(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh, savedNodes=nodes, savedPanels=panels) #
+                        # for GDF output
+                        vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
+                        vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
+                
 
                     
             if len(panels) == 0:

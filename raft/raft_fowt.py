@@ -1274,13 +1274,18 @@ class FOWT():
 
                     # break out velocity components in each direction relative to member orientation [nw]
                     vrel_q  = np.sum(vrel*mem.q[ :,None], axis=0)*mem.q[ :,None]     # (the ,None is for broadcasting q across all frequencies in vrel)
+                    vrel_p  = vrel - vrel_q
                     vrel_p1 = np.sum(vrel*mem.p1[:,None], axis=0)*mem.p1[:,None]
                     vrel_p2 = np.sum(vrel*mem.p2[:,None], axis=0)*mem.p2[:,None]
                     
                     # get RMS of relative velocity component magnitudes (real-valued)
                     vRMS_q  = getRMS(vrel_q)
-                    vRMS_p1 = getRMS(vrel_p1)
-                    vRMS_p2 = getRMS(vrel_p2)
+                    if circ: # Use the total perpendicular relative velocity 
+                        vRMS_p1 = getRMS(vrel_p)
+                        vRMS_p2 = vRMS_p1
+                    else: # Otherwise treat each direction separately
+                        vRMS_p1 = getRMS(vrel_p1)
+                        vRMS_p2 = getRMS(vrel_p2)
                     
                     # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
                     Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * a_i_q  * Cd_q
@@ -1411,7 +1416,8 @@ class FOWT():
                     # current (relative) velocity over node (no complex numbers bc not function of frequency)
                     vrel = np.array(vcur)
                     # break out velocity components in each direction relative to member orientation
-                    vrel_q  = np.sum(vrel*mem.q[:] )*mem.q[:] 
+                    vrel_q  = np.sum(vrel*mem.q[:] )*mem.q[:]
+                    vrel_p  = vrel-vrel_q 
                     vrel_p1 = np.sum(vrel*mem.p1[:])*mem.p1[:]
                     vrel_p2 = np.sum(vrel*mem.p2[:])*mem.p2[:]
                     
@@ -1424,8 +1430,15 @@ class FOWT():
 
                     # calculate drag force wrt to each orientation using simple Morison's drag equation
                     Dq = 0.5 * rho * a_i_q * Cd_q * np.linalg.norm(vrel_q) * vrel_q
-                    Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * np.linalg.norm(vrel_p1) * vrel_p1
-                    Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * np.linalg.norm(vrel_p2) * vrel_p2
+
+                    if circ: # Use the norm of the total perpendicular relative velocity
+                        normVrel_p1 = np.linalg.norm(vrel_p)
+                        normVrel_p2 = normVrel_p1
+                    else: # Otherwise treat each direction separately
+                        normVrel_p1 = np.linalg.norm(vrel_p1)
+                        normVrel_p2 = np.linalg.norm(vrel_p2)
+                    Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * normVrel_p1 * vrel_p1
+                    Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * normVrel_p2 * vrel_p2
                     
                     # ----- end/axial effects drag ------
 

@@ -1935,12 +1935,12 @@ class FOWT():
             results['Tmoor_avg'] = T_moor
             results['Tmoor_std'] = []
             results['Tmoor_max'] = []
-            results['Tmoor_PSD'] =  np.zeros([ self.nw, 2*nLines])
+            results['Tmoor_PSD'] =  np.zeros([ 2*nLines, self.nw])
             for iT in range(2*nLines):
                 TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
                 results['Tmoor_std'].append(TRMS)
                 results['Tmoor_max'].append( T_moor[iT] + 3*TRMS)
-                results['Tmoor_PSD'][:,iT] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
+                results['Tmoor_PSD'][iT, :] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
             
             # log the maximum line tensions predicted by RAFT for MoorPy use
             # self.ms.saveMaxTensions(results['Tmoor_max']) 

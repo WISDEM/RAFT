@@ -1,6 +1,6 @@
 type: input file for RAFT
-name: IEA 15 MW with VolturnUS-S steel semi
-comments: Used to perform some tests on FOWT class functionality. This file should contain a single FOWT.
+name: IEA 15 MW wind turbine
+comments: Used to perform some tests on rotor class functionality.
 
 
 settings:                   # global Settings

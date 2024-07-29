@@ -1,13 +1,13 @@
 type: input file for RAFT
 name: NREL 5MW with OC3-Hywind spar
-comments: Used to perform some tests on FOWT class functionality. This file should contain a single FOWT.
+comments: Used to perform tests on FOWT and model class functionality. This file should contain a single FOWT.
 
 
 settings:                   # global Settings
-    min_freq     :  0.02    #  [Hz]       lowest frequency to consider, also the frequency bin width     
+    min_freq     :  0.005    #  [Hz]       lowest frequency to consider, also the frequency bin width     
     max_freq     :  0.20    #  [Hz]       highest frequency to consider
     XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
-    nIter        :   4      # sets how many iterations to perform in Model.solveDynamics()
+    nIter        :   10      # sets how many iterations to perform in Model.solveDynamics()
     
 site:
     water_depth : 320        # [m]      uniform water depth
@@ -15,6 +15,14 @@ site:
     rho_air     : 1.225      # [kg/m^3] air density
     mu_air      : 1.81e-05   #          air dynamic viscosity
     shearExp    : 0.12       #          shear exponent
+
+cases:
+
+    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, current_speed, current_heading ]
+    data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)
+        -  [     0,         0,            0,          operating,          0,        JONSWAP,         12,         6,           0      ,       0,             0  ] 
+        -  [    10,        30,            0,          operating,          0,        JONSWAP,         12,         6,           0      ,       1,            15  ]
+    
 
 turbine:
     

@@ -173,7 +173,6 @@ desired_B_hydro_drag = [
 ]
 
 
-
 desired_F_hydro_drag = [
     np.array([[ 6.26798938e+04-1.06576584e+03j,  7.00748475e+04-2.89201688e+03j,  8.12157593e+04-7.38829784e+03j,  7.99202139e+04-1.71186649e+04j,  5.70971129e+04-3.47002772e+04j,  2.27393403e+04-5.91662066e+04j, -9.11605006e+02-7.46368022e+04j, -3.93986729e+03-5.28862578e+04j, -6.65220062e+03+5.67359238e+03j, -1.69638473e+04+4.21813590e+04j],
               [-8.17879804e+02+2.01664178e+01j, -9.05916942e+02+5.37256226e+01j, -1.06142727e+03+1.27811882e+02j, -1.14594284e+03+2.46346476e+02j, -1.08284917e+03+3.71666065e+02j, -8.99454707e+02+4.63199882e+02j, -6.52221403e+02+4.91741004e+02j, -4.03273261e+02+4.50941473e+02j, -2.01267908e+02+3.58647869e+02j, -6.89581470e+01+2.46686181e+02j],
@@ -187,6 +186,12 @@ desired_F_hydro_drag = [
               [ 0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j],
               [-1.36949214e+06+0.00000000e+00j, -1.25578704e+06+0.00000000e+00j, -9.97042126e+05+0.00000000e+00j, -6.46386615e+05+0.00000000e+00j, -3.89000599e+05+0.00000000e+00j, -2.44659044e+05+0.00000000e+00j, -1.67285667e+05+0.00000000e+00j, -1.22492723e+05+0.00000000e+00j, -9.38820976e+04+0.00000000e+00j, -7.42323180e+04+0.00000000e+00j],
               [ 0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j,  0.00000000e+00+0.00000000e+00j]])
+]
+
+
+desired_current_drag = [
+    np.array([2.64655964e+06, 6.47726496e+05, 7.60648090e-27, 8.77357984e+06, -3.65254345e+07, 1.15751779e+07]),
+    np.array([1.66747692e+06, 4.46799093e+05,        0.0e+00, 2.67342887e+07, -9.97737237e+07,        0.0e+00])
 ]
 
 '''
@@ -281,24 +286,37 @@ def test_hydroExcitation(index_and_fowt):
 
 def test_hydroLinearization(index_and_fowt):
     index, fowt = index_and_fowt
+
+    # Set this flag to true to replace the true values file
+    flagSaveValues = False
+    true_values_file = list_files[index].replace('.yaml', '_true_hydroLinearization.pkl')
+
     testCase = {'wave_spectrum': 'unit', 'wave_heading': 0, 'wave_period': 10, 'wave_height': 2} # Currently we need to specify wave period and height, even though they are not used for unit spectrum
     fowt.calcHydroExcitation(testCase, memberList=fowt.memberList) # Need wave kinematics
 
-    # Arbitrary motion amplitude array    
-    Xi = np.array([[ 1.44075399e-02-4.66157555e-01j,  5.20897487e-03-2.70427204e-01j,  1.90901958e-03-1.71151891e-01j,  9.04521827e-03-1.17352963e-01j,  2.48762400e-02-5.80555528e-02j,  4.56423903e-02-9.59965804e-03j,  5.44357634e-02+1.10072293e-02j,  3.34600318e-02+8.07187476e-03j, -6.23112125e-03+5.64168757e-03j, -2.44795927e-02+9.56453906e-03j],
-                   [ 2.85049644e-02-7.54611582e-01j,  5.98430492e-03-4.38598560e-01j,  2.91672777e-03-2.77341313e-01j,  1.48259823e-02-1.90233075e-01j,  4.08772073e-02-9.42359179e-02j,  7.48244886e-02-1.57775558e-02j,  8.90953830e-02+1.76737868e-02j,  5.48648892e-02+1.31424831e-02j, -9.75218754e-03+9.46609001e-03j, -3.95442642e-02+1.58902434e-02j],
-                   [ 3.96795959e-01-8.38583990e-04j,  4.29418880e-01-8.39437782e-03j,  1.98850671e-01-2.44617941e-02j,  2.02738681e-01-5.79936301e-03j,  1.40634459e-01+8.48252143e-04j,  7.47251454e-02+1.20797345e-02j,  2.61911301e-02+2.37361584e-02j,  2.52065103e-03+2.73486282e-02j, -3.62666011e-03+2.00426077e-02j, -3.91680755e-03+8.80343179e-03j],
-                   [-1.23100954e-04-1.71475438e-03j, -1.31476113e-03+1.12462202e-02j,  4.13208230e-04+3.71323433e-04j, -2.63715747e-04-7.54003907e-04j, -7.12121498e-06-1.21934883e-03j, -2.55336507e-04-1.13754463e-03j, -3.03329913e-04-7.12646838e-04j, -1.45139945e-04-2.87138709e-04j,  4.20270567e-05-7.65885587e-05j,  1.04688527e-04-3.76698505e-05j],
-                   [ 6.59457544e-05+1.05991894e-03j,  1.07759524e-03-6.89551129e-03j, -1.91948758e-04-2.25689007e-04j, -1.24096315e-04+4.69486170e-04j,  3.13913203e-06+7.58065519e-04j,  1.11772503e-04+7.07734736e-04j,  1.15887218e-04+4.40534336e-04j,  2.45230672e-05+1.65526424e-04j, -6.32025803e-05+2.15617347e-05j, -7.39544094e-05-6.45018513e-06j],
-                   [ 1.80469560e-05+2.52065955e-06j, -1.59542672e-06-5.82191344e-06j,  2.72958891e-06-3.25061466e-05j,  6.29306134e-06-1.02890873e-04j,  1.49088034e-05-1.99190465e-04j,  4.17591595e-05-2.66548727e-04j,  1.07875582e-04-2.37061705e-04j,  2.08096917e-04-9.41764054e-05j,  2.60739358e-04+9.13387496e-05j,  1.48611347e-04+2.19464047e-04j]])    
+    phase_array = np.linspace(0, 2 * np.pi, fowt.nw * 6).reshape(6, fowt.nw) # Needed an arbitrary motion amplitude. Assuming uniform amplitude with phases linearly spaced between 0 and 2pi. Times 6 for surge, sway, ..., yaw
+    Xi = 0.1*np.exp(1j * phase_array)
+    B_hydro_drag = fowt.calcHydroLinearization(Xi)   
+    F_hydro_drag = fowt.calcDragExcitation(0)
+    if flagSaveValues:
+        with open(true_values_file, 'wb') as f:
+            true_values = {'B_hydro_drag': B_hydro_drag, 'F_hydro_drag': F_hydro_drag}
+            pickle.dump(true_values, f)
+        return
+    else:
+        with open(true_values_file, 'rb') as f:
+            true_values = pickle.load(f)
 
     # Check the linearized drag matrix
-    B_hydro_drag = fowt.calcHydroLinearization(Xi)        
-    assert_allclose(B_hydro_drag, desired_B_hydro_drag[index], rtol=1e-05, atol=1e-10)
+    assert_allclose(B_hydro_drag, true_values['B_hydro_drag'], rtol=1e-05, atol=1e-10)
 
     # Check the linearized drag excitation
-    F_hydro_drag = fowt.calcDragExcitation(0)
-    assert_allclose(F_hydro_drag, desired_F_hydro_drag[index], rtol=1e-05)
+    assert_allclose(F_hydro_drag, true_values['F_hydro_drag'], rtol=1e-05)
+
+def test_calcCurrentLoads(index_and_fowt):
+    index, fowt = index_and_fowt    
+    testCase = {'current_speed': 2.0, 'current_heading':15}
+    D = fowt.calcCurrentLoads(testCase)
 
 
 '''
@@ -306,10 +324,19 @@ def test_hydroLinearization(index_and_fowt):
 '''
 if __name__ == "__main__":
     index = 0
-    fowt = create_fowt(list_files[index])
 
-    # test_statics((index,fowt))
-    # # test_hydroConstants((index,fowt))
+    fowt = create_fowt(list_files[index])
+    test_statics((index,fowt))
+    
+    fowt = create_fowt(list_files[index])
+    test_hydroConstants((index,fowt))
+
+    fowt = create_fowt(list_files[index])
     test_hydroExcitation((index,fowt))
-    # test_hydroLinearization((index,fowt))
+
+    fowt = create_fowt(list_files[index])
+    test_calcCurrentLoads((index,fowt))
+
+    fowt = create_fowt(list_files[index])
+    test_hydroLinearization((index,fowt))
 

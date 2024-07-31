@@ -1070,7 +1070,7 @@ class FOWT():
         # TODO: consider current and viscous drift <<<
         
         # resize members' wave kinematics arrays for this case's sea states
-        for i,mem in enumerate(memberList+self.rotorList[0].bladeMemberList):
+        for i,mem in enumerate(memberList):
             mem.u    = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
             mem.ud   = np.zeros([self.nWaves, mem.ns, 3, self.nw], dtype=complex)
             mem.pDyn = np.zeros([self.nWaves, mem.ns,    self.nw], dtype=complex)
@@ -1155,7 +1155,7 @@ class FOWT():
         # ----- strip-theory wave excitation force -----
         # loop through each member to compute strip-theory contributions
         # This also saves the save wave kinematics over each member.
-        for i,mem in enumerate(memberList + self.rotorList[0].bladeMemberList):
+        for i,mem in enumerate(memberList):
             
             # loop through each node of the member
             for il in range(mem.ns):
@@ -1242,7 +1242,7 @@ class FOWT():
         ih = 0  # we will only consider the first sea state in this linearization process
 
         # loop through each member
-        for mem in self.memberList + self.rotorList[0].bladeMemberList:
+        for mem in self.memberList:
 
             circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
 
@@ -1275,13 +1275,18 @@ class FOWT():
 
                     # break out velocity components in each direction relative to member orientation [nw]
                     vrel_q  = np.sum(vrel*mem.q[ :,None], axis=0)*mem.q[ :,None]     # (the ,None is for broadcasting q across all frequencies in vrel)
+                    vrel_p  = vrel - vrel_q
                     vrel_p1 = np.sum(vrel*mem.p1[:,None], axis=0)*mem.p1[:,None]
                     vrel_p2 = np.sum(vrel*mem.p2[:,None], axis=0)*mem.p2[:,None]
                     
                     # get RMS of relative velocity component magnitudes (real-valued)
                     vRMS_q  = getRMS(vrel_q)
-                    vRMS_p1 = getRMS(vrel_p1)
-                    vRMS_p2 = getRMS(vrel_p2)
+                    if circ: # Use the total perpendicular relative velocity 
+                        vRMS_p1 = getRMS(vrel_p)
+                        vRMS_p2 = vRMS_p1
+                    else: # Otherwise treat each direction separately
+                        vRMS_p1 = getRMS(vrel_p1)
+                        vRMS_p2 = getRMS(vrel_p2)
                     
                     # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
                     Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * a_i_q  * Cd_q
@@ -1412,7 +1417,8 @@ class FOWT():
                     # current (relative) velocity over node (no complex numbers bc not function of frequency)
                     vrel = np.array(vcur)
                     # break out velocity components in each direction relative to member orientation
-                    vrel_q  = np.sum(vrel*mem.q[:] )*mem.q[:] 
+                    vrel_q  = np.sum(vrel*mem.q[:] )*mem.q[:]
+                    vrel_p  = vrel-vrel_q 
                     vrel_p1 = np.sum(vrel*mem.p1[:])*mem.p1[:]
                     vrel_p2 = np.sum(vrel*mem.p2[:])*mem.p2[:]
                     
@@ -1425,8 +1431,15 @@ class FOWT():
 
                     # calculate drag force wrt to each orientation using simple Morison's drag equation
                     Dq = 0.5 * rho * a_i_q * Cd_q * np.linalg.norm(vrel_q) * vrel_q
-                    Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * np.linalg.norm(vrel_p1) * vrel_p1
-                    Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * np.linalg.norm(vrel_p2) * vrel_p2
+
+                    if circ: # Use the norm of the total perpendicular relative velocity
+                        normVrel_p1 = np.linalg.norm(vrel_p)
+                        normVrel_p2 = normVrel_p1
+                    else: # Otherwise treat each direction separately
+                        normVrel_p1 = np.linalg.norm(vrel_p1)
+                        normVrel_p2 = np.linalg.norm(vrel_p2)
+                    Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * normVrel_p1 * vrel_p1
+                    Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * normVrel_p2 * vrel_p2
                     
                     # ----- end/axial effects drag ------
 
@@ -2068,12 +2081,12 @@ class FOWT():
             results['Tmoor_avg'] = T_moor
             results['Tmoor_std'] = []
             results['Tmoor_max'] = []
-            results['Tmoor_PSD'] =  np.zeros([ self.nw, 2*nLines])
+            results['Tmoor_PSD'] =  np.zeros([ 2*nLines, self.nw])
             for iT in range(2*nLines):
                 TRMS = T_moor_std[iT]
                 results['Tmoor_std'].append(TRMS)
                 results['Tmoor_max'].append( T_moor[iT] + 3*TRMS)
-                results['Tmoor_PSD'][:,iT] = T_moor_psd[iT,:] # PSD in N^2/(rad/s)
+                results['Tmoor_PSD'][iT, :] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
             
             # log the maximum line tensions predicted by RAFT for MoorPy use
             # self.ms.saveMaxTensions(results['Tmoor_max']) 

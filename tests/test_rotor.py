@@ -41,7 +41,7 @@ def create_rotor(file):
         
     nrotors = getFromDict(design['turbine'], 'nrotors', dtype=int, shape=0, default=1)
     if nrotors==1: design['turbine']['nrotors'] = 1
-    else: raise NotImplementedError('Multiple rotors not supported yet')        
+    else: raise NotImplementedError('Multiple rotors not supported yet by the testing function.')
     
     if 'tower' in design['turbine']:
         if isinstance(design['turbine']['tower'], dict):                           # if a single tower is specified (rather than a list)

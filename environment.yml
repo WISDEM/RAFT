@@ -16,4 +16,4 @@ dependencies:
   - ruamel.yaml
   - scipy
   - setuptools
-  - wisdem
+  - wisdem>=3.16

@@ -17,7 +17,7 @@ except:
 import moorpy as mp
 import raft.raft_fowt as fowt
 from raft.helpers import *
-from moorpy.helpers import dsolve2, set_axes_equal, dsolvePlot
+from moorpy.helpers import dsolve2, set_axes_equal, dsolvePlot, lines2ss
 import copy
 #import F6T1RNA as structural    # import turbine structural model functions
 
@@ -99,6 +99,8 @@ class Model():
                     self.ms.load(design['array_mooring']['file'], clear=False)  # add the array level mooring system to the already created bodies
                 else:
                     raise Exception("When using 'array_mooring', a MoorDyn-style input file must be provided as 'file'.")
+
+                self.ms.moorMod = getFromDict(design['array_mooring'], 'moorMod', default=0, dtype=int)
             else:
                 self.ms = None
                 
@@ -230,14 +232,26 @@ class Model():
         
         if self.ms:
             try: 
-                self.C_moor0 += self.ms.getCoupledStiffness(lines_only=True)        
+                if self.ms.moorMod == 0 or self.ms.moorMod == 2:
+                    C_moor = self.ms.getCoupledStiffness(lines_only=True)
+                elif self.ms.moorMod == 1:
+                    self.ms.updateLumpedMassSystem()                    
+                    _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
+
+                self.C_moor0 += C_moor
                 self.F_moor0 += self.ms.getForces(DOFtype="coupled", lines_only=True)
             except Exception as e:
                 raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
         
         if self.fowtList[0].ms:
             try: 
-                self.C_moor0 += self.fowtList[0].ms.getCoupledStiffness(lines_only=True)        
+                if self.fowtList[0].ms.moorMod == 0 or self.fowtList[0].ms.moorMod == 2:
+                    C_moor = self.fowtList[0].ms.getCoupledStiffness(lines_only=True)
+                elif self.fowtList[0].ms.moorMod == 1:
+                    self.fowtList[0].ms.updateSystemDynamicMatrices()
+                    _, _, _, C_moor = self.fowtList[0].ms.getCoupledDynamicMatrices(lines_only=True)
+
+                self.C_moor0 += C_moor      
                 self.F_moor0 += self.fowtList[0].ms.getForces(DOFtype="coupled", lines_only=True)
             except Exception as e:
                 raise RuntimeError('An error occured when getting linearized mooring properties in undisplaced state: '+e.message)
@@ -321,7 +335,9 @@ class Model():
 
             # Solve system operating point / mean offsets again, but now including mean wave forces.
             # We actually wouldn't need to do that if the QTFs are computed externally, but all the wave information 
-            # is currently computed only when solveDynamics is called. Should work on that
+            # is currently computed only when solveDynamics is called. Should work on that.
+            # In principle, solveDynamics should be recomputed to account for the actual mean position. 
+            # However, if computing the QTFs internally, the mean drift due to the waves shouldn't be too large, so probably not worth the cost.
             if any(fowt.potSecOrder > 0 for fowt in self.fowtList):
                 print('Recomputing equilibrium position, now with wave mean drift')
                 self.solveStatics(case)
@@ -375,7 +391,7 @@ class Model():
  
             # process array-level mooring tension outputs
             if self.ms:
-                
+                self.ms = lines2ss(self.ms) # convert composite lines to subsystem
                 self.results['case_metrics'][iCase]['array_mooring'] = {}
                 
                 nLines = len(self.ms.lineList) 
@@ -385,9 +401,28 @@ class Model():
                 T_moor = self.ms.getTensions()  # get line end mean tensions
                 
             
-                for ih in range(nWaves+1):
-                    for iw in range(self.nw):
-                        T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
+                if self.ms.moorMod == 0:
+                    for ih in range(nWaves+1):
+                        for iw in range(self.nw):
+                            T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
+                else:
+                    for il, line in enumerate(self.ms.lineList):
+                        for ih in range(nWaves): # Only working with waves for now
+                            # Reshape Xi to be a nFOWTs list of 6 x nFreqs numpy arrays
+                            resh_Xi = self.Xi[ih, :].reshape(self.nFOWT, 6, self.nw)
+                            Xi = [resh_Xi[i] for i in range(self.nFOWT)]
+
+                            # List of mean position of the FOWTs
+                            rBody = [f.r6[:3] for f in self.fowtList]
+                           
+                            RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, Xi, self.fowtList[0].S[ih,:], rBody)
+
+                            # Get tension along the mooring line
+                            T_nodes_amp, _, _, _, _, _, _, _ = line.dynamicSolve(self.w, self.fowtList[0].S[ih,:], RAO_A=RAO_A.T, RAO_B=RAO_B.T, depth=self.depth, kbot=0,cbot=0, tol = 0.01, conv_time=False)
+
+                            # Tension at the end nodes of the line
+                            T_moor_amps[ih, il, :] += T_nodes_amp[:,0]
+                            T_moor_amps[ih, il+nLines,:] += T_nodes_amp[:,-1]
             
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_avg'] = T_moor
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'] = np.zeros(2*nLines)
@@ -944,6 +979,7 @@ class Model():
         # ::: a loop could be added here for an array :::
         # Loop through each fowt to calculate its independent response to wave excitation.
         # This is the iterative linearization stage to get individual impedance matrices.
+        XiLast_all = []  # list to store the last iteration's response for each turbine
         for i, fowt in enumerate(self.fowtList):
             i1 = i*6                                              # range of DOFs for the current turbine
             i2 = i*6+6
@@ -970,13 +1006,15 @@ class Model():
             # We would need to pass the motions of the extremities of the mooring lines within getCoupledDynamicMatrices
             # I think this would be straightforward for lines connecting the fairlead to the anchor, but not sure about cases with buoys
             M_moor, A_moor, B_moor, C_moor = (np.zeros([6,6]) for _ in range(4))
-            if fowt.ms.moorMod == 0:
+            if not fowt.ms or fowt.ms.moorMod == 0:
                 C_moor = fowt.C_moor
             elif fowt.ms.moorMod == 1:
-                M_moor, A_moor, B_moor, C_moor = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
+                fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
+                M_moor, A_moor, B_moor, C_moor = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
             elif fowt.ms.moorMod == 2:
                 C_moor = fowt.C_moor
-                M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
+                fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
+                M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
 
             # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
             # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process            
@@ -991,7 +1029,7 @@ class Model():
 
             # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
             M_lin.append( M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]        + M_moor[:,:,None] + A_moor[:,:,None] ) # mass
-            B_lin.append( B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None] + B_moor[:,:,None]) # damping
+            B_lin.append( B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None]) # damping
             C_lin.append(          fowt.C_struc                          + fowt.C_hydro                        + C_moor ) # stiffness
             F_lin.append( fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:] + fowt.Fhydro_2nd[0, :, :]) # consider only excitation from the primary sea state in the load case for now
 
@@ -1017,13 +1055,20 @@ class Model():
                 # get linearized terms for the current turbine given latest amplitudes
                 B_linearized = fowt.calcHydroLinearization(XiLast)
                 F_linearized = fowt.calcDragExcitation(0)  # just looking at first sea state (wave heading) for the sake of linearization
-                
+
+                # Recompute mooring damping matrix as it depends on body motions (linearization of drag lods). The other matrices are kept the same.
+                # Note: Is it worth recomputing the mooring damping matrix at each step? The impact of mooring damping on body dynamics is small, and the motion
+                # RAOs are probably not changing much. Perhaps compute this only once and keep it constant? 
+                if fowt.ms and (fowt.ms.moorMod == 1 or fowt.ms.moorMod == 2):
+                    fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
+                    _, _, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
+
                 # calculate the response based on the latest linearized terms
                 Xi = np.zeros([fowt.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
 
                 # add fowt's terms to system matrices (BEM arrays are not yet included here)
                 M_tot[:,:,:] = M_lin[i]
-                B_tot[:,:,:] = B_lin[i]           + B_linearized[:,:,None]
+                B_tot[:,:,:] = B_lin[i]           + B_linearized[:,:,None] + B_moor[:,:,None]
                 C_tot[:,:,:] = C_lin[i][:,:,None]
                 F_tot[:  ,:] = F_lin[i]           + F_linearized
 
@@ -1089,6 +1134,7 @@ class Model():
         
             # Save the FOWT's impedance matrix
             fowt.Z = Z
+            XiLast_all.append(XiLast)
         
         # Now that invididual FOWT impedences matrices have been found, construct the 
         # system-level matrices (in case of couplings) and compute the total response
@@ -1113,17 +1159,19 @@ class Model():
         
         # include array-level mooring stiffness
         if self.ms:
-            M_moor, A_moor, B_moor, C_moor = (np.zeros([6,6]) for _ in range(4))
-            if fowt.ms.moorMod == 0:
-                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)[:,:,None]
-            elif fowt.ms.moorMod == 1:
-                M_moor, A_moor, B_moor, C_moor = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
-            elif fowt.ms.moorMod == 2:
-                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)[:,:,None]
-                M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(self.w, fowt.S[0,:], depth=self.depth, lines_only=True)
+            M_moor, A_moor, B_moor, C_moor = (np.zeros([Z_sys.shape[0], Z_sys.shape[1]]) for _ in range(4))
+            if self.ms.moorMod == 0:                
+                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
+            elif self.ms.moorMod == 1:                 
+                self.updateMooringDynamicMatrices(XiLast_all, self.fowtList[0].S[0,:])
+                M_moor, A_moor, B_moor, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
+            elif self.ms.moorMod == 2:
+                self.updateMooringDynamicMatrices(XiLast_all, self.fowtList[0].S[0,:])
+                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
+                M_moor, A_moor, B_moor, _ = self.ms.getCoupledDynamicMatrices(lines_only=True)
 
             for ii in range(self.nw):
-                Z[:,:,ii] += -self.w[ii]**2 *(M_moor+A_moor) + 1j*self.w[ii]*B_moor[:,:,ii] + C_moor[:,:,ii]
+                Z_sys[:,:,ii] += -self.w[ii]**2 *(M_moor+A_moor) + 1j*self.w[ii]*B_moor + C_moor
         
         
         # >>> For arrays, we would want a sparse solver for Zinv. <<<
@@ -1248,6 +1296,19 @@ class Model():
 
         return self.Xi  # is it better to return the response or save it in the model object? Or in the FOWT objects? <<<
 
+
+    def updateMooringDynamicMatrices(self, Xi, S):
+        '''Update matrices from mooring dynamics
+        Inputs
+        Xi: List with nFOWTs arrays, each with size 6 x nFreq arrays, corresponding to the motion amplitudes of the fowts in the array [m] and [rad]
+        S: Wave spectrum vector with length nw [m]
+        '''
+        from raft.helpers import getLineEndsRAO                
+        rBody = [f.r6[:3] for f in self.fowtList] # List of mean position of the FOWTs
+
+        for il, line in enumerate(self.ms.lineList):
+            RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, Xi, S, rBody)
+            line.updateLumpedMass(self.w, S, self.depth, kbot=0, cbot=0, RAO_A=RAO_A.T, RAO_B=RAO_B.T) # Need to transpose RAO_fl so that it is in the right shape (nFreq x 3)
 
 
     def calcOutputs(self):

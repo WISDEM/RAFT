@@ -10,6 +10,7 @@ from raft.helpers import *
 from raft.raft_member import Member
 from raft.raft_rotor import Rotor
 import moorpy as mp
+from moorpy.helpers import lines2ss
 
 # deleted call to ccblade in this file, since it is called in raft_rotor
 # also ignoring changes to solveEquilibrium3 in raft_model and the re-addition of n=len(stations) in raft_member, based on raft_patch
@@ -188,7 +189,7 @@ class FOWT():
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
-            self.ms.moorMod = getFromDict(design['mooring'], 'moorMod', default=0)
+            self.ms.moorMod = getFromDict(design['mooring'], 'moorMod', default=0, dtype=int)
             
             # ensure proper setup with one coupled Body tied to this FOWT
             if len(self.ms.bodyList) == 0:
@@ -311,7 +312,13 @@ class FOWT():
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
             self.ms.solveEquilibrium()
-            self.C_moor = self.ms.getCoupledStiffnessA()
+            if self.ms.moorMod == 0 or self.ms.moorMod == 2:
+                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
+            elif self.ms.moorMod == 1:
+                self.ms.updateSystemDynamicMatrices()
+                _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
+
+            self.C_moor = C_moor
             self.F_moor0 = self.ms.bodyList[0].getForces(lines_only=True)
         
 
@@ -1987,6 +1994,15 @@ class FOWT():
 
         return Tau, Te, T0, TS
 
+    def updateMooringDynamicMatrices(self, Xi, S):
+        '''Update matrices from mooring dynamics
+        Inputs
+        Xi: 6 x Nfreq array with the motion amplitudes of the fowt
+        S:  1 x Nfreq array with the wave spectrum
+        '''
+        for line in self.ms.lineList:
+            RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, [Xi], S, [self.r6[:3]]) # Need Xi and r6 within a list
+            line.updateLumpedMass(self.w, S, self.depth, kbot=0, cbot=0, RAO_A=RAO_A.T, RAO_B=RAO_B.T) # Need to transpose RAO_fl so that it is in the right shape (nFreq x 3)
 
     def saveTurbineOutputs(self, results, case):
         '''Calculate and store output metrics of the FOWT response at the current load case.
@@ -2040,12 +2056,12 @@ class FOWT():
         
         # ----- turbine-level mooring outputs (similar code as array-level) -----
         if self.ms:            
+            self.ms = lines2ss(self.ms) # convert composite lines to subsystem
             nLines = len(self.ms.lineList)
-            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each wave component and line end
+            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each wave component and each line end
             T_moor_psd  = np.zeros([2*nLines, self.nw], dtype=float)
             T_moor_std  = np.zeros([2*nLines], dtype=float)
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
-            C_moor_2 = self.ms.getCoupledStiffnessA(lines_only=True, tensions=False) # get stiffness matrix and tension jacobian matrix
             T_moor = self.ms.getTensions()  # get line end mean tensions                        
             if self.ms.moorMod == 0:
                 for ih in range(self.nWaves+1):
@@ -2059,23 +2075,17 @@ class FOWT():
             else:
                 for il, line in enumerate(self.ms.lineList):                    
                     for ih in range(self.nWaves):
-                        # Compute RAO of fairlead
-                        RAO = getRAO(self.Xi[ih,:], self.zeta[ih,:])
-                        RAO_fl, _, _ = getKinematics(line.rB - self.r6[:3], RAO, self.w)
-
-                        # Get tension along the mooring line
-                        T_nodes_amp, T_nodes_psd, T_nodes_std, s, r_static, r_dynamic, r_total, X = line.dynamicSolve(self.w, self.S[ih,:], RAO_A=0, RAO_B=RAO_fl.T, depth=self.depth, kbot=0,cbot=0, tol = 0.01, conv_time=False)
+                        RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, [self.Xi[ih,:,:]], self.S[ih,:], [self.r6[:3]]) # Need Xi and r6 within a list
+                        T_nodes_amp, _, _, _, _, _, _, _ = line.dynamicSolve(self.w, self.S[ih,:], RAO_A=RAO_A.T, RAO_B=RAO_B.T, depth=self.depth, kbot=0,cbot=0, tol = 0.01, conv_time=False)
 
                         # Tension at the end nodes of the line
                         T_moor_amps[ih, il, :] += T_nodes_amp[:,0]
                         T_moor_amps[ih, il+nLines,:] += T_nodes_amp[:,-1]
-                        T_moor_std[il] += T_nodes_std[0]**2
-                        T_moor_std[il+nLines] += T_nodes_std[-1]**2
 
                 # Compute PSD and std from the different wave component
                 for iT in range(2*nLines):
-                    T_moor_psd[iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0])                
-                    T_moor_std[iT] = np.sqrt(T_moor_std[iT])
+                    T_moor_psd[iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[1]-self.w[0])       
+                    T_moor_std[iT] = getRMS(T_moor_amps[:,iT,:])
 
                 
             results['Tmoor_avg'] = T_moor

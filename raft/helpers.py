@@ -1269,6 +1269,61 @@ def readWAMIT_p2(inFl, rho=1, L=1, g=1):
     
     return W2
 
+
+def cleanRAFTdict(design):
+    '''function that cleans the variable types of a RAFT design dictionary so there are no errors when outputting to YAML, and then reading back in from YAML'''
+
+    newdesign = {}
+
+    for key, value in design.items():
+        
+        if isinstance(value, dict):
+
+            newdesign[key] = {}
+
+            for key2, value2 in value.items():
+
+                if isinstance(value2, dict):
+                    newdesign[key][key2] = {}
+                    newdesign[key][key2] = value2
+                elif isinstance(value2, list):
+                    newdesign[key][key2] = []
+                    for i,element in enumerate(value2):
+                        if isinstance(element, dict):
+                            newdesign[key][key2].append({})
+                            for key3, value3 in element.items():
+                                if isinstance(value3, np.float64):
+                                    newdesign[key][key2][i][key3] = float(value3)
+                                elif isinstance(value3, list) or isinstance(value3, np.ndarray):
+                                    newdesign[key][key2][i][key3] = []
+                                    for j,element2 in enumerate(value3):
+                                        if isinstance(element2, float):
+                                            newdesign[key][key2][i][key3].append(float(element2))
+                                        elif isinstance(element2, int):
+                                            newdesign[key][key2][i][key3].append(float(element2))
+                                        else:
+                                            newdesign[key][key2][i][key3].append(element2)
+                                else:
+                                    newdesign[key][key2][i][key3] = value3
+                        elif isinstance(element, list):
+                            newdesign[key][key2].append(element)
+                        elif isinstance(element, float):
+                            newdesign[key][key2].append(float(element))
+                        else:
+                            newdesign[key][key2].append(element)
+                elif isinstance(value2, float):
+                    newdesign[key][key2] = float(value2)
+                else:
+                    newdesign[key][key2] = value2
+        
+        else:
+            newdesign[key] = value
+        
+    return newdesign
+    
+
+
+
 if __name__ == '__main__':
     
     

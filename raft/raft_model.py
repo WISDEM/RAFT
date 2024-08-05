@@ -1424,36 +1424,66 @@ class Model():
 
     def saveResponses(self, outPath):
         '''Save the power spectral densities of the available response channels for each case to an output file.'''
+        # Perhaps easier to save everything to a pickle file?
         
-        chooseMetrics = ['wave_PSD', 'surge_PSD', 'heave_PSD', 'pitch_PSD', 'AxRNA_PSD', 'Mbase_PSD']
-        metricUnit    = ['m^2/Hz', 'm^2/Hz', 'm^2/Hz', 'deg^2/Hz', '(m/s^2)^2/Hz', '(Nm)^2/Hz']
+        chooseMetrics = ['wave_PSD', 'surge_PSD', 'heave_PSD', 'pitch_PSD', 'AxRNA_PSD', 'Tmoor_PSD']
+        metricUnit    = ['m^2*s/rad', 'm^2*s/rad', 'm^2*s/rad', 'deg^2*s/rad', '(m/s^2)^2*s/rad', 'N^2*s/rad']
         
         for i in range(self.nFOWT):
-        
             nCases = len(self.results['case_metrics'])
-            
             for iCase in range(nCases):
                 metrics = self.results['case_metrics'][iCase][i]
+                if 'Tmoor_PSD' in metrics:
+                    nLinesTensions = metrics['Tmoor_PSD'].shape[0]
                 with open(f'{outPath}_Case{iCase+1}_WT{i}.txt', 'w') as file:
                     # Write the header
-                    file.write('Frequency [rad/s] \t')
+                    header = 'Frequency [rad/s]'
                     for metric, unit in zip(chooseMetrics, metricUnit):
-                        file.write(f'{metric} [{unit}] \t')
-                    file.write('\n')
+                        if metric not in metrics:
+                            continue
+
+                        if metric == 'Tmoor_PSD':
+                            for iLine in range(nLinesTensions):
+                                header += f'\t{metric}_{iLine} [{unit}]'
+                        else:
+                            header += f'\t {metric} [{unit}]'
+                    file.write(f'{header}\n')
 
                     # Write the data
                     for iFreq in range(len(self.w)):
-                        file.write(f'{self.w[iFreq]:.5f} \t')
+                        txt = f'{self.w[iFreq]:.5f}'
                         for metric in chooseMetrics:
-                            file.write(f'{np.squeeze(metrics[metric][iFreq]):.5f} \t')
-                        file.write('\n')
+                            if metric not in metrics:
+                                continue
+                            
+                            if metric == 'Tmoor_PSD':
+                                for iLine in range(nLinesTensions):
+                                    txt += f'\t{np.squeeze(metrics[metric][iLine, iFreq]):.5f}'
+                            else:
+                                txt += f'\t{np.squeeze(metrics[metric][iFreq]):.5f}'
+                        file.write(f'{txt}\n')
 
                 # if self.results['mean_offsets']:
                 #     with open(f'{outPath}_Case{iCase+1}_WT{i}_meanOffsets.txt', 'w') as file:
                 #         file.write('Surge [m] \t Sway [m] \t Heave [m] \t Pitch [deg] \t Roll [deg] \t Yaw [deg] \n')
                 #         mean_offsets = self.results['mean_offsets'][iCase]
                 #         file.write(f'{mean_offsets[0]:.5f} \t {mean_offsets[1]:.5f} \t {mean_offsets[2]:.5f} \t {mean_offsets[3]:.5f} \t {mean_offsets[4]:.5f} \t {mean_offsets[5]:.5f} \n')
+            
+        # Save array tension as well
+        for iCase in range(nCases):
+            if 'array_mooring' in self.results['case_metrics'][iCase] and 'Tmoor_PSD' in self.results['case_metrics'][iCase]['array_mooring']:
+                nLinesTensions = self.results["case_metrics"][iCase]["array_mooring"]["Tmoor_PSD"].shape[0]
+                with open(f'{outPath}_Case{iCase+1}_array_tensions.txt', 'w') as file:
+                    header = 'Frequency [rad/s]'
+                    for iLine in range(nLinesTensions):
+                        header += f'\tTmoor_PSD_{iLine} [N^2*s/rad]'                
+                    file.write(header + '\n')
 
+                    for iFreq in range(len(self.w)):
+                        file.write(f'{self.w[iFreq]:.5f}')
+                        for iLine in range(nLinesTensions):
+                            file.write(f'\t {np.squeeze(self.results["case_metrics"][iCase]["array_mooring"]["Tmoor_PSD"][iLine, iFreq]):.5f}')
+                        file.write('\n')
 
     def plotResponses_extended(self):
         '''Plots more power spectral densities of the available response channels for each case.'''

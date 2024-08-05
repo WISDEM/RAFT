@@ -931,7 +931,26 @@ class FOWT():
             self.A_hydro_morison += translateMatrix6to6DOF(A_hydro_i, rot.r3-self.r6[:3]) 
     
     
-    def solveEigen(self):
+    def getStiffness(self):
+        '''Sums up all the stiffness effects on a FOWT.'''
+        
+        C_tot = np.zeros([6,6])       # total stiffness matrix [N/m, N, N-m]
+        
+        # add in mooring stiffness from MoorPy system
+        C_tot += self.C_moor
+        # add any additional yaw stiffness that isn't included in the MoorPy 
+        # model (e.g. if a bridle isn't modeled)
+        C_tot[5,5] += self.yawstiff
+        # add system-level stiffness effect if it exists...
+        if self.body:
+            C_tot += self.body.getStiffness()  # in future should make an analytic body function for this
+
+        C_tot += self.C_struc + self.C_hydro   # stiffness
+        
+        return C_tot
+    
+    
+    def solveEigen(self, display=0):
         '''Compute the natural frequencies and mode shapes of the FOWT.
         This considers the FOWT and any attached mooring lines, but it
         does not account for coupling with other FOWTs as could occur
@@ -947,20 +966,9 @@ class FOWT():
             frequencies.
         '''
 
-        M_tot = np.zeros([6,6])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
-        C_tot = np.zeros([6,6])       # total stiffness matrix [N/m, N, N-m]
-
-        # add in mooring stiffness from MoorPy system
-        C_tot += self.C_moor
-        # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
-        C_tot[5,5] += self.yawstiff
-        # add system-level stiffness effect if it exists...
-        if self.body:
-            C_tot += self.body.getStiffness()  # in future should make an analytic body function for this
-
-        # add floating unit terms to system matrices
-        M_tot += self.M_struc + self.A_hydro_morison   # mass  (BEM option not supported yet)
-        C_tot += self.C_struc + self.C_hydro   # stiffness
+        # Total mass and added mass matrix [kg, kg-m, kg-m^2]
+        M_tot = self.M_struc + self.A_hydro_morison   # mass  (BEM option not supported yet)
+        C_tot = self.getStiffness()  # stiffness
         
         '''
         # rotor and controll added mass effects
@@ -1006,15 +1014,18 @@ class FOWT():
 
         fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
         modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
-
-        print("")
-        print("--------- Natural frequencies and mode shapes -------------")
-        print("Mode        1         2         3         4         5         6")
-        print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
-        print("")
-        for i in range(6):
-            print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(6)]))
-        print("-----------------------------------------------------------")
+        
+        if display > 0:
+            print("")
+            print("--------- Natural frequencies and mode shapes -------------")
+            print("Mode        1         2         3         4         5         6")
+            print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
+            print("")
+            for i in range(6):
+                print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(6)]))
+            print("-----------------------------------------------------------")
+    
+        return fns, modes
     
 
     def calcHydroExcitation(self, case, memberList=[], dgamma=0):
@@ -1914,13 +1925,13 @@ class FOWT():
                     T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
         
             results['Tmoor_avg'] = T_moor
-            results['Tmoor_std'] = []
-            results['Tmoor_max'] = []
+            results['Tmoor_std'] = np.zeros(2*nLines)
+            results['Tmoor_max'] = np.zeros(2*nLines)
             results['Tmoor_PSD'] =  np.zeros([ self.nw, 2*nLines])
             for iT in range(2*nLines):
                 TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
-                results['Tmoor_std'].append(TRMS)
-                results['Tmoor_max'].append( T_moor[iT] + 3*TRMS)
+                results['Tmoor_std'][iT] = TRMS
+                results['Tmoor_max'][iT] =  T_moor[iT] + 3*TRMS
                 results['Tmoor_PSD'][:,iT] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
             
             # log the maximum line tensions predicted by RAFT for MoorPy use
@@ -1928,19 +1939,19 @@ class FOWT():
         
         # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)
         XiHub = np.zeros([self.Xi.shape[0], self.nrotors, self.nw], dtype=complex)
-        results['AxRNA_std'] = []
+        results['AxRNA_std'] = np.zeros(self.nrotors) 
         results['AxRNA_PSD'] = np.zeros([self.nw, self.nrotors]) 
-        results['AxRNA_avg'] = []
-        results['AxRNA_max'] = []
+        results['AxRNA_avg'] = np.zeros(self.nrotors)
+        results['AxRNA_max'] = np.zeros(self.nrotors)
         
         for ir, rotor in enumerate(self.rotorList):
             XiHub[:,ir,:] = self.Xi[:,0,:] + rotor.r_rel[2]*self.Xi[:,4,:]  # planar approximation; to improve <<<
         
             # nacelle acceleration
-            results['AxRNA_std'].append(getRMS(XiHub[:,ir,:]*self.w**2))
+            results['AxRNA_std'][ir] = getRMS(XiHub[:,ir,:]*self.w**2)
             results['AxRNA_PSD'][:,ir] = (getPSD(XiHub[:,ir,:]*self.w**2, self.dw))
-            results['AxRNA_avg'].append(abs(np.sin(self.Xi0[4])*9.81)) # @Matt check this! 
-            results['AxRNA_max'].append(results['AxRNA_avg'][ir]+3*results['AxRNA_std'][ir])
+            results['AxRNA_avg'][ir] = abs(np.sin(self.Xi0[4])*9.81) # @Matt check this! 
+            results['AxRNA_max'][ir] = results['AxRNA_avg'][ir]+3*results['AxRNA_std'][ir]
             
         # tower base bending moment  >>> should three-dimensionalize this <<<
         m_turbine = np.zeros(len(self.mtower))
@@ -1955,11 +1966,12 @@ class FOWT():
         M_X_aero       = np.zeros_like(XiHub)
         dynamic_moment = np.zeros_like(XiHub)
         dynamic_moment_RMS = np.zeros(self.nrotors)
-
-        results['Mbase_avg'] = []
-        results['Mbase_std'] = []
+        
+        
+        results['Mbase_avg'] = np.zeros(self.nrotors)
+        results['Mbase_std'] = np.zeros(self.nrotors)
         results['Mbase_PSD'] = np.zeros([self.nw, self.nrotors])
-        results['Mbase_max'] = []
+        results['Mbase_max'] = np.zeros(self.nrotors)
         
         for ir, rotor in enumerate(self.rotorList):
             # mass and moment arm >>> should three-dimensionalize <<<
@@ -1986,10 +1998,12 @@ class FOWT():
             dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
 
             # fill in metrics
-            results['Mbase_avg'].append(m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )# mean moment from weight and thrust
-            results['Mbase_std'].append(dynamic_moment_RMS[ir])
+            # mean moment from weight and thrust
+            results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) 
+                          + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )
+            results['Mbase_std'][ir] = dynamic_moment_RMS[ir]
             results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
-            results['Mbase_max'].append(results['Mbase_avg'][ir]+3*results['Mbase_std'][ir])
+            results['Mbase_max'][ir] = results['Mbase_avg'][ir]+3*results['Mbase_std'][ir]
             #results['Mbase_DEL'][iCase]
         
         # wave PSD for reference
@@ -2021,17 +2035,17 @@ class FOWT():
         bPitch_w = np.zeros([self.nWaves+1, self.nrotors, self.nw], dtype=complex)  # blade pitch
 
 
-        results['omega_avg'] = []
-        results['omega_std'] = []
-        results['omega_max'] = []
-        results['omega_PSD'] = []
-        results['torque_avg'] = []
-        results['torque_std'] = []
-        results['torque_PSD'] = []
-        results['power_avg'] = []
-        results['bPitch_avg'] = []
-        results['bPitch_std'] = []
-        results['bPitch_PSD'] = []
+        results['omega_avg']  = np.zeros(self.nrotors)
+        results['omega_std']  = np.zeros(self.nrotors)
+        results['omega_max']  = np.zeros(self.nrotors)
+        results['omega_PSD']  = np.zeros([self.nw, self.nrotors])
+        results['torque_avg'] = np.zeros(self.nrotors)
+        results['torque_std'] = np.zeros(self.nrotors)
+        results['torque_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['power_avg']  = np.zeros(self.nrotors)
+        results['bPitch_avg'] = np.zeros(self.nrotors)
+        results['bPitch_std'] = np.zeros(self.nrotors)
+        results['bPitch_PSD'] = np.zeros([self.nw, self.nrotors])
         
         
         for ir, rot in enumerate(self.rotorList):
@@ -2057,26 +2071,27 @@ class FOWT():
                 bPitch_w[:,ir,:] = (1j*self.w * rot.kp_beta + rot.ki_beta) * phi_w[:,ir,:]
                 
                 # rotor speed (rpm) 
-                results['omega_avg'].append(rot.Omega_case)
-                results['omega_std'].append(radps2rpm(getRMS(omega_w[:,ir,:])))
-                results['omega_max'].append(results['omega_avg'][ir] + 2 * results['omega_std'][ir]) # this and other _max values will be based on std (avg + 2 or 3 * std)   (95% or 99% max)
-                results['omega_PSD'].append(radps2rpm(1)**2 * getPSD(omega_w[:,ir,:], self.dw))
+                results['omega_avg'][ir] = rot.Omega_case
+                results['omega_std'][ir] = radps2rpm(getRMS(omega_w[:,ir,:]))
+                # note: _max values are (avg + 2 or 3 * std)   (95% or 99% max)
+                results['omega_max'][ir] = results['omega_avg'][ir] + 2 * results['omega_std'][ir]
+                results['omega_PSD'][:,ir] = radps2rpm(1)**2 * getPSD(omega_w[:,ir,:], self.dw)
                 
                 # generator torque (Nm)
-                results['torque_avg'].append(rot.aero_torque / rot.Ng)        # Nm
-                results['torque_std'].append(getRMS(torque_w[:,ir,:]))
-                results['torque_PSD'].append(getPSD(torque_w[:,ir,:], self.dw))
+                results['torque_avg'][ir] = rot.aero_torque / rot.Ng
+                results['torque_std'][ir] = getRMS(torque_w[:,ir,:])
+                results['torque_PSD'][:,ir] = getPSD(torque_w[:,ir,:], self.dw)
                 # results['torque_max'][iCase]    # skip, nonlinear
                 
                 # rotor power (W)
-                results['power_avg'].append(rot.aero_power) # compute from cc-blade coeffs
+                results['power_avg'][ir] = rot.aero_power  # compute from cc-blade coeffs
                 # results['power_std'][iCase]     # nonlinear near rated, covered by torque_ and omega_std
                 # results['power_max'][iCase]     # skip, nonlinear
                 
                 # collective blade pitch (deg)
-                results['bPitch_avg'].append(rot.pitch_case)
-                results['bPitch_std'].append(rad2deg(getRMS(bPitch_w[:,ir,:])))
-                results['bPitch_PSD'].append(rad2deg(1)**2 *getPSD(bPitch_w[:,ir,:], self.dw))
+                results['bPitch_avg'][ir] = rot.pitch_case
+                results['bPitch_std'][ir] = rad2deg(getRMS(bPitch_w[:,ir,:]))
+                results['bPitch_PSD'][:,ir] = rad2deg(1)**2 *getPSD(bPitch_w[:,ir,:], self.dw)
                 # results['bPitch_max'][iCase]    # skip, not something we'd consider in design
                 
                 # wind PSD for reference

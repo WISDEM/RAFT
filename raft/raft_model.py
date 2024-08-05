@@ -62,6 +62,38 @@ class Model():
         for i in range(self.nw):
             self.k[i] = waveNumber(self.w[i], self.depth)
         
+        '''
+        # ----- Parse cases -----
+        
+        nCases = len(self.design['cases']['data'])
+        
+        self.results['properties'] = {}  # signal that the properties calcs will be done
+        
+        # set up output arrays for load cases >>> put these into an initialization function <<<
+        
+        self.results['case_metrics'] = {}
+        self.results['mean_offsets'] = []
+
+        
+        # calculate the system's constant properties
+        for fowt in self.fowtList:
+            fowt.setPosition([fowt.x_ref, fowt.y_ref,0,0,0,0])
+            fowt.calcStatics()
+
+        for i, fowt in enumerate(self.fowtList):
+            fowt.calcBEM(meshDir=meshDir)
+        
+            
+        # loop through each case
+        for iCase in range(nCases):
+        
+            print(f"\n--------------------- Running Case {iCase+1} ----------------------")
+            print(self.design['cases']['data'][iCase])
+        
+            # form dictionary of case parameters
+            case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))            
+            case['iCase'] = iCase # We use iCase to name the output files
+        '''
         
         # ----- parse array section if it exists -----
         
@@ -296,8 +328,9 @@ class Model():
         # loop through each case
         for iCase in range(nCases):
         
-            print(f"\n--------------------- Running Case {iCase+1} ----------------------")
-            print(self.design['cases']['data'][iCase])
+            if display > 0:
+                print(f"\n--------------------- Running Case {iCase+1} ----------------------")
+                print(self.design['cases']['data'][iCase])
         
             # form dictionary of case parameters
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))            
@@ -317,13 +350,14 @@ class Model():
             # >>> add a flag that stores what case has had solveStatics to ensure consistency <<<
           
             # solve system dynamics            
-            self.solveDynamics(case, RAO_plot=RAO_plot)
+            self.solveDynamics(case, RAO_plot=RAO_plot, display=display)
 
             # Solve system operating point / mean offsets again, but now including mean wave forces.
             # We actually wouldn't need to do that if the QTFs are computed externally, but all the wave information 
             # is currently computed only when solveDynamics is called. Should work on that
             if any(fowt.potSecOrder > 0 for fowt in self.fowtList):
-                print('Recomputing equilibrium position, now with wave mean drift')
+                if display > 1:
+                    print('Recomputing equilibrium position, now with wave mean drift')
                 self.solveStatics(case)
 
                 # zero out the mean wave forces to avoid using old values in the next case
@@ -420,7 +454,7 @@ class Model():
                 self.T_moor_amps = T_moor_amps  # save for future processing!
     
 
-    def solveEigen(self):
+    def solveEigen(self, display=0):
         '''Compute the natural frequencies and mode shapes of the floating 
         system. When there is a single FOWT, this should give the same result
         as FOWT.solveEigen.
@@ -490,14 +524,15 @@ class Model():
         fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
         modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
 
-        print("")
-        print("--------- Natural frequencies and mode shapes -------------")
-        print("Mode   "+"".join([f"{i+10:3d}"  for i in range(self.nDOF)]))
-        print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
-        print("")
-        for i in range(self.nDOF):
-            print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(self.nDOF)]))
-        print("-----------------------------------------------------------")
+        if display > 0: 
+            print("")
+            print("--------- Natural frequencies and mode shapes -------------")
+            print("Mode   "+"".join([f"{i+10:3d}"  for i in range(self.nDOF)]))
+            print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
+            print("")
+            for i in range(self.nDOF):
+                print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(self.nDOF)]))
+            print("-----------------------------------------------------------")
 
         # store results
         self.results['eigen'] = {}   # signal this data is available by adding a section to the results dictionary
@@ -544,7 +579,7 @@ class Model():
         if case:
             caseorig = copy.deepcopy(case) # save original case data in new dict
             if type(case['wind_speed']) == list :
-                print('List of wind speeds found!')
+                if display > 1:  print('List of wind speeds found!')
                 
                 if len(case['wind_speed']) != len(self.fowtList):
                     raise IndexError("List of wind speeds must be the same length as the list of wind turbines")
@@ -552,7 +587,7 @@ class Model():
         # set initial values before solving        
         for i, fowt in enumerate(self.fowtList):
             
-            if display > 0:  print(f"FOWT {i+1:}")
+            if display > 1:  print(f"FOWT {i+1:}")
         
             #X_initial[6*i:6*i+6] = fowt.r6 - np.array([fowt.xref, fowt.yref,0,0,0,0])
             X_initial[6*i:6*i+6] = np.array([fowt.x_ref, fowt.y_ref,0,0,0,0])
@@ -564,15 +599,16 @@ class Model():
                 K_hydrostatic.append(fowt.C_struc + fowt.C_hydro)
                 F_undisplaced[6*i:6*i+6           ] += fowt.W_struc + fowt.W_hydro
                 
-                if display > 0:  print(" F_undisplaced "+"  ".join(["{:+8.2e}"]*6).format(*F_undisplaced[6*i:6*i+6]))
+                if display > 1:  print(" F_undisplaced "+"  ".join(["{:+8.2e}"]*6).format(*F_undisplaced[6*i:6*i+6]))
 
             if forcing_mod == 0 and case:
                 
                 # If list of wind speeds, set each turbine case with corresponding wind speed
                 if type(caseorig['wind_speed']) == list :
                     case['wind_speed'] = caseorig['wind_speed'][i]
-                    print('Fowt ' + str(i))
-                    print(case)
+                    if display > 1: 
+                        print('Fowt ' + str(i))
+                        print(case)
                 
                 fowt.calcTurbineConstants(case, ptfm_pitch=0)  # for turbine forces >>> still need to update to use current fowt pose <<<
                 fowt.calcHydroConstants()
@@ -587,7 +623,7 @@ class Model():
                     F_meandrift = np.sum(fowt.Fhydro_2nd_mean, axis=0)
                     F_env_constant[6*i:6*i+6] += F_meandrift
                 
-                if display > 0:  print(" F_env_constant"+"  ".join(["{:+8.2e}"]*6).format(*F_env_constant[6*i:6*i+6]))
+                if display > 1:  print(" F_env_constant"+"  ".join(["{:+8.2e}"]*6).format(*F_env_constant[6*i:6*i+6]))
         
         # preliminary approach to provide uniform currents on the mooring system(s)
         currentMod = 0
@@ -599,7 +635,7 @@ class Model():
                 currentMod = 1
                 currentU = np.array([cur_speed*np.cos(np.radians(cur_heading)),
                                      cur_speed*np.sin(np.radians(cur_heading)), 0])
-        
+        '''
         if self.ms:
             self.ms.currentMod = currentMod
             self.ms.current = currentU
@@ -608,7 +644,7 @@ class Model():
             if fowt.ms:
                 fowt.ms.currentMod = currentMod
                 fowt.ms.current = currentU
-        
+        '''
         
         # ----- calculate platform offsets and mooring system equilibrium state -----
         
@@ -698,25 +734,16 @@ class Model():
             
             # note that the above also calculates many stiffnes terms that are used in step_func_equil
             
-
             if display > 1:
                 print("Net forces")
                 printVec(Fnet)
-            
-            Y = Fnet
-            
-            oths = dict(status=1)                # other outputs - returned as dict for easy use
-            
-            if display > 0:
+                
                 RMSeForce  = np.linalg.norm([Y[6*i  :6*i+3] for i in range(self.nFOWT)])
                 RMSeMoment = np.linalg.norm([Y[6*i+3:6*i+6] for i in range(self.nFOWT)])
                 print(f"Iteration RMS force and moment errors: {RMSeForce:8.2e} {RMSeMoment:8.2e}")
-                if RMSeForce < 100 and RMSeMoment < 100:
-                    if display > 1:
-                        breakpoint()
-                else:
-                    print('Warning: RMS error of equilibrium forces or moments exceeds 100.')
-           
+            
+            Y = Fnet
+            oths = dict(status=1)                # other outputs - returned as dict for easy use
            
             return Y, oths, False
         
@@ -817,9 +844,13 @@ class Model():
         # Now find static equilibrium offsets 
         X, Y, info = dsolve2(eval_func_equil, X_initial, step_func=step_func_equil, 
                              tol=tols, a_max=1.6, maxIter=20, display=0, args={'display': display} ) #, dodamping=True)
-        #X, Y, info = dsolve2(eval_func_equil, X_initial, step_func=step_func_equil, 
-        #                     ytol=1e4, a_max=1.6, maxIter=20, display=0 ) #, dodamping=True)
-       
+
+        if display > 1:
+            RMSeForce  = np.linalg.norm([Y[6*i  :6*i+3] for i in range(self.nFOWT)])
+            RMSeMoment = np.linalg.norm([Y[6*i+3:6*i+6] for i in range(self.nFOWT)])
+            if RMSeForce > 1000 or RMSeMoment > 1000:
+                print('Warning: RMS error of equilibrium forces or moments exceeds 1000.')
+        
         if display > 0:
             print('New Equilibrium Position', X)
             print('Remaining Forces on the Model (N)', Y)
@@ -916,7 +947,7 @@ class Model():
         '''
         
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0, display=0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
 
@@ -963,7 +994,8 @@ class Model():
                 B_turb = np.zeros([6,6,self.nw])
                 
             # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
-            print('Solving for system response to wave excitation in primary wave direction')
+            if display > 0:
+                print('Solving for system response to wave excitation in primary wave direction')
 
             # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
             # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process            
@@ -1036,7 +1068,8 @@ class Model():
                 # check for convergence
                 tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
                 if (tolCheck < tol).all():
-                    print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
+                    if display > 1:
+                        print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
 
                     if fowt.potSecOrder != 1 or flagComputedQTF:
                         break
@@ -1047,13 +1080,15 @@ class Model():
                         # So, we compute the QTFs considering the first-order motions computed with the linearized drag and then we loop again
                         # to make sure the second-order motions are considered in the linearization procedure. 
                         # This is important for cases where the second-order motions are large compared to the first-order motions.
-                        print(f"Resolving for system response in primary wave direction, now with second-order wave loads.")
+                        if display > 1:
+                            print(f"Resolving for system response in primary wave direction, now with second-order wave loads.")
                         Xi0 = getRAO(Xi[i1:i2, :], fowt.zeta[0,:])
                                                 
                         tic = time.perf_counter()                        
                         fowt.calcQTF_slenderBody(waveHeadInd=0, Xi0=Xi0, verbose=True, iCase=iCase, iWT=i)
                         toc = time.perf_counter()
-                        print(f"\n Time to compute QTFs for fowt {i}: {toc - tic:0.4f} seconds")
+                        if display > 1:
+                            print(f"\n Time to compute QTFs for fowt {i}: {toc - tic:0.4f} seconds")
 
                         fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:], iCase=iCase, iWT=i)
                         F_lin[i1:i2] += fowt.Fhydro_2nd[0, :, :]
@@ -1061,10 +1096,12 @@ class Model():
                 else:
                     XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
                                                     # (uses hard-coded successive under relaxation for now)
-                    print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
+                    if display > 2:
+                        print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
         
                 if iiter == nIter-1:
-                    print("WARNING - solveDynamics iteration did not converge to the tolerance.")
+                    if display > 0:
+                        print("WARNING - solveDynamics iteration did not converge to the tolerance.")
 
                 iiter += 1
             

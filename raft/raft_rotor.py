@@ -461,7 +461,9 @@ class Rotor:
             
         else:
             raise Exception('Unsupported yaw_mode value. Must be 0, 1, or 2.')
-
+        
+        # Set turbine heading in case the user checks (redundant for yaw_mode 1)
+        self.turbine_heading = self.platform_heading + self.yaw
 
         # Rotation matrix from platform local x to rotor axis
         R_q_rel = rotationMatrix(0, self.shaft_tilt, self.shaft_toe + self.yaw) 

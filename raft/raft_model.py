@@ -1514,7 +1514,13 @@ class Model():
             else:   
                 fig = plt.figure(figsize=figsize)
                 ax = plt.axes(projection='3d')
-            
+                
+                if xbounds != None:
+                    ax.set_xlim(xbounds[0], xbounds[1])
+                if ybounds != None:
+                    ax.set_ylim(ybounds[0], ybounds[1])
+                if zbounds != None:
+                    ax.set_zlim(zbounds[0], zbounds[1])
         else:
             fig = ax.get_figure()
             if self.ms:

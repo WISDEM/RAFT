@@ -318,6 +318,8 @@ def test_calcCurrentLoads(index_and_fowt):
     testCase = {'current_speed': 2.0, 'current_heading':15}
     D = fowt.calcCurrentLoads(testCase)
 
+    assert_allclose(D, desired_current_drag[index], rtol=1e-05, atol=1e-3)
+
 
 '''
  To run as a script. Useful for debugging.
@@ -335,8 +337,8 @@ if __name__ == "__main__":
     test_hydroExcitation((index,fowt))
 
     fowt = create_fowt(list_files[index])
-    test_calcCurrentLoads((index,fowt))
+    test_hydroLinearization((index,fowt))
 
     fowt = create_fowt(list_files[index])
-    test_hydroLinearization((index,fowt))
+    test_calcCurrentLoads((index,fowt))
 

@@ -764,13 +764,13 @@ class Rotor:
         return cav_check
 
 
-    def runCCBlade(self, U0, ptfm_pitch=0, yaw_misalign=0):
+    def runCCBlade(self, U0, tilt=0, yaw_misalign=0):
         '''This performs a single CCBlade evaluation at specified conditions.
         
         U0
             Freestream flow speed [m/s].
-        ptfm_pitch
-            mean platform pitch angle to be included in rotor tilt angle [rad]
+        tilt
+            tilt angle due to both shaft tilt and platform tilt [rad]
         yaw_misalign
             turbine yaw misalignment angle [rad]
             
@@ -787,7 +787,7 @@ class Rotor:
         
         # Adjust rotor angles based on provided info
         # Note: this adjusts internal CCBlade angles (which are in radians)
-        self.ccblade.tilt = ptfm_pitch
+        self.ccblade.tilt = tilt
         self.ccblade.yaw  = yaw_misalign
         
         # evaluate aero loads and derivatives with CCBlade
@@ -929,14 +929,14 @@ class Rotor:
         '''
         
         # rotor inflow misalignment heading and tilt for CCBlade [rad]
-        yaw_misalign = 0 #np.arctan2(self.q[1], self.q[0]) - self.inflow_heading
-        turbine_tilt = 0 #np.arctan2(self.q[2], np.hypot(self.q[0], self.q[1]))
+        yaw_misalign = np.arctan2(self.q[1], self.q[0]) - self.inflow_heading
+        turbine_tilt = np.arctan2(self.q[2], np.hypot(self.q[0], self.q[1]))
         # >>> should double check signs <<<
         
         # call CCBlade
-        loads, derivs = self.runCCBlade(speed, ptfm_pitch=turbine_tilt,
+        loads, derivs = self.runCCBlade(speed, tilt=turbine_tilt,
                                         yaw_misalign=yaw_misalign)
-        
+
         # ----- Process derivatives of interest -----
         dT_dU  = np.atleast_1d(np.diag(derivs["dT"]["dUinf"]))
         dT_dOm = np.atleast_1d(np.diag(derivs["dT"]["dOmega"])) / rpm2radps

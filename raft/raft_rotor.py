@@ -48,25 +48,17 @@ class Rotor:
         # self.r_rel is the position of the RNA reference point (which the RNA yaws about) on the FOWT
         if 'rotorCoords' in turbine:
             print("WARNING: turbine rotorCoords input is deprecated - use position.")
-            self.r_rel = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0,100]])[ir]
+            self.r_rel = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0,100.]])[ir]
    
-        self.r_rel = getFromDict(turbine, 'position', dtype=list, shape=turbine['nrotors'], default=[[0,0,100]])[ir]
+        self.r_rel = getFromDict(turbine, 'position', dtype=list, shape=turbine['nrotors'], default=[[0,0,100.]])[ir]
    
-        if 'hHub' in turbine:
-            print("WARNING: turbine hHub input is deprecated - use position [x y z].")     
-            hHub    = getFromDict(turbine, 'hHub'   , shape=turbine['nrotors'])[ir]  # overwrites r_rel[2] [m]
-            self.r_rel[2] = hHub
-        
-        self.hHub = self.r_rel[2]  # we may not need this anymore
-        self.Zhub = self.hHub
-        
         self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]  # rotor offset in +x before yaw [m]
         if self.overhang > 0:
             print("WARNING: The turbine overhang input was positive.")
             print("The sign convention is now along +x (opposite of before)")
             print("so that would be a downwind rotor. RAFT is flipping the")
             print("sign, guessing that you wanted an upwind rotor.")
-            self.overhang = - self.overhang
+            self.overhang = - self.overhang                  
             
         self.xCG_RNA = getFromDict(turbine, 'xCG_RNA', shape=turbine['nrotors'])[ir]  # RNA CG offset in +x before yaw [m]
         
@@ -92,7 +84,7 @@ class Rotor:
         self.yaw_command = 0  # f yaw_mode==1: yaw misalignment; 2: relative to platform; 3: absolute heading [rad]
         
         # Blade reference azimuth angles (may be unnecessary)
-        default_azimuths    = list(np.arange(self.nBlades) * 360 / self.nBlades) # equally distribute blades
+        default_azimuths    = list(np.arange(self.nBlades) * 360. / self.nBlades) # equally distribute blades
         self.azimuths       = getFromDict(turbine, 'headings', shape=-1, default=default_azimuths)  # [deg]
         
         self.Rhub       = getFromDict(turbine, 'Rhub', shape=turbine['nrotors'])[ir]            # [m]
@@ -106,7 +98,7 @@ class Rotor:
         self.aeroServoMod = getFromDict(turbine, 'aeroServoMod', shape=turbine['nrotors'], default=1)[ir]  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
 
         # Unit vector of rotor axis, facing downflow [-]. Relative to the FOWT. Includes shaft tilt and initial yaw
-        self.q_rel = np.matmul(rotationMatrix(0, self.shaft_tilt, self.shaft_toe), np.array([1,0,0]) )        
+        self.q_rel = np.matmul(rotationMatrix(0, self.shaft_tilt, self.shaft_toe), np.array([1.,0.,0.]) )        
         
         # initialize absolute position/orientation variables
         self.r3 = np.zeros(3)  # instantaneous global position of rotor hub location       
@@ -114,6 +106,13 @@ class Rotor:
 
         self.R_ptfm  = np.ones(3)  # rotation matrix for platform orientation 
         
+        if 'hHub' in turbine:
+            print("WARNING: turbine hHub input is deprecated - use position [x y z].")     
+            hHub    = getFromDict(turbine, 'hHub'   , shape=turbine['nrotors'])[ir]  # overwrites r_rel[2] [m]
+            self.r_rel[2] = hHub - self.q[2]*self.overhang
+        self.hHub = hHub  # we may not need this anymore
+        self.Zhub = self.hHub         
+
         # below is initialization, needs to be updated by setPosition...
         self.r_RRP = np.array(self.r_rel)  # RNA reference point
         self.r_CG  = np.array(self.r_rel)  # RNA CG location

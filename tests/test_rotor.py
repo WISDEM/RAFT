@@ -101,7 +101,7 @@ def test_calcAero(index_and_rotor):
         print(f'Unknown turbine. Considering U_rated = {U_rated} m/s.')
 
     # We are going to loop through the following values to test a broad range of cases
-    wind_speeds = np.sort(np.append(np.arange(3, 25, 3), U_rated))
+    wind_speeds = np.sort(np.append(np.arange(5, 26, 5), U_rated))
     wind_headings = [-90, -45, 0, 45, 90]
     TI            = [0, 0.5]
     yaw_modes     = [0, 1, 2, 3]

@@ -894,6 +894,8 @@ class Member:
         else:
             r_center = np.zeros(3)       # temporary fix for out-of-water members
         
+        self.V = V_UW  # store submerged volume
+        
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 

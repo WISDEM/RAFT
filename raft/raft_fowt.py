@@ -271,9 +271,9 @@ class FOWT():
             self.k2_2nd = self.k1_2nd.copy()
 
         elif self.potSecOrder==2:
-            if not 'qtfPath' in design['platform']:
-                raise Exception('If potSecOrder==2, then qtfPath must be specified in the platform input.')
-            self.qtfPath = design['platform']['qtfPath']
+            if not 'hydroPath' in design['platform']:
+                raise Exception('If potSecOrder==2, then hydroPath must be specified in the platform input.')
+            self.qtfPath = design['platform']['hydroPath'] + '.12d'
             self.readQTF(self.qtfPath)
 
         # Set output folder for QTFs

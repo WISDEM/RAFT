@@ -31,7 +31,8 @@ turbine:
     IxRNA         :          0        #  [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
     IrRNA         :          0        #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
     xCG_RNA       :          0        #  [m]        x location of RNA center of mass [m] (Actual is ~= -0.27 m)
-    hHub          :        150.0      #  [m]        hub height above water line [m]
+    hHub          :     150.0       #  [m]        hub height above water line [m]
+    #rRNA          :  [0,0, 148.742] #  [m] Can use the position of the RNA reference point (which the RNA yaws about) with respect to the FOWT reference point. If also providing hHub, the z coord be overwritten.
     Fthrust       :       1500.0E3    #  [N]        temporary thrust force to use
     
     I_drivetrain: 318628138.0   # full rotor + drivetrain inertia as felt on the high-speed shaft

@@ -46,12 +46,13 @@ class Rotor:
         self.turbine = turbine      # store dictionary for later use
         
         # self.r_rel is the position of the RNA reference point (which the RNA yaws about) on the FOWT
-        if 'rotorCoords' in turbine:
-            print("WARNING: turbine rotorCoords input is deprecated - use position.")
-            self.r_rel = getFromDict(turbine, 'rotorCoords', dtype=list, shape=turbine['nrotors'], default=[[0,0,100.]])[ir]
-   
-        self.r_rel = getFromDict(turbine, 'position', dtype=list, shape=turbine['nrotors'], default=[[0,0,100.]])[ir]
-   
+        if 'rRNA' in turbine: # Temporary if statement. Need to fix getFromDict to handle this
+            self.r_rel = getFromDict(turbine, 'rRNA', shape=[turbine['nrotors'], 3])[ir]
+        else:
+            if turbine['nrotors'] > 1:
+                raise Exception("For designs with more than one rotor, the RNA reference point must be specified for each of them.")
+            self.r_rel = [0, 0, 100.]
+
         self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]  # rotor offset in +x before yaw [m]
         if self.overhang > 0:
             print("WARNING: The turbine overhang input was positive for upwind turbines.")
@@ -105,12 +106,12 @@ class Rotor:
 
         self.R_ptfm  = np.ones(3)  # rotation matrix for platform orientation 
         
+        # If `hHub` is specified, we overwrite the z-coordinate of the RNA reference point
         if 'hHub' in turbine:
-            print("WARNING: turbine hHub input is deprecated - use position [x y z].")     
             hHub    = getFromDict(turbine, 'hHub'   , shape=turbine['nrotors'])[ir]  # overwrites r_rel[2] [m]
             self.r_rel[2] = hHub - self.q[2]*self.overhang
-        self.hHub = hHub  # we may not need this anymore
-        self.Zhub = self.hHub         
+        self.hHub = self.r_rel[2] + self.q[2]*self.overhang  # we may not need this anymore
+        self.Zhub = self.hHub
 
         # below is initialization, needs to be updated by setPosition...
         self.r_RRP = np.array(self.r_rel)  # RNA reference point

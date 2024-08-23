@@ -40,7 +40,7 @@ turbine:
     Rhub        : 1.5        # hub radius [m]
     precone     : 2.5        # [rad]
     shaft_tilt  : 5.0        # [rad]
-    overhang    : 5.0        # [m]
+    overhang    : -5.0        # [m]
     aeroServoMod : 1          # 0 aerodynamics off; 1 aerodynamics on (no control); 2 aerodynamics and control on
 
     env: 

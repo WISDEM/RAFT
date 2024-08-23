@@ -54,11 +54,10 @@ class Rotor:
    
         self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]  # rotor offset in +x before yaw [m]
         if self.overhang > 0:
-            print("WARNING: The turbine overhang input was positive.")
+            print("WARNING: The turbine overhang input was positive for upwind turbines.")
             print("The sign convention is now along +x (opposite of before)")
-            print("so that would be a downwind rotor. RAFT is flipping the")
-            print("sign, guessing that you wanted an upwind rotor.")
-            self.overhang = - self.overhang                  
+            print("so that the specified overhang is a downwind rotor. Please flip the")
+            print("sign (negative overhang) if you wanted an upwind rotor.")
             
         self.xCG_RNA = getFromDict(turbine, 'xCG_RNA', shape=turbine['nrotors'])[ir]  # RNA CG offset in +x before yaw [m]
         

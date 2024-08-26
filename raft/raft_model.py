@@ -380,24 +380,24 @@ class Model():
                 
                     # print statistics table
                     print(f"-------------------- FOWT {i+1} Case {iCase+1} Statistics --------------------")
-                    print("Response channel     Average     RMS         Maximum")
-                    print(f"surge (m)          {metrics['surge_avg'] :10.2e}  {metrics['surge_std'] :10.2e}  {metrics['surge_max'] :10.2e}")
-                    print(f"sway (m)           {metrics['sway_avg' ] :10.2e}  {metrics['sway_std' ] :10.2e}  {metrics['sway_max' ] :10.2e}")
-                    print(f"heave (m)          {metrics['heave_avg'] :10.2e}  {metrics['heave_std'] :10.2e}  {metrics['heave_max'] :10.2e}")
-                    print(f"roll (deg)         {metrics['roll_avg' ] :10.2e}  {metrics['roll_std' ] :10.2e}  {metrics['roll_max' ] :10.2e}")
-                    print(f"pitch (deg)        {metrics['pitch_avg'] :10.2e}  {metrics['pitch_std'] :10.2e}  {metrics['pitch_max'] :10.2e}")
-                    print(f"yaw (deg)          {metrics[  'yaw_avg'] :10.2e}  {metrics[  'yaw_std'] :10.2e}  {metrics['yaw_max'  ] :10.2e}")
+                    print("Response channel     Average     RMS         Maximum     Minimum")
+                    print(f"surge (m)          {metrics['surge_avg'] :10.2e}  {metrics['surge_std'] :10.2e}  {metrics['surge_max'] :10.2e}  {metrics['surge_min'] :10.2e}")
+                    print(f"sway (m)           {metrics['sway_avg' ] :10.2e}  {metrics['sway_std' ] :10.2e}  {metrics['sway_max' ] :10.2e}  {metrics['sway_min'] :10.2e}")
+                    print(f"heave (m)          {metrics['heave_avg'] :10.2e}  {metrics['heave_std'] :10.2e}  {metrics['heave_max'] :10.2e}  {metrics['heave_min'] :10.2e}")
+                    print(f"roll (deg)         {metrics['roll_avg' ] :10.2e}  {metrics['roll_std' ] :10.2e}  {metrics['roll_max' ] :10.2e}  {metrics['roll_min'] :10.2e}")
+                    print(f"pitch (deg)        {metrics['pitch_avg'] :10.2e}  {metrics['pitch_std'] :10.2e}  {metrics['pitch_max'] :10.2e}  {metrics['pitch_min'] :10.2e}")
+                    print(f"yaw (deg)          {metrics[  'yaw_avg'] :10.2e}  {metrics[  'yaw_std'] :10.2e}  {metrics['yaw_max'  ] :10.2e}  {metrics['yaw_min'] :10.2e}")
                     for i in range(nTowers):
-                        print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][i] :10.2e}  {metrics['AxRNA_std'][i] :10.2e}  {metrics['AxRNA_max'][i] :10.2e}")
+                        print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][i] :10.2e}  {metrics['AxRNA_std'][i] :10.2e}  {metrics['AxRNA_max'][i] :10.2e}  {metrics['AxRNA_min'][i] :10.2e}")
                     for i in range(nTowers):
-                        print(f"tower bending (Nm) {metrics['Mbase_avg'][i] :10.2e}  {metrics['Mbase_std'][i] :10.2e}  {metrics['Mbase_max'][i] :10.2e}")
+                        print(f"tower bending (Nm) {metrics['Mbase_avg'][i] :10.2e}  {metrics['Mbase_std'][i] :10.2e}  {metrics['Mbase_max'][i] :10.2e}  {metrics['Mbase_min'][i] :10.2e}")
                     for i in range(nRotors):
                         if fowt.rotorList[i].Zhub < 0:
                             speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
                         else:
                             speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
                         if fowt.rotorList[i].aeroServoMod > 1 and speed > 0.0:
-                            print(f"rotor speed (RPM)  {metrics['omega_avg'][i] :10.2e}  {metrics['omega_std'][i] :10.2e}  {metrics['omega_max'][i] :10.2e}")
+                            print(f"rotor speed (RPM)  {metrics['omega_avg'][i] :10.2e}  {metrics['omega_std'][i] :10.2e}  {metrics['omega_max'][i] :10.2e}  {metrics['omega_min'][i] :10.2e}")
                             print(f"blade pitch (deg)  {metrics['bPitch_avg'][i] :10.2e}  {metrics['bPitch_std'][i] :10.2e} ")
                             print(f"rotor power        {metrics['power_avg'][i] :10.2e} ")
                     #for i in range(nLine):  >>> could have the turbine's own mooring system results here <<<
@@ -426,6 +426,7 @@ class Model():
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_avg'] = T_moor
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'] = np.zeros(2*nLines)
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'] = np.zeros(2*nLines)
+                self.results['case_metrics'][iCase]['array_mooring']['Tmoor_min'] = np.zeros(2*nLines)
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'] = np.zeros([ 2*nLines, self.nw ])
                 
                 
@@ -433,6 +434,7 @@ class Model():
                     TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'][iT] = TRMS
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'][iT] = T_moor[iT] + 3*TRMS
+                    self.results['case_metrics'][iCase]['array_mooring']['Tmoor_min'][iT] = T_moor[iT] - 3*TRMS
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'][iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
                     #self.results['case_metrics']['array_mooring']['Tmoor_DEL'][iCase,iT] = 
                 
@@ -445,10 +447,10 @@ class Model():
                 
                     # print statistics table
                     print(f"-------------------- Mooring Case {iCase+1} Statistics --------------------")
-                    print("Response channel     Average     RMS         Maximum")
+                    print("Response channel     Average     RMS         Maximum     Minimum")
                     for i in range(nLines):
                         j = i+nLines
-                        print(f"line {i} tension (N) {metrics['Tmoor_avg'][j]:10.2e}  {metrics['Tmoor_std'][j]:10.2e}  {metrics['Tmoor_max'][j]:10.2e}")
+                        print(f"line {i} tension (N) {metrics['Tmoor_avg'][j]:10.2e}  {metrics['Tmoor_std'][j]:10.2e}  {metrics['Tmoor_max'][j]:10.2e}  {metrics['Tmoor_min'][j]:10.2e}")
                     print(f"-----------------------------------------------------------")
                 
                 self.T_moor_amps = T_moor_amps  # save for future processing!

@@ -1890,25 +1890,29 @@ class FOWT():
         results['surge_avg'] = self.Xi0[0]
         results['surge_std'] = getRMS(self.Xi[:,0,:]) 
         results['surge_max'] = self.Xi0[0] + 3*results['surge_std']
+        results['surge_min'] = self.Xi0[0] - 3*results['surge_std']
         results['surge_PSD'] = getPSD(self.Xi[:,0,:], self.dw)
         results['surge_RA' ] = self.Xi[:,0,:]
         
         results['sway_avg'] = self.Xi0[1]
         results['sway_std'] = getRMS(self.Xi[:,1,:])
         results['sway_max'] = self.Xi0[1] + 3*results['sway_std']
+        results['sway_min'] = self.Xi0[1] - 3*results['sway_std']
         results['sway_PSD'] = getPSD(self.Xi[:,1,:], self.dw)
         results['sway_RA' ] = self.Xi[:,1,:]
         
         results['heave_avg'] = self.Xi0[2]
         results['heave_std'] = getRMS(self.Xi[:,2,:])
         results['heave_max'] = self.Xi0[2] + 3*results['heave_std']
+        results['heave_min'] = self.Xi0[2] - 3*results['heave_std']
         results['heave_PSD'] = getPSD(self.Xi[:,2,:], self.dw)
         results['heave_RA' ] = self.Xi[:,2,:]
         
         roll_deg = rad2deg(self.Xi[:,3,:])
         results['roll_avg'] = rad2deg(self.Xi0[3])
         results['roll_std'] = getRMS(roll_deg)
-        results['roll_max']  = rad2deg(self.Xi0[3]) + 3*results['roll_std']
+        results['roll_max'] = rad2deg(self.Xi0[3]) + 3*results['roll_std']
+        results['roll_min'] = rad2deg(self.Xi0[3]) - 3*results['roll_std']
         results['roll_PSD'] = getPSD(roll_deg, self.dw)
         results['roll_RA' ] = rad2deg(self.Xi[:,3,:])
         
@@ -1916,6 +1920,7 @@ class FOWT():
         results['pitch_avg'] = rad2deg(self.Xi0[4])
         results['pitch_std'] = getRMS(pitch_deg)
         results['pitch_max'] = rad2deg(self.Xi0[4]) + 3*results['pitch_std']
+        results['pitch_min'] = rad2deg(self.Xi0[4]) - 3*results['pitch_std']
         results['pitch_PSD'] = getPSD(pitch_deg, self.dw)
         results['pitch_RA' ] = rad2deg(self.Xi[:,4,:])
         
@@ -1923,6 +1928,7 @@ class FOWT():
         results['yaw_avg'] = rad2deg(self.Xi0[5])
         results['yaw_std'] = getRMS(yaw_deg)
         results['yaw_max'] = rad2deg(self.Xi0[5]) + 3*results['yaw_std']
+        results['yaw_min'] = rad2deg(self.Xi0[5]) - 3*results['yaw_std']
         results['yaw_PSD'] = getPSD(yaw_deg, self.dw)
         results['yaw_RA' ] = rad2deg(self.Xi[:,5,:])
         
@@ -1940,11 +1946,13 @@ class FOWT():
             results['Tmoor_avg'] = T_moor
             results['Tmoor_std'] = np.zeros(2*nLines)
             results['Tmoor_max'] = np.zeros(2*nLines)
-            results['Tmoor_PSD'] =  np.zeros([ 2*nLines, self.nw])
+            results['Tmoor_min'] = np.zeros(2*nLines)
+            results['Tmoor_PSD'] = np.zeros([ 2*nLines, self.nw])
             for iT in range(2*nLines):
                 TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
                 results['Tmoor_std'][iT] = TRMS
                 results['Tmoor_max'][iT] =  T_moor[iT] + 3*TRMS
+                results['Tmoor_max'][iT] =  T_moor[iT] - 3*TRMS
                 results['Tmoor_PSD'][iT, :] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
             
             # log the maximum line tensions predicted by RAFT for MoorPy use
@@ -1956,6 +1964,7 @@ class FOWT():
         results['AxRNA_PSD'] = np.zeros([self.nw, self.nrotors]) 
         results['AxRNA_avg'] = np.zeros(self.nrotors)
         results['AxRNA_max'] = np.zeros(self.nrotors)
+        results['AxRNA_min'] = np.zeros(self.nrotors)
         
         for ir, rotor in enumerate(self.rotorList):
             XiHub[:,ir,:] = self.Xi[:,0,:] + rotor.r_rel[2]*self.Xi[:,4,:]  # planar approximation; to improve <<<
@@ -1965,6 +1974,7 @@ class FOWT():
             results['AxRNA_PSD'][:,ir] = (getPSD(XiHub[:,ir,:]*self.w**2, self.dw))
             results['AxRNA_avg'][ir] = abs(np.sin(self.Xi0[4])*9.81) # @Matt check this! 
             results['AxRNA_max'][ir] = results['AxRNA_avg'][ir]+3*results['AxRNA_std'][ir]
+            results['AxRNA_min'][ir] = results['AxRNA_avg'][ir]-3*results['AxRNA_std'][ir]
             
         # tower base bending moment  >>> should three-dimensionalize this <<<
         m_turbine = np.zeros(len(self.mtower))
@@ -1985,6 +1995,7 @@ class FOWT():
         results['Mbase_std'] = np.zeros(self.nrotors)
         results['Mbase_PSD'] = np.zeros([self.nw, self.nrotors])
         results['Mbase_max'] = np.zeros(self.nrotors)
+        results['Mbase_min'] = np.zeros(self.nrotors)
         
         for ir, rotor in enumerate(self.rotorList):
             # mass and moment arm >>> should three-dimensionalize <<<
@@ -2017,6 +2028,7 @@ class FOWT():
             results['Mbase_std'][ir] = dynamic_moment_RMS[ir]
             results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
             results['Mbase_max'][ir] = results['Mbase_avg'][ir]+3*results['Mbase_std'][ir]
+            results['Mbase_min'][ir] = results['Mbase_avg'][ir]-3*results['Mbase_std'][ir]
             #results['Mbase_DEL'][iCase]
         
         # wave PSD for reference
@@ -2051,6 +2063,7 @@ class FOWT():
         results['omega_avg']  = np.zeros(self.nrotors)
         results['omega_std']  = np.zeros(self.nrotors)
         results['omega_max']  = np.zeros(self.nrotors)
+        results['omega_min']  = np.zeros(self.nrotors)
         results['omega_PSD']  = np.zeros([self.nw, self.nrotors])
         results['torque_avg'] = np.zeros(self.nrotors)
         results['torque_std'] = np.zeros(self.nrotors)
@@ -2088,6 +2101,7 @@ class FOWT():
                 results['omega_std'][ir] = radps2rpm(getRMS(omega_w[:,ir,:]))
                 # note: _max values are (avg + 2 or 3 * std)   (95% or 99% max)
                 results['omega_max'][ir] = results['omega_avg'][ir] + 2 * results['omega_std'][ir]
+                results['omega_min'][ir] = results['omega_avg'][ir] - 2 * results['omega_std'][ir]
                 results['omega_PSD'][:,ir] = radps2rpm(1)**2 * getPSD(omega_w[:,ir,:], self.dw)
                 
                 # generator torque (Nm)

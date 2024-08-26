@@ -174,11 +174,6 @@ def getWaveKin_grad_u1(w, k, beta, h, r):
             khz_xy = np.cosh(k * (z + h)) / np.sinh(k*h)
             khz_z = np.sinh(k * (z + h)) / np.sinh(k*h)
 
-
-            # u[0,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.cos(beta)
-            # u[1,i] =    w[i]* zeta[i]*COSHNumOvrSIHNDen *np.sin(beta)
-            # u[2,i] = 1j*w[i]* zeta[i]*SINHNumOvrSIHNDen
-
         # Along x direction
         aux = w * cosBeta * np.exp( -1j*(k*(np.cos(beta)*r[0] + np.sin(beta)*r[1])))
         grad[0,0] = -1j*aux * khz_xy * k*cosBeta # du/dx

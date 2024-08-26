@@ -40,7 +40,6 @@ class Rotor:
         ir = the index of the values in the arrays of the input file for multiple rotors
         '''
 
-        # Should inherit these from raft_model or _env?
         self.w = np.array(w)
         self.nw = len(self.w)
         self.turbine = turbine      # store dictionary for later use
@@ -72,7 +71,6 @@ class Rotor:
         self.nBlades    = getFromDict(turbine, 'nBlades', shape=turbine['nrotors'], dtype=int)[ir]         # [-]
         
         self.platform_heading = 0  # stored copy of the yaw of the FOWT [rad]
-        #self.heading = 0  # absolute heading of the rotor [rad]
         self.yaw = 0   # the relative yaw rotation of this rotor, as from a yaw drive [rad]
 
         # Set reference headings for yaw control that may vary by load case
@@ -226,13 +224,7 @@ class Rotor:
             cm[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,3])
             if cpmin_flag:
                 cpmin[i, :, 0] = np.interp(aoa, polar_table[:,0], polar_table[:,4])
-            
-
-            #plt.figure()
-            #plt.plot(polar_table[:,0], polar_table[:,1])
-            #plt.plot(polar_table[:,0], polar_table[:,2])
-            #plt.title(airfoil_name[i])
-            
+                        
             if abs(cl[i, 0, 0] - cl[i, -1, 0]) > 1.0e-5:
                 print("WARNING: Ai " + airfoil_name[i] + " has the lift coefficient different between + and - pi rad. This is fixed automatically, but please check the input data.")
                 cl[i, 0, 0] = cl[i, -1, 0]
@@ -434,13 +426,6 @@ class Rotor:
         # Use and save the yaw command if a new one was provided
         if not yaw == None:
             self.yaw_command = np.radians(yaw)
-        '''
-        # Use heading if provided, otherwise if it's needed throw an error
-        if not heading == None:
-            heading = np.radians(heading)
-        elif self.yaw_mode in [0,1]:
-            raise Exception("The heading must be provided when yaw_mode is 0 or 1.")
-        '''
         
         # ----- Apply nacelle yaw offset depending on the yaw mode -----
         
@@ -588,7 +573,6 @@ class Rotor:
         R = np.array([[c + a[0]**2*(1-c), a[0]*a[1]*(1-c)-a[2]*s, a[0]*a[2]*(1-c)+a[1]*s],
                         [a[1]*a[0]*(1-c)+a[2]*s, c + a[1]**2*(1-c), a[1]*a[2]*(1-c)-a[0]*s],
                         [a[2]*a[0]*(1-c)-a[1]*s, a[2]*a[1]*(1-c)+a[0]*s, c + a[2]**2*(1-c)]])
-        #rotMatx = np.array([[1, 0, 0], [0, c, -s], [0, s, c]])
 
         # find the new node positions of the blade member
         r_new = np.zeros_like(r_OG)
@@ -617,60 +601,6 @@ class Rotor:
         
         A_hydro = np.zeros([6,6])
         I_hydro = np.zeros([6,6])
-        
-        
-        ''' --- manual temporary option ---
-        # make a temporary set of members for a blade (coordinates relative to hub)
-        
-        bladeMemberList = []
-
-        for i in range(len(self.blade_r)-1):
-            blademem = dict(name=i, type=3, shape='rect', potMod=False)
-
-            q = np.matmul(np.array([[0, -1, 0],[1, 0, 0],[0, 0, 1]]), self.q_rel) 
-            blademem['rA'] = q * (self.blade_r[i] - self.dr/2)
-            blademem['rB'] = q * (self.blade_r[i] + self.dr/2)
-
-            blademem['stations'] = [0,1]
-
-            chord = self.blade_chord[i]
-            rel_thick = self.r_thick_interp[i]
-            area = (np.pi/4)*chord**2 * rel_thick
-            rect_thick = area/chord  # thickness of rectange with same chord length to achieve same cross sectional area
-            blademem['d'] = [[chord, rect_thick],[chord, rect_thick]]
-
-            blademem['gamma'] = self.blade_theta[i]
-
-            blademem['Cd'] = 0.0
-            blademem['Ca'] = self.Ca_interp[i,:]            
-            blademem['CdEnd'] = 0.0
-            blademem['CaEnd'] = 0.0
-        
-            blademem['t'] = 0.01
-            blademem['rho_shell'] = 0
-
-            bladeMemberList.append(Member(blademem, len(self.w)))
-        
-        # sum up hydro coefficients
-        A_hydro_morison = np.zeros([6,6])
-        for i, mem in enumerate(bladeMemberList):
-        
-            A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True)
-            
-            A_hydro += A_hydro_i 
-            I_hydro += I_hydro_i 
-            
-            
-        # duplicate for number of blades and compute whole-rotor terms!
-        self.A_11 = A_hydro[0,0] * self.nBlades  # thrust
-        self.A_44 = A_hydro[3,3] * self.nBlades  # torque
-        self.A_14 = A_hydro[0,3] * self.nBlades  # torque-thrust coupling
-        elf.A_55 = A_hydro[0,3] * self.nBlades * 0.707  # torque-thrust coupling <<< need to azimuthally average <<<
-        self.I_11 = I_hydro[0,0] * self.nBlades  # thrust (neglect the others for now)
-        self.I_14 = I_hydro[0,3] * self.nBlades  # thrust-torque coupling
-        then populate full matrices?
-        
-        '''
         
         # --- whole-rotor members approach ---
         for i,mem in enumerate(self.bladeMemberList):
@@ -881,53 +811,7 @@ class Rotor:
                                           shape=0, default=0.0))
         
         self.setYaw()
-        '''
-        # Do yaw calculations
-        if self.yaw_mode == 0:  # yaw relative to inflow
-            self.setYaw(heading=heading)
-            
-        elif self.yaw_mode == 1:  # yaw to turbine heading from case info
-            turb_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [deg]
-            self.setYaw(heading=turb_heading)
-        else:
-            self.setYaw()
-        '''
-        '''
-        # Figure out relative inflow angles considering platform orientation,
-        # rotor axis angles, nacelle yaw, and inflow direction
-        
-        # Apply nacelle yaw depending on the yaw mode 
-        if self.yaw_mode == 0:  # assume aligned with wind/current inflow
-            
-            #turbine_heading = np.radians(heading) # Horizontal angle between the shaft and the global X direction
-            nac_yaw = np.radians(heading) - self.platform_heading # Nacelle yaw measured from the initial rotor orientation
-        
-        elif self.yaw_mode == 1:  # use case info
-            turb_heading = getFromDict(case, 'turbine_heading', shape=0, default=0.0)  # [rad]
-            nac_yaw = np.radians(turb_heading) - self.platform_heading
-        
-        elif self.yaw_mode == 2:  # use self.yaw_command value as relative
-            nac_yaw = self.yaw_command
-            
-        elif self.yaw_mode == 3: # use self.yaw_command value as global heading
-            nac_yaw = self.yaw_command - self.platform_heading
-            
-        else:
-            raise Exception('Unsupported yaw_mode value. Must be 0, 1, or 2.')
-
-        # Save in case these are useful later
-        self.yaw = nac_yaw
-        #self.heading = turbine_heading
-
-        # Rotation matrix from platform local x to rotor axis
-        R_q_rel = rotationMatrix(0, self.shaft_tilt, self.shaft_toe + self.yaw) 
-        R_q = np.matmul(R_q_rel, self.R_ptfm)  # this one's from global x
-        
-        # Compute shaft axis unit vector in FOWT and global frames 
-        self.q_rel = np.matmul(R_q_rel, np.array([1,0,0]) )
-        self.q = np.matmul(self.R_ptfm, self.q_rel) # Write in the global frame        
-        '''
-        
+                
         # rotor inflow misalignment heading and tilt for CCBlade [rad]
         yaw_misalign = np.arctan2(self.q[1], self.q[0]) - self.inflow_heading
         turbine_tilt = np.arctan2(self.q[2], np.hypot(self.q[0], self.q[1]))
@@ -1073,23 +957,7 @@ class Rotor:
             #if current:
             #    f2 += self.I_hydro[0,0] * 1j*self.w*self.V_w
 
-            if display > 1:
-                '''
-                plt.plot(self.w/2/np.pi, self.V_w, label = 'S_rot')
-                plt.yscale('log')
-                plt.xscale('log')
-
-                plt.xlim([1e-2,10])
-                plt.grid('True')
-
-                plt.xlabel('Freq. (Hz)')
-                plt.ylabel('PSD')
-
-                #plt.plot(thrust_psd.fq_0 * 2 * np.pi,thrust_psd.psd_0)r
-                plt.plot(self.w, np.abs(T_ext))
-                plt.plot(self.w, abs(T_w2))
-                '''
-                
+            if display > 1:               
                 fig,ax = plt.subplots(4,1,sharex=True)
                 ax[0].plot(self.w/2.0/np.pi, self.V_w);  ax[0].set_ylabel('U (m/s)') 
                 ax[1].plot(self.w/2.0/np.pi, T_w1    );  ax[1].set_ylabel('T_w1') 
@@ -1176,16 +1044,12 @@ class Rotor:
                 X.append(self.ccblade.chord[i]*afx[j])
                 Y.append(self.ccblade.chord[i]*afy[j])
                 Z.append(self.ccblade.r[i])            
-                #X.append(self.ccblade.chord[i+1]*afx[j])
-                #Y.append(self.ccblade.chord[i+1]*afy[j])
-                #Z.append(self.ccblade.r[i+1]) 
                 
         P = np.array([X, Y, Z])  # coordinates of blade chord sections
         
         # ----- rotation matrices ----- 
         # (blade pitch would be a -rotation about local z)
         R_precone = rotationMatrix(0, -self.ccblade.precone, 0)  
-        #R_azimuth = [rotationMatrix(azimuth + azi, 0, 0) for azi in 2*np.pi/3.*np.arange(3)]
         R_azimuth = [rotationMatrix(azimuth + azi, 0, 0) for azi in (2*np.pi/self.nBlades)*np.arange(self.nBlades)]
         R_tilt    = rotationMatrix(0, self.shaft_tilt, 0)   # # define x as along shaft downwind, y is same as ptfm y
         
@@ -1223,7 +1087,6 @@ class Rotor:
         # ----- Also draw a circle -----
         if draw_circle:
             r = self.ccblade.r[-1]
-            #x_shift = r * np.tan(self.ccblade.precone)  # shift forward of tips due to precone <<< not sure we want to use this
             
             # lists to be filled with coordinates for plotting
             X=[]
@@ -1351,13 +1214,6 @@ class Rotor:
 
         # set NaNs to 0
         Rot[np.isnan(Rot)] = 0
-        
-        # Formulas from Section 6.3 of IEC 61400-1-2019
-        # S_1_f = 0.05 * sigma_1**2. * (L_1 / V_hub) ** (-2./3.) * f **(-5./3)
-        # S_2_f = S_3_f = 4. / 3. * S_1_f
-        # sigma_k = np.sqrt(np.trapz(S_1_f, f))
-        # print(sigma_k)
-        # print(sigma_u)
 
         return U, V, W, Rot
 
@@ -1455,20 +1311,3 @@ if __name__=='__main__':
     fig.tight_layout()
     fig.savefig("control.png", dpi=200)
     plt.show()
-
-    # ax1[0].plot(ww,a_aer)
-    # ax1[0].set_ylabel('a_aer')
-
-    # ax1[1].plot(ww,b_aer)
-    # ax1[1].set_ylabel('b_aer')
-
-    # fig1.legend(('gains * 0','gains * 1','gains * 2'))
-
-    # ax1[1].set_xlabel('frequency (rad/s)')
-
-    # ax2[0].plot(ww,np.abs(C))
-    # ax2[0].set_ylabel('mag(C)')
-
-    # ax2[1].plot(ww,np.angle(C))
-    # ax2[1].set_ylabel('phase(C)')
-

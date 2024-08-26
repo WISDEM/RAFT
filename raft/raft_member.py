@@ -132,9 +132,6 @@ class Member:
             else:
                 raise Exception(f"Member {self.name}: the number of provided ballast densities (rho_fill) must be 1 less than the number of stations.")
         
-        # raise ValueError(f"Member '{self.name}': The number of stations ({n}) should always be 1 greater than the number of ballast sections, l_fill ({len(self.l_fill)}) and rho_fill ({len(self.rho_fill)})")
-
-
         # initialize member orientation variables
         self.q = rAB/self.l                                         # member axial unit vector
         self.p1 = np.zeros(3)                                       # member transverse unit vectors (to be filled in later)
@@ -160,27 +157,12 @@ class Member:
         self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6, index=0)      # transverse1 drag coefficient
         self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6, index=1)      # transverse2 drag coefficient
         self.Cd_End = getFromDict(mi, 'CdEnd', shape=n, default=0.6 )     # end drag coefficient
-        '''
-        if not np.isscalar(mi['Cd']) and len(mi['Cd'])==2:  # special case for rectangular members with directional coefficients
-            self.Cd_p1 = np.tile(float(mi['Cd'][0]), [n])
-            self.Cd_p2 = np.tile(float(mi['Cd'][1]), [n])
-        else:
-            self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse1 drag coefficient
-            self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse2 drag coefficient
-        '''
+
         # Added mass coefficients
         self.Ca_q   = getFromDict(mi, 'Ca_q' , shape=n, default=0.0 )     # axial added mass coefficient
         self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97, index=0)     # transverse1 added mass coefficient
         self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97, index=1)     # transverse2 added mass coefficient
         self.Ca_End = getFromDict(mi, 'CaEnd', shape=n, default=0.6 )     # end added mass coefficient
-        '''
-        if not np.isscalar(mi['Ca']) and len(mi['Ca'])==2:  # special case for rectangular members with directional coefficients
-            self.Ca_p1 = np.tile(float(mi['Ca'][0]), [n])
-            self.Ca_p2 = np.tile(float(mi['Ca'][1]), [n])
-        else:
-            self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse1 added mass coefficient
-            self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse2 added mass coefficient
-        '''
 
         # ----- Strip theory discretization -----
 
@@ -226,7 +208,6 @@ class Member:
         
         self.ns  = len(ls)                                           # number of hydrodynamic strip theory nodes per member
         self.ls  = np.array(ls, dtype=float)                          # node locations along member axis
-        #self.dl = 0.5*(np.diff([0.]+lh) + np.diff(lh+[lh[-1]]))
         self.dls = np.array(dls)
         self.ds  = np.array(ds)
         self.drs = np.array(drs)
@@ -235,9 +216,6 @@ class Member:
         self.r   = np.zeros([self.ns,3])                             # undisplaced node positions along member  [m]
         for i in range(self.ns):
             self.r[i,:] = self.rA0 + (ls[i]/self.l)*rAB              # locations of hydrodynamics nodes (will later be displaced) [m]
-
-        #self.slh[i,0] = np.interp(lh[i], self.stations, self.sl1)
-        #self.slh[i,1] = np.interp(lh[i], self.stations, self.sl2)
         
         # ----- initialize arrays used later for hydro calculations -----
         self.a_i       = np.zeros([self.ns])            # signed axial area vector that dynamic pressure will act on [m2]
@@ -297,7 +275,6 @@ class Member:
         p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
         
         # apply any platform offset and rotation to the values already obtained
-        #if r6:
         R_platform = rotationMatrix(*r6[3:])  # rotation matrix for the platform roll, pitch, yaw
     
         R  = np.matmul(R_platform, R)
@@ -307,11 +284,7 @@ class Member:
         
         self.rA = transformPosition(self.rA0, r6)
         self.rB = transformPosition(self.rB0, r6)
-    
-        #else:  # no offset case
-        #    self.rA = self.rA0
-        #    self.rB = self.rB0
-            
+               
         # update node positions
         rAB = self.rB - self.rA
         for i in range(self.ns):
@@ -1097,12 +1070,12 @@ class Member:
             Cm_p1 = 4j  / (np.pi * (k*R)**2 * Hp1)
             Cm_p2 = Cm_p1
 
-            # The MCF correction only makes sense for short waves
-            # We use the threshold lamda/D < 5 commonly adopted for the Morison equation,
-            # but changing smoothly from the previous values using a ramp function
+            # The MCF correction only makes sense for short waves.
+            # We use the threshold lamda/D < 5 commonly adopted for the Morison equation
+            # but changing smoothly from Cm_p1_0 and Cm_p2_0 using a ramp function.
             # This is particularly useful for cases where the tuned value of Ca was too 
             # different from the theoretical value of 1 (e.g. the OC4 Platform, with Ca = 0.63)
-            # and the user doesn't want want to tune it again
+            # and the user doesn't want to tune the model again
             Tr = np.pi/5/R # Threshold value
             T0 = 0 # Value to start the transition
             ramp = 0.5*(1-np.cos(np.pi*(k-T0)/Tr)) if k<Tr else 1
@@ -1118,12 +1091,9 @@ class Member:
            For the mean loads: Kim and Yue (1989) The complete second-order diffraction solution for an axisymmetric body - Part 1. Monochromatic incident waves
            For the difference-frequency loads: Kim and Yue (1990) The complete second-order diffraction solution for an axisymmetric body - Part 2. Bichromatic incident waves and body motions
     
-           For now, only long crested seas are considered. The resulting loads are:
-           - Transversal force, which is in the same direction as the waves, or
-           - Moment around the horizontal axis that is perpendicular to the propagation of the waves
-           Those loads are assumed to be applied at the intersection of the cylinder with the mean water line.
-           The loads are nondimensionalized as follows:
-           Foutput = F / (Aj * Al), where Aj and Al are the complex amplitudes of the wave pair
+           Output = F / (Aj * Al), where Aj and Al are the complex amplitudes of the wave pair
+           The output force is in the same direction as the incoming waves. 
+           For now, only long crested seas are considered (both wave components along the same direction). 
         '''
 
         # Omega is a convenience variable used in the analytical solution
@@ -1155,12 +1125,10 @@ class Member:
         # The force is derived for a vertical cylinder and, in the original solution, it is aligned with the waves.
         # We will say that it is perpendicular to the cylinder axis but aligned with the wave direction
         beta_vec = np.array([cosB1, sinB1, 0])
-        # if np.linalg.norm(k1_k2)!=0:
-        #     beta_vec = k1_k2 / np.linalg.norm(k1_k2) # Unit vector in the direction of the wave group
         pforce = np.dot(beta_vec, self.p1)*self.p1 + np.dot(beta_vec, self.p2)*self.p2
         pforce = pforce / np.linalg.norm(pforce) # Normalize the force
                 
-        # # #==== Component due to the relative wave elevation. Lumped at the intersection with the mean waterline
+        #==== Component due to the relative wave elevation. Lumped at the intersection with the mean waterline
         if self.rA[2]*self.rB[2] < 0:           
             # Find intersection with the mean waterline (z=0) and its radius
             rwl = self.rA + (self.rB - self.rA) * (0 - self.rA[2]) / (self.rB[2] - self.rA[2])
@@ -1208,12 +1176,6 @@ class Member:
                 wm = (w1-w2)/np.sqrt(g/h) # Nondimensional difference frequency
                 k1h, k2h = k1R*H, k2R*H
 
-                # We do not want to use the diffraction correction for very long waves
-                # because it is already well captured by the slender-body approximation
-                # and because it could render the results worse.
-                # if k1R < np.pi/10 and k2R < np.pi/10:
-                #     continue
-                
                 # For mean loads
                 dF = 0+0j  # Force per unit length. Assumed to be aligned with the wave propagation direction
                 if w1 == w2:
@@ -1233,8 +1195,6 @@ class Member:
                 r = 0.5*(r1 + r2)
                 dF = np.real(dF) # Get only the part related to diffraction effects to avoid double counting with Rainey's equation
                 dF *= np.exp(-1j*np.dot(k1_k2, rwl)) # Solution considers cylinder at (0,0). Displace it to actual location
-                
-                # Project it along the the directino computed above and add it to the total force
                 F += translateForce3to6DOF(dF*pforce, r)
 
         if k1 < k2:

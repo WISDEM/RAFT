@@ -44,7 +44,7 @@ class Member:
         shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
 
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
-        self.MCF    = getFromDict(mi, 'MCF', dtype=bool, default=False)
+        self.MCF    = getFromDict(mi, 'MCF', dtype=bool, default=False) # Flag to use MacCamy-Fuchs correction or not
         
         self.gamma = getFromDict(mi, 'gamma', default=0.)  # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
         rAB = self.rB0-self.rA0       # The relative coordinates of upper node from lower node [m]
@@ -971,8 +971,8 @@ class Member:
         '''Compute the Member's linear strip-theory-hydrodynamics excitation 
         matrix, Imat, which is the term Cm=(1+Ca) from Morison's equation.
         Optionally, Cm can be computed using the MacCamy-Fuchs correction for
-        a vertical circular cylinder if the wave number k is specified.
-        All computed quantities are in global orientations.
+        a circular cylinder if the wave number k is specified.
+        All computed quantities are in global orientation.
         '''
         
         circ = self.shape=='circular'  # boolean for circular vs. rectangular

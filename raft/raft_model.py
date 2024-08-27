@@ -290,7 +290,7 @@ class Model():
 
             # Solve system operating point / mean offsets again, but now including mean wave forces.
             # We actually wouldn't need to do that if the QTFs are computed externally, but all the wave information 
-            # is currently computed only when solveDynamics is called. Should work on that
+            # is currently computed only when solveDynamics is called. Should work on that.
             if any(fowt.potSecOrder > 0 for fowt in self.fowtList):
                 if display > 1:
                     print('Recomputing equilibrium position, now with wave mean drift')
@@ -882,14 +882,15 @@ class Model():
             if display > 0:
                 print('Solving for system response to wave excitation in primary wave direction')
 
-            # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
-            # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process            
+            # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file.
+            # In some cases, they may be very relevant to the motion RMS values, so should be included in the drag linearization process.          
             fowt.Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
             fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF])
             if fowt.potSecOrder==2:
                 fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:], iCase=iCase, iWT=i)
 
-            # We use this flag when fowt.potSecOrder==1, so that we compute the QTFs including first-order motions only
+            # We use this flag to know if we have computed the QTFs already. It's used when fowt.potSecOrder==1, 
+            # so that we compute the QTFs including first-order motions only.
             flagComputedQTF = False
 
             # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
@@ -951,25 +952,27 @@ class Model():
                     if fowt.potSecOrder != 1 or flagComputedQTF:
                         break
                     else:
-                        iiter = 0
-
-                        # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces.
-                        # So, we compute the QTFs considering the first-order motions computed with the linearized drag and then we loop again
-                        # to make sure the second-order motions are considered in the linearization procedure. 
+                        # If we are computing the QTFs internally, we need to consider first-order body motions forces to compute the QTFs.
+                        # So, we use the motions obtained after the linearized drag loop above and then we loop again to include the 
+                        # second-order motions in the drag linearization procedure. 
                         # This is important for cases where the second-order motions are large compared to the first-order motions.
+                        iiter = 0
                         if display > 1:
                             print(f"Resolving for system response in primary wave direction, now with second-order wave loads.")
+
+                        # Get the response amplitude operators (RAOs, i.e. motions for unit wave amplitude)
                         Xi0 = getRAO(Xi[i1:i2, :], fowt.zeta[0,:])
                                                 
-                        tic = time.perf_counter()                        
+                        tic = time.perf_counter() # Time the QTF calculation
                         fowt.calcQTF_slenderBody(waveHeadInd=0, Xi0=Xi0, verbose=True, iCase=iCase, iWT=i)
                         toc = time.perf_counter()
                         if display > 1:
                             print(f"\n Time to compute QTFs for fowt {i}: {toc - tic:0.4f} seconds")
 
+                        # After computing the QTFs internally, we can now compute the second-order hydrodynamic forces
                         fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:], iCase=iCase, iWT=i)
                         F_lin[i1:i2] += fowt.Fhydro_2nd[0, :, :]
-                        flagComputedQTF = True                         
+                        flagComputedQTF = True # Flag that we have computed the QTFs already and we don't need to do it again.
                 else:
                     XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
                                                     # (uses hard-coded successive under relaxation for now)

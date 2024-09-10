@@ -584,7 +584,7 @@ def getRMS(xi):
     second dimension is considered to be frequencies. Results are summed across cases for 
     each frequency. The calculation is the same regardless.'''
     
-    return np.sqrt( np.sum( np.abs(xi)**2 ) )
+    return np.sqrt( 0.5*np.sum( np.abs(xi)**2 ) )
 
 
 def getPSD(xi, dw):

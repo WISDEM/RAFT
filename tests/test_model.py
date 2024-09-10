@@ -195,7 +195,7 @@ def solveEigen(index_and_model, test_case_key):
     model.solveStatics(testCase)
     fns, modes = model.solveEigen()
     assert_allclose(fns, desired_fn[test_case_key][index], rtol=1e-05, atol=1e-5)
-    # assert_allclose(modes, desired_modes[test_case_key][index], rtol=1e-05, atol=1e-5) # this check is too sensitive to machine precision because there are some very small values
+    # assert_allclose(modes, desired_modes[test_case_key][index], rtol=1e-05, atol=1e-5) # this one is too sensitive to machine precision because there are some very small values
 
 def test_solveEigen_unloaded(index_and_model):
     solveEigen(index_and_model, 'unloaded')
@@ -224,7 +224,7 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
         with open(true_values_file, 'rb') as f:
             true_values = pickle.load(f)
 
-    # Check compute results against previously computed true values
+    # Check computed results against previously computed true values
     nCases = len(model.results['case_metrics'])
     for iCase in range(nCases):
         for ifowt in range(model.nFOWT):

@@ -38,16 +38,16 @@ Note that conda is required for the following installations.
 
 To install all required python packages to run RAFT using `conda`, follow the steps below.
 
-1. Navigate to a directory of your choosing on your local machine and clone this RAFT repository to that new directory (if you don't have the `git` command, start with `conda install git` in your "base" environment.
+1. Navigate to a directory of your choosing on your local machine and clone this RAFT repository to that new directory (if you don't have the `git` command, start with `conda install git` in your "base" environment).
 
         (base) YOUR_PATH> git clone https://github.com/WISDEM/RAFT.git
         (base) YOUR_PATH> cd RAFT
     
     This will create new folder called "RAFT" that is a copy from the GitHub repository, located in your "YOUR_PATH" directory
 
-2. Create a new python virtual environment based on the "environment.yaml" file, which lists all the packages needed to run RAFT
+2. Create a new python virtual environment based on the "environment.yml" file, which lists all the packages needed to run RAFT
 
-        (base) YOUR_PATH/RAFT> conda env create --name raft-env -f environment.yaml
+        (base) YOUR_PATH/RAFT> conda env create --name raft-env -f environment.yml
 
     This will create a new python virtual environment called "raft-env"
 
@@ -82,9 +82,9 @@ To install all external python packages using `conda` and NREL packages from sou
     
     This will create new folder called "RAFT" that is a copy from the GitHub repository, located in your "YOUR_PATH" directory
 
-2. Create a new python virtual environment based on the "environment.yaml" file, which lists all the packages needed to run RAFT
+2. Create a new python virtual environment based on the "environment-source.yml" file, which lists all the packages needed to run RAFT
 
-        (base) YOUR_PATH/RAFT> conda env create --name raft-env -f environment-source.yaml
+        (base) YOUR_PATH/RAFT> conda env create --name raft-env -f environment-source.yml
 
     This will create a new python virtual environment called "raft-env"
 

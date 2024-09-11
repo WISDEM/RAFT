@@ -5,6 +5,7 @@ import numpy as np
 from raft.helpers import *
 
 from moorpy.helpers import transformPosition
+from scipy.special import jn, yn, jv, kn, hankel1
 
 ## This class represents linear (for now cylindrical and rectangular) components in the substructure.
 #  It is meant to correspond to Member objects in the WEIS substructure ontology, but containing only
@@ -43,27 +44,23 @@ class Member:
         shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
 
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
+        self.MCF    = getFromDict(mi, 'MCF', dtype=bool, default=False) # Flag to use MacCamy-Fuchs correction or not
         
-
+        self.gamma = getFromDict(mi, 'gamma', default=0.)  # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
+        rAB = self.rB0-self.rA0       # The relative coordinates of upper node from lower node [m]
+        self.l = np.linalg.norm(rAB)  # member length [m]
+    
         # heading feature for rotation members about the z axis (used for rotated patterns)
-        '''
-        self.headings = getFromDict(mi, 'headings', shape=-1, default=0.0)
-        self.heading = getFromDict(mi, 'heading', default=0.0)            # rotation about z axis to apply to the member [deg]
-        if self.heading != 0.0:
-            c = np.cos(np.deg2rad(self.heading))
-            s = np.sin(np.deg2rad(self.heading))
-        '''
         if heading != 0.0:
             c = np.cos(np.deg2rad(heading))
             s = np.sin(np.deg2rad(heading))
             rotMat = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
             self.rA0 = np.matmul(rotMat, self.rA0)
             self.rB0 = np.matmul(rotMat, self.rB0)
+            
+            if rAB[0] == 0.0 and rAB[1] == 0:  # special case of vertical member
+                self.gamma += heading  # heading must be applied as twist about z
 
-
-        rAB = self.rB0-self.rA0                                     # The relative coordinates of upper node from lower node [m]
-        self.l = np.linalg.norm(rAB)                                # member length [m]
-    
 
         # ----- process station positions and other distributed inputs -----
         
@@ -87,17 +84,21 @@ class Member:
             self.shape = 'circular'
             self.d     = getFromDict(mi, 'd', shape=n)               # diameter of member nodes [m]  <<< should maybe check length of all of these
 
-            self.gamma = 0                                           # twist angle about the member's z-axis [degrees] (don't need this for a circular member)
+            self.gamma = 0  # zero any twist angle about axis (irrelevant for circular)
 
         elif shape[0].lower() == 'r':   # <<< this case not checked yet since update <<<
             self.shape = 'rectangular'
 
             self.sl    = getFromDict(mi, 'd', shape=[n,2])           # array of side lengths of nodes along member [m]
 
-            self.gamma = getFromDict(mi, 'gamma', default=0.)        # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
-
         else:
             raise ValueError('The only allowable shape strings are circular and rectangular')
+
+        # We disable the MCF correction if the element is not circular
+        if self.MCF:
+            if not self.shape=='circular':
+                print(f'MacCamy-Fuchs correction not applicable to member {self.name}. Member needs to be circular. Disabling MCF.')
+                self.MCF = False
 
 
         self.t         = getFromDict(mi, 't', shape=n)               # shell thickness at each station [m]
@@ -131,9 +132,6 @@ class Member:
             else:
                 raise Exception(f"Member {self.name}: the number of provided ballast densities (rho_fill) must be 1 less than the number of stations.")
         
-        # raise ValueError(f"Member '{self.name}': The number of stations ({n}) should always be 1 greater than the number of ballast sections, l_fill ({len(self.l_fill)}) and rho_fill ({len(self.rho_fill)})")
-
-
         # initialize member orientation variables
         self.q = rAB/self.l                                         # member axial unit vector
         self.p1 = np.zeros(3)                                       # member transverse unit vectors (to be filled in later)
@@ -159,27 +157,12 @@ class Member:
         self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6, index=0)      # transverse1 drag coefficient
         self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6, index=1)      # transverse2 drag coefficient
         self.Cd_End = getFromDict(mi, 'CdEnd', shape=n, default=0.6 )     # end drag coefficient
-        '''
-        if not np.isscalar(mi['Cd']) and len(mi['Cd'])==2:  # special case for rectangular members with directional coefficients
-            self.Cd_p1 = np.tile(float(mi['Cd'][0]), [n])
-            self.Cd_p2 = np.tile(float(mi['Cd'][1]), [n])
-        else:
-            self.Cd_p1  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse1 drag coefficient
-            self.Cd_p2  = getFromDict(mi, 'Cd'   , shape=n, default=0.6 )     # transverse2 drag coefficient
-        '''
+
         # Added mass coefficients
         self.Ca_q   = getFromDict(mi, 'Ca_q' , shape=n, default=0.0 )     # axial added mass coefficient
         self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97, index=0)     # transverse1 added mass coefficient
         self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97, index=1)     # transverse2 added mass coefficient
         self.Ca_End = getFromDict(mi, 'CaEnd', shape=n, default=0.6 )     # end added mass coefficient
-        '''
-        if not np.isscalar(mi['Ca']) and len(mi['Ca'])==2:  # special case for rectangular members with directional coefficients
-            self.Ca_p1 = np.tile(float(mi['Ca'][0]), [n])
-            self.Ca_p2 = np.tile(float(mi['Ca'][1]), [n])
-        else:
-            self.Ca_p1  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse1 added mass coefficient
-            self.Ca_p2  = getFromDict(mi, 'Ca'   , shape=n, default=0.97)     # transverse2 added mass coefficient
-        '''
 
         # ----- Strip theory discretization -----
 
@@ -214,18 +197,17 @@ class Member:
                 ds  += [0.5*(dorsl[i-1] + dorsl[i])]               # set diameter as midpoint diameter
                 drs += [0.5*(dorsl[i] - dorsl[i-1])]
 
-            # finish things off with the strip for end B
-            dlstrip = 0
-            ls  += [self.stations[-1]]         
-            dls += [0.0]
-            ds  += [0.5*dorsl[-1]]
-            drs += [-0.5*dorsl[-1]]
+        # finish things off with the strip for end B
+        dlstrip = 0
+        ls  += [self.stations[-1]]         
+        dls += [0.0]
+        ds  += [0.5*dorsl[-1]]
+        drs += [-0.5*dorsl[-1]]
         
         # >>> may want to have a way to not have an end strip for members that intersect things <<<
         
         self.ns  = len(ls)                                           # number of hydrodynamic strip theory nodes per member
         self.ls  = np.array(ls, dtype=float)                          # node locations along member axis
-        #self.dl = 0.5*(np.diff([0.]+lh) + np.diff(lh+[lh[-1]]))
         self.dls = np.array(dls)
         self.ds  = np.array(ds)
         self.drs = np.array(drs)
@@ -234,9 +216,6 @@ class Member:
         self.r   = np.zeros([self.ns,3])                             # undisplaced node positions along member  [m]
         for i in range(self.ns):
             self.r[i,:] = self.rA0 + (ls[i]/self.l)*rAB              # locations of hydrodynamics nodes (will later be displaced) [m]
-
-        #self.slh[i,0] = np.interp(lh[i], self.stations, self.sl1)
-        #self.slh[i,1] = np.interp(lh[i], self.stations, self.sl2)
         
         # ----- initialize arrays used later for hydro calculations -----
         self.a_i       = np.zeros([self.ns])            # signed axial area vector that dynamic pressure will act on [m2]
@@ -258,6 +237,7 @@ class Member:
         self.Amat = np.zeros([self.ns,3,3])
         self.Bmat = np.zeros([self.ns,3,3])
         self.Imat = np.zeros([self.ns,3,3])
+        self.Imat_MCF = np.zeros([self.ns,3,3, nw], dtype=complex)
 
 
     def setPosition(self, r6=np.zeros(6)):
@@ -295,7 +275,6 @@ class Member:
         p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
         
         # apply any platform offset and rotation to the values already obtained
-        #if r6:
         R_platform = rotationMatrix(*r6[3:])  # rotation matrix for the platform roll, pitch, yaw
     
         R  = np.matmul(R_platform, R)
@@ -305,11 +284,7 @@ class Member:
         
         self.rA = transformPosition(self.rA0, r6)
         self.rB = transformPosition(self.rB0, r6)
-    
-        #else:  # no offset case
-        #    self.rA = self.rA0
-        #    self.rB = self.rB0
-            
+               
         # update node positions
         rAB = self.rB - self.rA
         for i in range(self.ns):
@@ -324,8 +299,7 @@ class Member:
         # matrices of vector multiplied by vector transposed, used in computing force components
         self.qMat  = VecVecTrans(self.q)
         self.p1Mat = VecVecTrans(self.p1)
-        self.p2Mat = VecVecTrans(self.p2)
-
+        self.p2Mat = VecVecTrans(self.p2)                 
 
 
     def getInertia(self, rPRP=np.zeros(3)):
@@ -386,13 +360,13 @@ class Member:
 
                 elif La!=Lb and Wa!=Wb: # if it's a truncated pyramid for both side lengths
 
-                    x2 = (1/12)*p* ( (Lb-La)**3*H*(Wb/5 + Wa/20) + (Lb-La)**2*La*H(3*Wb/4 + Wa/4) + \
+                    x2 = (1/12)*p* ( (Lb-La)**3*H*(Wb/5 + Wa/20) + (Lb-La)**2*La*H*(3*Wb/4 + Wa/4) + \
                                      (Lb-La)*La**2*H*(Wb + Wa/2) + La**3*H*(Wb/2 + Wa/2) )
 
-                    y2 = (1/12)*p* ( (Wb-Wa)**3*H*(Lb/5 + La/20) + (Wb-Wa)**2*Wa*H(3*Lb/4 + La/4) + \
+                    y2 = (1/12)*p* ( (Wb-Wa)**3*H*(Lb/5 + La/20) + (Wb-Wa)**2*Wa*H*(3*Lb/4 + La/4) + \
                                      (Wb-Wa)*Wa**2*H*(Lb + La/2) + Wa**3*H*(Lb/2 + La/2) )
 
-                    z2 = p*( Wb*Lb/5 + Wa*Lb/20 + La*Wb/20 + Wa*La*(8/15) )
+                    z2 = p*( Wb*Lb/5 + Wa*Lb/20 + La*Wb/20 + Wa*La*(1/30) ) * H**3
 
                     Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
                     Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
@@ -799,7 +773,7 @@ class Member:
                     slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
                     AWP = slWP[0]*slWP[1]                                      # waterplane area of rectangular member [m^2]
                     IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
-                    IyWP = (1/12)*slWP[0]**3*slWP[0]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+                    IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
                     I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
                     T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
                     I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as PRP
@@ -834,7 +808,9 @@ class Member:
 
                 # buoyancy force and moment about end A
                 Fz = rho*g* V_UWi
-                M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+                M = 0
+                if self.shape=='circular': # Need to find the equivalent of this for the rectangular case
+                    M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
                 Mx = M*dPhi_dThx
                 My = M*dPhi_dThy
 
@@ -891,10 +867,12 @@ class Member:
         else:
             r_center = np.zeros(3)       # temporary fix for out-of-water members
         
+        self.V = V_UW  # store submerged volume
+        
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
 
-    def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81):
+    def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81, k_array=None):
         '''Compute the Member's linear strip-theory-hydrodynamics terms, 
         related to drag and added mass, which are also a precursor to 
         excitation. All computed quantities are in global orientations.
@@ -909,16 +887,19 @@ class Member:
         
         Returns
         -------
-        A_hydro, I_hydro : 3x3 matrices
+        A_hydro, I_hydro : 6x6 matrices
             Hydrodynamic added mass and inertial excitation matrices.
         '''
         
-        # hydrodynamic added mass matrix from strip theory [kg, kg-m, kg-m^2]
+        # hydrodynamic added mass and excitation matrices from strip theory [kg, kg-m, kg-m^2]
         A_hydro = np.zeros([6,6])
         I_hydro = np.zeros([6,6])
 
         circ = self.shape=='circular'  # boolean for circular vs. rectangular
         
+        # Local inertial excitation matrix - Froude-Krylov.
+        # Calculated in a separate function to allow for cases with MacCamy-Fuchs correction.
+        self.calcImat(rho=rho, g=g, k_array=k_array)
 
         # loop through each node of the member
         for il in range(self.ns):
@@ -949,15 +930,9 @@ class Member:
                     
                     # Local added mass matrix (axial term explicitly excluded here - we aren't dealing with chains)
                     Amat_sides = rho*v_i *( Ca_p1*self.p1Mat + Ca_p2*self.p2Mat )
-                    
-                    # Local inertial excitation matrix - Froude-Krylov  
-                    # (axial term explicitly excluded here - we aren't dealing with chains)
-                    # Note, the 1 is the Cp, dynamic pressure, term.
-                    Imat_sides = rho*v_i *(  (1.+Ca_p1)*self.p1Mat + (1.+Ca_p2)*self.p2Mat ) 
-                    
-
+                                       
                     # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
-                    # Note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+                    # Note : v_i and a_i work out to zero for non-tapered sections or non-end sections
 
                     # compute volume assigned to this end surface, and
                     # signed end area (positive facing down) = mean diameter of strip * radius change of strip
@@ -975,15 +950,10 @@ class Member:
                     # Local added mass matrix
                     Amat_end = rho*v_i * Ca_End*self.qMat
                     
-                    # Local inertial excitation matrix 
-                    # Note, there is no 1 added to Ca_End because dynamic pressure is handled separately
-                    Imat_end = rho*v_i * Ca_End*self.qMat  
-                    
 
                     # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
                     self.Amat[il,:,:] = Amat_sides + Amat_end
-                    self.Imat[il,:,:] = Imat_sides + Imat_end
-                    self.a_i[il] = a_i
+                    self.a_i[il] = a_i  # signed axial reference area for use in dynamic pressure force
                     
                     
                     # add to global added mass and inertial excitation matrices
@@ -997,12 +967,248 @@ class Member:
         else:
             return A_hydro
 
+    def calcImat(self, rho=1025, g=9.81, k_array=None):
+        '''Compute the Member's linear strip-theory-hydrodynamics excitation 
+        matrix, Imat, which is the term Cm=(1+Ca) from Morison's equation.
+        Optionally, Cm can be computed using the MacCamy-Fuchs correction for
+        a circular cylinder if the wave number k is specified.
+        All computed quantities are in global orientation.
+        '''
+        
+        circ = self.shape=='circular'  # boolean for circular vs. rectangular
+        
+        MCF = False
+        if k_array is not None:
+            MCF = self.MCF
+            if len(k_array) != self.Imat_MCF.shape[3] and MCF:
+                raise ValueError(f'Number of elements in wave number vector ({len(k_array)}) must match the number of frequencies previously specified for member ({self.Imat.shape[3]}).')
+
+        # loop through each node of the member
+        for il in range(self.ns):
+
+            # only process hydrodynamics if this node is submerged
+            if self.r[il,2] < 0:
+                
+                # only compute inertial loads and added mass for members that aren't modeled with potential flow
+                if self.potMod==False:
+                    
+                    # interpolate coefficients for the current strip
+                    Ca_p1  = np.interp( self.ls[il], self.stations, self.Ca_p1 )
+                    Ca_p2  = np.interp( self.ls[il], self.stations, self.Ca_p2 )
+                    Ca_End = np.interp( self.ls[il], self.stations, self.Ca_End)
+
+
+                    # ----- compute side effects (transverse only) -----
+
+                    # volume assigned to this node
+                    if circ:
+                        v_i = 0.25*np.pi*self.ds[il]**2*self.dls[il]
+                    else:
+                        v_i = self.ds[il,0]*self.ds[il,1]*self.dls[il]  
+                        
+                    if self.r[il,2] + 0.5*self.dls[il] > 0:    # if member extends out of water 
+                        v_i = v_i * (0.5*self.dls[il] - self.r[il,2]) / self.dls[il]  # scale volume by the portion that is under water
+                                       
+                    # Local inertial excitation matrix - Froude-Krylov  
+                    # (axial term explicitly excluded here - we aren't dealing with chains)
+                    # Note, the 1 is the Cp, dynamic pressure, term.
+                    if MCF:
+                        Imat_sides = np.zeros([3, 3, len(k_array)], dtype=complex)
+                        for ik, k in enumerate(k_array):
+                            # Apply MCF correction to the nodes of sections that cross the water surface
+                            Cm_p1, Cm_p2 = self.getCmSides(il, k=k)
+                            Imat_sides[:, :, ik] = rho*v_i * (Cm_p1*self.p1Mat + Cm_p2*self.p2Mat)
+                    else:
+                        Cm_p1, Cm_p2 = self.getCmSides(il, k=None)
+                        Imat_sides = rho*v_i *(Cm_p1*self.p1Mat + Cm_p2*self.p2Mat)
+
+
+                    # ----- add axial/end effects for excitation ------
+                    # Note : v_i work out to zero for non-tapered sections or non-end sections
+
+                    # compute volume assigned to this end surface, and
+                    # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                    if circ:
+                        v_i = np.pi/12.0 * abs(  (self.ds[il]+self.drs[il])**3 
+                                               - (self.ds[il]-self.drs[il])**3 )  
+                    else:
+                        v_i = np.pi/12.0 * (  (np.mean(self.ds[il]+self.drs[il]))**3 
+                                            - (np.mean(self.ds[il]-self.drs[il]))**3 )    # so far just using sphere eqn and taking mean of side lengths as d
+                        # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
+
+                    
+                    # Local inertial excitation matrix 
+                    # Note, there is no 1 added to Ca_End because dynamic pressure is handled separately
+                    Imat_end = rho*v_i * Ca_End*self.qMat  
+                    
+                    # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
+                    if MCF != 0:
+                        self.Imat_MCF[il,:,:, :] = Imat_sides[:,:, :] + Imat_end[:,:, None]
+                    else:
+                        self.Imat[il,:,:] = Imat_sides[:,:] + Imat_end[:,:]
+    
+
+    def getCmSides(self, il, k=None):
+        if il < 0 or il >= self.ns:
+            raise Exception(f"Member {self.name}: node outside range in getCm.")
+
+        MCF = False
+        if k is not None:
+            MCF = self.MCF
+
+        Ca_p1  = np.interp( self.ls[il], self.stations, self.Ca_p1 )
+        Ca_p2  = np.interp( self.ls[il], self.stations, self.Ca_p2 )
+        Cm_p1_0, Cm_p2_0 = (1.+Ca_p1), (1.+Ca_p2)
+
+        if not MCF:
+            Cm_p1 = Cm_p1_0
+            Cm_p2 = Cm_p2_0
+
+        else:            
+            R = self.ds[il]/2
+            Hp1 = 0.5 * (hankel1(0, k*R) - hankel1(2, k*R)) # Derivative of the Hankel function of first kind and order one
+            Cm_p1 = 4j  / (np.pi * (k*R)**2 * Hp1)
+            Cm_p2 = Cm_p1
+
+            # The MCF correction only makes sense for short waves.
+            # We use the threshold lamda/D < 5 commonly adopted for the Morison equation
+            # but changing smoothly from Cm_p1_0 and Cm_p2_0 using a ramp function.
+            # This is particularly useful for cases where the tuned value of Ca was too 
+            # different from the theoretical value of 1 (e.g. the OC4 Platform, with Ca = 0.63)
+            # and the user doesn't want to tune the model again
+            Tr = np.pi/5/R # Threshold value
+            T0 = 0 # Value to start the transition
+            ramp = 0.5*(1-np.cos(np.pi*(k-T0)/Tr)) if k<Tr else 1
+            ramp = 0 if k<=T0 else ramp 
+            Cm_p1 = Cm_p1 * ramp + Cm_p1_0 * (1-ramp)
+            Cm_p2 = Cm_p2 * ramp + Cm_p2_0 * (1-ramp)
+
+        return Cm_p1, Cm_p2
+
+    def correction_KAY(self, h, w1, w2, beta, rho=1025, g=9.81, k1=None, k2=None, Nm=10):
+        '''For surface-piercing vertical cylinders, we can partially account for second-order diffraction loads
+           by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinder. 
+           For the mean loads: Kim and Yue (1989) The complete second-order diffraction solution for an axisymmetric body - Part 1. Monochromatic incident waves
+           For the difference-frequency loads: Kim and Yue (1990) The complete second-order diffraction solution for an axisymmetric body - Part 2. Bichromatic incident waves and body motions
+    
+           Output = F / (Aj * Al), where Aj and Al are the complex amplitudes of the wave pair
+           The output force is in the same direction as the incoming waves. 
+           For now, only long crested seas are considered (both wave components along the same direction). 
+        '''
+
+        # Omega is a convenience variable used in the analytical solution
+        def omega(k1R, k2R, n):
+            # Derivatives of the Hankel function
+            H_N_ii = 0.5 * (hankel1(n - 1, k1R) - hankel1(n + 1, k1R))
+            H_N_jj = 0.5 * np.conj(hankel1(n - 1, k2R) - hankel1(n + 1, k2R))
+            H_Nm1_ii = 0.5 * (hankel1(n, k1R) - hankel1(n + 2, k1R))
+            H_Nm1_jj = 0.5 * np.conj(hankel1(n, k2R) - hankel1(n + 2, k2R))
+
+            return 1 / (H_Nm1_ii * H_N_jj) - 1 / (H_N_ii * H_Nm1_jj)
+
+        F = np.zeros(6, dtype=complex)
+        if not self.MCF:
+            return F
+                
+        # Compute k1 and k2 if not provided
+        if k1 is None:
+            k1 = waveNumber(w1, h)
+        if k2 is None:
+            k2 = waveNumber(w2, h)
+
+        # In this whole function, we assume that the wave direction is the same for both components, but I will leave this below
+        # in case we want to expand to short-crested seas in the future    
+        cosB1, sinB1 = np.cos(beta), np.sin(beta) 
+        cosB2, sinB2 = cosB1, sinB1    
+        k1_k2 = np.array([k1 * cosB1 - k2 * cosB2, k1 * sinB1 - k2 * sinB2, 0]) # For the phase    
+
+        # The force is derived for a vertical cylinder and, in the original solution, it is aligned with the waves.
+        # We will say that it is perpendicular to the cylinder axis but aligned with the wave direction
+        beta_vec = np.array([cosB1, sinB1, 0])
+        pforce = np.dot(beta_vec, self.p1)*self.p1 + np.dot(beta_vec, self.p2)*self.p2
+        pforce = pforce / np.linalg.norm(pforce) # Normalize the force
+                
+        #==== Component due to the relative wave elevation. Lumped at the intersection with the mean waterline
+        if self.rA[2]*self.rB[2] < 0:           
+            # Find intersection with the mean waterline (z=0) and its radius
+            rwl = self.rA + (self.rB - self.rA) * (0 - self.rA[2]) / (self.rB[2] - self.rA[2])
+            radii = 0.5*np.array(self.ds)
+            R = np.interp(0, self.r[:,2], radii)
+
+            # Compute force lumped at the intersection with the mean waterline
+            k1R, k2R = k1*R, k2*R
+            Fwl = 0+0j
+            # if k1R >= np.pi/10 or k2R >= np.pi/10:
+            for nn in range(Nm + 1):
+                Fwl += -rho*g*R*2j/np.pi/(k1R*k2R) * omega(k1R, k2R, nn)
+            
+            Fwl = np.real(Fwl) # Get only the part related to diffraction effects to avoid double counting with Rainey's equation
+            Fwl *= np.exp(-1j*np.dot(k1_k2, rwl)) # Solution considers cylinder at (0,0). Displace it to actual location
+            F += translateForce3to6DOF(Fwl*pforce, rwl)
+
+
+        #==== Component due to the quadratic velocity in Bernoullis equation
+        # The integration along the member is very sensitive. So, we perform the 
+        # integration analytically around each node.
+        if self.rA[2]*self.rB[2] < 0:
+            for il, r1 in enumerate(self.r[:-1]): # The integration is based on the bottom node, so we skip the last one
+                # No point in computing for nodes above the mean water line
+                z1 = r1[2]
+                if z1 > 0:
+                    continue
+
+                r2 = self.r[il+1]
+                z1, z2 = r1[2], r2[2]
+                z2 = 0 if z2 > 0 else z2
+
+                # Get values used in the analytical solution
+                R1 = self.ds[il]/2
+                if self.dls[il] == 0: # If this is an end node, the diameter was divided by two
+                    R1 = self.ds[il]
+
+                R2 = self.ds[il+1]/2
+                if self.dls[il+1] == 0:
+                    R2 = self.ds[il]
+                
+                R = 0.5*(R1 + R2) # Consider the mean radius
+                k1R, k2R = k1*R, k2*R # Nondimensional wave numbers
+                H = h/R # Nondimensional water depth
+                wm = (w1-w2)/np.sqrt(g/h) # Nondimensional difference frequency
+                k1h, k2h = k1R*H, k2R*H
+
+                # For mean loads
+                dF = 0+0j  # Force per unit length. Assumed to be aligned with the wave propagation direction
+                if w1 == w2:
+                    Im = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) - (z2+h)/h - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) + (z1+h)/h)
+                    Ip = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) + (z2+h)/h - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) - (z1+h)/h)                    
+
+                else:
+                    Im = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))
+                    Ip = 0.5 * (np.sinh((k1 + k2)*(z2+h)) / (k1h + k2h) + np.sinh((k1 - k2)*(z2+h)) / (k1h - k2h) - np.sinh((k1 + k2)*(z1+h)) / (k1h + k2h) - np.sinh((k1 - k2)*(z1+h)) / (k1h - k2h))                    
+
+                coshk1h, coshk2h = np.cosh(k1h), np.cosh(k2h)                    
+                for nn in range(Nm + 1):
+                    dF += rho*g*R*2j/np.pi/(k1R*k2R) * omega(k1R, k2R, nn) * (k1h*k2h/np.sqrt(k1h*np.tanh(k1h))/np.sqrt(k2h*np.tanh(k2h)) * (Im + Ip*nn*(nn+1)/k1R/k2R)/coshk1h/coshk2h)
+
+                        
+                # The force calculated above considers a cylinder at (x,y)=(0,0), so we need to account for the wave phase
+                r = 0.5*(r1 + r2)
+                dF = np.real(dF) # Get only the part related to diffraction effects to avoid double counting with Rainey's equation
+                dF *= np.exp(-1j*np.dot(k1_k2, rwl)) # Solution considers cylinder at (0,0). Displace it to actual location
+                F += translateForce3to6DOF(dF*pforce, r)
+
+        if k1 < k2:
+            F = np.conj(F)
+        
+        return F
+
 
     def getSectionProperties(self, station):
         '''Get member cross sectional area and moments of inertia at a user-
         specified location along the member.'''
         
-        
+        A = 0
+        I = 0        
         
         return A, I
 
@@ -1018,7 +1224,12 @@ class Member:
             Otherwise produces a 3d plot (default).
         
         '''
-
+        
+        # support self color option
+        if color == 'self':
+            color = self.color  # attempt to allow custom colors
+        
+        
         # --- get coordinates of member edges in member reference frame -------------------
 
         if not station_plot:

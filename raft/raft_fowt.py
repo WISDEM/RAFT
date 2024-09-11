@@ -44,11 +44,7 @@ class FOWT():
         '''
 
         print("Making FOWT")
-
-        # from Joep: for muliple HAMS threads and multiple wave headings >>>
-        #self.numThreads = int(getFromDict(design['settings'],'numThreads', default=8)) # number of threads to run HAMS
-        #self.headsStored = np.empty(1)  
-        
+       
         # basic setup
         self.nDOF = 6
         self.nw = len(w)                                          # number of frequencies
@@ -92,13 +88,12 @@ class FOWT():
             design['turbine']['mu_water'      ] = getFromDict(design['site'], 'mu_water', shape=0, default=1.0e-03)
             design['turbine']['shearExp_water'] = getFromDict(design['site'], 'shearExp_water', shape=0, default=0.12)
             
-            # turbine RNA description 
-            self.mRNA    = getFromDict(design['turbine'], 'mRNA'   , shape=self.nrotors)
-            self.IxRNA   = getFromDict(design['turbine'], 'IxRNA'  , shape=self.nrotors)
-            self.IrRNA   = getFromDict(design['turbine'], 'IrRNA'  , shape=self.nrotors)
-            self.xCG_RNA = getFromDict(design['turbine'], 'xCG_RNA', shape=self.nrotors)
-            self.hHub    = getFromDict(design['turbine'], 'hHub'   , shape=self.nrotors)
-        
+            # Nacelle geometry (for hydro): if a single one (dictionary) is listed,
+            # replicate it into a list for all rotors.
+            if 'nacelle' in design['turbine']:
+                if isinstance(design['turbine']['nacelle'], dict): 
+                    design['turbine']['nacelle'] = [design['turbine']['nacelle']]*self.nrotors
+                        
         else: # no turbines/rotors case
         
             self.nrotors = 0  # this will ensure RAFT doesn't set up or look for any Rotor objects
@@ -120,19 +115,12 @@ class FOWT():
         self.g         = getFromDict(design['site'], 'g'        , default=9.81)
         self.shearExp_water = getFromDict(design['site'], 'shearExp_water', default=0.12)
         
-        # <<<<<<<<<<< Should it be something like self.dlsMax?
-        #design['turbine']['tower']['dlsMax'] = getFromDict(design['turbine']['tower'], 'dlsMax', shape=-1, default=5.0)
-
-        potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
-        self.potModMaster = potModMaster
+        self.potModMaster = getFromDict(design['platform'], 'potModMaster', dtype=int, default=0)
         dlsMax       = getFromDict(design['platform'], 'dlsMax'      , default=5.0)
         min_freq_BEM = getFromDict(design['platform'], 'min_freq_BEM', default=self.dw/2/np.pi)
         self.dw_BEM  = 2.0*np.pi*min_freq_BEM
         self.dz_BEM  = getFromDict(design['platform'], 'dz_BEM', default=3.0)
         self.da_BEM  = getFromDict(design['platform'], 'da_BEM', default=2.0)
-
-
-        #self.aeroServoMod = np.atleast_1d(getFromDict(design['turbine'], 'aeroServoMod', default=1))  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
 
 
         # member-based platform description
@@ -141,9 +129,9 @@ class FOWT():
         for mi in design['platform']['members']:
 
             # prepare member info
-            if potModMaster==1:
+            if self.potModMaster in [1]:
                 mi['potMod'] = False
-            elif potModMaster==2:
+            elif self.potModMaster in [2,3]:
                 mi['potMod'] = True
                 
             if 'dlsMax' not in mi:    # apply the global dlsMax setting to any member that doesn't have its own setting
@@ -161,11 +149,11 @@ class FOWT():
         
         
         # add tower(s) to member list if applicable
-        for ti in range(self.ntowers):
-            #tower['dlsMax'] = design['turbine']['tower']['dlsMax']     # for when we want to make a list of tower 'members' and have general inputs like dlsMax first
-            self.memberList.append(Member(design['turbine']['tower'][ti], self.nw))
+        if 'turbine' in design:
+            for mem in design['turbine']['tower']:
+                self.memberList.append(Member(mem, self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
-
+        
         # array-level mooring system connection
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
@@ -206,15 +194,15 @@ class FOWT():
         # build Rotor list
         for ir in range(self.nrotors):
             self.rotorList.append(Rotor(design['turbine'], self.w, ir))
-            #self.rotorCoords.append(design['turbine']['rotorCoords'])
         
         # initialize mean force arrays to zero, so the model can work before we calculate excitation
         self.f_aero0 = np.zeros([6, self.nrotors])
         # mean weight and hydro force arrays are set elsewhere. In future hydro could include current.
         self.D_hydro = np.zeros(6)      # initialize mean drag force from current - acts as a "static" force, like f_aero0
 
-        # flag to signal whether any BEM hydro modeling is done
+        # flag to signal whether any members will be modeled with BEM
         self.potMod = any([member['potMod']==True for member in design['platform']['members'] ])
+
 
         # initialize BEM arrays, whether or not a BEM solver is used
         # __, __, nWaveHeadings = getUniqueCaseHeadings(design['cases']['keys'], design['cases']['data'])  # identify how many wave headings need to be preprocessed
@@ -224,17 +212,46 @@ class FOWT():
         #self.F_BEM = np.zeros([self.nWaves, 6, self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
         # <<< TODO: Set maximum of amount of headingsm for X_BEM and F_BEM and use interpolation of hydrodynamics. Or not?
 
+        # First-order linear hydro input file options (preexisting files option)
+        # when potFirstOrder > 0
+        self.potFirstOrder = getFromDict(design['platform'], 'potFirstOrder', dtype=int, default=0)
+        if self.potFirstOrder==1:
+            if not 'hydroPath' in design['platform']:
+                raise Exception('If potFirstOrder==1, then hydroPath must be specified in the platform input.')
+            self.hydroPath = design['platform']['hydroPath']
+            self.readHydro() #self.hydroPath)
+        
+
         # Add a flag to either not compute 2nd order hydro; read QTF; or compute it with a slender-body approximation
-        # self.qtf = np.zeros([nw1, nw2, nheads, self.nDOF], dtype=complex)
-        if 'qtfPath' in design['platform']:
-            self.secondOrderWaveMod = 1     # <<< temporary, until we implement a flag like this in the inputs
-            self.qtfPath = design['platform']['qtfPath']
+        self.potSecOrder = getFromDict(design['platform'], 'potSecOrder', dtype=int, default=0)
+        if self.potSecOrder==1:
+            if (not 'min_freq2nd' in design['platform']) or (not 'max_freq2nd' in design['platform']):
+                raise Exception('If potSecOrder==1, then both min_freq2nd and max_freq2nd must be specified in the platform input.')
+            min_freq2nd = design['platform']['min_freq2nd']
+            max_freq2nd = design['platform']['max_freq2nd']
+            df_freq2nd = min_freq2nd
+            if ('df_freq2nd' in design['platform']):
+                df_freq2nd = design['platform']['df_freq2nd']
+            self.w1_2nd = np.arange(min_freq2nd, max_freq2nd+0.5*min_freq2nd, df_freq2nd)*2*np.pi
+            self.w2_2nd = self.w1_2nd.copy()
+
+            self.k1_2nd = np.zeros(len(self.w1_2nd))
+            for i, w in enumerate(self.w1_2nd):
+                self.k1_2nd[i] = waveNumber(w, self.depth)
+            self.k2_2nd = self.k1_2nd.copy()
+
+        elif self.potSecOrder==2:
+            if not 'hydroPath' in design['platform']:
+                raise Exception('If potSecOrder==2, then hydroPath must be specified in the platform input.')
+            self.qtfPath = design['platform']['hydroPath'] + '.12d'
             self.readQTF(self.qtfPath)
-            self.mu_2nd = self.w - self.w[0] # The frequency array for difference-frequency second-order is the same as self.w, but starting at 0    
-        else:
-            self.secondOrderWaveMod = 0    # <<< temporary
 
-
+        # Set output folder for QTFs
+        self.outFolderQTF = None
+        if 'outFolderQTF' in design['platform']:
+            self.outFolderQTF = design['platform']['outFolderQTF']
+    
+    
     def setPosition(self, r6):
         '''Updates the FOWT's (mean) position including all components.
         
@@ -243,10 +260,7 @@ class FOWT():
         '''
         
         # if offset provided, set things according to those positions, otherwise zero it
-        #if r6:
         self.r6 = r6
-        #else:
-        #    self.r6 = np.array([x_ref, y_ref, 0, 0, 0, 0])
         self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref, 0, 0, 0, 0])
         
         # calculate and save a rotation/orientation matrix
@@ -311,12 +325,6 @@ class FOWT():
         self.m_shell = 0             # total mass of the shells/steel of the members in the substructure [kg]
         mballast = []               # list to store the mass of the ballast in each of the substructure members [kg]
         pballast = []               # list to store the density of ballast in each of the substructure members [kg]
-        '''
-        I44list = []                # list to store the I44 MoI about the PRP of each substructure member
-        I55list = []                # list to store the I55 MoI about the PRP of each substructure member
-        I66list = []                # list to store the I66 MoI about the PRP of each substructure member
-        masslist = []               # list to store the mass of each substructure member
-        '''
         self.mtower = np.zeros(self.ntowers)    # assume that the whole tower will always be one member
         self.rCG_tow = []
 
@@ -350,13 +358,6 @@ class FOWT():
                 self.m_shell += m_shell               # mass of the substructure shell material [kg]
                 mballast.extend(mfill)              # list of ballast masses in each substructure member (list of lists) [kg]
                 pballast.extend(pfill)              # list of ballast densities in each substructure member (list of lists) [kg/m^3]
-                '''
-                # Store substructure moment of inertia terms
-                I44list.append(mem.M_struc[3,3])
-                I55list.append(mem.M_struc[4,4])
-                I66list.append(mem.M_struc[5,5])
-                masslist.append(mass)
-                '''
 
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
 
@@ -377,17 +378,15 @@ class FOWT():
         
         # ------------- include buoyancy effects of underwater rotors -------------
         # loop through each blade member to calculate rotor buoyancy forces (for underwater turbines)
-        for i in range(self.nrotors):       # for each rotor in the fowt
+        for i, rotor in enumerate(self.rotorList):
 
-            rotor = self.rotorList[i]
-
-            if rotor.Zhub < 0:      # only do this for underwater rotors
+            if rotor.r3[2] < 0:      # only do this for underwater rotors
                 
                 for j in range(int(rotor.nBlades)):     # for each blade on the rotor
 
-                    # ensure the blade headings are equally spaced apart (so that the specific heading values are arbitrary)
-                    if all(np.mod(np.diff(rotor.headings, append=rotor.headings[0]),360) != np.mod(np.diff(rotor.headings, append=rotor.headings[0])[0], 360)):
-                        raise ValueError("The headings of the blades need to be equally spaced apart")
+                    # ensure the blade azimuths are equally spaced apart (so that the specific heading values are arbitrary)
+                    if all(np.mod(np.diff(rotor.azimuths, append=rotor.azimuths[0]),360) != np.mod(np.diff(rotor.azimuths, append=rotor.azimuths[0])[0], 360)):
+                        raise ValueError("The azimuths of the blades need to be equally spaced apart")
 
                     for k,afmem in enumerate(rotor.bladeMemberList):    # for each airfoil member in the bladeMemberList
 
@@ -397,10 +396,10 @@ class FOWT():
                         rOG = np.vstack([rA_OG, rB_OG])
 
                         # set the heading, or azimuth angle, of the blade member
-                        afmem.heading = rotor.headings[j]
+                        afmem.heading = rotor.azimuths[j]
 
                         # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
-                        r_new = rotor.getBladeMemberPositions(rotor.headings[j], rOG)
+                        r_new = rotor.getBladeMemberPositions(rotor.azimuths[j], rOG)
 
                         # save these end node positions in the blade member
                         afmem.rA0 = r_new[0,:]
@@ -442,29 +441,19 @@ class FOWT():
 
 
         # ------------------------- include RNA properties -----------------------------
-
-        # Here we could initialize first versions of the structure matrix components.
-        # These might be iterated on later to deal with mean- or amplitude-dependent terms.
-        #self.M_struc += structural.M_lin(q0,      self.turbineParams)        # Linear Mass Matrix
-        #self.B_struc += structural.C_lin(q0, qd0, self.turbineParams, u0)    # Linear Damping Matrix
-        #self.C_struc += structural.K_lin(q0, qd0, self.turbineParams, u0)    # Linear Stifness Matrix
-        #self.W_struc += structural.B_lin(q0, qd0, self.turbineParams, u0)    # Linear RHS
-
-        # below are temporary placeholders
-        # for now, turbine RNA is specified by some simple lumped properties
-
-        for i in range(self.nrotors):
-            Mmat = np.diag([self.mRNA[i], self.mRNA[i], self.mRNA[i], self.IxRNA[i], self.IrRNA[i], self.IrRNA[i]])            # create mass/inertia matrix
-            center = np.array([self.xCG_RNA[i], self.rotorList[i].rHub[1], self.hHub[i]])   # RNA center of mass location <<< need to overhaul this!
-
-            # compute rotated RNA mass properties considering current fowt pose <<< need to double check these
-            Mmat = rotateMatrix6(Mmat, self.Rmat)       # adjust the inertia matrix to align with global directions
-            center = np.matmul(self.Rmat, center)      # adjust center offset from PRP along global directions
-
+        for i, rotor in enumerate(self.rotorList):
+            
+            # create mass/inertia matrix
+            Mmat = np.diag([rotor.mRNA, rotor.mRNA, rotor.mRNA, 
+                            rotor.IxRNA, rotor.IrRNA, rotor.IrRNA])
+            
+            # Rotate RNA mass matrix into the global orientation
+            Mmat = rotateMatrix6(Mmat, rotor.R_q)  
+            
             # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-            self.W_struc += translateForce3to6DOF(np.array([0,0, -g*self.mRNA[i]]), center )   # weight vector
-            self.M_struc += translateMatrix6to6DOF(Mmat, center)                            # mass/inertia matrix
-            m_center_sum += center*self.mRNA[i]
+            self.W_struc += translateForce3to6DOF(np.array([0,0, -g*rotor.mRNA]), rotor.r_CG_rel )   # weight vector
+            self.M_struc += translateMatrix6to6DOF(Mmat, rotor.r_CG_rel)                            # mass/inertia matrix
+            m_center_sum += rotor.r_CG_rel*rotor.mRNA
 
         # ----------- process inertia-related totals ----------------
 
@@ -577,30 +566,31 @@ class FOWT():
             incident wave headings to be considered, default [0] (deg). <<<<<<<< capability still needs to be added, after adjustments to pyHAMS
         '''
         
-        # go through members to be modeled with BEM and calculated their nodes and panels lists
-        nodes = []
-        panels = []
-
-        vertices = np.zeros([0,3])  # for GDF output
-
-        dz = self.dz_BEM if dz==0 else dz  # allow override if provided
-        da = self.da_BEM if da==0 else da
-
-        for mem in self.memberList:
-
-            if mem.potMod==True:
-                pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
-                        dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
-
-                # for GDF output
-                vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
-                vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
-
-
-        # only try to save a mesh and run HAMS if some members DO have potMod=True
-        if len(panels) > 0:
+        # try to make a mesh and run HAMS if we're supposed to (not in the case of potModMaster 3)
+        if self.potMod and self.potModMaster in [0, 2]:
             
             import pyhams.pyhams as ph  # import PyHAMS only if we're going to use it
+
+            # go through members to be modeled with BEM and calculated their nodes and panels lists
+            nodes = []
+            panels = []
+
+            vertices = np.zeros([0,3])  # for GDF output
+
+            dz = self.dz_BEM if dz==0 else dz  # allow override if provided
+            da = self.da_BEM if da==0 else da
+
+            for mem in self.memberList:
+                if mem.potMod:
+                    pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
+                            dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+
+                    # for GDF output
+                    vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                    vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
+
+            if len(panels) == 0:
+                print("WARNING: no panels to mesh.")
 
             pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
 
@@ -619,6 +609,8 @@ class FOWT():
 
             nw_HAMS = int(np.ceil(wMax_HAMS/dw_HAMS))  # ensure the upper frequency of the HAMS analysis is large enough
 
+            dw_HAMS = np.round(dw_HAMS, 15)             # ensure the frequency discretization is under 16 decimal places (to be a float)
+            
             ph.write_control_file(meshDir, waterDepth=self.depth, incFLim=1, iFType=3, oFType=4,   # inputs are in rad/s, outputs in s
                                   numFreqs=-nw_HAMS, minFreq=dw_HAMS, dFreq=dw_HAMS,
                                   numHeadings=len(headings), headingList=headings) #, numThreads=self.numThreads) <<<
@@ -632,25 +624,26 @@ class FOWT():
 
             # execute the HAMS analysis
             ph.run_hams(meshDir)
+            
+            hydroPath = os.path.join(meshDir,'Output','Wamit_format','Buoy')
+            
+        elif self.potModMaster == 3: 
+            hydroPath = self.hydroPath
 
+        else:
+            return
+        
+        
+        if True:    
+            import pyhams.pyhams as ph
             # read the HAMS WAMIT-style output files
-            addedMass, damping, w1 = ph.read_wamit1(os.path.join(meshDir,'Output','Wamit_format','Buoy.1'), TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
-            M, P, R, I, w3, heads  = ph.read_wamit3(os.path.join(meshDir,'Output','Wamit_format','Buoy.3'), TFlag=True)   
+            addedMass, damping, w1 = ph.read_wamit1(hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
+            M, P, R, I, w3, heads  = ph.read_wamit3(hydroPath+'.3', TFlag=True)   
+            # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
             
             # process headings and sort frequencies
             self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using
-            '''
-            isort1 = np.argsort(w1)  # indices that will sort the radiation results
-            isort3 = np.argsort(w3)  # indices that will sort the diffraction results
-            w1        = np.take(w1, isort1)
-            w3        = np.take(w3, isort3)
-            addedMass = np.take(addedMass, isort1, axis=2)
-            damping   = np.take(damping  , isort1, axis=2)
-            M         = np.take(M        , isort3, axis=2)
-            P         = np.take(P        , isort3, axis=2)
-            R         = np.take(R        , isort3, axis=2)
-            I         = np.take(I        , isort3, axis=2)
-            '''
+
             # interpolate to RAFT model frequencies
             # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
             addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
@@ -665,7 +658,9 @@ class FOWT():
             X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
             
             
-            # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
+            # Transform excitation coefficients so that DOFs are always 
+            # relative to incident wave heading rather than global frame,
+            # for accurate magnitudes when interpolating between directions.
             self.X_BEM = np.zeros_like(X_BEM_temp)
             
             for ih in range(len(heads)):
@@ -679,24 +674,70 @@ class FOWT():
                 self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
                 self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
                 
-            
             # HAMS results error checks  >>> any more we should have? <<<
             if np.isnan(self.A_BEM).any():
-                #print("NaN values detected in HAMS calculations for added mass. Check the geometry.")
-                #breakpoint()
                 raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
             if np.isnan(self.B_BEM).any():
-                #print("NaN values detected in HAMS calculations for damping. Check the geometry.")
-                #breakpoint()
                 raise Exception("NaN values detected in HAMS calculations for damping. Check the geometry.")
             if np.isnan(self.X_BEM).any():
-                #print("NaN values detected in HAMS calculations for excitation. Check the geometry.")
-                #breakpoint()
                 raise Exception("NaN values detected in HAMS calculations for excitation. Check the geometry.")
 
             # TODO: add support for multiple wave headings <<<
             # note: RAFT will only be using finite-frequency potential flow coefficients
 
+    def readHydro(self):
+        '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's
+        added mass, damping, and excitation matrices. This is as an alternative 
+        to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.  NOT USED!!!'''
+        
+        import pyhams.pyhams as ph
+        
+        # read the preexisting WAMIT-style output files
+        addedMass, damping, w1 = ph.read_wamit1(self.hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
+        M, P, R, I, w3, heads  = ph.read_wamit3(self.hydroPath+'.3', TFlag=True)   
+        
+        # process headings and sort frequencies
+        self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using
+
+        # interpolate to RAFT model frequencies
+        # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
+        addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
+        dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
+        fExRealInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       R, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
+        fExImagInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       I, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
+        # note: fEx tensors are sized according to [nHeadings, 6 DOFs, frequencies]
+        
+        # copy results over to the FOWT's coefficient arrays
+        self.A_BEM = self.rho_water * addedMassInterp
+        self.B_BEM = self.rho_water * dampingInterp                                 
+        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
+        
+        
+        # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
+        self.X_BEM = np.zeros_like(X_BEM_temp)
+        
+        for ih in range(len(heads)):
+            sin_heading = np.sin(np.radians(heads[ih]))
+            cos_heading = np.cos(np.radians(heads[ih]))
+            
+            self.X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
+            self.X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]
+            self.X_BEM[ih,2,:] = X_BEM_temp[ih,2,:]
+            self.X_BEM[ih,3,:] =  cos_heading * X_BEM_temp[ih,3,:] + sin_heading * X_BEM_temp[ih,4,:]
+            self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
+            self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
+            
+        
+        # HAMS results error checks  >>> any more we should have? <<<
+        if np.isnan(self.A_BEM).any():
+            raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
+        if np.isnan(self.B_BEM).any():
+            raise Exception("NaN values detected in HAMS calculations for damping. Check the geometry.")
+        if np.isnan(self.X_BEM).any():
+            raise Exception("NaN values detected in HAMS calculations for excitation. Check the geometry.")
+
+        
+        
 
     def calcTurbineConstants(self, case, ptfm_pitch=0):
         '''This computes turbine linear terms (excluding hydrodynamic added 
@@ -708,9 +749,6 @@ class FOWT():
             mean pitch angle of the platform [rad]
 
         '''
-
-        #self.rotor.runCCBlade(case['wind_speed'], ptfm_pitch=ptfm_pitch, yaw_misalign=case['yaw_misalign'])
-        #print(case)
         turbine_heading = getFromDict(case, 'turbine_heading', shape=0, dtype = float, default=0.0)  # [deg]
         turbine_status  = getFromDict(case, 'turbine_status', shape=0, dtype=str, default='operating')
 
@@ -725,49 +763,45 @@ class FOWT():
         
         if turbine_status == 'operating':
             
-            for ir in range(self.nrotors):
+            for ir, rot in enumerate(self.rotorList):
                 # only compute the aerodynamics if enabled and windspeed is nonzero
 
-                if self.rotorList[ir].Zhub < 0:
+                if rot.r3[2] < 0:
                     current = True
                     speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
                 else:
                     current = False
                     speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
                 
-                if self.rotorList[ir].aeroServoMod > 0 and speed > 0.0:
+                if rot.aeroServoMod > 0 and speed > 0.0:
                 
                     # Get mean aero forces and fore-aft coefficients 
                     # Note: these are about hub coordinate in global orientation.
-                    f_aero0, f_aero, a_aero, b_aero = self.rotorList[ir].calcAero(case, current=current)  # get values about hub
-                    
-                    # hub reference frame relative to PRP <<<<<<<<<<<<<<<<<
-                    rHub = self.rotorList[ir].rHub   # TODO: change the loop to use enumerate to streamline this section, and add mean position support <<<
+                    f_aero0, f_aero, a_aero, b_aero = rot.calcAero(case, current=current)  # get values about hub
                     
                     # convert coefficients to platform reference frame and populate tensor slice for this rotor
                     for iw in range(self.nw):
-                        self.A_aero[:,:,iw,ir] = translateMatrix6to6DOF(a_aero[:,:,iw], rHub)
-                        self.B_aero[:,:,iw,ir] = translateMatrix6to6DOF(b_aero[:,:,iw], rHub)
+                        self.A_aero[:,:,iw,ir] = translateMatrix6to6DOF(a_aero[:,:,iw], rot.r_hub_rel)
+                        self.B_aero[:,:,iw,ir] = translateMatrix6to6DOF(b_aero[:,:,iw], rot.r_hub_rel)
                     
                     # convert forces to platform reference frame
-                    self.f_aero0[:,ir] = transformForce(f_aero0, offset=rHub) # mean forces and moments
+                    self.f_aero0[:,ir] = transformForce(f_aero0, offset=rot.r_hub_rel) # mean forces and moments
                     
                     for iw in range(self.nw):
-                        self.f_aero[:,iw,ir] = transformForce(f_aero[:,iw], offset=rHub) # excitation
+                        self.f_aero[:,iw,ir] = transformForce(f_aero[:,iw], offset=rot.r_hub_rel) # excitation
                     
                     # calculate cavitation of the rotor (platform motions should already be accounted for in the CCBlade object after running calcAero)
                     # if rotor is submerged...
-                    # cav = self.rotorList[ir].calcCavitation(case)  # TO-DO: wire this to be a result/output, then uncomment <<<
+                    # cav = rot.calcCavitation(case)  # TO-DO: wire this to be a result/output, then uncomment <<<
                     
                     # ----- calculate rotor gyroscopic effects -----
                     # rotor speed [rpm]
-                    Omega_rpm = np.interp(speed, self.rotorList[ir].Uhub, self.rotorList[ir].Omega_rpm)
+                    Omega_rpm = np.interp(speed, rot.Uhub, rot.Omega_rpm)
                     
-                    rotMat = RotFrm2Vect(np.array([1,0,0]), self.rotorList[ir].q) # rotation matrix from global to rotor axis
-                    Omega_rotor = np.matmul(rotMat, [Omega_rpm*2*np.pi/60, 0, 0]) # rotor angular velocity vector
+                    Omega_rotor = rot.q * Omega_rpm*2*np.pi/60  # rotor angular velocity vector
                     
                     # rotating inertia vector [kg-m^2 * rad/s = N-m-s]
-                    IO_rotor = self.rotorList[ir].I_drivetrain * Omega_rotor
+                    IO_rotor = rot.I_drivetrain * Omega_rotor
                     
                     GyroDampingMatrix = getH(IO_rotor)
                     
@@ -794,119 +828,113 @@ class FOWT():
         # loop through each member
 
         for i,mem in enumerate(self.memberList):
-            '''
-
-            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
-            
-            # find the proper member node positions (mem.r) if this memberList is a bladeMemberList for underwater rotors. Otherwise, skip
-            if mem.type==3 and Rotor is not None:
-                
-                # save specific rotor variables and original positions of the blade member nodes
-                rotor = Rotor
-                rOG = [mem.rA0, mem.rB0]
-
-                # (without making any changes to the rest of the hydrodynamics calculations below)
-                # the input memberList is the rotor.bladeMemberList multiplied by nBlades (e.g. if len(rotor.bladeMemberList)=10, then this len(memberList)=30 for 3 blade rotor)
-                # adjust the heading/orientation of the each section of blade members by the corresponding heading in rotor.headings based on where in the list you are
-                j = i // int(len(memberList)/rotor.nBlades)     # i (from 0 to 30) // 10, which results in either j = 1, 2, or 3, for each blade heading
-
-                # find the end nodes of the blade member about the global coordinates (e.g,, if rA_OG = [0,0,0] and rB_OG=[0,1,0], and heading=90, then rA=[0,0,0] and rB=[0,0,1])
-                rUpdated = rotor.getBladeMemberPositions(rotor.headings[j], rOG)
-                mem.rA0 = rUpdated[0]
-                mem.rB0 = rUpdated[-1]
-                
-                # apply a blade pitch angle to every blade member if applicable
-                mem.gamma = mem.gamma + dgamma
-
-                # run calcOrientation to ensure the p1 and p2 axes of the members are oriented the way they should be
-                mem.setPosition()
-
-                # >>>>>>> TODO (for added mass of underwater rotors) <<<<<<<<<<
-                # - Do we need to adjust any other methods in raft_fowt to account for added mass?
-                # - Do we need to make any changes to the pyHAMS code to account for rotor added mass?
-                # - How should we adjust the inclusion of member end effects of added mass knowing blade members are attached on ends to each other?
-            
-
-            # loop through each node of the member
-            for il in range(mem.ns):
-
-                # only process hydrodynamics if this node is submerged
-                if mem.r[il,2] < 0:
-                    
-                    # only compute inertial loads and added mass for members that aren't modeled with potential flow
-                    if mem.potMod==False:
-
-                        # interpolate coefficients for the current strip
-                        Ca_q   = np.interp( mem.ls[il], mem.stations, mem.Ca_q  )
-                        Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
-                        Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
-                        Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
-
-
-                        # ----- compute side effects (transverse only) -----
-
-                        if circ:
-                            v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
-                        else:
-                            v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
-
-                        if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
-                            v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
-                        
-                        # added mass (axial term explicitly excluded here - we aren't dealing with chains)
-                        Amat_sides = rho*v_i *( Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat )  # local added mass matrix
-                        
-                        # inertial excitation - Froude-Krylov  (axial term explicitly excluded here - we aren't dealing with chains)
-                        Imat_sides = rho*v_i *(  (1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat ) # local inertial excitation matrix (note: the 1 is the Cp, dynamic pressure, term)
-                        
-
-                        # ----- add axial/end effects for added mass, and excitation including dynamic pressure ------
-                        # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
-
-                        if circ:
-                            v_i = np.pi/12.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
-                            a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
-                        else:
-                            v_i = np.pi/12.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
-                            a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
-                            # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
-
-                        # added mass
-                        Amat_end = rho*v_i * Ca_End*mem.qMat                             # local added mass matrix
-                        
-                        # inertial excitation
-                        Imat_end = rho*v_i * Ca_End*mem.qMat                         # local inertial excitation matrix (note, there is no 1 added to Ca_End because dynamic pressure is handled separately) 
-                        
-
-                        # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
-                        mem.Amat[il,:,:] = Amat_sides + Amat_end
-                        mem.Imat[il,:,:] = Imat_sides + Imat_end
-                        mem.a_i[il] = a_i
-                        
-                        
-                        # add to global added mass matrix for Morison members, which considers the mean offsets and is relative to the RPP with global orientation
-                        self.A_hydro_morison += translateMatrix3to6DOF(mem.Amat[il,:,:], mem.r[il,:] - self.r6[:3])    
-            
-
-            # reset the member.r variable if underwater blade members were used
-            if mem.type==3 and Rotor is not None:
-                mem.rA0 = rOG[0]
-                mem.rB0 = rOG[-1]
-            '''
+        
             # get member added mass matrix about PRP (also saves each member's inertial excitation coefficients)
-            A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3])  
-            
+            if mem.MCF:
+                k_array = self.k
+            else:
+                k_array = None
+
+            A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3], rho=rho, g=g, k_array=k_array)                      
             self.A_hydro_morison += A_hydro_i  # add to FOWT added mass matrix
-    
     
         # ----- Get hydrodynamic contributions from any underwater rotors ------
         for i, rot in enumerate(self.rotorList):
             
             # compute rotor hydro added mass/inertia properties
-            A_hydro_i, I_hydro_i = rot.calcHydroConstants(rho=self.rho_water, g=self.g)
+            A_hydro_i, I_hydro_i = rot.calcHydroConstants(rho=rho, g=g)
             
             # make relative to PRP and add to system added mass matrix
             self.A_hydro_morison += translateMatrix6to6DOF(A_hydro_i, rot.r3-self.r6[:3]) 
+    
+    
+    def getStiffness(self):
+        '''Sums up all the stiffness effects on a FOWT.'''
+        
+        C_tot = np.zeros([6,6])       # total stiffness matrix [N/m, N, N-m]
+        
+        # add in mooring stiffness from MoorPy system
+        C_tot += self.C_moor
+        # add any additional yaw stiffness that isn't included in the MoorPy 
+        # model (e.g. if a bridle isn't modeled)
+        C_tot[5,5] += self.yawstiff
+        # add system-level stiffness effect if it exists...
+        if self.body:
+            C_tot += self.body.getStiffness()  # in future should make an analytic body function for this
+
+        C_tot += self.C_struc + self.C_hydro   # stiffness
+        
+        return C_tot
+    
+    
+    def solveEigen(self, display=0):
+        '''Compute the natural frequencies and mode shapes of the FOWT.
+        This considers the FOWT and any attached mooring lines, but it
+        does not account for coupling with other FOWTs as could occur
+        with an array-level MoorPy instance with shared lines or 
+        suspended cables.
+        
+        Returns
+        -------
+        fns : array
+            List of natural frequencies [Hz].
+        modes : 2D array
+            List of mode shapes (eigenvectors) corresponding to the natural 
+            frequencies.
+        '''
+
+        # Total mass and added mass matrix [kg, kg-m, kg-m^2]
+        M_tot = self.M_struc + self.A_hydro_morison   # mass  (BEM option not supported yet)
+        C_tot = self.getStiffness()  # stiffness
+
+        # check viability of matrices
+        message=''
+        for i in range(self.nDOF):
+            if M_tot[i,i] < 1.0:
+                message += f'Diagonal entry {i} of system mass matrix is less than 1 ({M_tot[i,i]}). '
+            if C_tot[i,i] < 1.0:
+                message += f'Diagonal entry {i} of system stiffness matrix is less than 1 ({C_tot[i,i]}). '
+                
+        if len(message) > 0:
+            raise RuntimeError('System matrices computed by RAFT have one or more small or negative diagonals: '+message)
+
+        # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
+        eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+
+        if any(eigenvals <= 0.0):
+            raise RuntimeError("Error: zero or negative system eigenvalues detected.")
+
+        # sort to normal DOF order based on which DOF is largest in each eigenvector
+        ind_list = []
+        for i in range(5,-1, -1):
+            vec = np.abs(eigenvectors[i,:])  # look at each row (DOF) at a time (use reverse order to pick out rotational DOFs first)
+
+            for j in range(6):               # now do another loop in case the index was claimed previously
+
+                ind = np.argmax(vec)         # find the index of the vector with the largest value of the current DOF
+
+                if ind in ind_list:          # if a previous vector claimed this DOF, set it to zero in this vector so that we look at the other vectors
+                    vec[ind] = 0.0
+                else:
+                    ind_list.append(ind)     # if it hasn't been claimed before, assign this vector to the DOF
+                    break
+
+        ind_list.reverse()   # reverse the index list since we made it in reverse order
+
+        fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
+        modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
+        
+        if display > 0:
+            print("")
+            print("--------- Natural frequencies and mode shapes -------------")
+            print("Mode        1         2         3         4         5         6")
+            print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
+            print("")
+            for i in range(6):
+                print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(6)]))
+            print("-----------------------------------------------------------")
+    
+        return fns, modes
     
 
     def calcHydroExcitation(self, case, memberList=[], dgamma=0):
@@ -932,30 +960,26 @@ class FOWT():
         case['wave_gamma']   = getFromDict(case, 'wave_gamma'    , shape=self.nWaves, dtype=float, default=0)
         
         
-        self.beta = case['wave_heading']   # [rad] array of wave headings
+        self.beta = deg2rad(case['wave_heading'])   # array of wave headings. Input in [deg], but the code uses [rad]
         self.zeta = np.zeros([self.nWaves,self.nw], dtype=complex)
-        
+
         # make wave spectrum for each heading
-        # We are actually losing the phase by computing the 2nd order hydrodynamic forces this way, as the amplitudes will always be real
-        self.Fhydro_2nd = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex) 
-        self.Fhydro_2nd_mean = np.zeros([self.nWaves, self.nDOF])
+        self.S = np.zeros([self.nWaves,self.nw])
         for ih in range(self.nWaves):
             if case['wave_spectrum'][ih] == 'unit':
-                #self.zeta[ih,:] = np.tile(1, self.nw)
-                S         = np.tile(1, self.nw)
-                self.zeta[ih,:] = np.sqrt(2*S*self.dw)
+                self.S[ih,:] = np.tile(1, self.nw)
+                self.zeta[ih,:] = np.sqrt(2*self.S[ih,:]*self.dw)    # wave elevation amplitudes (these are easiest to use)
+            elif case['wave_spectrum'][ih] == 'constant':
+                self.S[ih,:] = case['wave_height'][ih]
+                self.zeta[ih,:] = np.sqrt(2*self.S*self.dw)
             elif case['wave_spectrum'][ih] == 'JONSWAP':
-                S = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        
-                self.zeta[ih,:] = np.sqrt(2*S*self.dw)    # wave elevation amplitudes (these are easiest to use)
+                self.S[ih,:] = JONSWAP(self.w, case['wave_height'][ih], case['wave_period'][ih], Gamma=case['wave_gamma'][ih])        
+                self.zeta[ih,:] = np.sqrt(2*self.S[ih,:]*self.dw)    # wave elevation amplitudes (these are easiest to use)
             elif case['wave_spectrum'][ih] in ['none','still']:
                 self.zeta[ih,:] = np.zeros(self.nw)        
-                S = np.zeros(self.nw)        
+                self.S[ih,:] = np.zeros(self.nw)        
             else:
-                raise ValueError(f"Wave spectrum input '{case['wave_spectrum'][ih]}' not recognized.")
-            
-            if self.secondOrderWaveMod == 1:
-                self.Fhydro_2nd_mean[ih, :], self.Fhydro_2nd[ih, :, :] = self.calcHydroForce_2ndOrd(case['wave_heading'][ih], S)
-            
+                raise ValueError(f"Wave spectrum input '{case['wave_spectrum'][ih]}' not recognized.")                        
 
         #print(f"significant wave height:  {4*np.sqrt(np.sum(S)*self.dw):5.2f} = {4*getRMS(self.zeta, self.dw):5.2f}") # << temporary <<<
 
@@ -978,8 +1002,9 @@ class FOWT():
         self.F_BEM = np.zeros([self.nWaves,6,self.nw], dtype=complex)
         self.F_hydro_iner = np.zeros([self.nWaves, 6, self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
 
-        # BEM-based wave excitation force on platform for each wave heading (will be zero if HAMS isn't run). This includes heading interpolation.
-        if self.potMod:
+        # BEM-based wave excitation force on platform for each wave heading 
+        # (will be zero if only using strip theory). Includes wave heading interpolation.
+        if self.potMod or self.potModMaster in [2,3]:
 
             for ih in range(self.nWaves):
                 
@@ -1016,33 +1041,30 @@ class FOWT():
                 
                 f1 = 1.0 - f2
                       
-                # interpolate excitation coefficients
-                X_prime = self.X_BEM[i1,:,:]*f1 + self.X_BEM[i2,:,:]*f2  # excitation coefficients (relative to wave direction)            
+                # interpolate excitation coefficients (which are coming in relative to their wave directions)
+                X_prime = self.X_BEM[i1,:,:]*f1 + self.X_BEM[i2,:,:]*f2        
                 
                 #self.beta[ih], self.BEM_headings, self.X_BEM[, period=360) * 
 
                 # rotate back to global frame
                 sin_beta = np.sin(self.beta[ih])   #  check that I'm right in assuming HAMS outputs degrees
                 cos_beta = np.cos(self.beta[ih])
-                
-                self.X_BEM[ih,0,:] = X_prime[0,:]*cos_beta - X_prime[1,:]*sin_beta
-                self.X_BEM[ih,1,:] = X_prime[0,:]*sin_beta + X_prime[1,:]*cos_beta
-                self.X_BEM[ih,2,:] = X_prime[2,:]
-                self.X_BEM[ih,3,:] = X_prime[3,:]*cos_beta - X_prime[4,:]*sin_beta
-                self.X_BEM[ih,4,:] = X_prime[3,:]*sin_beta + X_prime[4,:]*cos_beta
-                self.X_BEM[ih,5,:] = X_prime[5,:]
+                X_BEM_ih = np.zeros([6, self.nw], dtype=complex)
+                X_BEM_ih[0,:] = X_prime[0,:]*cos_beta - X_prime[1,:]*sin_beta
+                X_BEM_ih[1,:] = X_prime[0,:]*sin_beta + X_prime[1,:]*cos_beta
+                X_BEM_ih[2,:] = X_prime[2,:]
+                X_BEM_ih[3,:] = X_prime[3,:]*cos_beta - X_prime[4,:]*sin_beta
+                X_BEM_ih[4,:] = X_prime[3,:]*sin_beta + X_prime[4,:]*cos_beta
+                X_BEM_ih[5,:] = X_prime[5,:]
                 
                 # multiply excitation coefficients by wave elevation to get excitation forces and moments for this wave heading
-                self.F_BEM[ih,:,:] = self.X_BEM[ih,:,:] * self.zeta[ih,:] * phase_offset
-
+                self.F_BEM[ih,:,:] = X_BEM_ih * self.zeta[ih,:] * phase_offset
 
         # ----- strip-theory wave excitation force -----
         # loop through each member to compute strip-theory contributions
+        # This also saves the save wave kinematics over each member.
         for i,mem in enumerate(memberList):
             
-            circ = mem.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
-
-
             # loop through each node of the member
             for il in range(mem.ns):
 
@@ -1056,28 +1078,24 @@ class FOWT():
                                                                                  self.w, self.k, self.depth, mem.r[il,:], self.nw)
                     # Note: the above wave kinematics account for phasing due to the FOWT's mean offset position in the array
                     
-                    # now sum across wave headings and store these values - not accurate for multidirectional, 
-                    # but versatile if we want to visualize something. <<< not currently used
-                    #mem.u[ il,:,:] = np.sum(u   , axis=0)
-                    #mem.ud[il,:,:] = np.sum(ud  , axis=0)
-                    #mem.pDyn[il,:] = np.sum(pDyn, axis=0)     
-
-
-                    # calculate the linear excitation forces on this node for each wave heading and frequency
-                    for ih in range(self.nWaves):
-                        for i in range(self.nw):
-
-                            # add dynamic pressure - positive with q if end A - determined by sign of a_i
-                            F_exc_iner_temp = np.matmul(mem.Imat[il,:,:], mem.ud[ih,il,:,i]) + mem.pDyn[ih,il,i]*mem.a_i[il]*mem.q 
-                            
-                            # add the excitation complex amplitude for this heading and frequency to the global excitation vector
-                            self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:] - self.r6[:3]) # (about PRP)
+                    if mem.potMod == False:
+                        # calculate the linear excitation forces on this node for each wave heading and frequency
+                        for ih in range(self.nWaves):
+                            for i in range(self.nw):
+                                if mem.MCF:
+                                    Imat = mem.Imat_MCF[il,:,:, i]
+                                else:
+                                    Imat = mem.Imat[il,:,:]
+                                F_exc_iner_temp = np.matmul(Imat, mem.ud[ih,il,:,i]) + mem.pDyn[ih,il,i]*mem.a_i[il]*mem.q 
+                                
+                                # add the excitation complex amplitude for this heading and frequency to the global excitation vector
+                                self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:] - self.r6[:3]) # (about PRP)
 
 
         # ----- inertial excitation on rotor(s) -----
         
         for i, rot in enumerate(self.rotorList):
-            if rot.Zhub < 0:  # if submerged
+            if rot.r3[2] < 0:  # if submerged
 
                 # get wave kinematics spectra given a certain wave spectrum and location
                 # for each wave direction, calculate the hub wave kinematics
@@ -1087,11 +1105,8 @@ class FOWT():
                 # Note: the above wave kinematics account for phasing due to the FOWT's mean offset position in the array
                 
                 # Rotate rotor inertial excitation matrix to align with global
-                #angles = self.r6[3:] + np.array([0, np.atan2(rot.axis[2], rot.axis[0]),
-                #                                    np.atan2(rot.axis[1], rot.axis[0])])
-                #Rmat = rotationMatrix(*angles)  # rotation matrix for rotor+fowt orientation
-                Rmat = RotFrm2Vect( np.array([1,0,0]), rot.q)
-                I_hydro = rotateMatrix6(rot.I_hydro, Rmat)  # Should check. Only first 3 columns of I_hydro have meaning.
+                I_hydro = rotateMatrix6(rot.I_hydro, rot.R_q)  
+                # Note: Only first 3 columns of I_hydro currently have meaning <<<
 
                 # compute force across frequency range
                 for i in range(self.nw):
@@ -1135,7 +1150,7 @@ class FOWT():
 
                 # get node complex velocity spectrum based on platform motion's and relative position from PRP
                 # node displacement, velocity, and acceleration (each [3 x nw])
-                drnode, vnode, anode = getKinematics(mem.r[il,:], Xi, self.w)
+                drnode, vnode, anode = getKinematics(mem.r[il,:] - self.r6[:3], Xi, self.w)
 
                 # only process hydrodynamics if this node is submerged
                 if mem.r[il,2] < 0:
@@ -1159,13 +1174,18 @@ class FOWT():
 
                     # break out velocity components in each direction relative to member orientation [nw]
                     vrel_q  = np.sum(vrel*mem.q[ :,None], axis=0)*mem.q[ :,None]     # (the ,None is for broadcasting q across all frequencies in vrel)
+                    vrel_p  = vrel - vrel_q
                     vrel_p1 = np.sum(vrel*mem.p1[:,None], axis=0)*mem.p1[:,None]
                     vrel_p2 = np.sum(vrel*mem.p2[:,None], axis=0)*mem.p2[:,None]
                     
                     # get RMS of relative velocity component magnitudes (real-valued)
                     vRMS_q  = getRMS(vrel_q)
-                    vRMS_p1 = getRMS(vrel_p1)
-                    vRMS_p2 = getRMS(vrel_p2)
+                    if circ: # Use the total perpendicular relative velocity 
+                        vRMS_p1 = getRMS(vrel_p)
+                        vRMS_p2 = vRMS_p1
+                    else: # Otherwise treat each direction separately
+                        vRMS_p1 = getRMS(vrel_p1)
+                        vRMS_p2 = getRMS(vrel_p2)
                     
                     # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
                     Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * a_i_q  * Cd_q
@@ -1186,7 +1206,6 @@ class FOWT():
                         a_i = np.abs((mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1]))
 
                     Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*a_i*Cd_End
-                    #print(f"  {a_i:5.2f}  {vRMS_q:5.2f}  {Bprime_End:5.2f}")
 
                     # form damping matrix for the node based on linearized drag coefficients
                     Bmat_end = Bprime_End*mem.qMat                                       #
@@ -1206,16 +1225,6 @@ class FOWT():
                         mem.F_exc_drag[il,:,i] = np.matmul(mem.Bmat[il,:,:], mem.u[ih,il,:,i])   # get local 3d drag excitation force complex amplitude for each frequency [3 x nw]
 
                         F_hydro_drag[:,i] += translateForce3to6DOF(mem.F_exc_drag[il,:,i], mem.r[il,:] - self.r6[:3])   # add to global excitation vector (frequency dependent)
-                    
-                    '''
-                    for i in range(self.nw):                                         # for each wave frequency...
-
-                        F_exc_drag_temp = np.matmul(Bmat, mem.u[ih,il,:,i])             # local drag excitation force complex amplitude in x,y,z
-
-                        mem.F_exc_drag[il,:,i] += F_exc_drag_temp                    # add to stored member force vector
-
-                        F_hydro_drag[:,i] += translateForce3to6DOF(F_exc_drag_temp, mem.r[il,:]) # add to global excitation vector (frequency dependent)
-                    '''
 
         # save the arrays internally in case there's ever a need for the FOWT to solve it's own latest dynamics or for visualization
         self.B_hydro_drag = B_hydro_drag
@@ -1269,8 +1278,8 @@ class FOWT():
         
         Zref = 0.0  # reference z elevation for current profile (at the sea surface by default) (reference height set to submerged rotor hub depth if rotor is submerged)
         for ti in range(self.nrotors):
-            if self.rotorList[ti].Zhub < 0:     # If there is a submerged rotor,
-                Zref = self.rotorList[ti].Zhub  # use it for the reference current height.
+            if self.rotorList[ti].r3[2] < 0:     # If there is a submerged rotor,
+                Zref = self.rotorList[ti].r3[2]  # use it for the reference current height.
 
         # loop through each member
         for mem in self.memberList:
@@ -1296,7 +1305,8 @@ class FOWT():
                     # current (relative) velocity over node (no complex numbers bc not function of frequency)
                     vrel = np.array(vcur)
                     # break out velocity components in each direction relative to member orientation
-                    vrel_q  = np.sum(vrel*mem.q[:] )*mem.q[:] 
+                    vrel_q  = np.sum(vrel*mem.q[:] )*mem.q[:]
+                    vrel_p  = vrel-vrel_q 
                     vrel_p1 = np.sum(vrel*mem.p1[:])*mem.p1[:]
                     vrel_p2 = np.sum(vrel*mem.p2[:])*mem.p2[:]
                     
@@ -1309,8 +1319,15 @@ class FOWT():
 
                     # calculate drag force wrt to each orientation using simple Morison's drag equation
                     Dq = 0.5 * rho * a_i_q * Cd_q * np.linalg.norm(vrel_q) * vrel_q
-                    Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * np.linalg.norm(vrel_p1) * vrel_p1
-                    Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * np.linalg.norm(vrel_p2) * vrel_p2
+
+                    if circ: # Use the norm of the total perpendicular relative velocity
+                        normVrel_p1 = np.linalg.norm(vrel_p)
+                        normVrel_p2 = normVrel_p1
+                    else: # Otherwise treat each direction separately
+                        normVrel_p1 = np.linalg.norm(vrel_p1)
+                        normVrel_p2 = np.linalg.norm(vrel_p2)
+                    Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * normVrel_p1 * vrel_p1
+                    Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * normVrel_p2 * vrel_p2
                     
                     # ----- end/axial effects drag ------
 
@@ -1332,15 +1349,292 @@ class FOWT():
         return D_hydro
 
 
-    def readQTF(self, flPath):
-        data = np.loadtxt(flPath)
-        ULEN = 1 # For now, assume that ULEN = 1
+    def calcQTF_slenderBody(self, waveHeadInd, Xi0=None, verbose=False, iCase=None, iWT=None):
+        '''Calculate the Quadratic Transfer Function (QTF) of the body using the slender body approximation.
+           Inputs:
+           - waveHeadInd: Wave heading indice from the list of headings in self.beta
+           - Xi0: motion RAOs, i.e body motions per unit wave amplitude [m/m, rad/m]. If Xi0=None, the body is considered to be fixed
+           - verbose: If True, print some status messages and save the QTFs (WAMIT .12d file format) and RAOs (WAMIT .4 file format)
+            - iCase: case number used to name the output file 
+            - iWT: wind turbine identification number (for arrays) used to name the output file         
+
+            The resulting QTF is saved in self.qtf, which has dimensions [frequencies, frequencies, headings, DOFs].
+        '''
+        # TODO: I think a lot of the calculations below should be moved to the member class
+        # TODO: Add references to the equations in our paper once it's published
+        # TODO: Using waveHeadInd is useful within the software, but perhaps it would be also useful to have an option to specify the wave heading?
+
+        # In case the body is fixed
+        if Xi0 is None:
+            Xi0 = np.zeros([self.nDOF, len(self.w)], dtype=complex)
+        
+        rho = self.rho_water
+        g   = self.g
+
+        # Get wave heading beta
+        beta = self.beta[waveHeadInd]
+        self.heads_2nd = [beta] # Need this one to print the QTF
+        whead = f"{np.degrees(beta)%360:.2f}".replace('.', 'p') # String with heading in range of 0-360 [deg] for output files
+
+        # Resample Xi0, which is input in the same frequency as the first-order loads, to the frequencies of the 2nd order hydrodynamic forces.
+        # We don't use the same frequencies as the 1st order loads, self.w, for the QTFs because it would be too expensive.
+        # Note that the second-order wave loads are interpolated to self.w in fowt.calcHydroForce_2ndOrd()
+        Xi = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
+        for iDoF in range(self.nDOF):
+            Xi[iDoF,:] = np.interp(self.w1_2nd, self.w, Xi0[iDoF,:], left=0, right=0)
+
+        # Print Xi (motion RAOs) in the same format as a WAMIT .4 file
+        if self.outFolderQTF is not None and verbose:
+            # If both are available, use case number and fowt identification number to name the output file
+            if isinstance(iCase, int) and isinstance(iWT, int):
+                outPath = os.path.join(self.outFolderQTF, f"raos-slender_body_Head{whead}_Case{iCase+1}_WT{iWT}.4")
+            # Otherwise, use only the heading. Would it be useful to identify the file if we only have iCase or iWT?
+            else:
+                outPath = os.path.join(self.outFolderQTF, f"raos-slender_body_Head{whead}.4")
+
+            # Write the .4 file. Columns are: frequency, heading, DoF number, amplitude, phase, real part, imaginary part
+            with open(outPath, "w") as f:
+                ULEN = 1
+                for iDoF in range(self.nDOF):
+                    for w1, x in zip(self.w1_2nd, Xi[iDoF,:]):
+                        f.write(f"{2*np.pi/w1: 8.4e} {beta: 8.4e} {iDoF+1} {np.abs(x): 8.4e} {np.angle(x): 8.4e} {x.real: 8.4e} {x.imag: 8.4e}\n")
+
+        # First-order forces, which are used to compute Pinkster's IV term
+        # They are taken as F_1stOrder = Mass * Acceleration_1stOrder
+        F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
+        F1st[0:3,:] = self.M_struc[0,0] * (-self.w1_2nd**2 * Xi[0:3,:])
+        F1st[3:6,:] = np.matmul(self.M_struc[3:,3:], (-self.w1_2nd**2 * Xi[3:,:]))
+          
+        # Initialize qtf that will actually be used by the solver
+        self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)  # Need this fourth dimension for conformity with the case where the QTFs are read from a file
+
+        if verbose:
+            print(f" Computing QTF for heading {beta:.2f}")
+
+        # We start with the force component due to rotation of first-order wave forces (force component IV from Pinkster (1979)).
+        # This component depends on the forces on the whole body, hence it is outside of the member loop below.
+        for i1 in range(len(self.w1_2nd)):
+            for i2 in range(i1, len(self.w2_2nd)):
+                if self.w2_2nd[i2] < self.w1_2nd[i1]: # We don't need to fill the whole matrix, only the upper triangle
+                        continue
+                F_rotN = np.zeros(6, dtype='complex')    
+                F_rotN[0:3] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
+                F_rotN[3: ] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[3: ,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[3: ,i1]))
+                self.qtf[i1,i2,waveHeadInd,:] = F_rotN
+
+        # Loop each member to compute force terms along the member
+        for i,mem in enumerate(self.memberList):
+            # Don't do anything if the member is above the water
+            if mem.rA[2] > 0 and mem.rB[2] > 0:
+                continue
+
+            # convenience boolian for circular vs. rectangular cross sections
+            circ = mem.shape=='circular'
+
+            # Get fluid and body kinematics at each node of the member
+            nodeV           = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)    # Node velocity
+            dr              = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)    # Node displacement
+            u               = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)    # Incident fluid velocity at node
+            grad_u          = np.zeros([3, 3, len(self.w1_2nd), mem.ns], dtype=complex) # Gradient matrix of first-order velocity
+            grad_dudt       = np.zeros([3, 3, len(self.w1_2nd), mem.ns], dtype=complex) # Gradient matrix of first-order acceleration
+            nodeV_axial_rel = np.zeros([len(self.w1_2nd), mem.ns], dtype=complex)       # Node relative axial velocity
+            grad_pres1st    = np.zeros([3, len(self.w1_2nd), mem.ns], dtype=complex)    # Gradient of first order pressure at each node
+            for iNode, r in enumerate(mem.r):
+                dr[:,:, iNode], nodeV[:,:, iNode], _ = getKinematics(r, Xi, self.w1_2nd)
+                u[:,:, iNode], _, _ = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r, len(self.w1_2nd), rho=rho, g=g)
+
+                for iw in range(len(self.w1_2nd)):
+                    grad_u[:, :, iw, iNode]    = getWaveKin_grad_u1(self.w1_2nd[iw], self.k1_2nd[iw], beta, self.depth, r)
+                    grad_dudt[:, :, iw, iNode] = getWaveKin_grad_dudt(self.w1_2nd[iw], self.k1_2nd[iw], beta, self.depth, r)
+                    nodeV_axial_rel[iw, iNode] = np.dot(u[:, iw, iNode]-nodeV[:,iw, iNode], mem.q)
+                    grad_pres1st[:, iw, iNode] = getWaveKin_grad_pres1st(self.k1_2nd[iw], beta, self.depth, r, rho=rho, g=g)
+                                                
+            # Get fluid and body kinematics at the intersection of the member intersection with the water line
+            eta   = np.zeros([len(self.w1_2nd)], dtype=complex)    # Incoming wave elevation
+            eta_r = np.zeros([len(self.w1_2nd)], dtype=complex)    # Relative incoming wave elevation (i.e. wave elevation - vertical body motion)
+            ud_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex) # Incoming wave acceleration
+            dr_wl = np.zeros([3, len(self.w1_2nd)], dtype=complex) # Body displacement at intersection with water line
+            a_wl  = np.zeros([3, len(self.w1_2nd)], dtype=complex) # Body acceleration at intersection with water line
+            if mem.r[-1,2] * mem.r[0,2] < 0: # Only if the member intersects the water line
+                r_int = mem.r[0,:] + (mem.r[-1,:] - mem.r[0,:]) * (0. - mem.r[0,2]) / (mem.r[-1,2] - mem.r[0,2]) # Intersection point
+                _, ud_wl, eta  = getWaveKin(np.ones(self.w1_2nd.shape), beta, self.w1_2nd, self.k1_2nd, self.depth, r_int, len(self.w1_2nd), rho=1, g=1) # getWaveKin actually returns dynamic pressure, so we use unitary rho and g to get the wave elevation
+                dr_wl, _, a_wl = getKinematics(r_int, Xi, self.w1_2nd)
+            
+            # Vector with the acceleration of gravity projected along the p1 and p2 axes of the member (which are perpendicular to the member's axis)
+            g_e1 = np.zeros([3, len(self.w1_2nd)], dtype=complex)
+            for iw in range(len(self.w1_2nd)):
+                g_e1[:, iw] = -g * (np.cross(Xi[3:, iw], mem.p1)[2] * mem.p1 + np.cross(Xi[3:, iw], mem.p2)[2] * mem.p2)
+
+            # Relative wave elevation
+            eta_r = eta-dr_wl[2,:]
+
+            # Loop through each pair of frequency
+            for i1, (w1, k1) in enumerate(zip(self.w1_2nd, self.k1_2nd)):
+                if verbose:
+                     print(f" Element {i+1} of {len(self.memberList)} - Row {i1+1:02d} of {len(self.w1_2nd):02d}", end='\r')            
+                for i2, (w2, k2) in enumerate(zip(self.w2_2nd, self.k2_2nd)):
+                    F_2ndPot = np.zeros(6, dtype='complex') # Force component due to second-order wave potential
+                    F_conv   = np.zeros(6, dtype='complex') # Force component due to convective acceleration
+                    F_axdv   = np.zeros(6, dtype='complex') # Force component due to Rainey's axial-divergence acceleration
+                    F_eta    = np.zeros(6, dtype='complex') # Force component due to the relative wave elevation
+                    F_nabla  = np.zeros(6, dtype='complex') # Force component due to body motions within the first-order wave field
+                    F_rslb   = np.zeros(6, dtype='complex') # Force component due to Rainey's body rotation term
+
+                    # Need to loop only half of the matrix due to symmetry (QTFs are Hermitian matrices)
+                    if w2 < w1:
+                        continue
+
+                    # loop through each node of the member
+                    for il in range(mem.ns):
+                        # only process hydrodynamics if this node is submerged
+                        if mem.r[il,2] >= 0:
+                            continue
+
+                        # interpolate coefficients for the current strip
+                        Ca_p1  = np.interp( mem.ls[il], mem.stations, mem.Ca_p1 )
+                        Ca_p2  = np.interp( mem.ls[il], mem.stations, mem.Ca_p2 )
+                        Ca_End = np.interp( mem.ls[il], mem.stations, mem.Ca_End)
+
+                        # ----- compute side effects ---------------------------------------------------------
+                        if circ:
+                            v_i = 0.25*np.pi*mem.ds[il]**2*mem.dls[il]
+                        else:
+                            v_i = mem.ds[il,0]*mem.ds[il,1]*mem.dls[il]  # member volume assigned to this node
+                            
+                        if mem.r[il,2] + 0.5*mem.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
+                            v_i = v_i * (0.5*mem.dls[il] - mem.r[il,2]) / mem.dls[il]  # scale volume by the portion that is under water
+
+                        # Force component due to second-order wave potential
+                        acc_2ndPot, p_2nd = getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], g=g, rho=rho) # Second-order pressure will be used later
+                        f_2ndPot = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, acc_2ndPot)
+
+                        # Force component due to convective acceleration
+                        conv_acc = 0.25 * ( np.matmul(grad_u[:, :, i1, il], np.conj(u[:, i2, il])) + np.matmul(np.conj(grad_u[:, :, i2, il]), u[:, i1, il]) )
+                        f_conv   = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, conv_acc)
+
+                        # Force component due to Rainey's axial-divergence acceleration
+                        f_axdv   = rho*v_i * np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, getWaveKin_axdivAcc(w1, w2, k1, k2, beta, beta, self.depth, mem.r[il,:], nodeV[:, i1, il], nodeV[:, i2, il], mem.q, g=g))
+                        
+                        # Force component due to body motions within the first-order wave field
+                        acc_nabla = 0.25*np.matmul(np.squeeze(grad_dudt[:, :, i1, il]), np.squeeze(np.conj(dr[:, i2, il]))) + 0.25*np.matmul(np.squeeze(np.conj(grad_dudt[:, :, i2, il])), np.squeeze(dr[:, i1, il]))
+                        f_nabla  = rho*v_i * np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, acc_nabla)
+
+                        # Force component due to Rainey's body rotation term
+                        OMEGA1  = -getH(1j*w1*Xi[3:,i1]) # The alternator matrix is the opposite of what we need, that is why we have a minus sign
+                        OMEGA2  = -getH(1j*w2*Xi[3:,i2])
+                        f_rslb  = -0.25*2*np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(OMEGA1, np.conj(nodeV_axial_rel[i2, il]*mem.q)) + np.matmul(np.conj(OMEGA2), nodeV_axial_rel[i1, il]*mem.q))
+                        f_rslb *= rho*v_i                                                
+                        
+                        # Rainey load that is only non zero for non-circular cylinders
+                        # TODO: Now that it's working, should be a separate variable and not inside f_rslb
+                        u1_aux  = u[:,i1, il]-nodeV[:,i1, il]
+                        u2_aux  = u[:,i2, il]-nodeV[:,i2, il]
+                        Vmatrix1 = getWaveKin_grad_u1(w1, k1, beta, self.depth, mem.r[il,:]) + OMEGA1
+                        Vmatrix2 = getWaveKin_grad_u1(w2, k2, beta, self.depth, mem.r[il,:]) + OMEGA2
+                        aux      = 0.25*(np.matmul(Vmatrix1, np.conj(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u2_aux))) + np.matmul(np.conj(Vmatrix2), np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u1_aux)))
+                        aux     -= np.matmul(mem.qMat, aux) # remove axial component                            
+                        f_rslb  += rho*v_i * aux
+
+                        # Similar to the one right above, but note that the order of multiplications with matmul is different
+                        u1_aux  -= np.matmul(mem.qMat, u1_aux) # remove axial component
+                        u2_aux  -= np.matmul(mem.qMat, u2_aux)
+                        aux      = 0.25*(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(Vmatrix1, np.conj(u2_aux))) + np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, np.matmul(np.conj(Vmatrix2), u1_aux)))
+                        f_rslb  += - rho*v_i * aux
+
+                                                    
+                        # ----- axial/end effects  ------
+                        # note : v_i and a_i work out to zero for non-tapered sections or non-end sections
+                        if circ:
+                            v_i = np.pi/12.0 * abs((mem.ds[il]+mem.drs[il])**3 - (mem.ds[il]-mem.drs[il])**3)  # volume assigned to this end surface
+                            a_i = np.pi*mem.ds[il] * mem.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                        else:
+                            v_i = np.pi/12.0 * ((np.mean(mem.ds[il]+mem.drs[il]))**3 - (np.mean(mem.ds[il]-mem.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
+                            a_i = (mem.ds[il,0]+mem.drs[il,0])*(mem.ds[il,1]+mem.drs[il,1]) - (mem.ds[il,0]-mem.drs[il,0])*(mem.ds[il,1]-mem.drs[il,1])
+                        
+                        f_2ndPot += mem.a_i[il]*p_2nd*mem.q # 2nd order pressure
+                        f_2ndPot += rho*v_i*Ca_End*np.matmul(mem.qMat, acc_2ndPot) # 2nd order axial acceleration
+                        f_conv   += rho*v_i*Ca_End*np.matmul(mem.qMat, conv_acc)   # convective acceleration
+                        f_nabla  += rho*v_i*Ca_End*np.matmul(mem.qMat, acc_nabla)  # due to body motions within the first-order wave field - acceleration part
+                        p_nabla   = 0.25*np.dot(grad_pres1st[:, i1, il], np.conj(dr[:, i2, il])) + 0.25*np.dot(np.conj(grad_pres1st[:, i2, il]), dr[:, i1, il])
+                        f_nabla  += mem.a_i[il]*p_nabla*mem.q # due to body motions within the first-order wave field - pressure part
+                        p_drop    = -2*0.25*0.5*rho*np.dot(np.matmul(mem.p1Mat + mem.p2Mat, u[:,i1, il]-nodeV[:, i1, il]), np.conj(np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, u[:,i2, il]-nodeV[:, i2, il])))
+                        f_conv   += mem.a_i[il]*p_drop*mem.q
+
+                        F_2ndPot += translateForce3to6DOF(f_2ndPot, mem.r[il,:])
+                        F_conv   += translateForce3to6DOF(f_conv, mem.r[il,:])                   
+                        F_axdv   += translateForce3to6DOF(f_axdv, mem.r[il,:])
+                        F_nabla  += translateForce3to6DOF(f_nabla, mem.r[il,:])
+                        F_rslb   += translateForce3to6DOF(f_rslb, mem.r[il,:])
+                                                        
+                    # Force acting at the intersection of the member with the mean waterline
+                    f_eta = np.zeros(3, dtype=complex)
+                    F_eta = np.zeros(6, dtype=complex)
+                    if mem.r[-1,2] * mem.r[0,2] < 0:
+                        # Need just the cross section area, as the length along the cylinder is the relative wave elevation
+                        # Get the area of the cross section at the mean waterline
+                        i_wl = np.where(mem.r[:,2] < 0)[0][-1] # find index of mem.r[:,2] that is right before crossing 0
+                        if circ:
+                            if i_wl != len(mem.ds)-1:
+                                d_wl = 0.5*(mem.ds[i_wl]+mem.ds[i_wl+1])
+                            else:
+                                d_wl = mem.ds[i_wl]
+                            a_i = 0.25*np.pi*d_wl**2
+                        else:
+                            if i_wl != len(mem.ds)-1:
+                                d1_wl = 0.5*(mem.ds[i_wl,0]+mem.ds[i_wl+1,0])
+                                d2_wl = 0.5*(mem.ds[i_wl,1]+mem.ds[i_wl+1,1])
+                            else:
+                                d1_wl = mem.ds[i_wl, 0]
+                                d2_wl = mem.ds[i_wl, 1]
+                            a_i = d1_wl*d2_wl
+
+                        f_eta = 0.25*((ud_wl[:,i1])*np.conj(eta_r[i2])+np.conj((ud_wl[:,i2]))*eta_r[i1]) # Product between incoming wave acceleration and relative wave elevation
+                        f_eta = rho*a_i*np.matmul((1.+Ca_p1)*mem.p1Mat + (1.+Ca_p2)*mem.p2Mat, f_eta) # Project in the correct directions (and scale by the area and density)
+                        a_eta = 0.25*((a_wl[:,i1])*np.conj(eta_r[i2])+np.conj((a_wl[:,i2]))*eta_r[i1])  # Product between body acceleration and relative wave elevation
+                        f_eta -= rho*a_i*np.matmul(Ca_p1*mem.p1Mat + Ca_p2*mem.p2Mat, a_eta) # Project in the correct directions (and scale by the area and density)
+                        f_eta -= 0.25*rho*a_i * (g_e1[:,i1]*np.conj(eta_r[i2])+np.conj(g_e1[:,i2])*eta_r[i1]) # Add hydrostatic term
+
+                        F_eta = translateForce3to6DOF(f_eta, r_int) # Load vector in 6 DOF 
+                    
+                    # Total contribution to this frequency pair of the QTF due to the current member
+                    self.qtf[i1,i2,waveHeadInd,:] += F_2ndPot + F_axdv + F_conv + F_nabla + F_eta + F_rslb
+
+                    # Add Kim and Yue correction                                                     
+                    self.qtf[i1,i2,waveHeadInd,:] += mem.correction_KAY(self.depth, w1, w2, beta, rho=rho, g=g, k1=k1, k2=k2, Nm=10)
+
+        # We just filled the upper triangle of the QTF matrices above. We exploit the hermitian symmetry of the QTFs to fill the lower triangle
+        for i in range(self.nDOF):
+            self.qtf[:,:, waveHeadInd, i] = self.qtf[:,:, waveHeadInd,i] + np.conj(self.qtf[:,:, waveHeadInd,i]).T - np.diag(np.diag(np.conj(self.qtf[:,:, waveHeadInd,i])))
+
+        # Save the QTF to a .12d file
+        if self.outFolderQTF is not None and verbose:
+            if isinstance(iCase, int) and isinstance(iWT, int):
+                outPath = os.path.join(self.outFolderQTF, f"qtf-slender_body-total_Head{whead}_Case{iCase+1}_WT{iWT}.12d")
+            else:
+                outPath = os.path.join(self.outFolderQTF, f"qtf-slender_body-total_Head{whead}.12d")
+            self.writeQTF(self.qtf, outPath)
+
+
+    def readQTF(self, flPath, ULEN=1):
+        '''Read a complex QTF matrix from a text file following WAMIT .12d file format
+        Inputs:
+        - flPath: path to the .12d file with the QTFs. Assumed to be written as a function of wave periods.
+        - ULEN: length used to dimensionalize the QTFs. Default is 1.
+
+        Outputs:
+        Doesn't return anything, but stores data in
+        - self.heads_2nd: wave headings [deg] - only unidirectional QTFs are supported for now.
+        - self.w1_2nd: first frequency vector [rad/s]
+        - self.w2_2nd: second frequency vector [rad/s]. Both vectors have to be the same. TODO: do we need to keep both? I don't think we will have different w1 and w2 in any case of interest.
+        - self.qtf: complex QTF matrix with dimensions [number of frequencies, number of frequencies, number of headings, number of dofs]
+        '''
+        data = np.loadtxt(flPath) 
         data[:,0:2] = 2.*np.pi/data[:,0:2] # Input is assumed to be as a function of wave period
 
         # Consider only unidirectional QTFs
         if not (data[:,2] == data[:,3]).all():
             raise ValueError("Only unidirectional QTFs are supported for now.")
-        self.heads_2nd = np.sort(np.unique(data[:,2]))
+        self.heads_2nd = deg2rad(np.sort(np.unique(data[:,2])))
         nheads = len(self.heads_2nd)
 
         # Both frequency vectors should contain the same frequencies,
@@ -1359,74 +1653,135 @@ class FOWT():
             indhead, = np.where(self.heads_2nd==row[2]) # index for heading
             indDOF = round(row[4]-1) # index for degree of freedom. Needs to be an int. -1 is due to being from 1 to 6 in the input file
 
-            # Factor for dimensionalization (except for wave amplitudes)
+            # Factor for dimensionalization (except for wave amplitudes, which are assumed unitary for QTFs)
             factor = self.rho_water * self.g * ULEN
             if indDOF >= 3:
-                factor *= ULEN
-
+                factor *= ULEN # Need an extra ULEN for moments
             self.qtf[indw1[0], indw2[0], indhead[0], indDOF] = factor*(row[7]+1j*row[8])
 
-            # Fill the other half of the matrix (which is equal to the conjugate of its symmetric element)
+            # The data in a .12d only fills one half of the matrix (upper or lower triangle)
+            # Fill the other half of the matrix (which is equal to the conjugate of its symmetric element - QTFs are hermitian matrices)
             if not indw1[0] == indw2[0]:
                 self.qtf[indw2[0], indw1[0], indhead[0], indDOF] = factor*(row[7]-1j*row[8])
-        
-
-        # plt.matshow(np.squeeze(np.abs(self.qtf[:,:,0,0])))    
 
 
-    # Change that for a spectrum
-    def calcHydroForce_2ndOrd(self, beta, S0):
-        f = np.zeros([self.nDOF, self.nw], dtype=complex)
-        nw1 = len(self.w1_2nd)
-
-        # Resample wave spectrum (the input is assumed to be in rad/s)
-        S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) 
-
-        # Interpolate for the wave incidence        
-        if beta < self.heads_2nd[0]:
-            print(f"Warning in calcHydroForce_2ndOrd: angle {beta} is less than the minimum incidence angle in the QTF. An incidence of {self.heads_2nd[0]} will be considered for 2nd order loads.")
-
-        if beta > self.heads_2nd[-1]:
-            print(f"Warning in calcHydroForce_2ndOrd: angle {beta} is more than the maximum incidence angle in the QTF. An incidence of {self.heads_2nd[-1]} will be considered for 2nd order loads.")
-
-        if len(self.heads_2nd)==1:
-            qtf_interpBeta = self.qtf[:,:,0,:]
-        
+    def writeQTF(self, qtfIn, outPath, w=None):
+        '''Writes a qtf matrix to a text file following WAMIT .12d file format
+        Inputs:
+        - qtfIn: complex QTF matrix with dimensions [number of frequencies, number of frequencies, number of headings, number of dofs] (same as self.qtf)
+        - outPath: path to the output file
+        - w: frequency vector with size equal to the number of frequencies. If not specified, self.w1_2nd and self.w2_2nd are used.
+        '''
+        if w is None:
+            w1 = self.w1_2nd
+            w2 = self.w2_2nd
         else:
-            qtf_interpBeta = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:]))(beta)
-        
-        # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.        
-        mu = self.w1_2nd - self.w1_2nd[0]
-        Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
-        Sf_interp = np.zeros([self.nDOF, self.nw])
-        for idof in range(0,self.nDOF):                        
-            for imu in range(0, nw1): # Loop the difference frequencies
-                Saux = np.zeros(nw1)
-                Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
-                Qaux = np.zeros(nw1, dtype=complex)
+            w1 = w
+            w2 = w
 
-                Qaux[0:nw1-imu] = np.diag(np.squeeze(qtf_interpBeta[:,:,idof]), -imu) # Sum only the lower half of the QTF
-                Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
+        with open(outPath, "w") as f:
+            ULEN = 1 # ULEN is the length used to dimensionalize the QTFs. Taken as 1.
+            for ih in range(len(self.heads_2nd)):
+                for iDoF in range(self.nDOF):
+                    qtf = qtfIn[:,:,ih,iDoF]
+                    for i1 in range(len(w1)):
+                        for i2 in range(i1, len(w2)):
+                            F = qtf[i1,i2]/(self.rho_water*self.g*ULEN)
+
+                            # .12d format, following columns: w1, w2, heading 1, heading 1, DoF, abs(F), phase(F), real(F), imag(F)
+                            f.write(f"{2*np.pi/w1[i1]: 8.4e} {2*np.pi/w2[i2]: 8.4e} {rad2deg(self.heads_2nd[ih]): 8.4e} {rad2deg(self.heads_2nd[ih]): 8.4e} {iDoF+1} {np.abs(F): 8.4e} {np.angle(F): 8.4e} {F.real: 8.4e} {F.imag: 8.4e}\n")
                         
 
-            # Interpolate the force spectrum to the same resolution as the original wave spectrum            
-            Sf_interp[idof, :] = np.interp(self.mu_2nd, mu, Sf[idof,:], left=0, right=0)        
+    def calcHydroForce_2ndOrd(self, beta, S0, iCase=None, iWT=None, interpMode='qtf'):
+        ''' Compute force due to 2nd order hydrodynamic loads based on the second-order load spectrum.
+        See Pinkster (1980), Section IV.3.
+        With this approach, we lose the phases between force components. In the future, we should at least
+        correct the phase of the incoming waves to account for different positions in arrays.
+        Inputs:
+        - beta: wave heading [rad], assumed the same for all wave components (long-crested waves)
+        - S0: wave spectrum [m^2.s/rad] at the frequencies self.w
+        - iCase: case number used to name the output file 
+        - iWT: wind turbine identification number (for arrays) used to name the output file
+        - interpMode: interpolation mode for the QTF. Options are 'spectrum' and 'qtf', see comments below for details.
 
-        # # TODO: Those lines were here for debugging. Need to delete them after this feature is fully implemented.
-        f = np.sqrt(2*Sf_interp*self.dw)
-        f_mean = np.zeros([self.nDOF])
-        f_mean[:] = f[:,0]
-        f[:, 0:-1] = f[:, 1:] # Displace f by one frequency so that it aligns with the frequency vector
-        f[:, -1] = 0
+        Outputs:
+        - f_mean: mean force amplitude, numpy array with size equal [self.nDOF] (real values)
+        - f: difference-frequency force amplitude at different frequencies, numpy array with size equal [self.nDOF, self.nw] (complex values)
+        '''
+        f = np.zeros([self.nDOF, self.nw], dtype=complex) # Force amplitude at different frequencies
+        f_mean = np.zeros([self.nDOF]) # Mean force amplitude
 
-        # with open('examples/Sf_2nd.txt', 'w') as file:
-        #     mu_interp = self.w - self.w[0]
-        #     for w, Srow in zip(mu_interp, Sf_interp.T):
-        #         file.write(f'{w:.5f} {Srow[0]:.5f} {Srow[1]:.5f} {Srow[2]:.5f} {Srow[3]:.5f} {Srow[4]:.5f} {Srow[5]:.5f}\n')
+        # Interpolate for the wave incidence        
+        if beta < self.heads_2nd[0]: 
+            print(f"Warning in calcHydroForce_2ndOrd: angle {beta} is less than the minimum incidence angle in the QTF. An incidence of {self.heads_2nd[0]} will be considered for 2nd order loads.")
+        if beta > self.heads_2nd[-1]:
+            print(f"Warning in calcHydroForce_2ndOrd: angle {beta} is more than the maximum incidence angle in the QTF. An incidence of {self.heads_2nd[-1]} will be considered for 2nd order loads.")
+        if len(self.heads_2nd)==1: # If there is only one heading, no need to interpolate. The warnings above already tell the user if the required heading is out of range.
+            qtf_interpBeta = self.qtf[:,:,0,:]
+        else:
+            qtf_interpBetaRe = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:].real))(beta)
+            qtf_interpBetaIm = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:].imag))(beta)
+            qtf_interpBeta   = qtf_interpBetaRe + 1j*qtf_interpBetaIm
 
-        # with open('examples/f_2nd.txt', 'w') as file:
-        #     for w, frow in zip(mu_interp, f.T):
-        #         file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
+        # Compute force spectrum with QTF resolution and then interpolate to the frequency vector of the input wave spectrum
+        if interpMode == 'spectrum':
+            # Resample wave spectrum (the input is assumed to be in rad/s)
+            nw1 = len(self.w1_2nd)
+            S = np.interp(self.w1_2nd, self.w, S0, left=0, right=0) 
+
+            mu = self.w1_2nd - self.w1_2nd[0] # The number of difference frequencies is the same as the number of frequencies, but starting from frequency mu=0.
+            Sf = np.zeros([self.nDOF, nw1]) # Second-order force spectrum
+            Sf_interp = np.zeros([self.nDOF, self.nw]) # Second-order force spectrum interpolated to the same resolution used for the wave spectrum (and body dynamics)
+            for idof in range(0,self.nDOF):                    
+                for imu in range(1, nw1): # Loop the difference frequencies (this is why we start from 1)
+                    Saux = np.zeros(nw1)
+                    Saux[0:nw1-imu] = S[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
+                    Qaux = np.zeros(nw1, dtype=complex) # Auxiliar variable to get the part the QTF diagonal that we need (one different diagonal for each difference frequency) 
+
+                    Qaux[0:nw1-imu] = np.diag(np.squeeze(qtf_interpBeta[:,:,idof]), imu) # We use only the upper half of the QTF (exploiting hermitian symmetry)
+                    Sf[idof, imu] = 8 * np.sum(S*Saux*np.abs(Qaux)**2) * (self.w1_2nd[1]-self.w1_2nd[0])
+                            
+                # Mean drift uses a simpler expression because you have just the product of the same wave
+                f_mean[idof] = 2*np.sum(S*np.diag(np.squeeze(qtf_interpBeta[:,:,idof].real), 0)) * (self.w1_2nd[1]-self.w1_2nd[0])
+
+                # Interpolate the force spectrum to the same resolution as the original wave spectrum
+                Sf_interp[idof, :] = np.interp(self.w - self.w[0], mu, Sf[idof,:], left=0, right=0)
+
+                # Compute the force amplitude from the force spectrum. Losing phases between force components!
+                f[idof, :] = np.sqrt(2*Sf_interp[idof, :]*self.dw)
+                
+        # Otherwise, interpolate the QTF first and then compute the force spectrum and amplitude.
+        # We got better results with this approach for the tests we have done so far, so this is why it is the default
+        else:
+            f = np.zeros([self.nDOF, self.nw]) # Force amplitude
+            for idof in range(0,self.nDOF):
+                # Interpolate the QTF matrix to the same frequencies as the wave spectrum. Need to interpolate real and imaginary part separately.
+                qtf_interp_Re = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof].real, bounds_error=False, fill_value=(0))(self.w, self.w)
+                qtf_interp_Im = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof].imag, bounds_error=False, fill_value=(0))(self.w, self.w)
+                qtf_interp = qtf_interp_Re + 1j*qtf_interp_Im
+
+                for imu in range(1, self.nw): # Loop the difference frequencies
+                    Saux = np.zeros(self.nw)
+                    Saux[0:self.nw-imu] = S0[imu:] # Auxiliar wave spectrum that is dislocated in frequency. See the definition of second-order force spectrum
+                    Qaux = np.zeros(self.nw, dtype=complex) # Auxiliar variable to get the part the QTF diagonal that we need (one different diagonal for each difference frequency)
+                    Qaux[0:self.nw-imu] = np.diag(np.squeeze(qtf_interp), imu) # Sum only the upper half of the QTF
+                    f[idof, imu] = 4 *np.sqrt( np.sum(S0*Saux*np.abs(Qaux)**2) ) * self.dw # We use only the upper half of the QTF (exploiting hermitian symmetry)
+
+                # Mean drift uses a simpler expression because you have just the product of the same wave
+                f_mean[idof] = 2*np.sum(S0*np.diag(np.squeeze(qtf_interp.real), 0)) * self.dw
+
+        # Displace f by one frequency so that it aligns with the frequency vector that is used to solve body dynamics.
+        # Need to do that because the difference frequencies start at 0rad/s and end at w[-2], while the wave spectrum
+        # and body dynamics start at w[0]=dw and end at w[-1].
+        f[:, 0:-1] = f[:, 1:]
+        f[:, -1] = 0 # We don't have loads at the last frequency because the difference frequencies end at w[-2]
+
+        # Write force amplitudes to an output file 
+        if self.outFolderQTF is not None:             
+            with open(os.path.join(self.outFolderQTF, f'f_2nd-_Case{ iCase+1 }_WT{ iWT }.txt'), 'w') as file:
+                for w, frow in zip(self.w, f.T):
+                    file.write(f'{w:.5f} {frow[0]:.5f} {frow[1]:.5f} {frow[2]:.5f} {frow[3]:.5f} {frow[4]:.5f} {frow[5]:.5f}\n')
+
         return f_mean, f
 
 
@@ -1444,35 +1799,47 @@ class FOWT():
         results['surge_avg'] = self.Xi0[0]
         results['surge_std'] = getRMS(self.Xi[:,0,:]) 
         results['surge_max'] = self.Xi0[0] + 3*results['surge_std']
+        results['surge_min'] = self.Xi0[0] - 3*results['surge_std']
         results['surge_PSD'] = getPSD(self.Xi[:,0,:], self.dw)
+        results['surge_RA' ] = self.Xi[:,0,:]
         
         results['sway_avg'] = self.Xi0[1]
         results['sway_std'] = getRMS(self.Xi[:,1,:])
         results['sway_max'] = self.Xi0[1] + 3*results['sway_std']
+        results['sway_min'] = self.Xi0[1] - 3*results['sway_std']
         results['sway_PSD'] = getPSD(self.Xi[:,1,:], self.dw)
+        results['sway_RA' ] = self.Xi[:,1,:]
         
         results['heave_avg'] = self.Xi0[2]
         results['heave_std'] = getRMS(self.Xi[:,2,:])
         results['heave_max'] = self.Xi0[2] + 3*results['heave_std']
+        results['heave_min'] = self.Xi0[2] - 3*results['heave_std']
         results['heave_PSD'] = getPSD(self.Xi[:,2,:], self.dw)
+        results['heave_RA' ] = self.Xi[:,2,:]
         
         roll_deg = rad2deg(self.Xi[:,3,:])
         results['roll_avg'] = rad2deg(self.Xi0[3])
         results['roll_std'] = getRMS(roll_deg)
-        results['roll_max']  = rad2deg(self.Xi0[3]) + 3*results['roll_std']
+        results['roll_max'] = rad2deg(self.Xi0[3]) + 3*results['roll_std']
+        results['roll_min'] = rad2deg(self.Xi0[3]) - 3*results['roll_std']
         results['roll_PSD'] = getPSD(roll_deg, self.dw)
+        results['roll_RA' ] = rad2deg(self.Xi[:,3,:])
         
         pitch_deg = rad2deg(self.Xi[:,4,:])
         results['pitch_avg'] = rad2deg(self.Xi0[4])
         results['pitch_std'] = getRMS(pitch_deg)
         results['pitch_max'] = rad2deg(self.Xi0[4]) + 3*results['pitch_std']
+        results['pitch_min'] = rad2deg(self.Xi0[4]) - 3*results['pitch_std']
         results['pitch_PSD'] = getPSD(pitch_deg, self.dw)
+        results['pitch_RA' ] = rad2deg(self.Xi[:,4,:])
         
         yaw_deg = rad2deg(self.Xi[:,5,:])
         results['yaw_avg'] = rad2deg(self.Xi0[5])
         results['yaw_std'] = getRMS(yaw_deg)
         results['yaw_max'] = rad2deg(self.Xi0[5]) + 3*results['yaw_std']
+        results['yaw_min'] = rad2deg(self.Xi0[5]) - 3*results['yaw_std']
         results['yaw_PSD'] = getPSD(yaw_deg, self.dw)
+        results['yaw_RA' ] = rad2deg(self.Xi[:,5,:])
         
         # ----- turbine-level mooring outputs (similar code as array-level) -----
         if self.ms:
@@ -1486,33 +1853,34 @@ class FOWT():
                     T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
         
             results['Tmoor_avg'] = T_moor
-            results['Tmoor_std'] = []
-            results['Tmoor_max'] = []
-            results['Tmoor_PSD'] =  np.zeros([ self.nw, 2*nLines])
+            results['Tmoor_std'] = np.zeros(2*nLines)
+            results['Tmoor_max'] = np.zeros(2*nLines)
+            results['Tmoor_min'] = np.zeros(2*nLines)
+            results['Tmoor_PSD'] = np.zeros([ 2*nLines, self.nw])
             for iT in range(2*nLines):
                 TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
-                results['Tmoor_std'].append(TRMS)
-                results['Tmoor_max'].append( T_moor[iT] + 3*TRMS)
-                results['Tmoor_PSD'][:,iT] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
-            
-            # log the maximum line tensions predicted by RAFT for MoorPy use
-            # self.ms.saveMaxTensions(results['Tmoor_max']) 
+                results['Tmoor_std'][iT] = TRMS
+                results['Tmoor_max'][iT] =  T_moor[iT] + 3*TRMS
+                results['Tmoor_max'][iT] =  T_moor[iT] - 3*TRMS
+                results['Tmoor_PSD'][iT, :] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
         
         # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)
         XiHub = np.zeros([self.Xi.shape[0], self.nrotors, self.nw], dtype=complex)
-        results['AxRNA_std'] = []
+        results['AxRNA_std'] = np.zeros(self.nrotors) 
         results['AxRNA_PSD'] = np.zeros([self.nw, self.nrotors]) 
-        results['AxRNA_avg'] = []
-        results['AxRNA_max'] = []
+        results['AxRNA_avg'] = np.zeros(self.nrotors)
+        results['AxRNA_max'] = np.zeros(self.nrotors)
+        results['AxRNA_min'] = np.zeros(self.nrotors)
         
-        for ir in range(self.nrotors):
-            XiHub[:,ir,:] = self.Xi[:,0,:] + self.hHub[ir]*self.Xi[:,4,:]  
+        for ir, rotor in enumerate(self.rotorList):
+            XiHub[:,ir,:] = self.Xi[:,0,:] + rotor.r_rel[2]*self.Xi[:,4,:]  # planar approximation; to improve <<<
         
             # nacelle acceleration
-            results['AxRNA_std'].append(getRMS(XiHub[:,ir,:]*self.w**2))
+            results['AxRNA_std'][ir] = getRMS(XiHub[:,ir,:]*self.w**2)
             results['AxRNA_PSD'][:,ir] = (getPSD(XiHub[:,ir,:]*self.w**2, self.dw))
-            results['AxRNA_avg'].append(abs(np.sin(self.Xi0[4])*9.81)) # @Matt check this! 
-            results['AxRNA_max'].append(results['AxRNA_avg'][ir]+3*results['AxRNA_std'][ir])
+            results['AxRNA_avg'][ir] = abs(np.sin(self.Xi0[4])*9.81) # @Matt check this! 
+            results['AxRNA_max'][ir] = results['AxRNA_avg'][ir]+3*results['AxRNA_std'][ir]
+            results['AxRNA_min'][ir] = results['AxRNA_avg'][ir]-3*results['AxRNA_std'][ir]
             
         # tower base bending moment  >>> should three-dimensionalize this <<<
         m_turbine = np.zeros(len(self.mtower))
@@ -1527,16 +1895,19 @@ class FOWT():
         M_X_aero       = np.zeros_like(XiHub)
         dynamic_moment = np.zeros_like(XiHub)
         dynamic_moment_RMS = np.zeros(self.nrotors)
-
-        results['Mbase_avg'] = []
-        results['Mbase_std'] = []
+        
+        
+        results['Mbase_avg'] = np.zeros(self.nrotors)
+        results['Mbase_std'] = np.zeros(self.nrotors)
         results['Mbase_PSD'] = np.zeros([self.nw, self.nrotors])
-        results['Mbase_max'] = []
-        for ir in range(self.nrotors):
+        results['Mbase_max'] = np.zeros(self.nrotors)
+        results['Mbase_min'] = np.zeros(self.nrotors)
+        
+        for ir, rotor in enumerate(self.rotorList):
             # mass and moment arm >>> should three-dimensionalize <<<
-            m_turbine[ir] = self.mtower[ir] + self.mRNA[ir]                        # total masses of each turbine
+            m_turbine[ir] = self.mtower[ir] + rotor.mRNA  # total masses of each turbine
             zCG_turbine[ir] = (self.rCG_tow[ir][2]*self.mtower[ir]                 # CoG of each turbine
-                                + self.hHub[ir]*self.mRNA[ir])/m_turbine[ir]
+                                + rotor.r_rel[2]*rotor.mRNA)/m_turbine[ir]
             zBase[ir] = self.memberList[self.nplatmems + ir].rA[2]                  # tower base elevation [m]
             hArm[ir] = zCG_turbine[ir] - zBase[ir]                                 # vertical distance from tower base to turbine CG [m]
 
@@ -1544,7 +1915,7 @@ class FOWT():
 
             # turbine pitch moment of inertia about CG [kg-m^2]
             ICG_turbine[ir] = (translateMatrix6to6DOF(self.memberList[self.nplatmems+ir].M_struc, [0,0,-zCG_turbine[ir]])[4,4] # tower MOI about turbine CG
-                        + self.mRNA[ir]*(self.hHub[ir]-zCG_turbine[ir])**2 + self.IrRNA[ir]   )                          # RNA MOI with parallel axis theorem
+                        + rotor.mRNA*(rotor.r_rel[2]-zCG_turbine[ir])**2 + rotor.IrRNA)  # RNA MOI with parallel axis theorem
             # moment components and summation (all complex amplitudes)
             M_I[:,ir,:] = -m_turbine[ir]*aCG_turbine[:,ir,:]*hArm[ir] - ICG_turbine[ir]*(-self.w**2 *self.Xi[:,4,:] ) # tower base inertial reaction moment
             M_w[:,ir,:] =  m_turbine[ir]*self.g * hArm[ir]*self.Xi[:,4]                                    # tower base weight moment
@@ -1552,38 +1923,22 @@ class FOWT():
             M_F_aero = 0.0 # <<<<self.f_aero[0,:]*(self.hHub - zBase)  # tower base moment from turbulent wind excitation  <<<<<<<<<<<<<
             
             M_X_aero[:,ir,:] = -(-self.w**2 *self.A_aero[0,0,:,ir]                                 # tower base aero reaction moment
-                        + 1j*self.w *self.B_aero[0,0,:,ir] )*(self.hHub[ir] - zBase[ir])**2 *self.Xi[:,4,:]        
+                        + 1j*self.w *self.B_aero[0,0,:,ir] )*(rotor.r_rel[2] - zBase[ir])**2 *self.Xi[:,4,:]        
             dynamic_moment[:,ir,:] = M_I[:,ir,:] + M_w[:,ir,:] + M_F_aero + M_X_aero[:,ir,:]       # total tower base fore-aft bending moment [N-m]
             dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
 
             # fill in metrics
-            results['Mbase_avg'].append(m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )# mean moment from weight and thrust
-            results['Mbase_std'].append(dynamic_moment_RMS[ir])
+            # mean moment from weight and thrust
+            results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) 
+                          + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )
+            results['Mbase_std'][ir] = dynamic_moment_RMS[ir]
             results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
-            results['Mbase_max'].append(results['Mbase_avg'][ir]+3*results['Mbase_std'][ir])
+            results['Mbase_max'][ir] = results['Mbase_avg'][ir]+3*results['Mbase_std'][ir]
+            results['Mbase_min'][ir] = results['Mbase_avg'][ir]-3*results['Mbase_std'][ir]
             #results['Mbase_DEL'][iCase]
         
         # wave PSD for reference
         results['wave_PSD'] = getPSD(self.zeta, self.dw)        # wave elevation spectrum
-
-        '''
-        # TEMPORARY CHECK>>>
-        import matplotlib.pyplot as plt
-        plt.close('all')
-        fig , ax  = plt.subplots(4, 1, sharex=True)
-        ax[0].plot(abs(M_I     ))
-        ax[1].plot(abs(M_w     ))
-        ax[2].plot(abs(M_F_aero))
-        ax[3].plot(abs(M_X_aero))
-
-        ax[0].set_ylabel('M_I     ')
-        ax[1].set_ylabel('M_w     ')
-        ax[2].set_ylabel('M_F_aero')
-        ax[3].set_ylabel('M_X_aero')
-        plt.show()
-        breakpoint()
-        print(endnow)
-        '''
 
         # initialize complex amplitudes for rotor response
         phi_w    = np.zeros([self.nWaves+1, self.nrotors, self.nw], dtype=complex)  # rotor azimuth deviation 
@@ -1592,66 +1947,69 @@ class FOWT():
         bPitch_w = np.zeros([self.nWaves+1, self.nrotors, self.nw], dtype=complex)  # blade pitch
 
 
-        results['omega_avg'] = []
-        results['omega_std'] = []
-        results['omega_max'] = []
-        results['omega_PSD'] = []
-        results['torque_avg'] = []
-        results['torque_std'] = []
-        results['torque_PSD'] = []
-        results['power_avg'] = []
-        results['bPitch_avg'] = []
-        results['bPitch_std'] = []
-        results['bPitch_PSD'] = []
+        results['omega_avg']  = np.zeros(self.nrotors)
+        results['omega_std']  = np.zeros(self.nrotors)
+        results['omega_max']  = np.zeros(self.nrotors)
+        results['omega_min']  = np.zeros(self.nrotors)
+        results['omega_PSD']  = np.zeros([self.nw, self.nrotors])
+        results['torque_avg'] = np.zeros(self.nrotors)
+        results['torque_std'] = np.zeros(self.nrotors)
+        results['torque_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['power_avg']  = np.zeros(self.nrotors)
+        results['bPitch_avg'] = np.zeros(self.nrotors)
+        results['bPitch_std'] = np.zeros(self.nrotors)
+        results['bPitch_PSD'] = np.zeros([self.nw, self.nrotors])
         
         
-        for ir in range(self.nrotors):
+        for ir, rot in enumerate(self.rotorList):
         
             # get inflow speed for wind or current turbine
-            if self.rotorList[ir].Zhub < 0:
+            if rot.r3[2] < 0:
                 speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
             else:
                 speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
         
             # rotor-related outputs are only available if aerodynamics modeling is enabled
-            if self.rotorList[ir].aeroServoMod > 1 and speed > 0.0:
+            if rot.aeroServoMod > 1 and speed > 0.0:
             
                 # compute spectra of rotor azimuth variation, rotor speed, generator torque, and blade pitch
                 for ih in range(self.nWaves):
-                    phi_w[ih,ir,:] = self.rotorList[ir].C * XiHub[ih,ir,:]
+                    phi_w[ih,ir,:] = rot.C * XiHub[ih,ir,:]
                 
-                phi_w[-1,ir,:] = self.rotorList[ir].C * (XiHub[-1,ir,:] - self.rotorList[ir].V_w / (1j *self.w))
+                phi_w[-1,ir,:] = rot.C * (XiHub[-1,ir,:] - rot.V_w / (1j *self.w))
                 
                 # TODO
                 omega_w[ :,ir,:] =  1j*self.w * phi_w[:,ir,:]
-                torque_w[:,ir,:] = (1j*self.w * self.rotorList[ir].kp_tau  + self.rotorList[ir].ki_tau ) * phi_w[:,ir,:]
-                bPitch_w[:,ir,:] = (1j*self.w * self.rotorList[ir].kp_beta + self.rotorList[ir].ki_beta) * phi_w[:,ir,:]
+                torque_w[:,ir,:] = (1j*self.w * rot.kp_tau  + rot.ki_tau ) * phi_w[:,ir,:]
+                bPitch_w[:,ir,:] = (1j*self.w * rot.kp_beta + rot.ki_beta) * phi_w[:,ir,:]
                 
                 # rotor speed (rpm) 
-                results['omega_avg'].append(self.rotorList[ir].Omega_case)
-                results['omega_std'].append(radps2rpm(getRMS(omega_w[:,ir,:])))
-                results['omega_max'].append(results['omega_avg'][ir] + 2 * results['omega_std'][ir]) # this and other _max values will be based on std (avg + 2 or 3 * std)   (95% or 99% max)
-                results['omega_PSD'].append(radps2rpm(1)**2 * getPSD(omega_w[:,ir,:], self.dw))
+                results['omega_avg'][ir] = rot.Omega_case
+                results['omega_std'][ir] = radps2rpm(getRMS(omega_w[:,ir,:]))
+                # note: _max values are (avg + 2 or 3 * std)   (95% or 99% max)
+                results['omega_max'][ir] = results['omega_avg'][ir] + 2 * results['omega_std'][ir]
+                results['omega_min'][ir] = results['omega_avg'][ir] - 2 * results['omega_std'][ir]
+                results['omega_PSD'][:,ir] = radps2rpm(1)**2 * getPSD(omega_w[:,ir,:], self.dw)
                 
                 # generator torque (Nm)
-                results['torque_avg'].append(self.rotorList[ir].aero_torque / self.rotorList[ir].Ng)        # Nm
-                results['torque_std'].append(getRMS(torque_w[:,ir,:]))
-                results['torque_PSD'].append(getPSD(torque_w[:,ir,:], self.dw))
+                results['torque_avg'][ir] = rot.aero_torque / rot.Ng
+                results['torque_std'][ir] = getRMS(torque_w[:,ir,:])
+                results['torque_PSD'][:,ir] = getPSD(torque_w[:,ir,:], self.dw)
                 # results['torque_max'][iCase]    # skip, nonlinear
                 
                 # rotor power (W)
-                results['power_avg'].append(self.rotorList[ir].aero_power) # compute from cc-blade coeffs
+                results['power_avg'][ir] = rot.aero_power  # compute from cc-blade coeffs
                 # results['power_std'][iCase]     # nonlinear near rated, covered by torque_ and omega_std
                 # results['power_max'][iCase]     # skip, nonlinear
                 
                 # collective blade pitch (deg)
-                results['bPitch_avg'].append(self.rotorList[ir].pitch_case)
-                results['bPitch_std'].append(rad2deg(getRMS(bPitch_w[:,ir,:])))
-                results['bPitch_PSD'].append(rad2deg(1)**2 *getPSD(bPitch_w[:,ir,:], self.dw))
+                results['bPitch_avg'][ir] = rot.pitch_case
+                results['bPitch_std'][ir] = rad2deg(getRMS(bPitch_w[:,ir,:]))
+                results['bPitch_PSD'][:,ir] = rad2deg(1)**2 *getPSD(bPitch_w[:,ir,:], self.dw)
                 # results['bPitch_max'][iCase]    # skip, not something we'd consider in design
                 
                 # wind PSD for reference
-                results['wind_PSD'] = getPSD(self.rotorList[ir].V_w, self.dw)   # <<< need to confirm
+                results['wind_PSD'] = getPSD(rot.V_w, self.dw)   # <<< need to confirm
 
 
         '''
@@ -1714,46 +2072,57 @@ class FOWT():
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
 
-    def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], airfoils=False, zorder=2):
+    def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], 
+             airfoils=False, zorder=2, plot_fowt=True, plot_ms=True, 
+             shadow=True, mp_args={}):
         '''plots the FOWT...'''
-
+        
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
 
-        if self.ms:
-            self.ms.plot(ax=ax, color=color)
+        if plot_ms:
+            if self.ms:
+                self.ms.plot(ax=ax, color=color, shadow=shadow)
         
         if color==None:
             color='k'
+        else:
+            mp_args.update(dict(color=color))
         
-        if plot_rotor:
-            for rotor in self.rotorList:
-                coords = np.array([rotor.coords[0], rotor.coords[1], 0]) + self.r6[:3]
-                rotor.plot(ax, r_ptfm=coords, R_ptfm=R, color=color, airfoils=airfoils, zorder=zorder)
-                #rotor.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color)
-                '''
-                for afmem in rotor.bladeMemberList:
-                    afmem.calcOrientation()
-                    afmem.plot(ax, r_ptfm=self.body.r6[:3], R_ptfm=self.body.R, color=color, nodes=nodes, station_plot=station_plot)
-                '''
+        #if self.ms:
+            #self.ms.plot(ax=ax, **mp_args)
+        
+        if plot_fowt:
+            if plot_rotor:
+                for rotor in self.rotorList:
+                    rotor.plot(ax, r_ptfm=self.r6[:3]+np.array([self.x_ref, self.y_ref, 0]), color=color, airfoils=airfoils, zorder=zorder)
 
+            # loop through each member and plot it
+            for mem in self.memberList:
 
-        # loop through each member and plot it
-        for mem in self.memberList:
+                mem.setPosition()  # offsets/rotations could be done in this function rather than in mem.plot <<<
 
-            mem.setPosition()  # offsets/rotations could be done in this function rather than in mem.plot <<<
-
-            mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, 
-                     nodes=nodes, station_plot=station_plot, zorder=zorder)
+                mem.plot(ax, r_ptfm=self.r6[:3]+np.array([self.x_ref, self.y_ref, 0]), R_ptfm=R, color=color, 
+                        nodes=nodes, station_plot=station_plot, zorder=zorder)
 
         # in future should consider ability to animate mode shapes and also to animate response at each frequency
         # including hydro excitation vectors stored in each member
 
 
-    def plot2d(self, ax, color=None, station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1]):
-        '''plots the FOWT in 2d - only the platform and moorings so far...'''
+    def plot2d(self, ax, color=None, plot_rotor=1, 
+        Xuvec=[1,0,0], Yuvec=[0,0,1]):
+        '''Plot the FOWT in 2D based on specified axes.
+        
+        Parameters
+        ----------
+        plot_rotor : int
+            0 : don't plot; 1: plot 3D view; 2: plot a simple line
+        '''
 
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
-
+        
+        Xuvec = np.array(Xuvec)
+        Yuvec = np.array(Yuvec)
+        
         if self.ms:
             self.ms.plot2d(ax=ax, color=color, Xuvec=Xuvec, Yuvec=Yuvec)
 
@@ -1764,3 +2133,37 @@ class FOWT():
         for mem in self.memberList:
             mem.setPosition()
             mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, plot2d=True, Xuvec=Xuvec, Yuvec=Yuvec)
+
+        # Plot the rotor(s)
+        if plot_rotor == 1:
+            for rotor in self.rotorList:
+                rotor.plot(ax, color=color, plot2d=True, Xuvec=Xuvec, Yuvec=Yuvec)
+                
+        elif plot_rotor == 2:
+            # simple circle/line plot of rotor, ignoring precone or tilt
+            for rotor in self.rotorList:
+                r = rotor.ccblade.r[-1]  # rotor tip radius [m]
+                
+                X=[]  # lists to be filled with coordinates for plotting
+                Y=[]
+                Z=[]
+                
+                n = 24  # number of sides for a circle
+                for i in range(n+1):
+                    y = np.cos(float(i)/float(n)*2.0*np.pi)    # x coordinates of a unit circle
+                    z = np.sin(float(i)/float(n)*2.0*np.pi)    # y
+
+                    X.append(0)
+                    Y.append(r*y)
+                    Z.append(r*z)
+                
+                P2 = np.vstack([X, Y, Z])  # combine into a matrix of coordinates
+                  
+                R_heading = rotationMatrix(0, 0, rotor.turbine_heading)  # rotation matrix for rotor heading
+                
+                P2 = np.matmul(R_heading, P2) + rotor.r3[:,None]  # with only heading
+                
+                # apply any 3D to 2D transformation here to provide desired viewing angle
+                Xs2d = np.matmul(Xuvec, P2)
+                Ys2d = np.matmul(Yuvec, P2)
+                ax.plot(Xs2d, Ys2d, color=color, lw=1.0)

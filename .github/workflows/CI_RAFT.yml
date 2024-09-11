@@ -36,7 +36,11 @@ jobs:
                   channels: conda-forge
                   channel-priority: true          
 
-            # Install 
+            - name: Extras
+              run: |
+                  conda install -y pytest meson ninja nlopt
+                  conda info
+
             - name: Conda Install RAFT
               run: |
                   pip install -e .

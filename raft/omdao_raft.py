@@ -285,7 +285,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 iout = f'{n}_{s}'
                 
                 if n == 'Tmoor':
-                    myval = np.zeros((n_cases, 2*nlines)) if s not in ['PSD'] else np.zeros((n_cases, nfreq, 2*nlines))
+                    myval = np.zeros((n_cases, 2*nlines)) if s not in ['PSD'] else np.zeros((n_cases, 2*nlines, nfreq))
                 elif n == 'Mbase':
                     myval = np.zeros(n_cases) if s not in ['PSD'] else np.zeros((n_cases, nfreq))
                 else:
@@ -429,7 +429,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             design['turbine']['tower']['rA'] = inputs['turbine_tower_rB']
             design['turbine']['tower']['rB'] = inputs['turbine_tower_rA']
         design['turbine']['tower']['shape'] = turbine_opt['shape']
-        design['turbine']['tower']['gamma'] = inputs['turbine_tower_gamma']
+        design['turbine']['tower']['gamma'] = inputs['turbine_tower_gamma'][0]
         design['turbine']['tower']['stations'] = inputs['turbine_tower_stations']
         if turbine_opt['scalar_diameters']:
             design['turbine']['tower']['d'] = float(inputs['turbine_tower_d'])
@@ -530,7 +530,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             design['platform']['members'][i]['rA'] = rA
             design['platform']['members'][i]['rB'] = rB
             design['platform']['members'][i]['shape'] = m_shape
-            design['platform']['members'][i]['gamma'] = float(inputs[m_name+'gamma'])
+            design['platform']['members'][i]['gamma'] = float(inputs[m_name+'gamma'][0])
             design['platform']['members'][i]['potMod'] = members_opt[m_name+'potMod']
             design['platform']['members'][i]['stations'] = s_grid
             

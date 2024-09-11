@@ -32,6 +32,8 @@ RAFT uses a number of prerequisites, or other python package dependencies, to ru
 
 \* CCBlade is a module of WISDEM, but can be used separately. RAFT only requires CCBlade (and some additional related functions) out of the larger WISDEM code. Power users installing from source can install either CCBlade or WISDEM, but for highest efficiency, we recommend installing CCBlade, without the entire WISDEM installation.
 
+Note that conda is required for the following installations.
+
 ## Installing All Dependencies with `conda`
 
 To install all required python packages to run RAFT using `conda`, follow the steps below.
@@ -60,6 +62,12 @@ To install all required python packages to run RAFT using `conda`, follow the st
         (raft-env) YOUR_PATH/RAFT> pip install -e .
 
     This installs RAFT and all of its modules directly from your working directory in "editable" mode, meaning, if you save a change to your source code in the files in "YOUR_PATH/RAFT", future calls to RAFT modules will include those changes.
+
+5. Test the installation
+
+        (raft-env) YOUR_PATH/RAFT> pytest
+    
+    Running pytest should ensure everything was installed correctly
     
 	
 
@@ -86,14 +94,7 @@ To install all external python packages using `conda` and NREL packages from sou
 
     This will activate the newly created virtual environment, in which we will install the remaining dependencies.  After install is complete, when opening a new conda terminal that starts in the "base" environment, you can start with this "raft-env" activation command.
 
-4. Install the RAFT package into the virtual environment
-
-        (raft-env) YOUR_PATH/RAFT> pip install -e .
-
-    This installs RAFT and all of its modules directly from your working directory in "editable" mode, meaning, if you save a change to your source code in the files in "YOUR_PATH/RAFT", future calls to RAFT modules will include those changes.
-
-
-5. Install the necessary compilers and build tools for your system
+4. Install the necessary compilers and build tools for your system
 
         (raft-env) YOUR_PATH/RAFT> cd ..
         (raft-env) YOUR_PATH> pip install meson-python meson ninja cmake
@@ -101,7 +102,7 @@ To install all external python packages using `conda` and NREL packages from sou
         (raft-env) YOUR_PATH> conda install m2w64-toolchain libpython       (Windows)
 
 
-6. Install the NREL packages from source one at a time.
+5. Install the NREL packages from source one at a time.
 
         (raft-env) YOUR_PATH> git clone https://github.com/WISDEM/CCBlade.git
         (raft-env) YOUR_PATH> git clone https://github.com/NREL/MoorPy.git
@@ -118,13 +119,22 @@ To install all external python packages using `conda` and NREL packages from sou
 
     This installs MoorPy, CCBlade, and pyHAMS in "editable" mode, meaning, if you save a change to your source code in the files, future calls to RAFT modules will include those changes.
 
-
-7. Install RAFT to complete the process
+6. Install the RAFT package into the virtual environment
 
         (raft-env) YOUR_PATH> cd RAFT
         (raft-env) YOUR_PATH/RAFT> pip install -e .
+    
+    This installs RAFT and all of its modules directly from your working directory in "editable" mode, meaning, if you save a change to your source code in the files in "YOUR_PATH/RAFT", future calls to RAFT modules will include those changes.
 
-This new "raft-env" should now be compatible to run RAFT standalone. 
+This new "raft-env" should now be compatible to run RAFT standalone.
+
+7. Test the installation
+
+        (raft-env) YOUR_PATH/RAFT> pip install pytest
+        (raft-env) YOUR_PATH/RAFT> cd tests
+        (raft-env) YOUR_PATH/RAFT/tests> pytest test_fowt.py test_helpers.py test_member.py test_model.py test_rotor.py
+    
+    Running these specific test files should prove that the installation was successful. Other tests that include 'omdao' are only used for installations with WISDEM.
 
 If you need to remove any virtual environment for any reason, you can run 
 

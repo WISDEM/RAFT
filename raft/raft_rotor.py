@@ -1001,7 +1001,7 @@ class Rotor:
         return self.f0, self.f, self.a, self.b #  B_aero, C_aero, F_aero0, F_aero
         
         
-    def plot(self, ax, azimuth=0, color='k', 
+    def plot(self, ax, r_ptfm=[0,0,0], azimuth=0, color='k', 
              airfoils=False, draw_circle=False,
              plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):
         '''Draws the rotor on the passed axes, considering optional platform 
@@ -1059,7 +1059,7 @@ class Rotor:
             P2 = np.matmul(R_precone, P)
             P2 = np.matmul(R_azimuth[ib], P2)  # rotate around shaft
             P2 = np.matmul(self.R_q, P2)  # rotate to actual rotor orientation
-            P2 = P2 + self.r3[:,None]  # translate from PRP to absolute hub location
+            P2 = P2 + self.r3[:,None] + r_ptfm[:,None]  # translate from PRP to absolute hub location
           
             if plot2d:  # new 2d plotting option
                 

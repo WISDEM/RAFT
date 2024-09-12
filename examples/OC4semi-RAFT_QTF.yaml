@@ -18,7 +18,7 @@ site:
 cases:
     keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, current_speed, wave_gamma ]
     data :  #   m/s        deg    % or e.g. 2B_NTM    string            deg         string          (s)         (m)         (deg)
-        -  [    0,         0,            0,       operating,          0,        constant,             0,          5,           0,            0, 0]
+        -  [    0,         0,            0,       operating,          0,        JONSWAP,             12,          6,           0,            0, 0]
 
 
 
@@ -39,7 +39,7 @@ turbine:
     Rhub        : 1.5        # hub radius [m]
     precone     : 2.5        # [rad]
     shaft_tilt  : 5.0        # [rad]
-    overhang    : 5.0        # [m]
+    overhang    : -5.0        # [m]
     aeroServoMod : 1          # 0 aerodynamics off; 1 aerodynamics on (no control); 2 aerodynamics and control on
 
     env: 

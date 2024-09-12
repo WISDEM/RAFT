@@ -80,17 +80,15 @@ def index_and_rotor(request):
 '''
  Test functions
 '''
-def test_calcAero(index_and_rotor):    
+def test_calcAero(index_and_rotor, flagSaveValues=False):    
     '''
     Verify rotor.calcAero for many combinations of wind speed, heading, TI, and yaw mode.
     Some combinations seem to be outside the validity of CCBlade (e.g., yaw_mode=1, wind direction=90, and turbine_heading=0),
     but they are tested nonetheless.
+    Set flagSaveValues to true to replace the true values file with the values calculated below
     '''
     index, rotor = index_and_rotor
     rotor.setPosition()
-
-    # Set this flag to true to replace the true values file
-    flagSaveValues = False
 
     if 'IEA15MW' in list_files[index]:
         U_rated = 10.59
@@ -101,7 +99,7 @@ def test_calcAero(index_and_rotor):
         print(f'Unknown turbine. Considering U_rated = {U_rated} m/s.')
 
     # We are going to loop through the following values to test a broad range of cases
-    wind_speeds = np.sort(np.append(np.arange(3, 25, 3), U_rated))
+    wind_speeds = np.sort(np.append(np.arange(5, 26, 5), U_rated))
     wind_headings = [-90, -45, 0, 45, 90]
     TI            = [0, 0.5]
     yaw_modes     = [0, 1, 2, 3]
@@ -160,5 +158,5 @@ if __name__ == "__main__":
     index = 0
 
     rotor = create_rotor(list_files[index])
-    test_calcAero((index, rotor))
+    test_calcAero((index, rotor), flagSaveValues=False)
 

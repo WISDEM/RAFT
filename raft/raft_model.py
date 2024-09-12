@@ -62,7 +62,6 @@ class Model():
         for i in range(self.nw):
             self.k[i] = waveNumber(self.w[i], self.depth)
         
-        
         # ----- parse array section if it exists -----
         
         if 'array' in design:  # if array info is given, RAFT will run in array mode
@@ -116,7 +115,6 @@ class Model():
                 design_i['site'] = design['site']
                 
                 if fowtInfo[i]['turbineID'] == 0:
-                    #design_i['turbine'] = None
                     design_i.pop('turbine', None)  # if no turbine, make sure the entry isn't in the design dictionary
                 else:
                     design_i['turbine'] = design['turbines'][fowtInfo[i]['turbineID']-1]
@@ -154,18 +152,12 @@ class Model():
             
             # Note: its mooring system will be put in the FOWT now rather than existing at the model/array level.
             # # process mooring information 
-            # self.ms = mp.System()
-            # self.ms.parseYAML(design['mooring'])
             self.ms = None
 
             # set up the FOWT here
-            #self.fowtList.append(fowt.FOWT(design, self.w, self.ms.bodyList[0], depth=self.depth))
             self.fowtList.append(fowt.FOWT(design, self.w, None, depth=self.depth))
             self.coords.append([0.0,0.0])
             self.nDOF += 6
-
-            #self.ms.bodyList[0].type = -1  # need to make sure it's set to a coupled type
-        
         
         self.design = design # save design dictionary for possible later use/reference
 
@@ -173,10 +165,6 @@ class Model():
         if self.ms:
             self.ms.initialize()
         #>>> initialize all the mooring systems?
-        #try:
-        #    self.ms.initialize()  # reinitialize the mooring system to ensure all things are tallied properly etc.
-        #except Exception as e:
-        #    raise RuntimeError('An error occured when initializing the mooring system: '+e.message)
         
         self.results = {}     # dictionary to hold all results from the model
         
@@ -192,23 +180,6 @@ class Model():
         self.nDOF += 6
 
         # would potentially need to add a mooring system body for it too <<<
-
-
-    """
-    def setEnv(self, Hs=8, Tp=12, spectrum='constant', V=10, beta=0, Fthrust=0):
-
-        self.env = Env()
-        self.env.Hs       = Hs
-        self.env.Tp       = Tp
-        self.env.spectrum = spectrum
-        self.env.V        = V
-        self.env.beta     = beta
-        self.Fthrust      = Fthrust
-
-        for fowt in self.fowtList:
-            fowt.setEnv(Hs=Hs, Tp=Tp, V=V, spectrum=spectrum, beta=beta, Fthrust=Fthrust)
-    """
-
 
     def analyzeUnloaded(self, ballast=0, heave_tol = 1):
         '''This calculates the system properties under undloaded coonditions: equilibrium positions, natural frequencies, etc.
@@ -258,7 +229,6 @@ class Model():
         
         
         # calculate the system's constant properties
-        #self.calcSystemConstantProps()
         for fowt in self.fowtList:
         
             # apply any ballast adjustment if requested
@@ -271,14 +241,12 @@ class Model():
             
             # compute FOWT static and constant hydrodynamic properties
             fowt.calcStatics()
-            #fowt.calcBEM()
             fowt.calcHydroConstants()  # includes rotor when underwater
         
         
         self.results['properties'] = {}   # signal this data is available by adding a section to the results dictionary
             
         # calculate platform offsets and mooring system equilibrium state
-        #self.calcMooringAndOffsets()
         self.solveStatics(None)  # passing none should imply no load case (no WWC)
         self.results['properties']['offset_unloaded'] = self.fowtList[0].Xi0
         
@@ -310,8 +278,9 @@ class Model():
         # loop through each case
         for iCase in range(nCases):
         
-            print(f"\n--------------------- Running Case {iCase+1} ----------------------")
-            print(self.design['cases']['data'][iCase])
+            if display > 0:
+                print(f"\n--------------------- Running Case {iCase+1} ----------------------")
+                print(self.design['cases']['data'][iCase])
         
             # form dictionary of case parameters
             case = dict(zip( self.design['cases']['keys'], self.design['cases']['data'][iCase]))            
@@ -331,7 +300,7 @@ class Model():
             # >>> add a flag that stores what case has had solveStatics to ensure consistency <<<
           
             # solve system dynamics            
-            self.solveDynamics(case, RAO_plot=RAO_plot)
+            self.solveDynamics(case, RAO_plot=RAO_plot, display=display)
 
             # Solve system operating point / mean offsets again, but now including mean wave forces.
             # We actually wouldn't need to do that if the QTFs are computed externally, but all the wave information 
@@ -339,7 +308,8 @@ class Model():
             # In principle, solveDynamics should be recomputed to account for the actual mean position. 
             # However, if computing the QTFs internally, the mean drift due to the waves shouldn't be too large, so probably not worth the cost.
             if any(fowt.potSecOrder > 0 for fowt in self.fowtList):
-                print('Recomputing equilibrium position, now with wave mean drift')
+                if display > 1:
+                    print('Recomputing equilibrium position, now with wave mean drift')
                 self.solveStatics(case)
 
                 # zero out the mean wave forces to avoid using old values in the next case
@@ -362,29 +332,26 @@ class Model():
                 
                     # print statistics table
                     print(f"-------------------- FOWT {i+1} Case {iCase+1} Statistics --------------------")
-                    print("Response channel     Average     RMS         Maximum")
-                    print(f"surge (m)          {metrics['surge_avg'] :10.2e}  {metrics['surge_std'] :10.2e}  {metrics['surge_max'] :10.2e}")
-                    print(f"sway (m)           {metrics['sway_avg' ] :10.2e}  {metrics['sway_std' ] :10.2e}  {metrics['sway_max' ] :10.2e}")
-                    print(f"heave (m)          {metrics['heave_avg'] :10.2e}  {metrics['heave_std'] :10.2e}  {metrics['heave_max'] :10.2e}")
-                    print(f"roll (deg)         {metrics['roll_avg' ] :10.2e}  {metrics['roll_std' ] :10.2e}  {metrics['roll_max' ] :10.2e}")
-                    print(f"pitch (deg)        {metrics['pitch_avg'] :10.2e}  {metrics['pitch_std'] :10.2e}  {metrics['pitch_max'] :10.2e}")
-                    print(f"yaw (deg)          {metrics[  'yaw_avg'] :10.2e}  {metrics[  'yaw_std'] :10.2e}  {metrics['yaw_max'  ] :10.2e}")
+                    print("Response channel     Average     RMS         Maximum     Minimum")
+                    print(f"surge (m)          {metrics['surge_avg'] :10.2e}  {metrics['surge_std'] :10.2e}  {metrics['surge_max'] :10.2e}  {metrics['surge_min'] :10.2e}")
+                    print(f"sway (m)           {metrics['sway_avg' ] :10.2e}  {metrics['sway_std' ] :10.2e}  {metrics['sway_max' ] :10.2e}  {metrics['sway_min'] :10.2e}")
+                    print(f"heave (m)          {metrics['heave_avg'] :10.2e}  {metrics['heave_std'] :10.2e}  {metrics['heave_max'] :10.2e}  {metrics['heave_min'] :10.2e}")
+                    print(f"roll (deg)         {metrics['roll_avg' ] :10.2e}  {metrics['roll_std' ] :10.2e}  {metrics['roll_max' ] :10.2e}  {metrics['roll_min'] :10.2e}")
+                    print(f"pitch (deg)        {metrics['pitch_avg'] :10.2e}  {metrics['pitch_std'] :10.2e}  {metrics['pitch_max'] :10.2e}  {metrics['pitch_min'] :10.2e}")
+                    print(f"yaw (deg)          {metrics[  'yaw_avg'] :10.2e}  {metrics[  'yaw_std'] :10.2e}  {metrics['yaw_max'  ] :10.2e}  {metrics['yaw_min'] :10.2e}")
                     for i in range(nTowers):
-                        print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][i] :10.2e}  {metrics['AxRNA_std'][i] :10.2e}  {metrics['AxRNA_max'][i] :10.2e}")
+                        print(f"nacelle acc. (m/s) {metrics['AxRNA_avg'][i] :10.2e}  {metrics['AxRNA_std'][i] :10.2e}  {metrics['AxRNA_max'][i] :10.2e}  {metrics['AxRNA_min'][i] :10.2e}")
                     for i in range(nTowers):
-                        print(f"tower bending (Nm) {metrics['Mbase_avg'][i] :10.2e}  {metrics['Mbase_std'][i] :10.2e}  {metrics['Mbase_max'][i] :10.2e}")
+                        print(f"tower bending (Nm) {metrics['Mbase_avg'][i] :10.2e}  {metrics['Mbase_std'][i] :10.2e}  {metrics['Mbase_max'][i] :10.2e}  {metrics['Mbase_min'][i] :10.2e}")
                     for i in range(nRotors):
                         if fowt.rotorList[i].Zhub < 0:
                             speed = getFromDict(case, 'current_speed', shape=0, default=1.0)
                         else:
                             speed = getFromDict(case, 'wind_speed', shape=0, default=10.0)
                         if fowt.rotorList[i].aeroServoMod > 1 and speed > 0.0:
-                            print(f"rotor speed (RPM)  {metrics['omega_avg'][i] :10.2e}  {metrics['omega_std'][i] :10.2e}  {metrics['omega_max'][i] :10.2e}")
+                            print(f"rotor speed (RPM)  {metrics['omega_avg'][i] :10.2e}  {metrics['omega_std'][i] :10.2e}  {metrics['omega_max'][i] :10.2e}  {metrics['omega_min'][i] :10.2e}")
                             print(f"blade pitch (deg)  {metrics['bPitch_avg'][i] :10.2e}  {metrics['bPitch_std'][i] :10.2e} ")
                             print(f"rotor power        {metrics['power_avg'][i] :10.2e} ")
-                    #for i in range(nLine):  >>> could have the turbine's own mooring system results here <<<
-                    #    j = i+nLine
-                    #    print(f"line {i} tension (N) {metrics['Tmoor_avg'][iCase,j]:10.2e}  {metrics['Tmoor_std'][iCase,j]:10.2e}  {metrics['Tmoor_max'][iCase,j]:10.2e}")
                     print(f"-----------------------------------------------------------")
 
                
@@ -427,6 +394,7 @@ class Model():
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_avg'] = T_moor
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'] = np.zeros(2*nLines)
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'] = np.zeros(2*nLines)
+                self.results['case_metrics'][iCase]['array_mooring']['Tmoor_min'] = np.zeros(2*nLines)
                 self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'] = np.zeros([ 2*nLines, self.nw ])
                 
                 
@@ -434,11 +402,9 @@ class Model():
                     TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_std'][iT] = TRMS
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'][iT] = T_moor[iT] + 3*TRMS
+                    self.results['case_metrics'][iCase]['array_mooring']['Tmoor_min'][iT] = T_moor[iT] - 3*TRMS
                     self.results['case_metrics'][iCase]['array_mooring']['Tmoor_PSD'][iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
                     #self.results['case_metrics']['array_mooring']['Tmoor_DEL'][iCase,iT] = 
-                
-                # log the maximum line tensions predicted by RAFT for MoorPy use
-                # self.ms.saveMaxTensions(self.results['case_metrics'][iCase]['array_mooring']['Tmoor_max'])
                 
                 if display > 0:
             
@@ -446,16 +412,16 @@ class Model():
                 
                     # print statistics table
                     print(f"-------------------- Mooring Case {iCase+1} Statistics --------------------")
-                    print("Response channel     Average     RMS         Maximum")
+                    print("Response channel     Average     RMS         Maximum     Minimum")
                     for i in range(nLines):
                         j = i+nLines
-                        print(f"line {i} tension (N) {metrics['Tmoor_avg'][j]:10.2e}  {metrics['Tmoor_std'][j]:10.2e}  {metrics['Tmoor_max'][j]:10.2e}")
+                        print(f"line {i} tension (N) {metrics['Tmoor_avg'][j]:10.2e}  {metrics['Tmoor_std'][j]:10.2e}  {metrics['Tmoor_max'][j]:10.2e}  {metrics['Tmoor_min'][j]:10.2e}")
                     print(f"-----------------------------------------------------------")
                 
                 self.T_moor_amps = T_moor_amps  # save for future processing!
     
 
-    def solveEigen(self):
+    def solveEigen(self, display=0):
         '''Compute the natural frequencies and mode shapes of the floating 
         system. When there is a single FOWT, this should give the same result
         as FOWT.solveEigen.
@@ -525,14 +491,15 @@ class Model():
         fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
         modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
 
-        print("")
-        print("--------- Natural frequencies and mode shapes -------------")
-        print("Mode   "+"".join([f"{i+10:3d}"  for i in range(self.nDOF)]))
-        print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
-        print("")
-        for i in range(self.nDOF):
-            print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(self.nDOF)]))
-        print("-----------------------------------------------------------")
+        if display > 0: 
+            print("")
+            print("--------- Natural frequencies and mode shapes -------------")
+            print("Mode   "+"".join([f"{i+10:3d}"  for i in range(self.nDOF)]))
+            print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
+            print("")
+            for i in range(self.nDOF):
+                print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(self.nDOF)]))
+            print("-----------------------------------------------------------")
 
         # store results
         self.results['eigen'] = {}   # signal this data is available by adding a section to the results dictionary
@@ -579,7 +546,7 @@ class Model():
         if case:
             caseorig = copy.deepcopy(case) # save original case data in new dict
             if type(case['wind_speed']) == list :
-                print('List of wind speeds found!')
+                if display > 1:  print('List of wind speeds found!')
                 
                 if len(case['wind_speed']) != len(self.fowtList):
                     raise IndexError("List of wind speeds must be the same length as the list of wind turbines")
@@ -587,32 +554,29 @@ class Model():
         # set initial values before solving        
         for i, fowt in enumerate(self.fowtList):
             
-            if display > 0:  print(f"FOWT {i+1:}")
+            if display > 1:  print(f"FOWT {i+1:}")
         
-            #X_initial[6*i:6*i+6] = fowt.r6 - np.array([fowt.xref, fowt.yref,0,0,0,0])
             X_initial[6*i:6*i+6] = np.array([fowt.x_ref, fowt.y_ref,0,0,0,0])
             fowt.setPosition(X_initial[6*i:6*i+6])      # zero platform offsets
             fowt.calcStatics()
             
             if statics_mod == 0:
-                #K_hydrostatic[6*i:6*i+6, 6*i:6*i+6] += fowt.C_struc + fowt.C_hydro
                 K_hydrostatic.append(fowt.C_struc + fowt.C_hydro)
                 F_undisplaced[6*i:6*i+6           ] += fowt.W_struc + fowt.W_hydro
                 
-                if display > 0:  print(" F_undisplaced "+"  ".join(["{:+8.2e}"]*6).format(*F_undisplaced[6*i:6*i+6]))
+                if display > 1:  print(" F_undisplaced "+"  ".join(["{:+8.2e}"]*6).format(*F_undisplaced[6*i:6*i+6]))
 
             if forcing_mod == 0 and case:
                 
                 # If list of wind speeds, set each turbine case with corresponding wind speed
                 if type(caseorig['wind_speed']) == list :
                     case['wind_speed'] = caseorig['wind_speed'][i]
-                    print('Fowt ' + str(i))
-                    print(case)
+                    if display > 1: 
+                        print('Fowt ' + str(i))
+                        print(case)
                 
                 fowt.calcTurbineConstants(case, ptfm_pitch=0)  # for turbine forces >>> still need to update to use current fowt pose <<<
                 fowt.calcHydroConstants()
-                #for rotor in fowt.rotorList:    # for blade ifmembers (bladeMemberList will be empty if rotors are not underwater) ??
-                    #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)                   ??                
                 F_env_constant[6*i:6*i+6] = np.sum(fowt.f_aero0, axis=1) + fowt.calcCurrentLoads(case)
 
                 # Add mean drift if it was already computed.
@@ -622,7 +586,7 @@ class Model():
                     F_meandrift = np.sum(fowt.Fhydro_2nd_mean, axis=0)
                     F_env_constant[6*i:6*i+6] += F_meandrift
                 
-                if display > 0:  print(" F_env_constant"+"  ".join(["{:+8.2e}"]*6).format(*F_env_constant[6*i:6*i+6]))
+                if display > 1:  print(" F_env_constant"+"  ".join(["{:+8.2e}"]*6).format(*F_env_constant[6*i:6*i+6]))
         
         # preliminary approach to provide uniform currents on the mooring system(s)
         currentMod = 0
@@ -635,16 +599,6 @@ class Model():
                 currentU = np.array([cur_speed*np.cos(np.radians(cur_heading)),
                                      cur_speed*np.sin(np.radians(cur_heading)), 0])
         
-        if self.ms:
-            self.ms.currentMod = currentMod
-            self.ms.current = currentU
-        
-        for fowt in self.fowtList:
-            if fowt.ms:
-                fowt.ms.currentMod = currentMod
-                fowt.ms.current = currentU
-        
-        
         # ----- calculate platform offsets and mooring system equilibrium state -----
         
         # figure out some settings to the equilibrium solve
@@ -652,7 +606,6 @@ class Model():
         tols = np.array([0.05,0.05,0.05, 0.005,0.005,0.005]*len(self.fowtList)) # create vector of tolerances - tol = 0.05  rtol = tol/10
         
         
-        # formerly def calcMooringAndOffsets(self, iCase=0):
         '''Calculates mean offsets and linearized mooring properties for the current load case.
         setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
         Mean offsets are saved in the FOWT object.
@@ -693,8 +646,6 @@ class Model():
                 else: 
                     raise Exception('Invalid statics_mod value')
                 
-                #print("W_hydro")
-                #printVec(fowt.W_hydro)
                 
                 # if it's a loaded case, include mean environmental loads
                 if case:    # <<<<<<
@@ -711,9 +662,6 @@ class Model():
                         fowt.calcTurbineConstants(case, ptfm_pitch=r6[4])  # for turbine forces >>> still need to update to use current fowt pose <<<
                         fowt.calcHydroConstants()  # prep for drag force and mean drift
 
-                        #for rotor in fowt.rotorList:    # for blade members (bladeMemberList will be empty if rotors are not underwater) ??
-                            #fowt.calcHydroConstants(case, memberList=rotor.bladeMemberList*rotor.nBlades, Rotor=rotor)                   ??
-                    
                         Fnet[6*i:6*i+6] += np.sum(fowt.f_aero0, axis=1)  # sum mean turbine force across turbines                        
                         Fnet[6*i:6*i+6] += fowt.calcCurrentLoads(case)  # current drag force  i.e. fowt.D_hydro
 
@@ -733,25 +681,16 @@ class Model():
             
             # note that the above also calculates many stiffnes terms that are used in step_func_equil
             
-
             if display > 1:
                 print("Net forces")
                 printVec(Fnet)
-            
-            Y = Fnet
-            
-            oths = dict(status=1)                # other outputs - returned as dict for easy use
-            
-            if display > 0:
+                
                 RMSeForce  = np.linalg.norm([Y[6*i  :6*i+3] for i in range(self.nFOWT)])
                 RMSeMoment = np.linalg.norm([Y[6*i+3:6*i+6] for i in range(self.nFOWT)])
                 print(f"Iteration RMS force and moment errors: {RMSeForce:8.2e} {RMSeMoment:8.2e}")
-                if RMSeForce < 100 and RMSeMoment < 100:
-                    if display > 1:
-                        breakpoint()
-                else:
-                    print('Warning: RMS error of equilibrium forces or moments exceeds 100.')
-           
+            
+            Y = Fnet
+            oths = dict(status=1)                # other outputs - returned as dict for easy use
            
             return Y, oths, False
         
@@ -852,9 +791,13 @@ class Model():
         # Now find static equilibrium offsets 
         X, Y, info = dsolve2(eval_func_equil, X_initial, step_func=step_func_equil, 
                              tol=tols, a_max=1.6, maxIter=20, display=0, args={'display': display} ) #, dodamping=True)
-        #X, Y, info = dsolve2(eval_func_equil, X_initial, step_func=step_func_equil, 
-        #                     ytol=1e4, a_max=1.6, maxIter=20, display=0 ) #, dodamping=True)
-       
+
+        if display > 1:
+            RMSeForce  = np.linalg.norm([Y[6*i  :6*i+3] for i in range(self.nFOWT)])
+            RMSeMoment = np.linalg.norm([Y[6*i+3:6*i+6] for i in range(self.nFOWT)])
+            if RMSeForce > 1000 or RMSeMoment > 1000:
+                print('Warning: RMS error of equilibrium forces or moments exceeds 1000.')
+        
         if display > 0:
             print('New Equilibrium Position', X)
             print('Remaining Forces on the Model (N)', Y)
@@ -865,37 +808,13 @@ class Model():
         if case and 'iCase' in case:
             self.results['mean_offsets'].append(self.Xs2[-1])  # save the final equilibrium position for this case
         
-        
-        
-        '''
-        >>> old approach >>>
-
-        try:
-            self.ms.solveEquilibrium3(DOFtype="both", tol=0.01) #, rmsTol=1.0E-5)     # get the system to its equilibrium
-        except Exception as e:     #mp.MoorPyError
-            print('An error occured when solving system equilibrium: '+e.message)
-            #raise RuntimeError('An error occured when solving unloaded equilibrium: '+error.message)
-        '''
-        
-        # ::: a loop could be added here for an array :::
         for i, fowt in enumerate(self.fowtList):
-            
-            #print("Equilibrium'3' platform positions/rotations:")
-            #printVec(self.ms.bodyList[0].r6)
-
-            #r6eq = X[6*i:6*i+6]
-            #fowt.Xi0 = r6eq[0:6]   # save current mean offsets for the FOWT
-
-            #self.ms.plot()
-
             print(f"Found mean offets of FOWT {i+1} with surge = {fowt.Xi0[0]: .2f} m,  sway  = {fowt.Xi0[1]: .2f},  and heave = {fowt.Xi0[2]: .2f} m")
             print(f"                                 roll  = {fowt.Xi0[3]*180/np.pi: .2f} deg, pitch = {fowt.Xi0[4]*180/np.pi: .2f}, and yaw   = {fowt.Xi0[5]*180/np.pi: .2f} deg")
 
         
         #dsolvePlot(info) # plot solver convergence trajectories
         
-        #breakpoint()
-
         ''' TODO: following sections should be checked and streamlined >>>
 
         
@@ -951,11 +870,9 @@ class Model():
         '''
         
 
-    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0):
+    def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0, display=0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
-
-        nIter = 2  # maximum number of iterations to allow
         '''
         
         iCase = None
@@ -976,7 +893,6 @@ class Model():
             c = np.arange(nIter+1)      # adding 1 again here so that there are no RuntimeErrors
             c = cm.jet((c-np.min(c))/(np.max(c)-np.min(c)))      # set up colormap to use to plot successive iteration results
 
-        # ::: a loop could be added here for an array :::
         # Loop through each fowt to calculate its independent response to wave excitation.
         # This is the iterative linearization stage to get individual impedance matrices.
         XiLast_all = []  # list to store the last iteration's response for each turbine
@@ -999,8 +915,8 @@ class Model():
                 B_turb = np.zeros([6,6,self.nw])
                 
             # >>>> NOTE: Turbulent wind excitation is currently disabled pending formulation checks/fixes <<<<
-            print('Solving for system response to wave excitation in primary wave direction')
-            
+            if display > 0:
+                print('Solving for system response to wave excitation in primary wave direction')
 
             # TODO: Need to iterate the dynamic matrices as well due to the drag force on the moorings
             # We would need to pass the motions of the extremities of the mooring lines within getCoupledDynamicMatrices
@@ -1016,16 +932,16 @@ class Model():
                 fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
                 M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
 
-            # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file
-            # In some cases, they may be very relevant to the motion RMS values (e.g. pitch motion of spar platforms), so should be included in the drag linearization process            
+            # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file.
+            # In some cases, they may be very relevant to the motion RMS values, so should be included in the drag linearization process.          
             fowt.Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
             fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF])
             if fowt.potSecOrder==2:
                 fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:], iCase=iCase, iWT=i)
 
-            # We use this flag when fowt.potSecOrder==1, so that we compute the QTFs including first-order motions only
+            # We use this flag to know if we have computed the QTFs already. It's used when fowt.potSecOrder==1, 
+            # so that we compute the QTFs including first-order motions only.
             flagComputedQTF = False
-
 
             # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
             M_lin.append( M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]        + M_moor[:,:,None] + A_moor[:,:,None] ) # mass
@@ -1033,9 +949,6 @@ class Model():
             C_lin.append(          fowt.C_struc                          + fowt.C_hydro                        + C_moor ) # stiffness
             F_lin.append( fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:] + fowt.Fhydro_2nd[0, :, :]) # consider only excitation from the primary sea state in the load case for now
 
-            
-            #F_lin = np.sum(fowt.F_aero, axis=2) + fowt.F_BEM + np.sum(fowt.F_hydro_iner, axis=0) # excitation
-            
             # start fixed point iteration loop for dynamics of the individual FOWT
             iiter = 0
             while iiter < nIter:
@@ -1047,10 +960,6 @@ class Model():
                 F_tot = np.zeros([fowt.nDOF,self.nw], dtype=complex)  # total excitation force/moment complex amplitudes vector [N, N-m]
 
                 Z  = np.zeros([fowt.nDOF,fowt.nDOF,self.nw], dtype=complex)  # total  fowt impedance matrix
-
-
-                # a loop could be added here for an array
-                # fowt = self.fowtList[0]  <<< so far I'm thinking iterative for individual FOWTs rather than whole system... exception would be very stiff shared moorings
                 
                 # get linearized terms for the current turbine given latest amplitudes
                 B_linearized = fowt.calcHydroLinearization(XiLast)
@@ -1086,39 +995,50 @@ class Model():
                     ax[0].plot(self.w, np.abs(Xi[0,:]) , color=c[iiter], label=f"iteration {iiter}")
                     ax[1].plot(self.w, np.real(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
                     ax[2].plot(self.w, np.imag(Xi[0,:]), color=c[iiter], label=f"iteration {iiter}")
-        
+                
+                if any(np.isnan(Xi).ravel()):
+                    raise Exception("Nan detected in response vector Xi.")
+                
+                
                 # check for convergence
                 tolCheck = np.abs(Xi - XiLast) / ((np.abs(Xi)+tol))
                 if (tolCheck < tol).all():
-                    print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
+                    if display > 1:
+                        print(f" Iteration {iiter}, converged (largest change is {np.max(tolCheck):.5f} < {tol})")
 
                     if fowt.potSecOrder != 1 or flagComputedQTF:
                         break
                     else:
-                        iiter = 0
-
-                        # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces.
-                        # So, we compute the QTFs considering the first-order motions computed with the linearized drag and then we loop again
-                        # to make sure the second-order motions are considered in the linearization procedure. 
+                        # If we are computing the QTFs internally, we need to consider first-order body motions forces to compute the QTFs.
+                        # So, we use the motions obtained after the linearized drag loop above and then we loop again to include the 
+                        # second-order motions in the drag linearization procedure. 
                         # This is important for cases where the second-order motions are large compared to the first-order motions.
-                        print(f"Resolving for system response in primary wave direction, now with second-order wave loads.")
+                        iiter = 0
+                        if display > 1:
+                            print(f"Resolving for system response in primary wave direction, now with second-order wave loads.")
+
+                        # Get the response amplitude operators (RAOs, i.e. motions for unit wave amplitude)
                         Xi0 = getRAO(Xi[i1:i2, :], fowt.zeta[0,:])
                                                 
-                        tic = time.perf_counter()                        
+                        tic = time.perf_counter() # Time the QTF calculation
                         fowt.calcQTF_slenderBody(waveHeadInd=0, Xi0=Xi0, verbose=True, iCase=iCase, iWT=i)
                         toc = time.perf_counter()
-                        print(f"\n Time to compute QTFs for fowt {i}: {toc - tic:0.4f} seconds")
+                        if display > 1:
+                            print(f"\n Time to compute QTFs for fowt {i}: {toc - tic:0.4f} seconds")
 
+                        # After computing the QTFs internally, we can now compute the second-order hydrodynamic forces
                         fowt.Fhydro_2nd_mean[0, :], fowt.Fhydro_2nd[0, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[0], fowt.S[0,:], iCase=iCase, iWT=i)
                         F_lin[i1:i2] += fowt.Fhydro_2nd[0, :, :]
-                        flagComputedQTF = True                         
+                        flagComputedQTF = True # Flag that we have computed the QTFs already and we don't need to do it again.
                 else:
                     XiLast = 0.2*XiLast + 0.8*Xi    # use a mix of the old and new response amplitudes to use for the next iteration
                                                     # (uses hard-coded successive under relaxation for now)
-                    print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
+                    if display > 2:
+                        print(f" Iteration {iiter}, unconverged (largest change is {np.max(tolCheck):.5f} >= {tol})")
         
                 if iiter == nIter-1:
-                    print("WARNING - solveDynamics iteration did not converge to the tolerance.")
+                    if display > 0:
+                        print("WARNING - solveDynamics iteration did not converge to the tolerance.")
 
                 iiter += 1
             
@@ -1143,19 +1063,12 @@ class Model():
         # 0. Construct full system matrices
         
         Z_sys = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=complex)   # total system impedance matrix
-        #M_sys = np.zeros([self.nDOF,self.nDOF,self.nw])       # total mass and added mass matrix [kg, kg-m, kg-m^2]
-        #B_sys = np.zeros([self.nDOF,self.nDOF,self.nw])       # total damping matrix [N-s/m, N-s, N-s-m]
-        #C_sys = np.zeros([self.nDOF,self.nDOF,self.nw])       # total stiffness matrix [N/m, N, N-m]
-        #F_sys = np.zeros([self.nDOF,self.nw], dtype=complex)
         
         # include each FOWT's individual impedance matrix
         for i, fowt in enumerate(self.fowtList):
             i1 = i*6                                              # range of DOFs for the current turbine
             i2 = i*6+6
             Z_sys[i1:i2, i1:i2] += fowt.Z
-            #M_sys[i1:i2, i1:i2] += fowt.
-            #B_sys[i1:i2, i1:i2] += fowt.
-            #C_sys[i1:i2, i1:i2] += fowt.
         
         # include array-level mooring stiffness
         if self.ms:
@@ -1240,11 +1153,6 @@ class Model():
         for i, fowt in enumerate(self.fowtList):
             fowt.Xi = self.Xi[:, i*6:i*6+6, :]  # this overwrites the response in the FOWT with what's been calculated
         
-        
-        # XXX  3. calculate overall response spectrum with Stot = |Hw|^2 Sw + |Hi|^2 Si + ...
-        # XXX Stot = np.sum(np.abs(Xi)**2, axis=0)
-        
-
 
         # ------------------------------ preliminary plotting of response ---------------------------------
         
@@ -1278,9 +1186,6 @@ class Model():
                 ax[5].plot(self.w, np.imag(fowt.Xi[0,5,:])*180/np.pi, ':r')
                 
                 ax[0].legend()
-        
-                #ax[0].set_ylim([0, 1e6])
-                #ax[1].set_ylim([0, 1e9])
         
                 ax[0].set_ylabel("Surge (m)")
                 ax[1].set_ylabel("Sway (m)")
@@ -1350,31 +1255,6 @@ class Model():
             self.results['properties']['A support structure'] = fowt.A_hydro_morison + fowt.A_BEM[:,:,-1]   # hydrodynamic added mass (currently using highest frequency of BEM added mass)
             self.results['properties']['C support structure'] = fowt.C_struc_sub + fowt.C_hydro + self.C_moor0  # stiffness
 
-        
-        
-        # ----- response outputs (always in standard units) ---------------------------------------
-        '''
-        if 'response' in self.results:
-            
-            RAOmag      = abs(self.Xi          /fowt.zeta)  # magnitudes of motion RAO
-
-            self.results['response']['frequencies'] = self.w/2/np.pi         # Hz
-            self.results['response']['wave elevation'] = fowt.zeta
-            self.results['response']['Xi'         ] = self.Xi
-            
-            self.results['response']['surge RAO'  ] = RAOmag[0,:]
-            self.results['response'][ 'sway RAO'  ] = RAOmag[1,:]
-            self.results['response']['heave RAO'  ] = RAOmag[2,:]
-            self.results['response']['pitch RAO'  ] = RAOmag[3,:]
-            self.results['response'][ 'roll RAO'  ] = RAOmag[4,:]
-            self.results['response'][  'yaw RAO'  ] = RAOmag[5,:]
-            
-            # save dynamic derived quantities
-            #self.results['response']['mooring tensions'] = ...
-            self.results['response']['nacelle acceleration'] = self.w**2 * (self.Xi[0] + self.Xi[4]*fowt.hHub)
-        '''
-    
-        
         return self.results
         
         
@@ -1410,13 +1290,8 @@ class Model():
         ax[4].set_ylabel('twr. bend \n'+r'((Nm)$^2$/Hz)')
         ax[5].set_ylabel('wave elev.\n'+r'(m$^2$/Hz)')
 
-        #ax[0].set_ylim([0.0, 25])
-        #ax[1].set_ylim([0.0, 15])
-        #ax[2].set_ylim([0.0, 4])
-        #ax[-1].set_xlim([0.03, 0.15])
         ax[-1].set_xlabel('frequency (Hz)')
         
-        #if nCases > 1:
         ax[-1].legend()
         fig.suptitle('RAFT power spectral densities')
         fig.tight_layout()
@@ -1522,10 +1397,6 @@ class Model():
         ax[7].set_ylabel('twr. bend \n' + r'((Nm)$^2$/Hz)')
         ax[8].set_ylabel('wave elev.\n' + r'(m$^2$/Hz)')
 
-        # ax[0].set_ylim([0.0, 25])
-        # ax[1].set_ylim([0.0, 15])
-        # ax[2].set_ylim([0.0, 4])
-        # ax[-1].set_xlim([0.03, 0.15])
         ax[-1].set_xlabel('frequency (Hz)')
 
         # if nCases > 1:
@@ -1568,13 +1439,6 @@ class Model():
             additional arguments passed to the array-level MoorPy plot method.
         '''
 
-        # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
-        #self.ms.bodyList[0].setPosition(np.zeros(6))
-        #self.ms.initialize()
-        
-        #fig = plt.figure(figsize=(20/2.54,12/2.54))
-        #ax = Axes3D(fig)
-        
         # prepare arguments to MoorPy
         mp_args2 = dict(color=color, draw_body=draw_body, xbounds=xbounds, ybounds=ybounds, zbounds=zbounds)
         mp_args2.update(mp_args)
@@ -1587,7 +1451,13 @@ class Model():
             else:   
                 fig = plt.figure(figsize=figsize)
                 ax = plt.axes(projection='3d')
-            
+                
+                if xbounds != None:
+                    ax.set_xlim(xbounds[0], xbounds[1])
+                if ybounds != None:
+                    ax.set_ylim(ybounds[0], ybounds[1])
+                if zbounds != None:
+                    ax.set_zlim(zbounds[0], zbounds[1])
         else:
             fig = ax.get_figure()
             if self.ms:
@@ -1610,8 +1480,6 @@ class Model():
             ax.axis('off')
             ax.set_frame_on(False)
 
-        #vx = np.array( ax.get_xlim() )
-        #vy = np.array( ax.get_ylim() )
         r = 75 #0.1*np.maximum(vx.max(), vy.max())
 
         if plot_water:
@@ -1632,13 +1500,6 @@ class Model():
                station_plot=[], Xuvec=[1,0,0], Yuvec=[0,0,1], figsize=(6,4),
                plot_rotor=2):
         '''plots the whole model, including FOWTs and mooring system...'''
-
-        # for now, start the plot via the mooring system, since MoorPy doesn't yet know how to draw on other codes' plots
-        #self.ms.bodyList[0].setPosition(np.zeros(6))
-        #self.ms.initialize()
-        
-        #fig = plt.figure(figsize=(20/2.54,12/2.54))
-        #ax = Axes3D(fig)
 
         # if axes not passed in, make a new figure
         if ax == None:    
@@ -1800,26 +1661,6 @@ class Model():
                 if member_break_flag:
                     break
                         
-        # if you've gone through all the members in the model that have initial ballast, maybe try adjusting densities
-        # this also does not currently support members with multiple types of ballast, even though RAFT can
-        """
-        fowt.calcStatics()
-        sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-        heave = sumFz/(fowt.rho_water*fowt.g*fowt.AWP)
-        while abs(heave) > 0.5:
-            #print(f'Adjusting ballast since the heave is {heave:6.2f} m')
-            for i in range(len(fowt.memberList)):
-                if fowt.memberList[i].rho_fill > 0:     # find the first member in the memberList that has ballast
-                    for j in range(len(fowt.memberList[i].headings)):   # for each copy of the member
-                        fowt.memberList[i+j].rho_fill += rho_fill_adj*(heave/abs(heave))
-                        #print(fowt.memberList[i+j].rho_fill)
-                    break
-                # >>>>>> fyi there could be an else case where no members have ballast initially <<<<<
-            fowt.calcStatics()
-            sumFz = -fowt.M_struc[0,0]*fowt.g + fowt.V*fowt.rho_water*fowt.g + self.F_moor0[2]
-            heave = sumFz/(fowt.rho_water*fowt.g*fowt.AWP)
-        """
-        
         if rtn:
             return data
 
@@ -2298,15 +2139,7 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
     
     
     depth = float(design['mooring']['water_depth'])
-    
-    # for now, turn off potMod in the design dictionary to avoid BEM analysis
-    #design['platform']['potModMaster'] = 1
-    
-    # read in turbine data and combine it in
-    # if len(turbine_file) > 0:
-    #   turbine = convertIEAturbineYAML2RAFT(turbine_file)
-    #   design['turbine'].update(turbine)
-    
+       
     # Create and run the model
     print(" --- making model ---")
     model = Model(design)  
@@ -2371,11 +2204,11 @@ if __name__ == "__main__":
     ### Run a Reference FOWT Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/OC3spar.yaml'), plot=1)
     #model = runRAFT(os.path.join(raft_dir,'designs/OC4semi.yaml'), plot=1)
-    #model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
+    model = runRAFT(os.path.join(raft_dir,'designs/VolturnUS-S.yaml'), plot=1)
     
     ### Run a MHK Model ###
     #model = runRAFT(os.path.join(raft_dir,'designs/FOCTT_example.yaml'), plot=1)
-    model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
+    #model = runRAFT(os.path.join(raft_dir,'designs/RM1_Floating.yaml'), plot=1)
     
     ### Run a RAFT Farm Model ###
     #model = runRAFTFarm(os.path.join(raft_dir,'designs/VolturnUS-S_farm.yaml'), plot=1)

@@ -1009,8 +1009,8 @@ class FOWT():
             for ih in range(self.nWaves):
                 
                 # phase offset due to FOWT position in array
-                phase_offset = np.exp(-1j*self.k* ( self.x_ref*np.cos(case['wave_heading'][ih]) 
-                                                  + self.y_ref*np.sin(case['wave_heading'][ih]) ) )
+                phase_offset = np.exp(-1j*self.k* ( self.x_ref*np.cos(np.deg2rad(case['wave_heading'][ih])) 
+                                                  + self.y_ref*np.sin(np.deg2rad(case['wave_heading'][ih])) ) )
 
                 beta = np.degrees(self.beta[ih])%360  # heading in range of 0-360 [deg]
                 

@@ -1861,7 +1861,7 @@ class FOWT():
                 TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
                 results['Tmoor_std'][iT] = TRMS
                 results['Tmoor_max'][iT] =  T_moor[iT] + 3*TRMS
-                results['Tmoor_max'][iT] =  T_moor[iT] - 3*TRMS
+                results['Tmoor_min'][iT] =  T_moor[iT] - 3*TRMS
                 results['Tmoor_PSD'][iT, :] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
         
         # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)

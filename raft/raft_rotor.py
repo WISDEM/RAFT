@@ -1001,7 +1001,7 @@ class Rotor:
         return self.f0, self.f, self.a, self.b #  B_aero, C_aero, F_aero0, F_aero
         
         
-    def plot(self, ax, r_ptfm=[0,0,0], azimuth=0, color='k', 
+    def plot(self, ax, r_ptfm=np.array([0,0,0]), azimuth=0, color='k', 
              airfoils=False, draw_circle=False,
              plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):
         '''Draws the rotor on the passed axes, considering optional platform 

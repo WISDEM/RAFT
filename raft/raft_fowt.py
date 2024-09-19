@@ -2100,14 +2100,14 @@ class FOWT():
         if plot_fowt:
             if plot_rotor:
                 for rotor in self.rotorList:
-                    rotor.plot(ax, r_ptfm=self.r6[:3]+np.array([self.x_ref, self.y_ref, 0]), color=color, airfoils=airfoils, zorder=zorder)
+                    rotor.plot(ax, color=color, airfoils=airfoils, zorder=zorder)
 
             # loop through each member and plot it
             for mem in self.memberList:
 
                 mem.setPosition()  # offsets/rotations could be done in this function rather than in mem.plot <<<
 
-                mem.plot(ax, r_ptfm=self.r6[:3]+np.array([self.x_ref, self.y_ref, 0]), R_ptfm=R, color=color, 
+                mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, 
                         nodes=nodes, station_plot=station_plot, zorder=zorder)
 
         # in future should consider ability to animate mode shapes and also to animate response at each frequency

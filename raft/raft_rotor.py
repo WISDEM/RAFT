@@ -690,6 +690,8 @@ class Rotor:
                 
                 cav_check[a,n] = sigma_crit + cpmin_node         # if this value is negative, then cavitation occurs (sigma_crit - sigma_l < 0 -> cav occurs; sigma_l = -cpmin_node)
 
+        if np.any(cav_check < 0.0):
+            print("WARNING: Cavitation check was run and found a blade node that has cavitation occuring")
 
         return cav_check
 
@@ -992,11 +994,13 @@ class Rotor:
                 self.b[:3,:3, iw] = rotateMatrix3(np.diag([b2[iw],0,0]), self.R_q)
                 self.f[:3,    iw] = np.matmul(self.R_q, np.array([f2[iw],0,0]))
                 # Above is only forces for now. Moments can be added in future.
-
+        
+        """ # Caltured in FOWT.calcHydroExcitation()
         # Add hydrodynamic inertial excitation for underwater rotors
         if current:
             self.f[0,:] += self.I_hydro[0,0] * 1j*self.w*self.V_w  # <<< this should have a rotation applied
             breakpoint()
+        """        
         
         return self.f0, self.f, self.a, self.b #  B_aero, C_aero, F_aero0, F_aero
         
@@ -1059,8 +1063,9 @@ class Rotor:
             P2 = np.matmul(R_precone, P)
             P2 = np.matmul(R_azimuth[ib], P2)  # rotate around shaft
             P2 = np.matmul(self.R_q, P2)  # rotate to actual rotor orientation
-            P2 = P2 + self.r3[:,None] + r_ptfm[:,None]  # translate from PRP to absolute hub location
-          
+            P2 = P2 + self.r3[:,None]  # translate from PRP to absolute hub location
+            
+            
             if plot2d:  # new 2d plotting option
                 
                 # apply any 3D to 2D transformation here to provide desired viewing angle

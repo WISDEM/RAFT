@@ -22,31 +22,32 @@ cases:
     
     keys : [wind_speed, wind_heading, turbulence, turbine_status, turbine_heading, wave_spectrum, wave_period, wave_height, wave_heading, current_speed, current_heading, current_turbulence  ]
     data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)          (m)          (deg)         (m/s)           (deg)         % or e.g. IIB_NTM     
-        -  [    0.0,        0,            0,           parked,            0,        JONSWAP,         8.0,         2.0,           0,           1.9,             0,                  0          ]
-      
+        #-  [    0.0,        0,            0,           parked,            0,        none,         8.0,         2.0,           0,           0.0,             0,                  0          ]
+        -  [    0.0,        0,            0,           operating,            0,        none,         8.0,         2.0,           0,           1.9,             0,                  0          ]
+
 
 turbine:
 
     nrotors     :  1                # [-]        number of turbines in the FOWT
     rotorCoords : [[0, 0]]          # [m, m]     x-y coordinates of rotor in space
-    speed_gain  : 1.1               # [-]    multiplier on inflow velocity due to flow confinement
+    speed_gain  : 1.0               # [-]    multiplier on inflow velocity due to flow confinement
     
-    mRNA        : 52755.716           # [kg]       RNA mass 
-    IxRNA       : 232552.25             # [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
+    mRNA        : 90664.718           # [kg]       RNA mass 
+    IxRNA       : 1222590.25             # [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
     IrRNA       : 244643.0            # [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
-    xCG_RNA     : 0.412            # [m]        x location of RNA center of mass [m from centerline, positive downwind]
+    xCG_RNA     : -2.5478            # [m]        x location of RNA center of mass [m from centerline, positive downwind]
     hHub        : -25.2             # [m]        hub height above water line [m], Maybe try to put it underwater???
     Fthrust     : 0.0           # [N]        temporary thrust force to use
     
-    I_drivetrain: 0.0           # full rotor + drivetrain inertia as felt on the high-speed shaft
+    I_drivetrain: 0.0           # full rotor + drivetrain inertia as felt on the high-speed shaft | only used for aeroServoMod==2 and B_gyro
     
     nBlades     : 2                 # [-]        number of blades
     Zhub        : -25.2             # [m]        hub height [m]
     Rhub        : 1.0               # [m]        hub radius [m]
     precone     : 0.0               # [deg]
     shaft_tilt  : 0.0               # [deg]
-    overhang    : 4.91              # [m]
-    aeroMod     : 0                 # [-]        0 aerodynamics off; 1 aerodynamics on
+    overhang    : -4.91              # [m]
+    aeroServoMod     : 1                 # [-]        0 aerodynamics off; 1 aerodynamics on
 
     
     blade: 
@@ -679,24 +680,42 @@ turbine:
         VS_KP: -38609162.66552
         VS_KI: -4588245.18720
     
+
+
+    nacelle:
+        dlsMax      :  2.0                        #          maximum node splitting section amount; can't be 0
+        name        :  nacelle                    # [-]      an identifier (no longer has to be number)       
+        type        :  1                          # [-]      type (used for platform members vs. other members)
+        rA          :  [4.5478, 0, -25.2]         # [m]      end A coordinates
+        rB          :  [-3.6878, 0, -25.2]        # [m]      end B coordinates
+        shape       :  rect                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        stations    :  [ 0, 1 ]                   # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  [1.9529036540547544, 2.4]  # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.06791876744511316        # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  0.0                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  0.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  8500                       # [kg/m^3] material density
+
     
     tower:
-        dlsMax       :  2.0     # maximum node splitting section amount; can't be 0
-    
-        name      :  tower                     # [-]    an identifier (no longer has to be number)       
-        type      :  1                         # [-]    
-        rA        :  [ 0, 0, -24.0]             # [m]    end A coordinates
-        rB        :  [ 0, 0, -9.0]             # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
-        stations  :  [ 0, 1 ]                  # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  0.3253                       # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.16265                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  0.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  0.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3]   material density
+        dlsMax      :  2.0                        #          maximum node splitting section amount; can't be 0
+        name        :  tower                      # [-]      an identifier (no longer has to be number)       
+        type        :  1                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0, 0, -24.0]             # [m]      end A coordinates
+        rB          :  [ 0, 0, -9.0]              # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        stations    :  [ 0, 1 ]                   # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  0.3253                     # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.16265                    # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  0.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  0.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  8500                       # [kg/m^3] material density
 
 
 platform:
@@ -704,383 +723,402 @@ platform:
     potModMaster :   1          # [int] master switch for potMod variables; 0=keeps all member potMod vars the same, 1=turns all potMod vars to False (no HAMS), 2=turns all potMod vars to True (no strip)
     dlsMax       :  2.0         # maximum node splitting section amount for platform members; can't be 0
     potFirstOrder: 0
-    hydroPath : 'designs/MHK_RM1_Floating_updated'
+    hydroPath : 'designs/MHK_RM1_Floating'
 
     members:   # list all members here
         
-      - name      :  column-E                 # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 28.0, 0.0, -10.0]         # [m]    end A coordinates
-        rB        :  [ 28.0, 0.0, 6.0]         # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]        # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  8.0          # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3]
-        l_fill    : 0.4473325
-        rho_fill  : 1025
+      - name        :  column-E                   # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 28.0, 0.0, -10.0]        # [m]      end A coordinates
+        rB          :  [ 28.0, 0.0, 6.0]          # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  8.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+        l_fill      :  0.4473325                  # [- or m] the height of ballast material in the member (scaled relative to station values)
+        rho_fill    :  1025                       # [kg/m^3] the material density of ballast
+        cap_stations:  [1]                        # [- or m] the location of the cap relative to station values
+        cap_t       :  [0.02]                     # [m]      the thickness of the cap at the cap station
+        cap_d_in    :  [0]                        # [m]      the diameter of the "cut-out" circle (0 means it's continuous)
 
-      - name      :  column-W                 # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ -28.0, 0.0, -10.0]          # [m]    end A coordinates
-        rB        :  [ -28.0, 0.0, 6.0]          # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]        # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  8.0          # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-        l_fill    : 0.4473325
-        rho_fill  : 1025
+      - name        :  column-W                   # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ -28.0, 0.0, -10.0]       # [m]      end A coordinates
+        rB          :  [ -28.0, 0.0, 6.0]         # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  8.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+        l_fill      :  0.4473325                  # [- or m] the height of ballast material in the member (scaled relative to station values)
+        rho_fill    :  1025                       # [kg/m^3] the material density of ballast
+        cap_stations:  [1]                        # [- or m] the location of the cap relative to station values
+        cap_t       :  [0.02]                     # [m]      the thickness of the cap at the cap station
+        cap_d_in    :  [0]                        # [m]      the diameter of the "cut-out" circle (0 means it's continuous)
       
-      - name      :  column-S                 # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0.0, -12.0, -10.0]          # [m]    end A coordinates
-        rB        :  [ 0.0, -12.0, 6.0]          # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]        # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  8.0          # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3]
-        l_fill    : 0.4473325
-        rho_fill  : 1025
-      
-      - name      :  column-N                 # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0.0, 12.0, -10.0]          # [m]    end A coordinates
-        rB        :  [ 0.0, 12.0, 6.0]          # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]        # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  8.0          # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3]
-        l_fill    : 0.4473325
-        rho_fill  : 1025
-      
-      - name      :  upper_brace-NE                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 3.67658, 10.4243, 4.5]   # [m]    end A coordinates
-        rB        :  [ 24.3234, 1.57568, 4.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-      
-      - name      :  upper_brace-SE                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 3.67658, -10.4243, 4.5]   # [m]    end A coordinates
-        rB        :  [ 24.3234, -1.57568, 4.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-      
-      - name      :  upper_brace-SW                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ -3.67658, -10.4243, 4.5]   # [m]    end A coordinates
-        rB        :  [ -24.3234, -1.57568, 4.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-      
-      - name      :  upper_brace-NW                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ -3.67658, 10.4243, 4.5]   # [m]    end A coordinates
-        rB        :  [ -24.3234, 1.57568, 4.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-      
-      - name      :  lower_brace-NE                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 3.67658, 10.4243, -8.5]   # [m]    end A coordinates
-        rB        :  [ 24.3234, 1.57568, -8.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.081                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-      
-      - name      :  lower_brace-SE                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 3.67658, -10.4243, -8.5]   # [m]    end A coordinates
-        rB        :  [ 24.3234, -1.57568, -8.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.081                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-      
-      - name      :  lower_brace-SW                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ -3.67658, -10.4243, -8.5]   # [m]    end A coordinates
-        rB        :  [ -24.3234, -1.57568, -8.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.081                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-      
-      - name      :  lower_brace-NW                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ -3.67658, 10.4243, -8.5]   # [m]    end A coordinates
-        rB        :  [ -24.3234, 1.57568, -8.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.081                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
-      
+      - name        :  column-S                   # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0.0, -12.0, -10.0]       # [m]      end A coordinates
+        rB          :  [ 0.0, -12.0, 6.0]         # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  8.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+        l_fill      :  0.4473325                  # [- or m] the height of ballast material in the member (scaled relative to station values)
+        rho_fill    :  1025                       # [kg/m^3] the material density of ballast
+        cap_stations:  [1]                        # [- or m] the location of the cap relative to station values
+        cap_t       :  [0.02]                     # [m]      the thickness of the cap at the cap station
+        cap_d_in    :  [0]                        # [m]      the diameter of the "cut-out" circle (0 means it's continuous)
+
+      - name        :  column-N                   # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0.0,  12.0, -10.0]       # [m]      end A coordinates
+        rB          :  [ 0.0,  12.0, 6.0]         # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  8.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+        l_fill      :  0.4473325                  # [- or m] the height of ballast material in the member (scaled relative to station values)
+        rho_fill    :  1025                       # [kg/m^3] the material density of ballast
+        cap_stations:  [1]                        # [- or m] the location of the cap relative to station values
+        cap_t       :  [0.02]                     # [m]      the thickness of the cap at the cap station
+        cap_d_in    :  [0]                        # [m]      the diameter of the "cut-out" circle (0 means it's continuous)
 
 
 
-      - name      :  upper_tower_brace                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0.0, -8.0, 4.5]   # [m]    end A coordinates
-        rB        :  [ 0.0, 8.0, 4.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
       
-      - name      :  lower_tower_brace                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0.0, -8.0, -8.5]   # [m]    end A coordinates
-        rB        :  [ 0.0,  8.0, -8.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
+      - name        :  upper_brace-NE             # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 3.67658, 10.4243, 4.5]   # [m]      end A coordinates
+        rB          :  [ 24.3234, 1.57568, 4.5]   # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
       
-      - name      :  diag_tower_brace-S                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0.0, -8.0, -8.5]   # [m]    end A coordinates
-        rB        :  [ 0.0, 0.0, 4.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
+      - name        :  upper_brace-SE             # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 3.67658, -10.4243, 4.5]  # [m]      end A coordinates
+        rB          :  [ 24.3234, -1.57568, 4.5]  # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
       
-      - name      :  diag_tower_brace-N                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0.0, 8.0, -8.5]   # [m]    end A coordinates
-        rB        :  [ 0.0, 0.0, 4.5]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  2.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.02                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
+      - name        :  upper_brace-SW             # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [-3.67658, -10.4243, 4.5]  # [m]      end A coordinates
+        rB          :  [-24.3234, -1.57568, 4.5]  # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
       
-      - name      :  heave_plate-E                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 28.0, 0.0, -10.5]   # [m]    end A coordinates
-        rB        :  [ 28.0, 0.0, -10.0]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  12.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.3925                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  1.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  1.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
+      - name        :  upper_brace-NW             # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [-3.67658, 10.4243, 4.5]   # [m]      end A coordinates
+        rB          :  [-24.3234, 1.57568, 4.5]   # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+
+
+
       
-      - name      :  heave_plate-W                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ -28.0, 0.0, -10.5]   # [m]    end A coordinates
-        rB        :  [ -28.0, 0.0, -10.0]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  12.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.3925                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  1.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  1.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
+      - name        :  lower_brace-NE             # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 3.67658, 10.4243, -8.5]  # [m]      end A coordinates
+        rB          :  [ 24.3234, 1.57568, -8.5]  # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.081                      # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
       
-      - name      :  heave_plate-S                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0.0, -12.0, -10.5]   # [m]    end A coordinates
-        rB        :  [ 0.0, -12.0, -10.0]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  12.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.3925                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  1.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  1.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
+      - name        :  lower_brace-SE             # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 3.67658,-10.4243, -8.5]  # [m]      end A coordinates
+        rB          :  [ 24.3234,-1.57568, -8.5]  # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.081                      # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
       
-      - name      :  heave_plate-N                # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
-        rA        :  [ 0.0, 12.0, -10.5]   # [m]    end A coordinates
-        rB        :  [ 0.0, 12.0, -10.0]       # [m]    and B coordinates
-        shape     :  circ                      # [-]    circular or rectangular
-        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
-        potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
-        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-        d         :  12.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-        t         :  0.3925                     # [m]    wall thicknesses (scalar or list of same length as stations)
-        Cd        :  1.2                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-        Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-        CdEnd     :  1.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-        CaEnd     :  1.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-        rho_shell :  7850                      # [kg/m3] 
+      - name        :  lower_brace-SW             # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [-3.67658,-10.4243, -8.5]  # [m]      end A coordinates
+        rB          :  [-24.3234,-1.57568, -8.5]  # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.081                      # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+      
+      - name        :  lower_brace-NW             # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [-3.67658, 10.4243, -8.5]  # [m]      end A coordinates
+        rB          :  [-24.3234, 1.57568, -8.5]  # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.081                      # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+      
+
+
+
+      - name        :  upper_tower_brace          # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0.0, -8.0, 4.5]          # [m]      end A coordinates
+        rB          :  [ 0.0, 8.0, 4.5]           # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+
+      - name        :  lower_tower_brace          # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0.0, -8.0, -8.5]         # [m]      end A coordinates
+        rB          :  [ 0.0, 8.0, -8.5]          # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+      
+      - name        :  diag_tower_brace-S         # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0.0, -8.0, 4.5]          # [m]      end A coordinates
+        rB          :  [ 0.0, 0.0, -8.5]          # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+      
+      - name        :  diag_tower_brace-N         # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0.0, 8.0, 4.5]           # [m]      end A coordinates
+        rB          :  [ 0.0, 0.0, -8.5]          # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [- or m] location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  2.0                        # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.02                       # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  0.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.0                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+      
+
+
+      
+      - name        :  heave_plate-E              # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 28.0, 0.0, -10.5]        # [m]      end A coordinates
+        rB          :  [ 28.0, 0.0, -10.0]        # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [-]      location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  12.0                       # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.3925                     # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  1.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.4                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+        cap_stations:  [0]                        # [- or m] the location of the cap relative to station values
+        cap_t       :  [0.02]                     # [m]      the thickness of the cap at the cap station
+        cap_d_in    :  [0]                        # [m]      the diameter of the "cut-out" circle (0 means it's continuous)
+
+      - name        :  heave_plate-W              # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ -28.0, 0.0, -10.5]       # [m]      end A coordinates
+        rB          :  [ -28.0, 0.0, -10.0]       # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [-]      location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  12.0                       # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.3925                     # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  1.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.4                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+        cap_stations:  [0]                        # [- or m] the location of the cap relative to station values
+        cap_t       :  [0.02]                     # [m]      the thickness of the cap at the cap station
+        cap_d_in    :  [0]                        # [m]      the diameter of the "cut-out" circle (0 means it's continuous)
+      
+      - name        :  heave_plate-S              # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0.0, -12.0, -10.5]       # [m]      end A coordinates
+        rB          :  [ 0.0, -12.0, -10.0]       # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [-]      location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  12.0                       # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.3925                     # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  1.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.4                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+        cap_stations:  [0]                        # [- or m] the location of the cap relative to station values
+        cap_t       :  [0.02]                     # [m]      the thickness of the cap at the cap station
+        cap_d_in    :  [0]                        # [m]      the diameter of the "cut-out" circle (0 means it's continuous)
+      
+      - name        :  heave_plate-N              # [-]      an identifier (no longer has to be number)       
+        type        :  2                          # [-]      type (used for platform members vs. other members)
+        rA          :  [ 0.0, 12.0, -10.5]        # [m]      end A coordinates
+        rB          :  [ 0.0, 12.0, -10.0]        # [m]      end B coordinates
+        shape       :  circ                       # [-]      circular or rectangular
+        gamma       :  0.0                        # [deg]    twist angle about the member's z-axis
+        potMod      :  True                       # [bool]   whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        stations    :  [0, 1]                     # [-]      location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d           :  12.0                       # [m]      diameters if circular or side lengths if rectangular (can be pairs)
+        t           :  0.3925                     # [m]      wall thicknesses (scalar or list of same length as stations)
+        Cd          :  1.2                        # [-]      transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca          :  1.0                        # [-]      transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd       :  1.0                        # [-]      end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd       :  0.4                        # [-]      end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        rho_shell   :  7850                       # [kg/m^3] the material density of the shell
+        cap_stations:  [0]                        # [- or m] the location of the cap relative to station values
+        cap_t       :  [0.02]                     # [m]      the thickness of the cap at the cap station
+        cap_d_in    :  [0]                        # [m]      the diameter of the "cut-out" circle (0 means it's continuous)
 
 
 
 
 mooring:
     water_depth: 50                            # [m]       uniform water depth
-    
+
     points:
         - name: sw_anchor
           type: fixed
-          location: [-152.0,    -50.0,     -50.0]
-          anchor_type: drag_embedment
-        
-        - name: w_anchor
-          type: fixed
-          location: [-152.0,    0.0,     -50.0]
+          location: [-342.0,    -112.44,     -50.0]
           anchor_type: drag_embedment
         
         - name: nw_anchor
           type: fixed
-          location: [-152.0,    50.0,     -50.0]
+          location: [-342.0,     112.44,     -50.0]
           anchor_type: drag_embedment
         
         - name: se_anchor
           type: fixed
-          location: [152.0,    -50.0,     -50.0]
-          anchor_type: drag_embedment
-        
-        - name: e_anchor
-          type: fixed
-          location: [152.0,    0.0,     -50.0]
+          location: [ 342.0,    -112.44,     -50.0]
           anchor_type: drag_embedment
         
         - name: ne_anchor
           type: fixed
-          location: [152.0,    50.0,     -50.0]
+          location: [ 342.0,     112.44,     -50.0]
           anchor_type: drag_embedment
         
         - name: sw_fairlead
-          type: vessel
-          location: [-34.0,    0.0,     -10.0]
-        
-        - name: w_fairlead
           type: vessel
           location: [-34.0,    0.0,     -10.0]
         
@@ -1090,15 +1128,11 @@ mooring:
         
         - name: se_fairlead
           type: vessel
-          location: [34.0,    0.0,     -10.0]
-        
-        - name: e_fairlead
-          type: vessel
-          location: [34.0,    0.0,     -10.0]
+          location: [ 34.0,    0.0,     -10.0]
         
         - name: ne_fairlead
           type: vessel
-          location: [34.0,    0.0,     -10.0]
+          location: [ 34.0,    0.0,     -10.0]
 
 
     lines:
@@ -1106,52 +1140,40 @@ mooring:
           endA: sw_anchor
           endB: sw_fairlead
           type: main
-          length: 160
-        
-        - name: w_line
-          endA: w_anchor
-          endB: w_fairlead
-          type: main
-          length: 152
+          length: 335.1
         
         - name: nw_line
           endA: nw_anchor
           endB: nw_fairlead
           type: main
-          length: 160
+          length: 335.1
         
         - name: se_line
           endA: se_anchor
           endB: se_fairlead
           type: main
-          length: 160
-        
-        - name: e_line
-          endA: e_anchor
-          endB: e_fairlead
-          type: main
-          length: 152
+          length: 335.1
         
         - name: ne_line
           endA: ne_anchor
           endB: ne_fairlead
           type: main
-          length: 160
+          length: 335.1
 
 
       
 
     line_types:
-        - name: main
-          diameter:         0.324
-          mass_density:   644.8
-          stiffness:     85.4e8
-          breaking_load:    1e8
-          cost: 100.0
-          transverse_added_mass: 0.5
-          tangential_added_mass: 1.0
-          transverse_drag: 1.15
-          tangential_drag: 2.4
+        - name                  : main
+          diameter              : 0.1502
+          mass_density          : 139.18
+          stiffness             : 5.957e8
+          breaking_load         : 7.152e6
+          cost                  : 100.0
+          transverse_added_mass : 0.5
+          tangential_added_mass : 1.0
+          transverse_drag       : 1.15
+          tangential_drag       : 2.4
 
     anchor_types:
         - name: drag_embedment
@@ -1159,4 +1181,5 @@ mooring:
           cost: 1e4
           max_vertical_load: 0.0
           max_lateral_load: 1e5
+
     

@@ -149,10 +149,14 @@ class FOWT():
                     self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust))
         
         
-        # add tower(s) to member list if applicable
+        # add tower(s) and nacelle(s) to member list if applicable
         if 'turbine' in design:
-            for mem in design['turbine']['tower']:
-                self.memberList.append(Member(mem, self.nw))
+            if 'tower' in design['turbine']:
+                for mem in design['turbine']['tower']:
+                    self.memberList.append(Member(mem, self.nw))
+            if 'nacelle' in design['turbine']:
+                for mem in design['turbine']['nacelle']:
+                    self.memberList.append(Member(mem, self.nw))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
         
         # array-level mooring system connection
@@ -329,8 +333,9 @@ class FOWT():
         self.mtower = np.zeros(self.ntowers)    # assume that the whole tower will always be one member
         self.rCG_tow = []
 
+        memberList = [mem for mem in self.memberList if mem.name != 'nacelle']
         # loop through each member
-        for i,mem in enumerate(self.memberList):
+        for i,mem in enumerate(memberList):
 
             # calculate member's orientation information (stored in the member and used in later steps)
             mem.setPosition(r6=self.r6)  # <<< is this redundant, assume fowt.setPosition has been called?
@@ -376,8 +381,7 @@ class FOWT():
             Sum_V_rCB   += r_CB*V_UW
             Sum_AWP_rWP += np.array([xWP, yWP])*AWP
             
-        
-        # ------------- include buoyancy effects of underwater rotors -------------
+        # ------------- include buoyancy effects of underwater rotors (blades first, then nacelles) -------------
         # loop through each blade member to calculate rotor buoyancy forces (for underwater turbines)
         for i, rotor in enumerate(self.rotorList):
 
@@ -438,9 +442,28 @@ class FOWT():
                         afmem.setPosition()
                         
                         # Note: it might be possible to streamline the above using new capabilities in setPosition (but not sure).
+        
+        
+        nacelleMemberList = [mem for mem in self.memberList if mem.name == 'nacelle']
+        # include only hydrostatic properties of nacelles (inertia properties are stored in mRNA/IxRNA/IrRNA and used below)
+        for mem in nacelleMemberList:
 
-
-
+            # call getHydroStatics for nacelles
+            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rPRP=self.r6[:3])
+            
+            # add to fowt's mean force vector and stiffness matrix
+            self.W_hydro += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
+            self.C_hydro += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
+       
+            # convert other metrics to also be about the PRP (platform reference point)
+            VTOT    += V_UW    # add to total underwater volume of all members combined
+            AWP_TOT += AWP
+            IWPx_TOT += IWP + AWP*yWP**2
+            IWPy_TOT += IWP + AWP*xWP**2
+            Sum_V_rCB   += r_CB*V_UW
+            Sum_AWP_rWP += np.array([xWP, yWP])*AWP
+        
+        
         # ------------------------- include RNA properties -----------------------------
         for i, rotor in enumerate(self.rotorList):
             
@@ -766,6 +789,7 @@ class FOWT():
         #todo: reorder above so that w is last index <<<
         
         self.B_gyro  = np.zeros([6,6,self.nrotors])  # rotor gyroscopic damping matrix
+        self.cav = [0]
         
         if turbine_status == 'operating':
             
@@ -797,8 +821,8 @@ class FOWT():
                         self.f_aero[:,iw,ir] = transformForce(f_aero[:,iw], offset=rot.r_hub_rel) # excitation
                     
                     # calculate cavitation of the rotor (platform motions should already be accounted for in the CCBlade object after running calcAero)
-                    # if rotor is submerged...
-                    # cav = rot.calcCavitation(case)  # TO-DO: wire this to be a result/output, then uncomment <<<
+                    if rot.r3[2] < 0:  # if submerged
+                        self.cav = rot.calcCavitation(case)  # TO-DO: wire this to be a result/output, then uncomment <<<
                     
                     # ----- calculate rotor gyroscopic effects -----
                     # rotor speed [rpm]
@@ -1097,7 +1121,7 @@ class FOWT():
                                 # add the excitation complex amplitude for this heading and frequency to the global excitation vector
                                 self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, mem.r[il,:] - self.r6[:3]) # (about PRP)
 
-
+        
         # ----- inertial excitation on rotor(s) -----
         
         for i, rot in enumerate(self.rotorList):
@@ -1299,7 +1323,8 @@ class FOWT():
                 if mem.r[il,2] < 0:
 
                     # calculate current velocity as a function of node depth [x,y,z] (assumes no vertical current velocity)
-                    v = speed * (((self.depth + Zref) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water
+                    v = speed * (((self.depth) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water
+                    #v = speed
                     vcur = np.array([v*np.cos(np.deg2rad(heading)), v*np.sin(np.deg2rad(heading)), 0])
 
                     # interpolate coefficients for the current strip
@@ -2017,6 +2042,9 @@ class FOWT():
                 # wind PSD for reference
                 results['wind_PSD'] = getPSD(rot.V_w, self.dw)   # <<< need to confirm
 
+            if rot.r3[2] < 0:
+                if len(self.cav) > 0:
+                    results['cavitation'] = self.cav
 
         '''
         Outputs from OpenFAST to consider covering:
@@ -2082,7 +2110,7 @@ class FOWT():
              airfoils=False, zorder=2, plot_fowt=True, plot_ms=True, 
              shadow=True, mp_args={}):
         '''plots the FOWT...'''
-        
+
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
 
         if plot_ms:

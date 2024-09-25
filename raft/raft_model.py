@@ -161,10 +161,12 @@ class Model():
         
         self.design = design # save design dictionary for possible later use/reference
 
-        
+        # Set mooring current modeling mode (0: no current; 1: uniform current included in MoorPy)
+        self.mooring_currentMod = getFromDict(design['mooring'], 'currentMod', default=0, dtype=int)
+
+        # Initialize array-level mooring system if it exists
         if self.ms:
             self.ms.initialize()
-        #>>> initialize all the mooring systems?
         
         self.results = {}     # dictionary to hold all results from the model
         
@@ -588,16 +590,28 @@ class Model():
                 
                 if display > 1:  print(" F_env_constant"+"  ".join(["{:+8.2e}"]*6).format(*F_env_constant[6*i:6*i+6]))
         
-        # preliminary approach to provide uniform currents on the mooring system(s)
-        currentMod = 0
-        currentU = np.zeros(3)
-        if case:
+        
+        # ----- Pass case water current information to MoorPy -----
+        
+        currentMod = 0  # current modeling mode for MoorPy
+        currentU = np.zeros(3)  # uniform current velocity for MoorPy [m/s]
+        if case and self.mooring_currentMod > 0:
             cur_speed = getFromDict(case, 'current_speed', shape=0, default=0.0)
             cur_heading = getFromDict(case, 'current_heading', shape=0, default=0)
             if cur_speed > 0:
                 currentMod = 1
                 currentU = np.array([cur_speed*np.cos(np.radians(cur_heading)),
                                      cur_speed*np.sin(np.radians(cur_heading)), 0])
+        
+        # Apply current to MoorPy
+        if self.ms:
+            self.ms.currentMod = currentMod
+            self.ms.current = np.array(currentU)
+        for fowt in self.fowtList:
+            if fowt.ms:
+                fowt.ms.currentMod = currentMod
+                fowt.ms.current = np.array(currentU)
+        
         
         # ----- calculate platform offsets and mooring system equilibrium state -----
         

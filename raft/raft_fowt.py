@@ -665,13 +665,15 @@ class FOWT():
         # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
         
         # process and sort headings and sort frequencies
+        R_unsorted = R.copy()
+        I_unsorted = I.copy()
         self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using        
         sorted_indices = np.argsort(self.BEM_headings)
         self.BEM_headings = self.BEM_headings[sorted_indices]
         M = M[sorted_indices,:,:]
         P = P[sorted_indices,:,:]
         R = R[sorted_indices,:,:]
-        I = I[sorted_indices,:,:]            
+        I = I[sorted_indices,:,:]
 
         # interpolate to RAFT model frequencies
         # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
@@ -692,9 +694,9 @@ class FOWT():
         # for accurate magnitudes when interpolating between directions.
         self.X_BEM = np.zeros_like(X_BEM_temp)
         
-        for ih in range(len(heads)):
-            sin_heading = np.sin(np.radians(heads[ih]))
-            cos_heading = np.cos(np.radians(heads[ih]))
+        for ih in range(len(self.BEM_headings)):
+            sin_heading = np.sin(np.radians(self.BEM_headings[ih]))
+            cos_heading = np.cos(np.radians(self.BEM_headings[ih]))
             
             self.X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
             self.X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]

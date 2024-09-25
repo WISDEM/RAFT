@@ -1,5 +1,6 @@
 Delete the text explanations below these headers and replace them with information about your PR.
 Please first consult the [developer guide](https://weis.readthedocs.io/en/latest/how_to_contribute_code.html) to make sure your PR follows all code, testing, and documentation conventions.
+If this PR is for a new release, do not forget to update the RAFT version in `pyproject.toml`!
 
 ## Purpose
 Explain the goal of this pull request. If it addresses an existing issue be sure to link to it. Describe the big picture of your changes here, perhaps using a bullet list if multiple changes are done to accomplish a single goal. If it accomplishes multiple goals, it may be best to create separate PR's for each. 

@@ -323,6 +323,7 @@ class Model():
             
             # process outputs that are specific to the floating unit (initialize dictionary for case and turb index)
             for i, fowt in enumerate(self.fowtList):
+                self.results['freq_rad'] = self.w
                 self.results['case_metrics'][iCase][i] = {}
                 fowt.saveTurbineOutputs(self.results['case_metrics'][iCase][i],case)            
                 nTowers = fowt.ntowers
@@ -454,8 +455,14 @@ class Model():
             
         # include array-level mooring stiffness
         if self.ms:
-            C_tot += self.ms.getCoupledStiffnessA(lines_only=True)
-        
+            if self.ms.moorMod == 0 or self.ms.moorMod == 2:
+                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
+            elif self.ms.moorMod == 1:
+                self.ms.updateSystemDynamicMatrices()
+                _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
+            C_tot += C_moor
+
+
         # check viability of matrices
         message=''
         for i in range(self.nDOF):
@@ -719,7 +726,12 @@ class Model():
             
             # add array mooring system stiffness (if applicable)
             if self.ms:
-                Kmoor = self.ms.getCoupledStiffnessA(lines_only=True)
+                if self.ms.moorMod == 0 or self.ms.moorMod == 2:
+                    Kmoor = self.ms.getCoupledStiffnessA(lines_only=True)
+                elif self.ms.moorMod == 1:
+                    self.ms.updateSystemDynamicMatrices()
+                    _, _, _, Kmoor = self.ms.getCoupledDynamicMatrices(lines_only=True)
+
                 K += Kmoor
             
             # get stiffness of each fowt (hydrostatics, individual mooring, etc.)
@@ -732,7 +744,14 @@ class Model():
                     K6 += fowt.C_struc + fowt.C_hydro
                 
                 if fowt.ms:
-                    K6 += fowt.ms.getCoupledStiffnessA(lines_only=True)
+                    if fowt.ms:
+                        fowt.ms.solveEquilibrium()
+                        if fowt.ms.moorMod == 0 or fowt.ms.moorMod == 2:
+                            Kmoor_fowt = fowt.ms.getCoupledStiffnessA(lines_only=True)
+                        elif fowt.ms.moorMod == 1:
+                            fowt.ms.updateSystemDynamicMatrices()
+                            _, _, _, Kmoor_fowt = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
+                    K6 += Kmoor_fowt
 
                 K[6*i:6*i+6, 6*i:6*i+6] += K6
             

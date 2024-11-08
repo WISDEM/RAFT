@@ -870,7 +870,7 @@ class Rotor:
             b_inflow[0,0,:] = dT_dU
             
             # Excitation vector
-            f_inflow = np.zeros([6,len(self.w)], dtype=np.complex_)
+            f_inflow = np.zeros([6,len(self.w)], dtype=np.complex128)
             f_inflow[0,:] = dT_dU*self.V_w
             
             # Rotate to global orientations
@@ -895,10 +895,10 @@ class Rotor:
             
             a_aer = np.zeros_like(self.w)
             b_aer = np.zeros_like(self.w)
-            C   = np.zeros_like(self.w,dtype=np.complex_)
-            C2  = np.zeros_like(self.w,dtype=np.complex_)
-            D   = np.zeros_like(self.w,dtype=np.complex_)
-            E   = np.zeros_like(self.w,dtype=np.complex_)
+            C   = np.zeros_like(self.w,dtype=np.complex128)
+            C2  = np.zeros_like(self.w,dtype=np.complex128)
+            D   = np.zeros_like(self.w,dtype=np.complex128)
+            E   = np.zeros_like(self.w,dtype=np.complex128)
 
             # Roots of characteristic equation, helps w/ debugging
             # p = np.array([-self.I_drivetrain, (dQ_dOm + self.kp_beta * dQ_dPi - self.Ng * kp_tau), self.ki_beta* dQ_dPi - self.Ng * ki_tau])

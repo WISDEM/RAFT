@@ -3,7 +3,7 @@
 import os
 import matplotlib.pyplot as plt
 import numpy as np
-from scipy.interpolate import interp1d, interp2d, griddata
+from scipy.interpolate import interp1d, RegularGridInterpolator, griddata
 
 import raft.member2pnl as pnl
 from raft.helpers import *
@@ -1796,10 +1796,15 @@ class FOWT():
         else:
             f = np.zeros([self.nDOF, self.nw]) # Force amplitude
             for idof in range(0,self.nDOF):
-                # Interpolate the QTF matrix to the same frequencies as the wave spectrum. Need to interpolate real and imaginary part separately.
-                qtf_interp_Re = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof].real, bounds_error=False, fill_value=(0))(self.w, self.w)
-                qtf_interp_Im = interp2d(self.w1_2nd, self.w1_2nd, qtf_interpBeta[:,:, idof].imag, bounds_error=False, fill_value=(0))(self.w, self.w)
-                qtf_interp = qtf_interp_Re + 1j*qtf_interp_Im
+                qtf_interp_Re_interpolator = RegularGridInterpolator((self.w1_2nd, self.w1_2nd), qtf_interpBeta[:, :, idof].real, bounds_error=False, fill_value=0)
+                qtf_interp_Im_interpolator = RegularGridInterpolator((self.w1_2nd, self.w1_2nd), qtf_interpBeta[:, :, idof].imag, bounds_error=False, fill_value=0)
+
+                w_mesh = np.meshgrid(self.w, self.w, indexing='ij')
+                points = np.array([w_mesh[0].ravel(), w_mesh[1].ravel()]).T
+
+                qtf_interp_Re = qtf_interp_Re_interpolator(points).reshape(len(self.w), len(self.w))
+                qtf_interp_Im = qtf_interp_Im_interpolator(points).reshape(len(self.w), len(self.w))
+                qtf_interp = qtf_interp_Re + 1j * qtf_interp_Im
 
                 for imu in range(1, self.nw): # Loop the difference frequencies
                     Saux = np.zeros(self.nw)

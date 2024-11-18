@@ -150,7 +150,11 @@ class Member:
             self.cap_stations = []
         else:
             self.cap_t        = getFromDict(mi, 'cap_t'   , shape=cap_stations.shape[0])   # thicknesses [m]
-            self.cap_d_in     = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape[0])   # inner diameter (if it isn't a solid plate) [m]
+            if self.shape == 'circular':
+                self.cap_d_in = getFromDict(mi, 'cap_d_in', shape=cap_stations.shape[0])   # inner diameter (if it isn't a solid plate) [m]
+            elif self.shape == 'rectangular':
+                self.cap_d_in = getFromDict(mi, 'cap_d_in', shape=[cap_stations.shape[0],2])   # inner diameter (if it isn't a solid plate) [m]
+
             self.cap_stations = (cap_stations - st[0])/(st[-1] - st[0])*self.l             # calculate station positions along the member axis from 0 to l [m]
             
 
@@ -449,7 +453,7 @@ class Member:
                     v_shell = V_outer-V_inner               # volume of hollow frustum with shell thickness [m^3]
                     m_shell = v_shell*rho_shell             # mass of hollow frustum [kg]
                     
-                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of hollow frustum with shell thickness [m]
+                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0  # center of volume of hollow frustum with shell thickness [m]
                          
                     dBi_fill = (dBi-dAi)*(l_fill/l) + dAi   # interpolated inner diameter of frustum that ballast is filled to [m] 
                     v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, l_fill)         # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
@@ -459,7 +463,7 @@ class Member:
                     # then the ballast sits on top of the end cap. Depending on the thickness of the end cap, this can affect m_fill, hc_fill, and MoI_fill >>>>>
                     
                     mass = m_shell + m_fill                 # total mass of the submember [kg]
-                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass       # total center of mass of the submember from the submember's rA location [m]
+                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass!=0 else 0      # total center of mass of the submember from the submember's rA location [m]
                     
                     
                     # MOMENT OF INERTIA
@@ -492,14 +496,14 @@ class Member:
                     v_shell = V_outer-V_inner                   # volume of hollow frustum with shell thickness [m^3]
                     m_shell = v_shell*rho_shell                 # mass of hollow frustum [kg]
                     
-                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)  # center of volume of the hollow frustum with shell thickness [m]
+                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0  # center of volume of the hollow frustum with shell thickness [m]
                                         
                     slBi_fill = (slBi-slAi)*(l_fill/l) + slAi   # interpolated side lengths of frustum that ballast is filled to [m]
                     v_fill, hc_fill = FrustumVCV(slAi, slBi_fill, l_fill)   # volume and center of volume of inner frustum that ballast occupies [m^3]
                     m_fill = v_fill*rho_fill                    # mass of ballast in the submember [kg]
                     
                     mass = m_shell + m_fill                     # total mass of the submember [kg]
-                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass       # total center of mass of the submember from the submember's rA location [m]
+                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass !=0 else 0     # total center of mass of the submember from the submember's rA location [m]
                     
                     
                     # MOMENT OF INERTIA
@@ -602,7 +606,7 @@ class Member:
                 V_inner, hci = FrustumVCV(dAi, dBi, h)
                 v_cap = V_outer-V_inner
                 m_cap = v_cap*rho_cap    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
-                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)
+                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0
                 
                 I_rad_end_outer, I_ax_outer = FrustumMOI(dA, dB, h, rho_cap)
                 I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, h, rho_cap)
@@ -622,11 +626,12 @@ class Member:
 
                 if L==self.stations[0]:  # if the cap is on the bottom end of the member
                     slA = sl[0,:]
-                    slB = np.interp(L+h, self.stations, sl)
+                    slB = np.zeros(slA.shape)
+                    slB = np.array([np.interp(L+h, self.stations, sl[:,0]), np.interp(L+h, self.stations, sl[:,1])])
                     slAi = sl_hole
                     slBi = slB*(slAi/slA)       # keep the same proportion in d_hole from bottom to top
                 elif L==self.stations[-1]:    # if the cap is on the top end of the member
-                    slA = np.interp(L-h, self.stations, sl)
+                    slA = np.array([np.interp(L-h, self.stations, sl[:,0]), np.interp(L-h, self.stations, sl[:,1])])
                     slB = sl[-1,:]
                     slAi = slA*(slBi/slB)
                     slBi = sl_hole
@@ -659,10 +664,10 @@ class Member:
                 V_inner, hci = FrustumVCV(slAi, slBi, h)
                 v_cap = V_outer-V_inner
                 m_cap = v_cap*rho_cap    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
-                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner)
+                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0
 
-                Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA, slB, h, rho_cap)
-                Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi, slBi, h, rho_cap)
+                Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA[0], slA[1], slB[0], slB[1], h, rho_cap)
+                Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi[0], slAi[1], slBi[0], slBi[1], h, rho_cap)
                 Ixx_end = Ixx_end_outer-Ixx_end_inner
                 Iyy_end = Iyy_end_outer-Iyy_end_inner
                 Izz_end = Izz_end_outer-Izz_end_inner
@@ -699,7 +704,8 @@ class Member:
             # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
             self.M_struc += translateMatrix6to6DOF(Mmat, center_cap) # mass matrix of the member about the PRP
 
-
+        self.mshell = mshell
+        self.mfill  = mfill
         mass = self.M_struc[0,0]        # total mass of the entire member [kg]
         center = mass_center/mass       # total center of mass of the entire member from the PRP [m]
 

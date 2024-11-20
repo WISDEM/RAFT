@@ -1016,6 +1016,7 @@ class Rotor:
             If true, draw circle of rotor circumference.
         '''
 
+        r_ptfm = np.array(r_ptfm)
         Xuvec = np.array(Xuvec)
         Yuvec = np.array(Yuvec)
         

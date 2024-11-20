@@ -159,7 +159,7 @@ class FOWT():
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
         # this FOWT's own MoorPy system (may not be used)
-        if design['mooring']:
+        if 'mooring' in design:
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
@@ -262,7 +262,7 @@ class FOWT():
         '''
         
         # if offset provided, set things according to those positions, otherwise zero it
-        self.r6 = r6
+        self.r6 = np.array(r6)
         self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref, 0, 0, 0, 0])
         
         # calculate and save a rotation/orientation matrix
@@ -291,7 +291,7 @@ class FOWT():
             self.F_moor0 = self.ms.bodyList[0].getForces(lines_only=True)
         
 
-    def calcStatics(self):
+    def calcStatics(self, discrete_hydrostatics=False):
         '''Computes the static properties of the FOWT in terms of mass and hydrostatic-related
         matrices and mean force vectors about the FOWT PRP in unrotated directions, based on
         the mean offsets of the FOWT, Xi0.
@@ -369,7 +369,10 @@ class FOWT():
 
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
 
-            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rPRP=self.r6[:3])
+            if discrete_hydrostatics:  # new option for discrete calculation method
+                Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostaticsDiscrete(rho=self.rho_water, g=self.g, rPRP=self.r6[:3])
+            else:
+                Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rPRP=self.r6[:3])
             
             # add to fowt's mean force vector and stiffness matrix
             self.W_hydro += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
@@ -2228,6 +2231,68 @@ class FOWT():
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
 
+    def getStabilityCurves(self):
+        '''Gets hydrostatic properties over a range of pitch angles.'''
+        
+        pitches = np.arange(0, 30, 2)  # pitch angles to check [deg]
+        n = len(pitches)
+        f_heave  = np.zeros(n)
+        mo_pitch = np.zeros(n)
+        c_pitch  = np.zeros(n)
+        
+        
+        f_heaveA  = np.zeros(n)
+        mo_pitchA = np.zeros(n)
+        c_pitchA  = np.zeros(n)
+        
+        
+        
+        nr = n//3+1
+        
+        figS, axS = plt.subplots(nr, 3, sharex=True)
+        
+        
+        for i in range(n):
+            
+            self.setPosition([0,0,0, 0, np.radians(pitches[i]), 0])
+            
+            self.calcStatics(discrete_hydrostatics=True)
+            
+            # plot row and column indices
+            fr = i%nr
+            fc = i//nr
+            
+            f_heave [i] = self.W_hydro[2] + self.W_struc[2]
+            mo_pitch[i] = self.W_hydro[4] + self.W_struc[4]
+            c_pitch [i] = self.C_hydro[4,4] + self.C_struc[4,4]
+            
+            
+            self.calcStatics(discrete_hydrostatics=False)
+            f_heaveA [i] = self.W_hydro[2] + self.W_struc[2]
+            mo_pitchA[i] = self.W_hydro[4] + self.W_struc[4]
+            c_pitchA [i] = self.C_hydro[4,4] + self.C_struc[4,4]
+            
+            
+            
+            
+            self.plot2d(ax=axS[fr, fc])
+            axS[fr, fc].axhline(0, color=[0,0,1,0.4])
+            axS[fr, fc].set_title(f'{pitches[i]:.1f} deg pitch', pad= -15) #y = 0.9)
+            axS[fr, fc].set_xlim([-15, 15])
+            axS[fr, fc].set_ylim([ -10, 10])
+        
+        fig, ax = plt.subplots(3,1, sharex=True)
+        ax[0].plot(pitches, f_heave ); ax[0].set_ylabel('f_heave ')
+        ax[1].plot(pitches, mo_pitch); ax[1].set_ylabel('mo_pitch')
+        ax[2].plot(pitches, c_pitch ); ax[2].set_ylabel('c_pitch ')
+        
+        ax[0].plot(pitches, f_heaveA , 'r--')
+        ax[1].plot(pitches, mo_pitchA, 'r--')
+        ax[2].plot(pitches, c_pitchA , 'r--')
+        
+        plt.show()
+        
+
     def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], 
              airfoils=False, zorder=2, plot_fowt=True, plot_ms=True, 
              shadow=True, mp_args={}):
@@ -2323,3 +2388,26 @@ class FOWT():
                 Xs2d = np.matmul(Xuvec, P2)
                 Ys2d = np.matmul(Yuvec, P2)
                 ax.plot(Xs2d, Ys2d, color=color, lw=1.0)
+
+
+if __name__ == '__main__':
+
+    import yaml
+    
+    file = '../examples/test_platform.yaml'
+
+    with open(file) as f:
+        design = yaml.load(f, Loader=yaml.FullLoader)
+
+    min_freq     = getFromDict(design['settings'], 'min_freq', default=0.01, dtype=float)  # [Hz] lowest frequency to consider, also the frequency bin width 
+    max_freq     = getFromDict(design['settings'], 'max_freq', default=1.00, dtype=float)  # [Hz] highest frequency to consider
+    w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
+    nw = len(w)  # number of frequencies
+    
+    depth = getFromDict(design['site'], 'water_depth', dtype=float)
+
+    fowt = FOWT(design, w, None, depth=depth)
+    
+    fowt.setPosition([0,0,0,0,0,0])  # Set the initial position
+    
+    fowt.getStabilityCurves()

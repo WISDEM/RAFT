@@ -172,10 +172,10 @@ class Member:
 
         
         # start things off with the strip for end A
-        ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
-        dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
-        ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
-        drs    = [0.5*dorsl[0]]       # change in radius (or side half-length pair) over each strip (from node i-1 to node i)
+        ls     = [0.0]          # list of lengths along member axis where a node is located
+        dls    = [0.0]          # lumped node lengths (end nodes have half the segment length)
+        ds     = [0.5*dorsl[0]] # mean diameter or side length pair of each strip
+        drs    = [0.5*dorsl[0]] # change in radius (or side half-length pair) over each strip (from node i-1 to node i)
 
         for i in range(1,n):
 
@@ -256,14 +256,14 @@ class Member:
         rAB = self.rB0-self.rA0                                     # vector from end A to end B, undisplaced [m]
         q = rAB/np.linalg.norm(rAB)                                 # member axial unit vector
 
-        beta = np.arctan2(q[1],q[0])                                # member incline heading from x axis
-        phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])         # member incline angle from vertical
+        self.beta = np.arctan2(q[1],q[0])                                # member incline heading from x axis
+        self.phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])         # member incline angle from vertical
 
         # trig terms for Euler angles rotation based on beta, phi, and gamma
-        s1 = np.sin(beta)
-        c1 = np.cos(beta)
-        s2 = np.sin(phi)
-        c2 = np.cos(phi)
+        s1 = np.sin(self.beta)
+        c1 = np.cos(self.beta)
+        s2 = np.sin(self.phi)
+        c2 = np.cos(self.phi)
         s3 = np.sin(np.deg2rad(self.gamma))
         c3 = np.cos(np.deg2rad(self.gamma))
 
@@ -705,6 +705,406 @@ class Member:
         return mass, center, mshell, mfill, pfill
 
 
+    def getHydrostaticsDiscrete(self, rPRP=np.zeros(3), rho=1025, g=9.81):
+        '''Calculates member hydrostatic properties using a discrete approach
+        borrowed from MoorDyn Rods.
+        Properties are calculated relative to the platform reference point (PRP) in the
+        global orientation directions.
+        
+        Parameters
+        ----------
+        rPRP : float array
+            Coordinates of the platform reference point (the first three entries of fowt.Xi0),
+            which the moment of inertia matrix will be calculated relative to. [m]
+        '''
+        circ = self.shape=='circular'  # boolean for circular vs. rectangular
+        
+        
+        pi = np.pi
+        
+        sinPhi = np.sin(self.phi)
+        cosPhi = np.cos(self.phi)
+        sinBeta = np.sin(self.beta)
+        cosBeta = np.cos(self.beta)
+
+        
+        # get relative end locations
+        rHS_ref = np.array([rPRP[0], rPRP[1], 0])
+        rA = self.rA - rHS_ref
+        rB = self.rB - rHS_ref
+        
+        # -------------------- buoyancy and waterplane area properties ------------------------
+        # Some of this is redundant with what's hastily implemented below, or not yet used
+        '''
+        xWP = intrp(0, rA[2], rB[2], rA[0], rB[0])                     # x coordinate where member axis cross the waterplane [m]
+        yWP = intrp(0, rA[2], rB[2], rA[1], rB[1])                     # y coordinate where member axis cross the waterplane [m]
+        if self.shape=='circular':
+            dWP = intrp(0, rA[2], rB[2], self.d[0], self.d[i-1])       # diameter of member where its axis crosses the waterplane [m]
+            AWP = (np.pi/4)*dWP**2                                     # waterplane area of member [m^2]
+            IWP = (np.pi/64)*dWP**4                                    # waterplane moment of inertia [m^4] approximates as a circle
+            IxWP = IWP                                                 # MoI of circular waterplane is the same all around
+            IyWP = IWP                                                 # MoI of circular waterplane is the same all around
+        elif self.shape=='rectangular':
+            slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
+            AWP = slWP[0]*slWP[1]                                      # waterplane area of rectangular member [m^2]
+            IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
+            IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+            I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
+            T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
+            I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as PRP
+            IxWP = I_rot[0,0]
+            IyWP = I_rot[1,1]
+
+        LWP = abs(rA[2]/cosPhi)                   # get length of segment along member axis that is underwater [m]
+        '''
+
+
+        # initialize some values that will be returned
+        Fvec = np.zeros(6)              # this will get added to by each segment of the member
+        Cmat = np.zeros([6,6])          # this will get added to by each segment of the member
+        V_UW = 0                        # this will get added to by each segment of the member
+        r_centerV = np.zeros(3)         # center of buoyancy times volumen total - will get added to by each segment
+        # these will only get changed once, if there is a portion crossing the water plane
+        AWP = 0
+        IWP = 0
+        xWP = 0
+        yWP = 0
+        
+        Lsum = 0 # cumulative length along member axis from end A
+        
+        
+        Bo = np.zeros([self.ns,3])  # buoyancy force at each node [N]
+        Mext = np.zeros(3)  # additional moment to apply to the whole member
+
+        '''
+        ls     = [0.0]          # list of lengths along member axis where a node is located
+        dls    = [0.0]          # lumped node lengths (end nodes have half the segment length)
+        ds     = [0.5*dorsl[0]] # mean diameter or side length pair of each strip
+        drs    = [0.5*dorsl[0]] # change in radius (or side half-length pair) over each strip (from node i-1 to node i)
+        '''
+
+        # Calculated h0 (axial position of waterline crossing)
+        # get approximate location of waterline crossing along Rod axis (note: negative h0 indicates end A is above end B, and measures -distance from end A to waterline crossing)
+        if self.rA[2] < 0 and self.rB[2] < 0:  # fully submerged case  
+            h0 = self.l
+        elif self.rA[2] < 0 and self.rB[2] > 0: # check if it's crossing the water plane (should also add some limits to avoid near-horizontals at some point)
+            h0 = (0 - self.rA[2])/self.q[2]   # distance along rod centerline from end A to the waterplane
+        elif self.rA[2] > 0 and self.rB[2] < 0:  # check if it's crossing the water plane but upside down
+            h0 = -(0 - self.rA[2])/self.q[2]  # negative distance along rod centerline from end A to the waterplane
+        else:
+            h0 = 0  # fully unsubmerged case (ever applicable?)
+        
+        
+        # initialize some variables for running totals
+        
+        '''
+        VTOT = 0.                   # Total underwater volume of all members combined
+        m_all = 0.                   # Total mass of all members [kg]
+        AWP_TOT = 0.                # Total waterplane area of all members [m^2]
+        IWPx_TOT = 0                # Total waterplane moment of inertia of all members about x axis [m^4]
+        IWPy_TOT = 0                # Total waterplane moment of inertia of all members about y axis [m^4]
+        Sum_V_rCB = np.zeros(3)     # product of each member's buoyancy multiplied by center of buoyancy [m^4]
+        Sum_AWP_rWP = np.zeros(2)   # product of each member's waterplane area multiplied by the area's center point [m^3]
+        m_center_sum = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
+        '''
+        
+        
+        # ----- loop through each strip/segment -----
+        for i in range(self.ns):  # loop through each strip
+
+            # Get highest and lowest corners of segment to determine submergence status
+            zhi = self.r[i,2] + 0.5*self.ds[i]*abs(sinPhi) + 0.5*self.dls[i]*abs(cosPhi)  # highest elevation of cross section at node
+            zlo = self.r[i,2] - 0.5*self.ds[i]*abs(sinPhi) - 0.5*self.dls[i]*abs(cosPhi)  # lowest  elevation of cross section at node
+
+            v_i = self.dls[i] * np.pi/4*self.ds[i]**2  # quick segment volume <<< may be redundant
+            
+            #print([zlo, zhi])
+            
+            # if partially submerged (or close) then use discrete approach
+            #if zhi >= 0 and zlo <= 0:
+            if zlo <= 0:
+
+                # calculate end locations for this segment relative to the point on 
+                # the waterplane directly above the PRP in unrotated directions (rHS_ref)
+                rHS_ref = np.array([rPRP[0], rPRP[1], 0])
+                
+                r = self.r[i,:] - rHS_ref
+                
+                
+                # get scalar for submerged portion
+                dL = self.dls[i]
+                if (h0 < 0):  # upside down partially-submerged Rod case
+                    if (Lsum >= -h0):     # if fully submerged 
+                       VOF0 = 1
+                    elif (Lsum + dL > -h0): # if partially below waterline 
+                       VOF0 = (Lsum+dL + h0)/dL
+                    else:                        # must be out of water
+                       VOF0 = 0
+                    
+                else:  # right-side-up partially submerged Rod case
+                    if (Lsum + dL <= h0): # if fully submerged 
+                       VOF0 = 1
+                    elif (Lsum < h0):   # if partially below waterline 
+                       VOF0 = (h0 - Lsum)/dL
+                    else:               # must be out of water
+                       VOF0 = 0
+
+                Lsum = Lsum + dL
+                    
+                # get submerged cross sectional area and centroid for each node
+                z1hi = self.r[i,2] + 0.5*self.ds[i]*abs(sinPhi)  # highest elevation of cross section at node
+                z1lo = self.r[i,2] - 0.5*self.ds[i]*abs(sinPhi)  # lowest  elevation of cross section at node
+                 
+                if (z1lo > 0):  # fully out of water
+                     A = 0.0  # axial cross sectional area
+                     zA = 0   # centroid z position
+                     AWPi = 0  # waterplane crossing area
+                     w = self.ds[i]
+                     
+                elif (z1hi < 0):  # fully submerged
+                    A = np.pi*0.25*self.ds[i]**2
+                    zA = self.r[i,2]
+                    AWPi = 0  # waterplane crossing area
+                    w = self.ds[i]
+                     
+                else:  # if z1hi*z1lo < 0.0:   # if cross section crosses waterplane
+                    if (abs(sinPhi) < 0.001):  # if cylinder is near vertical, i.e. end is horizontal
+                        A = 0  # transverse component of waterplane crossing area
+                        zA = 0
+                        al = np.pi/2
+                    else:
+                        # distance from node to waterline cross at same axial location [m]
+                        G = ( self.r[i,2] - 0 )/abs(sinPhi) 
+                        # azimuth from downward verical along axi-normal disc at node 
+                        # where waterline crosses circumference [rad]
+                        al = np.arccos(2.0*G/self.ds[i])
+                        # The submerged area of the cross-sectional/radial disc
+                        A = self.ds[i]**2/8.0 * (2.0*al - np.sin(2.0*al))
+                        # centroid z position
+                        zA = self.r[i,2] - 0.6666666666 * self.ds[i]* (np.sin(al))**3 / (2.0*al - np.sin(2.0*al))
+                    
+                    AWPi = self.ds[i]*np.sin(al)*self.dls[i]*sinPhi**2  # transverse component of waterplane crossing area (approximation)
+                    #AWPi = A*cosPhi**2 + self.ds[i]*self.dls[i]*sinPhi**2  # waterplane crossing area (approximation)
+                    #breakpoint()
+                    #print('dud')
+                    w = self.ds[i]*np.sin(al)
+                
+                # this is a more refined VOF-type measure that can work for any incline
+                VOF = VOF0*cosPhi**2 + A/(0.25*np.pi*self.ds[i]**2)*sinPhi**2  
+
+                
+                # radial buoyancy force from sides (now calculated based on outside pressure, for submerged portion only)
+                Ftemp = -VOF * v_i * rho*g * sinPhi   # magnitude of radial buoyancy force at this node
+                Bo[i,:] = np.array([Ftemp*cosBeta*cosPhi, Ftemp*sinBeta*cosPhi, -Ftemp*sinPhi])
+                
+                
+                # ----- add axial/end effects (also works for tapered parts) ------
+                # Note : a_i works out to zero for non-tapered sections or non-end sections
+
+                # Signed end area (positive facing down) = mean circumference of strip * radius change of strip
+                # and area moment of inertia
+                if circ: 
+                    a_i = np.pi*self.ds[i] * self.drs[i]   
+                    i_i = np.pi/64.0 * abs(  (self.ds[i]+self.drs[i])**4 
+                        - (self.ds[i]-self.drs[i])**4 )  
+                else: # rect:  so far just using sphere eqn and taking mean of side lengths as d
+                    a_i = (  (self.ds[i,0]+self.drs[i,0])*(self.ds[i,1]+self.drs[i,1]) 
+                        - (self.ds[i,0]-self.drs[i,0])*(self.ds[i,1]-self.drs[i,1]))
+                    i_i = np.pi/64.0 * (  (np.mean(self.ds[i]+self.drs[i]))**4 
+                        - (np.mean(self.ds[i]-self.drs[i]))**4 )
+                    # >>> should support different coefficients or reference volumes for rectangular cross sections <<<
+                
+                # Force and moment from this axial effect
+                Ftemp =  VOF * a_i * rho*g* (-zA)
+                Mtemp =  VOF * i_i * rho*g * sinPhi
+                
+                # Put into 3D and add to the saved totals
+                Bo[i,:] = Bo[i,:] + np.array([Ftemp*cosBeta*sinPhi, Ftemp*sinBeta*sinPhi, Ftemp*cosPhi])
+                Mext = Mext + np.array([Mtemp*sinBeta, -Mtemp*cosBeta, 0])
+                
+                
+                ''' old end-only versions:
+                # buoyancy force
+                Ftemp = -VOF * 0.25*np.pi*self.ds[i]**2 * rho*g* zA  # A
+                Ftemp =  VOF * 0.25*np.pi*self.ds[i]**2 * rho*g* zA  # B
+                Rod%Bo(:,I) = Rod%Bo(:,I) + (/ Ftemp*cosBeta*sinPhi, Ftemp*sinBeta*sinPhi, Ftemp*cosPhi /) 
+                      
+                # buoyancy moment
+                Mtemp = -VOF * 1.0/64.0*np.pi*self.ds[i]**4 * rho*g * sinPhi # A
+                Mtemp =  VOF * 1.0/64.0*np.pi*self.ds[i]**4 * rho*g * sinPhi  # B
+                Rod%Mext = Rod%Mext + (/ Mtemp*sinBeta, -Mtemp*cosBeta, 0.0_DbKi /) 
+                '''
+                
+                # some estimated items for this element
+                V_UWi = VOF * v_i  # submerged volume of this segment
+                xWP = self.r[i,0]  # waterplane crossing centroid
+                yWP = self.r[i,1]
+                r_center = self.r[i,:] # VERY approximate center of submerged volume
+                
+                AWP += AWPi
+                #print(f' {i} {z1lo:6.1f} {z1hi:6.1f}  z: {self.r[i,2]:5.1f}  w,l: {w:5.1f} {self.dls[i]:5.1f}  A: {AWPi}')
+                # (above doesn't work for rectangular yet!)
+                
+                # add hydrostatic contributions from this element
+                #AWP_TOT += AWP
+                #IWPx_TOT += AWP*yWP**2  # currently neglecting waterplane moment of inertia of the strip itself!
+                #IWPy_TOT += AWP*xWP**2
+                #Sum_V_rCB   += np.array([self.r[i,0], self.r[i,1], zA]) * V_UWi
+                #Sum_AWP_rWP += np.array([xWP, yWP])*AWP
+                
+            
+                # buoyancy force (and moment) vector
+                Fvec += translateForce3to6DOF(Bo[i,:], self.r[i,:])
+                # Mext will be added in at the end
+                IxWP = 0
+                IyWP = 0
+
+                # hydrostatic stiffness matrix (about end A)
+                Cmat[2,2] += rho*g*AWPi  # heave
+                #Cmat[3,3] += rho*g*V_UW * zA  # roll
+                #Cmat[4,4] += rho*g*V_UW * zA  # pitch
+                Cmat[2,3] += rho*g*(      -AWPi*yWP    )
+                Cmat[2,4] += rho*g*(       AWPi*xWP    )
+                Cmat[3,2] += rho*g*(      -AWPi*yWP    )
+                Cmat[3,3] += rho*g*(IxWP + AWPi*yWP**2 )
+                Cmat[3,4] += rho*g*(       AWPi*xWP*yWP)
+                Cmat[4,2] += rho*g*(       AWPi*xWP    )
+                Cmat[4,3] += rho*g*(       AWPi*xWP*yWP)
+                Cmat[4,4] += rho*g*(IyWP + AWPi*xWP**2 )
+
+                
+                V_UW += V_UWi
+                r_centerV += r_center*V_UWi
+                
+
+                """
+            # fully submerged case
+            elif zhi <= 0: #rA[2] <= 0 and rB[2] <= 0:
+
+                # displaced volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
+                if self.shape=='circular':
+                    #V_UWi, hc = FrustumVCV(self.d[i-1], self.d[i], self.stations[i]-self.stations[i-1])
+                    V_UWi, hc = FrustumVCV(self.ds[i], self.ds[i], self.dls[i])
+                elif self.shape=='rectangular':
+                    V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.stations[i]-self.stations[i-1])
+
+                r_center = self.r[i,:] + self.q*(hc-0.5*self.dls[i])  # center of volume of this segment relative to PRP [m]
+                
+                # buoyancy force (and moment) vector
+                Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center)
+
+                # hydrostatic stiffness matrix (about end A)
+                Cmat[3,3] += rho*g*V_UWi * r_center[2]
+                Cmat[4,4] += rho*g*V_UWi * r_center[2]
+
+                V_UW += V_UWi
+                r_centerV += r_center*V_UWi
+                #breakpoint()
+                """    
+            else: # if the members are fully above the surface
+
+                pass
+
+
+        # ----- add waterplane moment of inertia moment if applicable -----
+          
+        # loop through each member segment and find the diameter at the waterline crossing
+        for i in range(1,len(self.stations)):     # starting at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
+
+            # calculate end locations for this segment relative to the point on 
+            # the waterplane directly above the PRP in unrotated directions (rHS_ref)
+            rHS_ref = np.array([rPRP[0], rPRP[1], 0])
+            rA = self.rA + self.q*self.stations[i-1] - rHS_ref
+            rB = self.rA + self.q*self.stations[i  ] - rHS_ref
+
+            # partially submerged case
+            if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
+
+                # -------------------- buoyancy and waterplane area properties ------------------------
+
+                xWP = intrp(0, rA[2], rB[2], rA[0], rB[0])  # x coordinate where member axis cross the waterplane [m]
+                yWP = intrp(0, rA[2], rB[2], rA[1], rB[1])  # y coordinate where member axis cross the waterplane [m]
+                lWP = intrp(0, rA[2], rB[2], self.stations[i-1] , self.stations[i])  # length where member axis cross the waterplane [m]
+                
+                if self.shape=='circular':
+                    dWP = intrp(0, rA[2], rB[2], self.d[i], self.d[i-1])       # diameter of member where its axis crosses the waterplane [m]
+                    
+                    A = (np.pi/4)*dWP**2  # axial waterplane area of member [m^2]
+                    IWP = (np.pi/64)*dWP**4                                    # waterplane moment of inertia [m^4] approximates as a circle
+                    IxWP = IWP                                                 # MoI of circular waterplane is the same all around
+                    IyWP = IWP  
+                    # simple alternative that goes to 0 at 90 deg then reverses sign beyond that
+                    Mtemp = np.pi/16 * dWP**4 * rho*g * sinPhi * cosPhi
+                    
+                    
+                    '''
+                    >>> could add someting here to get fraction of A if end crosses waterline <<<
+                     if (abs(sinPhi) < 0.001):  # if cylinder is near vertical, i.e. end is horizontal
+                        A = 0  # transverse component of waterplane crossing area
+                        zA = 0
+                    else:
+                        # distance from node to waterline cross at same axial location [m]
+                        G = ( self.r[i,2] - 0 )/abs(sinPhi) 
+                        # azimuth from downward verical along axi-normal disc at node 
+                        # where waterline crosses circumference [rad]
+                        al = np.arccos(2.0*G/self.ds[i])
+                        # The submerged area of the cross-sectional/radial disc
+                        A = self.ds[i]**2/8.0 * (2.0*al - np.sin(2.0*al))
+                        # centroid z position
+                        zA = self.r[i,2] - 0.6666666666 * self.ds[i]* (np.sin(al))**3 / (2.0*al - np.sin(2.0*al))
+                    '''
+                    
+                elif self.shape=='rectangular':
+                    slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
+                    
+                    A = slWP[0]*slWP[1]  # axial waterplane area of rectangular member [m^2]
+                    IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
+                    IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+                    I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
+                    T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
+                    I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as PRP
+                    IxWP = I_rot[0,0]
+                    IyWP = I_rot[1,1]
+                    Mtemp = 0  # << temporarily skip this until we figure it out!
+                
+                # apply waterplane moment  
+                Mext = Mext + np.array([ Mtemp*sinBeta, -Mtemp*cosBeta, 0])
+                
+                
+                # add axial-waterplane-crossing contribution to stiffness etc.
+                AWPi = A*cosPhi**2
+                AWP += AWPi
+                
+                IxWP = 0
+                IyWP = 0
+
+                # hydrostatic stiffness matrix (about end A)
+                Cmat[2,2] += rho*g*AWPi  # heave
+                Cmat[2,3] += rho*g*(      -AWPi*yWP    )
+                Cmat[2,4] += rho*g*(       AWPi*xWP    )
+                Cmat[3,2] += rho*g*(      -AWPi*yWP    )
+                Cmat[3,3] += rho*g*(IxWP + AWPi*yWP**2 )
+                Cmat[3,4] += rho*g*(       AWPi*xWP*yWP)
+                Cmat[4,2] += rho*g*(       AWPi*xWP    )
+                Cmat[4,3] += rho*g*(       AWPi*xWP*yWP)
+                Cmat[4,4] += rho*g*(IyWP + AWPi*xWP**2 )
+                
+                break
+
+        
+        if V_UW > 0:
+            r_center = r_centerV/V_UW    # calculate overall member center of buoyancy
+        else:
+            r_center = np.zeros(3)       # temporary fix for out-of-water members
+        
+        self.V = V_UW  # store submerged volume
+        
+        # xWP and yWP need to be sorted out still...
+        
+        
+        
+        return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
+
 
 
     def getHydrostatics(self, rPRP=np.zeros(3), rho=1025, g=9.81):
@@ -815,9 +1215,12 @@ class Member:
                 My = M*dPhi_dThy
 
                 Fvec[2] += Fz                           # vertical buoyancy force [N]
-                Fvec[3] += Mx + Fz*rA[1]                # moment about x axis [N-m]
-                Fvec[4] += My - Fz*rA[0]                # moment about y axis [N-m]
-
+                #Fvec[3] += Mx + Fz*rA[1]                # moment about x axis [N-m]
+                #Fvec[4] += My - Fz*rA[0]                # moment about y axis [N-m]
+                Fvec[3] += 0 + Fz*(r_center[1] - rHS_ref[1])  # moment about x axis [N-m]
+                Fvec[4] += 0 - Fz*(r_center[0] - rHS_ref[0])  # moment about y axis [N-m]
+                
+                
 
                 # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
                 Cmat[2,2] += -dFz_dz
@@ -837,7 +1240,7 @@ class Member:
                 r_centerV += r_center*V_UWi
 
 
-            # fully submerged case
+            # fully submerged segment
             elif rA[2] <= 0 and rB[2] <= 0:
 
                 # displaced volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
@@ -858,7 +1261,7 @@ class Member:
                 V_UW += V_UWi
                 r_centerV += r_center*V_UWi
 
-            else: # if the members are fully above the surface
+            else: # if the member segment is fully above the surface
 
                 pass
 
@@ -1315,3 +1718,66 @@ class Member:
         return linebit
 
 
+if __name__ == '__main__':
+
+    import yaml
+    
+    file = '../examples/test_platform.yaml'
+
+    with open(file) as f:
+        design = yaml.load(f, Loader=yaml.FullLoader)
+
+    memData = design['platform']['members'][0]
+    headings = getFromDict(memData, 'heading', shape=-1, default=0.)
+    memData['headings'] = headings   # differentiating the list of headings/copies of a member from the individual member's heading
+    
+    if 'dlsMax' not in memData:    # apply the global dlsMax setting to any member that doesn't have its own setting
+        memData['dlsMax'] = getFromDict(design['platform'], 'dlsMax', default=5)
+    
+    member = Member(memData, 0)
+    
+    member.setPosition() # Set the initial position
+    
+
+    #mass, cg, mshell, mfill, pfill = member.getInertia()
+    
+    
+    Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = member.getHydrostatics()
+    
+    Fvec2, Cmat2, V_UW2, r_CB2, AWP2, IWP2, xWP2, yWP2 = member.getHydrostaticsDiscrete()
+    
+    
+    print("Comparisons of original and discrete hydrostatics:")
+    
+    print("V_UW")
+    print( V_UW)
+    print( V_UW2)
+    
+    print("AWP")
+    print( AWP)
+    print( AWP2)
+    
+    print(  "r_CB")
+    printVec(r_CB)
+    printVec(r_CB2)
+    
+    print(  "Fvec")
+    printVec(Fvec)
+    printVec(Fvec2)
+    
+    print(  "Cmat")
+    printMat(Cmat)
+    print("")
+    printMat(Cmat2)
+    
+    
+    
+    
+    fig = plt.figure()
+    ax = plt.axes(projection='3d')
+    
+    from moorpy.helpers import set_axes_equal
+        
+    member.plot(ax=ax)
+    set_axes_equal(ax)
+    plt.show()

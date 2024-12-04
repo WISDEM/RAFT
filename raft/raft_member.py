@@ -766,19 +766,30 @@ class Member:
                 xWP = intrp(0, rA[2], rB[2], rA[0], rB[0])                     # x coordinate where member axis cross the waterplane [m]
                 yWP = intrp(0, rA[2], rB[2], rA[1], rB[1])                     # y coordinate where member axis cross the waterplane [m]
                 if self.shape=='circular':
-                    dWP = intrp(0, rA[2], rB[2], self.d[i], self.d[i-1])       # diameter of member where its axis crosses the waterplane [m]
-                    AWP = (np.pi/4)*dWP**2                                     # waterplane area of member [m^2]
-                    IWP = (np.pi/64)*dWP**4                                    # waterplane moment of inertia [m^4] approximates as a circle
-                    IxWP = IWP                                                 # MoI of circular waterplane is the same all around
-                    IyWP = IWP                                                 # MoI of circular waterplane is the same all around
+                    dWP = intrp(0, rA[2], rB[2], self.d[i-1], self.d[i])       # diameter of member where its axis crosses the waterplane [m]
+                    AWP = np.pi*(dWP/2)**2/cosPhi                              # waterplane area of member [m^2] 
+                                                                               # note that clipped waterplane area should be an ellipse generally @Yang
+                    
+                    IxWP = np.pi/64*dWP**4/cosPhi                              # waterplane moment of inertia [m^4] approximates as an ellipse (short side)
+                    IyWP = IxWP/(cosPhi**2)                                    # waterplane moment of inertia [m^4] approximates as an ellipse (Long  side)
+                    
+                    I = np.diag([IxWP, IyWP])
+                    T = np.array([[cosBeta, sinBeta], [-sinBeta, cosBeta]])    # 2D rotation matrix: R_z(-Beta)
+                    
+                    I_rot = np.matmul(T, np.matmul(I, T.T))                    # I_rot = T*diag(IxWP', IyWP')*T.T
+                    IxWP = I_rot[0,0]                                          # the transformation matrix to unrotate the member's local axes                     
+                    IyWP = I_rot[1,1]                                          # area moment of inertia tensor where MoI axes are now in the same direction as PRP                     
                 elif self.shape=='rectangular':
-                    slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
-                    AWP = slWP[0]*slWP[1]                                      # waterplane area of rectangular member [m^2]
-                    IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
-                    IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
-                    I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
-                    T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
-                    I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as PRP
+                    slWP = intrp(0, rA[2], rB[2], self.sl[i-1], self.sl[i])    # side lengths of member where its axis crosses the waterplane [m]
+                    AWP = slWP[0]*slWP[1] / cosPhi                                     # waterplane area of rectangular member [m^2]
+                    
+                    IxWP = (1/12)*slWP[0]*slWP[1]**3 / cosPhi                          # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
+                    IyWP = (1/12)*slWP[0]**3*slWP[1] / (cosPhi**3)                          # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+                    
+                    I = np.diag([IxWP, IyWP])                                  # area moment of inertia tensor
+                    T = np.array([[cosBeta, sinBeta], [-sinBeta, cosBeta]])    # the transformation matrix to unrotate the member's local axes
+                    
+                    I_rot = np.matmul(T, np.matmul(I,T.T))                     # area moment of inertia tensor where MoI axes are now in the same direction as PRP
                     IxWP = I_rot[0,0]
                     IyWP = I_rot[1,1]
 

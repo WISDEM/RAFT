@@ -828,8 +828,8 @@ class Member:
                 My = M*dPhi_dThy
 
                 Fvec[2] += Fz                           # vertical buoyancy force [N]
-                Fvec[3] += Mx + Fz*rA[1]                # moment about x axis [N-m]
-                Fvec[4] += My - Fz*rA[0]                # moment about y axis [N-m]
+                Fvec[3] += Mx + Fz*r_center[1]                # moment about x axis [N-m]
+                Fvec[4] += My - Fz*r_center[0]                # moment about y axis [N-m]
 
 
                 # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified

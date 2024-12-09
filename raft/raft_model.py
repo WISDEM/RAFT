@@ -52,6 +52,9 @@ class Model():
         self.XiStart = getFromDict(design['settings'], 'XiStart' , default=0.1 , dtype=float)  # sets initial amplitude of each DOF for all frequencies
         self.nIter   = getFromDict(design['settings'], 'nIter'   , default=15  , dtype=int  )  # sets how many iterations to perform in Model.solveDynamics()
         
+        self.staticsMod = getFromDict(design['settings'], 'staticsMod' , default=0, dtype=int)  # use (0) stiffness matrix or (1) nonlinear reactions in Model.solveStatics()
+        self.forcingMod = getFromDict(design['settings'], 'forcingsMod', default=0, dtype=int)  # use (0) constant or (1) updated forcing in Model.solveStatics()
+        
         self.w = np.arange(min_freq, max_freq+0.5*min_freq, min_freq) *2*np.pi  # angular frequencies to analyze (rad/s)
         self.nw = len(self.w)  # number of frequencies
         
@@ -162,8 +165,11 @@ class Model():
         self.design = design # save design dictionary for possible later use/reference
 
         # Set mooring current modeling mode (0: no current; 1: uniform current included in MoorPy)
-        self.mooring_currentMod = getFromDict(design['mooring'], 'currentMod', default=0, dtype=int)
-
+        if 'mooring' in design:
+            self.mooring_currentMod = getFromDict(design['mooring'], 'currentMod', default=0, dtype=int)
+        else:
+            self.mooring_currentMod = 0
+        
         # Initialize array-level mooring system if it exists
         if self.ms:
             self.ms.initialize()
@@ -534,19 +540,16 @@ class Model():
         - return total loads
         
         
-        statics_mod - 0: linearized hydrostatics; 1: hydrostatics are updated each iteration based on new poses
-        forcing_mod - 0: don't update environmental loads; 1: loads are updated each iteration based on new poses
+        self.staticsMod - 0: linearized hydrostatics; 1: hydrostatics are updated each iteration based on new poses
+        self.forcingMod - 0: don't update environmental loads; 1: loads are updated each iteration based on new poses
         
         New change: supports either a single wind speed or a list (where there is one wind speed per turbine)
         '''
-        
-        statics_mod = 0
-        forcing_mod = 0
-        
-        if statics_mod == 0:  # if using linearized hydrostatics approach, get the matrices
+                
+        if self.staticsMod == 0:  # if using linearized hydrostatics approach, get the matrices
             K_hydrostatic = [] #np.zeros([self.nDOF, self.nDOF])   # this will be the constant hydrostatic stiffness matrix--buoyancy and weight terms
             F_undisplaced = np.zeros(self.nDOF)  # force and moment vector before any displacements
-        if forcing_mod == 0:  # if using constant environmental mean forcing
+        if self.forcingMod == 0:  # if using constant environmental mean forcing
             F_env_constant = np.zeros(self.nDOF)  # constant environmental force and moment vector
         
         
@@ -569,13 +572,13 @@ class Model():
             fowt.setPosition(X_initial[6*i:6*i+6])      # zero platform offsets
             fowt.calcStatics()
             
-            if statics_mod == 0:
+            if self.staticsMod == 0:
                 K_hydrostatic.append(fowt.C_struc + fowt.C_hydro)
                 F_undisplaced[6*i:6*i+6           ] += fowt.W_struc + fowt.W_hydro
                 
                 if display > 1:  print(" F_undisplaced "+"  ".join(["{:+8.2e}"]*6).format(*F_undisplaced[6*i:6*i+6]))
 
-            if forcing_mod == 0 and case:
+            if self.forcingMod == 0 and case:
                 
                 # If list of wind speeds, set each turbine case with corresponding wind speed
                 if type(caseorig['wind_speed']) == list :
@@ -627,10 +630,11 @@ class Model():
         tols = np.array([0.05,0.05,0.05, 0.005,0.005,0.005]*len(self.fowtList)) # create vector of tolerances - tol = 0.05  rtol = tol/10
         
         
-        '''Calculates mean offsets and linearized mooring properties for the current load case.
-        setEnv and calcSystemProps must be called first.  This will ultimately become a method for solving mean operating point.
-        Mean offsets are saved in the FOWT object.
-        '''        
+        '''Calculates mean offsets and linearized mooring properties for the 
+        current load case. Methods setEnv and calcSystemProps must be called 
+        first.  This will ultimately become a method for solving mean 
+        operating point. Mean offsets are saved in the FOWT object.
+        '''
         
         def eval_func_equil(X, args):
 
@@ -656,25 +660,25 @@ class Model():
                 Xi0 = X[6*i:6*i+6] - np.array([fowt.x_ref, fowt.y_ref,0,0,0,0])  # fowt mean offset from its reference position
 
                 # update FOWT hydrostatic loads
-                if statics_mod == 0 :  # constant linear hydrostatics option
+                if self.staticsMod == 0 :  # constant linear hydrostatics
                     Fnet[6*i:6*i+6] += F_undisplaced[6*i:6*i+6]  # add original hydrostatics forces
                     Fnet[6*i:6*i+6] += -np.matmul(K_hydrostatic[i], Xi0) # use stiffness matrix to add hydrostatic reaction forces based on offsets
-                elif statics_mod == 1: # switch for whether to recompute hydrostatics
+                elif self.staticsMod == 1: # recompute hydrostatics
                     fowt.calcStatics()
                     Fnet[6*i:6*i+6] += fowt.W_struc  # weight
                     Fnet[6*i:6*i+6] += fowt.W_hydro  # buoyancy
                     #breakpoint()
                 else: 
-                    raise Exception('Invalid statics_mod value')
+                    raise Exception('Invalid self.staticsMod value')
                 
                 
                 # if it's a loaded case, include mean environmental loads
                 if case:    # <<<<<<
                     
-                    if forcing_mod == 0:  # constant loads approach
+                    if self.forcingMod == 0:  # constant loads approach
                         Fnet[6*i:6*i+6] += F_env_constant[6*i:6*i+6]
                     
-                    elif forcing_mod == 1:  # updated loads approach
+                    elif self.forcingMod == 1:  # updated loads approach
                     
                         # If list of wind speeds, set each turbine case with corresponding wind speed
                         if type(caseorig['wind_speed']) == list :
@@ -738,7 +742,7 @@ class Model():
             for i, fowt in enumerate(self.fowtList):
                 K6 = np.zeros([6,6])
 
-                if statics_mod == 0:
+                if self.staticsMod == 0:
                     K6 += K_hydrostatic[i]
                 else:
                     K6 += fowt.C_struc + fowt.C_hydro
@@ -1495,7 +1499,7 @@ class Model():
             fig = ax.get_figure()
             if self.ms:
                 self.ms.plot(ax=ax, **mp_args2)
-
+        
         # plot each FOWT
         for fowt in self.fowtList:
             fowt.plot(ax, color=color, zorder=zorder, nodes=nodes, 

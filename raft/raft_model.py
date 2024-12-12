@@ -847,7 +847,7 @@ class Model():
         
         for i, fowt in enumerate(self.fowtList):
             print(f"Found mean offets of FOWT {i+1} with surge = {fowt.Xi0[0]: .2f} m,  sway  = {fowt.Xi0[1]: .2f},  and heave = {fowt.Xi0[2]: .2f} m")
-            print(f"                                 roll  = {fowt.Xi0[3]*180/np.pi: .2f} deg, pitch = {fowt.Xi0[4]*180/np.pi: .2f} deg, and yaw   = {fowt.Xi0[5]*180/np.pi: .2f} deg")
+            print(f"                                 roll  = {fowt.Xi0[3]*180/np.pi: .2f} deg, pitch = {fowt.Xi0[4]*180/np.pi: .2f}, and yaw   = {fowt.Xi0[5]*180/np.pi: .2f} deg")
 
         
         #dsolvePlot(info) # plot solver convergence trajectories

@@ -636,7 +636,7 @@ class Rotor:
         return A_hydro, I_hydro
 
 
-    def calcCavitation(self, case, azimuth=0, clearance_margin=1.0, Patm=101325, Pvap=2500, error_on_cavitation=False):
+    def calcCavitation(self, case, azimuth=0, clearance_margin=1.0, Patm=101325, Pvap=2300, error_on_cavitation=False):
         ''' Method to calculate the cavitation number of the rotor
         (wind speed (m/s), rotor speed (RPM), pitch angle (deg), azimuth (deg))
 
@@ -838,7 +838,7 @@ class Rotor:
         # Set up vectors in axis frame. Assuming CCBlade forces (but not 
         # moments) are relative to the rotor axis
         forces_axis = np.array([loads["T"][0], loads["Y"][0], loads["Z" ][0]])
-        moments_axis = np.array([loads["My"][0], loads["Q"][0], loads["Mz"][0]])        
+        moments_axis = np.array([loads["Q"][0], loads["My"][0], loads["Mz"][0]]) 
         
         # Rotate forces and moments to be relative to global orientation (but still wrt hub)
         self.f0[:3] = np.matmul(self.R_q, forces_axis)

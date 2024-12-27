@@ -600,7 +600,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 ring_spacing = inputs[m_name+'ring_spacing']
                 n_stiff = 0 if ring_spacing == 0.0 else int(np.floor(s_height / ring_spacing))
                 s_ring = (np.arange(1, n_stiff + 0.1) - 0.5) * (ring_spacing / s_height)
-                if s_ring:
+                if np.any(s_ring):
                     if not m_shape == 'rect':
                         d_ring = np.interp(s_ring, s_grid, design['platform']['members'][i]['d'])
                     else:
@@ -623,7 +623,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
                     t_cap = t_cap[:-1]
                     di_cap = di_cap[:-1]
                 # Combine with ring stiffeners
-                if s_ring:
+                if np.any(s_ring):
                     s_cap = np.r_[s_ring, s_cap]
                     t_cap = np.r_[inputs[m_name+'ring_t']*np.ones(n_stiff), t_cap]
                     di_cap = np.r_[d_ring-2*inputs[m_name+'ring_h'], di_cap]

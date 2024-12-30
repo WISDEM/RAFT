@@ -391,14 +391,12 @@ class Rotor:
         # Store platform heading for use with nacelle yaw
         self.platform_heading = r6[5]
         
-        # Apply nacelle yaw depending on the yaw mode 
-        self.setYaw()
-        
         # Update RNA point locations [m] w.r.t. PRP in global orientations
         self.r_RRP_rel = np.matmul(self.R_ptfm, self.r_rel) # RNA ref point
-        self.r_CG_rel = self.r_RRP_rel + self.q*self.xCG_RNA # RNA CG location
-        self.r_hub_rel = self.r_RRP_rel + self.q*self.overhang # rotor hub location
-        
+
+        # Apply nacelle yaw depending on the yaw mode 
+        self.setYaw()
+                
         '''
         self.r_RRP = ? # RNA reference point
         self.r_CG  = ? # RNA CG location
@@ -456,6 +454,10 @@ class Rotor:
         # Compute shaft axis unit vector in FOWT and global frames 
         self.q_rel = np.matmul(R_q_rel, np.array([1,0,0]) )
         self.q = np.matmul(self.R_ptfm, self.q_rel) # Write in the global frame 
+
+        # Update RNA point locations [m] w.r.t. PRP in global orientations
+        self.r_CG_rel = self.r_RRP_rel + self.q*self.xCG_RNA # RNA CG location
+        self.r_hub_rel = self.r_RRP_rel + self.q*self.overhang # rotor hub location
         
         return self.yaw
     

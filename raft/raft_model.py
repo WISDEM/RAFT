@@ -525,7 +525,8 @@ class Model():
         
             X_initial[6*i:6*i+6] = np.array([fowt.x_ref, fowt.y_ref,0,0,0,0])
             fowt.setPosition(X_initial[6*i:6*i+6])      # zero platform offsets
-            fowt.calcStatics()
+            fowt.calcTurbineConstants(case, ptfm_pitch=0)  # for turbine forces >>> still need to update to use current fowt pose <<<
+            fowt.calcStatics() # Recompute statics because turbine heading may have changed due to yaw control
             
             if statics_mod == 0:
                 K_hydrostatic.append(fowt.C_struc + fowt.C_hydro)
@@ -541,8 +542,7 @@ class Model():
                     if display > 1: 
                         print('Fowt ' + str(i))
                         print(case)
-                
-                fowt.calcTurbineConstants(case, ptfm_pitch=0)  # for turbine forces >>> still need to update to use current fowt pose <<<
+
                 fowt.calcHydroConstants()
                 F_env_constant[6*i:6*i+6] = np.sum(fowt.f_aero0, axis=1) + fowt.calcCurrentLoads(case)
 
@@ -639,6 +639,7 @@ class Model():
                             case['wind_speed'] = caseorig['wind_speed'][i]
                         
                         fowt.calcTurbineConstants(case, ptfm_pitch=r6[4])  # for turbine forces >>> still need to update to use current fowt pose <<<
+                        fowt.calcStatics() # Recompute statics because turbine heading may have changed due to yaw control
                         fowt.calcHydroConstants()  # prep for drag force and mean drift
 
                         Fnet[6*i:6*i+6] += np.sum(fowt.f_aero0, axis=1)  # sum mean turbine force across turbines                        

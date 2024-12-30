@@ -525,7 +525,8 @@ class Model():
         
             X_initial[6*i:6*i+6] = np.array([fowt.x_ref, fowt.y_ref,0,0,0,0])
             fowt.setPosition(X_initial[6*i:6*i+6])      # zero platform offsets
-            fowt.calcTurbineConstants(case, ptfm_pitch=0)  # for turbine forces >>> still need to update to use current fowt pose <<<
+            if case:
+                fowt.calcTurbineConstants(case, ptfm_pitch=0)  # for turbine forces >>> still need to update to use current fowt pose <<<
             fowt.calcStatics() # Recompute statics because turbine heading may have changed due to yaw control
             
             if statics_mod == 0:

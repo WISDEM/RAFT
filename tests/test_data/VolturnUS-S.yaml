@@ -1082,6 +1082,11 @@ platform:
 
     dlsMax       :  5.0     # maximum node splitting section amount for platform members; can't be 0
     potModMaster : 1
+    potSecOrder  :  1        # [int] master switch for computing second-order wave forces; 0=do not compute, 1=compute QTFs using slender body approximation, 2=read QTF file in WAMIT format (.11d or .12d)
+    min_freq2nd  :  0.040   # [Hz] minimum frequency for second-order wave forces
+    df_freq2nd   :  0.008   # [Hz] frequency step for second-order wave forces
+    max_freq2nd  :  0.200   # [Hz] maximum frequency for second-order wave forces
+
 
     members:   # list all members here
         
@@ -1092,6 +1097,7 @@ platform:
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  False                     # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        MCF       :  True
         # --- outer shell including hydro---
         stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  9.85                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
@@ -1115,6 +1121,7 @@ platform:
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  False                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        MCF       :  True
         # --- outer shell including hydro---
         stations  :  [0, 35]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  12.23                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)

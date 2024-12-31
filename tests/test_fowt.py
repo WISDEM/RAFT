@@ -283,6 +283,32 @@ def test_calcCurrentLoads(index_and_fowt):
 
     assert_allclose(D, desired_current_drag[index], rtol=1e-05, atol=1e-3)
 
+def test_calcQTF_slenderBody(index_and_fowt, flagSaveValues=False):    
+    # Set flagSaveValues to true to replace the true values file with the values calculated below    
+    index, fowt = index_and_fowt      
+
+    if fowt.potSecOrder: # Check only cases that compute the QTFs
+        true_values_file = list_files[index].replace('.yaml', '_true_calcQTF_slenderBody.pkl')
+        
+        testCase = {'wave_heading': 30, 'wave_period': 12, 'wave_height': 6} # Testing one case only
+        fowt.calcHydroConstants() # Need to call this one before calcHydroExcitation
+        fowt.calcHydroExcitation(testCase, memberList=fowt.memberList) # Need to call this one before calcQTF_slenderBody
+        fowt.calcQTF_slenderBody(0) # Testing for the body considered to be fixed. Model class should take care of cases with motion
+
+        if flagSaveValues:
+            true_values={
+                'case': testCase,
+                'qtf': fowt.qtf,
+            }
+        else:
+            with open(true_values_file, 'rb') as f:
+                true_values = pickle.load(f)
+            assert_allclose(fowt.qtf, true_values['qtf'], rtol=1e-05, atol=1e-3)
+
+        if flagSaveValues:
+            with open(true_values_file, 'wb') as f:
+                pickle.dump(true_values, f)
+
 
 '''
  To run as a script. Useful for debugging.
@@ -304,4 +330,7 @@ if __name__ == "__main__":
 
     fowt = create_fowt(list_files[index])
     test_calcCurrentLoads((index,fowt))
+
+    fowt = create_fowt(list_files[index])
+    test_calcQTF_slenderBody((index,fowt))
 

@@ -43,10 +43,10 @@ array_mooring:  # option for array-level mooring system
     
 turbine:
     
-    mRNA          :     991000        #  [kg]       RNA mass 
+    mRNA          :     1001505.907   #  [kg]       RNA mass: m_blades = 3*68076.969 = 204230.907 kg (from ED.sum), m_yawbearing = 100000 kg, m_hub = 190000 kg, m_nacelle = 507275 kg
     IxRNA         :          0        #  [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
     IrRNA         :          0        #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
-    xCG_RNA       :          0        #  [m]        x location of RNA center of mass [m] (Actual is ~= -0.27 m)
+    xCG_RNA       :         -7.27     #  [m]        x location of RNA center of mass [m]: xg_blades = -13.0 m, xg_hub = -11.0 m, xg_nac = -4.99 m, xg_yaw = 0.0 m
     hHub          :        150.0      #  [m]        hub height above water line [m]
     Fthrust       :       1500.0E3    #  [N]        temporary thrust force to use
     

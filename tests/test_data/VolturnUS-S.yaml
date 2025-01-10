@@ -25,10 +25,10 @@ cases:
     
 turbine:
     
-    mRNA          :     991000        #  [kg]       RNA mass 
+    mRNA          :     1001505.907   #  [kg]       RNA mass: m_blades = 3*68076.969 = 204230.907 kg (from ED.sum), m_yawbearing = 100000 kg, m_hub = 190000 kg, m_nacelle = 507275 kg
     IxRNA         :          0        #  [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
     IrRNA         :          0        #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
-    xCG_RNA       :          0        #  [m]        x location of RNA center of mass [m] (Actual is ~= -0.27 m)
+    xCG_RNA       :         -7.27     #  [m]        x location of RNA center of mass [m]: xg_blades = -13.0 m, xg_hub = -11.0 m, xg_nac = -4.99 m, xg_yaw = 0.0 m
     hHub          :        150.0      #  [m]        hub height above water line [m]
     Fthrust       :       1500.0E3    #  [N]        temporary thrust force to use
     
@@ -40,7 +40,7 @@ turbine:
     precone     : 4.0        # [deg]
     shaft_tilt  : 6.0        # [deg]
     overhang    : -12.0313    # [m]
-    aeroMod     : 1          # 0 aerodynamics off; 1 aerodynamics on
+    aeroServoMod     : 1          # 0 aerodynamics off; 1 aerodynamics on
 
     
     blade: 
@@ -1082,6 +1082,11 @@ platform:
 
     dlsMax       :  5.0     # maximum node splitting section amount for platform members; can't be 0
     potModMaster : 1
+    potSecOrder  :  1        # [int] master switch for computing second-order wave forces; 0=do not compute, 1=compute QTFs using slender body approximation, 2=read QTF file in WAMIT format (.11d or .12d)
+    min_freq2nd  :  0.040   # [Hz] minimum frequency for second-order wave forces
+    df_freq2nd   :  0.008   # [Hz] frequency step for second-order wave forces
+    max_freq2nd  :  0.200   # [Hz] maximum frequency for second-order wave forces
+
 
     members:   # list all members here
         
@@ -1092,6 +1097,7 @@ platform:
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  False                     # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        MCF       :  True
         # --- outer shell including hydro---
         stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  9.85                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
@@ -1115,6 +1121,7 @@ platform:
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  False                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        MCF       :  True
         # --- outer shell including hydro---
         stations  :  [0, 35]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  12.23                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)

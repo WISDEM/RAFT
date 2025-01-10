@@ -35,7 +35,7 @@ list_files = [os.path.join(current_dir, test_dir, file) for file in list_files]
 '''
 # Structure related quantities
 desired_rCG = [
-    np.array([ 2.34101810e-15,  7.81354773e-16, -2.03398326e+00]),
+    np.array([-3.78742736e-01,  7.80925410e-16, -1.91132267e+00]),
     np.array([              0,               0, -78.03525272   ]),
 ]
 desired_rCG_sub = [
@@ -49,12 +49,12 @@ desired_m_ballast = [
 ]
 
 desired_M_struc = [
-    np.array([[ 1.91081767e+07,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00, -3.88657114e+07, -1.49302650e-08],
-              [ 0.00000000e+00,  1.91081767e+07,  0.00000000e+00,  3.88657114e+07,  0.00000000e+00,  4.47325874e-08],
-              [ 0.00000000e+00,  0.00000000e+00,  1.91081767e+07,  1.49302650e-08, -4.47325874e-08,  0.00000000e+00],
-              [ 0.00000000e+00,  3.88657114e+07,  1.49302650e-08,  4.22011083e+10,  9.54605639e-07,  4.76371497e-07],
-              [-3.88657114e+07,  0.00000000e+00, -4.47325874e-08,  9.54605639e-07,  4.22011083e+10,  4.76371497e-07],
-              [-1.49302650e-08,  4.47325874e-08,  0.00000000e+00,  5.96046448e-07,  4.76371497e-07,  2.05595816e+10]]),
+    np.array([[ 1.91186826e+07,  0.00000000e+00, -7.72177272e-12,  0.00000000e+00, -3.65419714e+07, -1.49302650e-08],
+              [ 0.00000000e+00,  1.91186826e+07,  0.00000000e+00,  3.65419714e+07,  0.00000000e+00, -7.24106215e+06],
+              [ 1.30711139e-11,  0.00000000e+00,  1.91186826e+07,  1.49302650e-08,  7.24106215e+06,  0.00000000e+00],
+              [ 0.00000000e+00,  3.65419714e+07,  1.49302650e-08,  4.26605281e+10,  9.54605639e-07,  1.08255551e+09],
+              [-3.65419714e+07,  0.00000000e+00,  7.24106215e+06,  9.54605639e-07,  4.27128822e+10,  4.76371497e-07],
+              [-1.49302650e-08, -7.24106215e+06,  0.00000000e+00,  1.08255551e+09,  4.76371497e-07,  2.06119358e+10]]),
     np.array([[ 8.08951257e+06,  0.00000000e+00, -3.63797881e-12,  0.00000000e+00, -6.31267158e+08,  0.00000000e+00],
               [ 0.00000000e+00,  8.08951257e+06,  0.00000000e+00,  6.31267158e+08,  0.00000000e+00,  0.00000000e+00],
               [ 3.63797881e-12,  0.00000000e+00,  8.08951257e+06,  0.00000000e+00,  3.25832739e-10,  0.00000000e+00],
@@ -82,8 +82,8 @@ desired_C_struc = [
     np.array([[  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00],
               [  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00],
               [  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00],
-              [  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  3.81272628e+08,  0.00000000e+00,  0.00000000e+00],
-              [  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  3.81272628e+08,  0.00000000e+00],
+              [  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  3.58476739e+08,  0.00000000e+00,  0.00000000e+00],
+              [  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  3.58476739e+08,  0.00000000e+00],
               [  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00]]),
     np.array([[  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00],
               [  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00],
@@ -94,7 +94,7 @@ desired_C_struc = [
 ]
 
 desired_W_struc = [
-    np.array([  0.00000000e+00,  0.00000000e+00, -1.87451213e+08, -2.38651410e-07,  3.58093530e-07,  0.00000000e+00]),
+    np.array([  0.00000000e+00,  0.00000000e+00, -1.87554276e+08, -2.38651410e-07, -7.10348197e+07,  0.00000000e+00]),
     np.array([  0.00000000e+00,  0.00000000e+00, -7.93581183e+07,  0.00000000e+00,  0.00000000e+00,  0.00000000e+00]),
 ]
 
@@ -283,6 +283,32 @@ def test_calcCurrentLoads(index_and_fowt):
 
     assert_allclose(D, desired_current_drag[index], rtol=1e-05, atol=1e-3)
 
+def test_calcQTF_slenderBody(index_and_fowt, flagSaveValues=False):    
+    # Set flagSaveValues to true to replace the true values file with the values calculated below    
+    index, fowt = index_and_fowt      
+
+    if fowt.potSecOrder: # Check only cases that compute the QTFs
+        true_values_file = list_files[index].replace('.yaml', '_true_calcQTF_slenderBody.pkl')
+        
+        testCase = {'wave_heading': 30, 'wave_period': 12, 'wave_height': 6} # Testing one case only
+        fowt.calcHydroConstants() # Need to call this one before calcHydroExcitation
+        fowt.calcHydroExcitation(testCase, memberList=fowt.memberList) # Need to call this one before calcQTF_slenderBody
+        fowt.calcQTF_slenderBody(0) # Testing for the body considered to be fixed. Model class should take care of cases with motion
+
+        if flagSaveValues:
+            true_values={
+                'case': testCase,
+                'qtf': fowt.qtf,
+            }
+        else:
+            with open(true_values_file, 'rb') as f:
+                true_values = pickle.load(f)
+            assert_allclose(fowt.qtf, true_values['qtf'], rtol=1e-05, atol=1e-3)
+
+        if flagSaveValues:
+            with open(true_values_file, 'wb') as f:
+                pickle.dump(true_values, f)
+
 
 '''
  To run as a script. Useful for debugging.
@@ -304,4 +330,7 @@ if __name__ == "__main__":
 
     fowt = create_fowt(list_files[index])
     test_calcCurrentLoads((index,fowt))
+
+    fowt = create_fowt(list_files[index])
+    test_calcQTF_slenderBody((index,fowt))
 

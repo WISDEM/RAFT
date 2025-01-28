@@ -39,9 +39,10 @@ class Member:
         if (self.rA0[2] == 0 or self.rB0[2] == 0) and self.type != 3:
             raise ValueError("RAFT Members cannot start or end on the waterplane")
         if self.rB0[2] < self.rA0[2]:
-            print(f"The z position of rA is {self.rA0[2]}, and the z position of rB is {self.rB0[2]}. RAFT Members can have trouble when their rA position is below the rB position. Switching rA and rB now.")
-            self.rA0 = np.array(mi['rB'], dtype=np.double)
-            self.rB0 = np.array(mi['rA'], dtype=np.double)
+            pass
+            #print(f"The z position of rA is {self.rA0[2]}, and the z position of rB is {self.rB0[2]}. RAFT Members can have trouble when their rA position is below the rB position")
+            #self.rA0 = np.array(mi['rB'], dtype=np.double)
+            #self.rB0 = np.array(mi['rA'], dtype=np.double)
 
         shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
 

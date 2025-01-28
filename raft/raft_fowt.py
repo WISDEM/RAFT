@@ -1354,7 +1354,8 @@ class FOWT():
                 if mem.r[il,2] < 0:
 
                     # calculate current velocity as a function of node depth [x,y,z] (assumes no vertical current velocity)
-                    v = speed * (((self.depth) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water
+                    #v = speed * (((self.depth) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water
+                    v = np.nanmax([ speed * (((self.depth) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water,  0])
                     #v = speed
                     vcur = np.array([v*np.cos(np.deg2rad(heading)), v*np.sin(np.deg2rad(heading)), 0])
 

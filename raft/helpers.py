@@ -127,7 +127,6 @@ def getWaveKin(zeta0, beta, w, k, h, r, nw, rho=1025.0, g=9.81):
             # given the wave number, k, water depth, h, and elevation z, as inputs.
             if (    k[i]   == 0.0  ):                   # When .TRUE., the shallow water formulation is ill-conditioned; thus, the known value of unity is returned.
                 SINHNumOvrSIHNDen = 1.0
-                breakpoint()
                 COSHNumOvrSIHNDen = 99999.0
                 COSHNumOvrCOSHDen = 99999.0   # <<< check
             elif ( k[i]*h >  89.4 ):                # When .TRUE., the shallow water formulation will trigger a floating point overflow error; however, with h > 14.23*wavelength (since k = 2*Pi/wavelength) we can use the numerically-stable deep water formulation instead.
@@ -135,8 +134,8 @@ def getWaveKin(zeta0, beta, w, k, h, r, nw, rho=1025.0, g=9.81):
                 COSHNumOvrSIHNDen = np.exp( k[i]*z )
                 COSHNumOvrCOSHDen = np.exp( k[i]*z ) + np.exp(-k[i]*(z + 2.0*h))
             else:                                    # 0 < k*h <= 89.4; use the shallow water formulation.
-                SINHNumOvrSIHNDen = np.sinh( k[i]*( z + h ) )/np.sinh( k[i]*h );
-                COSHNumOvrSIHNDen = np.cosh( k[i]*( z + h ) )/np.sinh( k[i]*h );
+                SINHNumOvrSIHNDen = np.sinh( k[i]*( z + h ) )/np.sinh( k[i]*h )
+                COSHNumOvrSIHNDen = np.cosh( k[i]*( z + h ) )/np.sinh( k[i]*h )
                 COSHNumOvrCOSHDen = np.real( np.cosh(k[i]*(z+h)) )/np.cosh(k[i]*h)   # <<< check
 
             # Fourier transform of wave velocities
@@ -230,12 +229,12 @@ def getWaveKin_axdivAcc(w1, w2, k1, k2, beta1, beta2, h, r, vel1, vel2, q, g=9.8
 
     aux = np.matmul(getWaveKin_grad_u1(w1, k1, beta1, h, r), q)
     dwdz1 = np.dot(np.squeeze(aux), np.squeeze(q))
-    u1, _, _ = getWaveKin(np.ones([1,1]), beta1, w1*np.ones([1,1]), k1*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
+    u1, _, _ = getWaveKin(np.ones([1]), beta1, w1*np.ones([1]), k1*np.ones([1]), h, r, 1, rho=1025.0, g=g)
     u1 = np.squeeze(u1)
    
     aux = np.matmul(getWaveKin_grad_u1(w2, k2, beta2, h, r), q)
     dwdz2 = np.dot(np.squeeze(aux), np.squeeze(q))
-    u2, _, _ = getWaveKin(np.ones([1,1]), beta2, w2*np.ones([1,1]), k2*np.ones([1,1]), h, r, 1, rho=1025.0, g=g)
+    u2, _, _ = getWaveKin(np.ones([1]), beta2, w2*np.ones([1]), k2*np.ones([1]), h, r, 1, rho=1025.0, g=g)
     u2 = np.squeeze(u2)
 
     vel1 -= np.dot(vel1, q) * q
@@ -1186,9 +1185,9 @@ def bmatrix(a):
 
 
 def printCaseToTable(cases, keys):
-    parameters = ['U$_{ave}$ [m/s]', 'Turbulence Intensity [-]', 'Misalignment Angle [deg]', 'Yaw error [deg]'
-                  ,'T$_p$ system 1 [s]', 'H$_s$ system 1 [m]', '$\gamma$ system 1 [-]', 'Misalignment angle system 1 [deg]'
-                  ,'T$_p$ system 2 [s]', 'H$_s$ system 2 [m]', '$\gamma$ system 2 [-]', 'Misalignment angle system 2 [deg]']
+    parameters = [r'U$_{ave}$ [m/s]', r'Turbulence Intensity [-]', r'Misalignment Angle [deg]', r'Yaw error [deg]'
+                  ,r'T$_p$ system 1 [s]', r'H$_s$ system 1 [m]', r'$\gamma$ system 1 [-]', r'Misalignment angle system 1 [deg]'
+                  ,r'T$_p$ system 2 [s]', r'H$_s$ system 2 [m]', r'$\gamma$ system 2 [-]', r'Misalignment angle system 2 [deg]']
     for iCase, item in enumerate(cases):
         case = dict(zip(keys, cases[iCase]))
         parameters[0] += f" & {case['wind_speed']:.2f}"
@@ -1205,7 +1204,7 @@ def printCaseToTable(cases, keys):
         parameters[11] += f" & {case['wave_heading2']:.2f}"
 
     for p, temp in enumerate(parameters):
-        parameters[p] += f' \\\ \hline'
+        parameters[p] += r' \\ \hline'
         print(parameters[p])
 
 

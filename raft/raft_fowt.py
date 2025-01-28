@@ -56,7 +56,24 @@ class FOWT():
         self.x_ref = x_ref      # reference x position of the FOWT in the array [m]
         self.y_ref = y_ref      # reference y position of the FOWT in the array [m]
         self.r6 = np.zeros(6)   # mean position/orientation in absolute/array coordinates [m,rad]
-        
+
+        # Platform lumped inertias
+        self.pointInertias = []        
+        if 'pointInertias' in design['platform']:
+            nPoints = len(design['platform']['pointInertias'])            
+            for ip, pointInertia in enumerate(design['platform']['pointInertias']):
+                self.pointInertias.append({'m': 0, 'inertia': np.zeros([6, 6]), 'r': np.zeros([3,])}) # mass, inertia, and position of each point mass to be added to the platform
+                pointMass = getFromDict(pointInertia, 'mass', shape=0, default=0) # mass of the substructure [kg]
+                self.pointInertias[-1]['m'] = pointMass
+                auxInertia = getFromDict(pointInertia, 'moments_of_inertia', shape=6, default=[0,0,0]) # moments of inertia of the substructure [kg*m^2] - specified in the order Jxx, Jyy, Jzz, Jxy, Jxz, Jyz
+                self.pointInertias[-1]['inertia'] = np.array([[pointMass, 0, 0, 0, 0, 0],
+                                                              [0, pointMass, 0, 0, 0, 0],
+                                                              [0, 0, pointMass, 0, 0, 0],
+                                                              [0, 0, 0, auxInertia[0], auxInertia[3], auxInertia[4]],
+                                                              [0, 0, 0, auxInertia[3], auxInertia[1], auxInertia[5]],
+                                                              [0, 0, 0, auxInertia[4], auxInertia[5], auxInertia[2]]])
+                self.pointInertias[-1]['r'] = getFromDict(pointInertia, 'location', shape=3, default=[0,0,0])
+                        
         # count number of platform members
         self.nplatmems = 0
         for platmem in design['platform']['members']:
@@ -478,6 +495,18 @@ class FOWT():
             self.W_struc += translateForce3to6DOF(np.array([0,0, -g*rotor.mRNA]), rotor.r_CG_rel )   # weight vector
             self.M_struc += translateMatrix6to6DOF(Mmat, rotor.r_CG_rel)                            # mass/inertia matrix
             m_center_sum += rotor.r_CG_rel*rotor.mRNA
+
+
+        # ------------------------- include point inertia properties -----------------------------
+        for ip, pointInertia in enumerate(self.pointInertias):            
+            self.M_struc += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r'])
+            self.W_struc += translateForce3to6DOF( np.array([0,0, -g*pointInertia['m']]), pointInertia['r'] )
+            m_center_sum += pointInertia['r']*pointInertia['m']
+
+            self.m_sub += pointInertia['m']
+            self.M_struc_sub += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r'])     # mass matrix of the substructure about the PRP
+            m_sub_sum += pointInertia['r']*pointInertia['m']        # product sum of the substructure members and their centers of mass [kg-m]
+
 
         # ----------- process inertia-related totals ----------------
 

@@ -103,7 +103,7 @@ class Member:
                 self.MCF = False
 
 
-        self.t         = getFromDict(mi, 't', shape=n)               # shell thickness at each station [m]
+        self.t         = getFromDict(mi, 't', shape=n, default=0)  # shell thickness at each station [m]
         self.rho_shell = getFromDict(mi, 'rho_shell', shape=0, default=8500.) # shell mass density [kg/m^3]
         
         
@@ -707,7 +707,7 @@ class Member:
         self.mshell = mshell
         self.mfill  = mfill
         mass = self.M_struc[0,0]        # total mass of the entire member [kg]
-        center = mass_center/mass       # total center of mass of the entire member from the PRP [m]
+        center = mass_center/mass if mass!=0 else np.array([0,0,0])       # total center of mass of the entire member from the PRP [m]
 
 
         return mass, center, mshell, mfill, pfill

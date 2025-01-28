@@ -164,11 +164,11 @@ class FOWT():
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
         # this FOWT's own MoorPy system (may not be used)
-        if design['mooring']:
+        if 'mooring' in design:
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
-            self.ms.moorMod = getFromDict(design['mooring'], 'moorMod', default=0, dtype=int)
+            self.moorMod = getFromDict(design['mooring'], 'moorMod', default=0, dtype=int)
             
             # ensure proper setup with one coupled Body tied to this FOWT
             if len(self.ms.bodyList) == 0:
@@ -189,6 +189,7 @@ class FOWT():
 
         else:
             self.ms = None
+            self.moorMod = 0
         
         self.F_moor0 = np.zeros(6)     # mean mooring forces in a given scenario
         self.C_moor = np.zeros([6,6])  # mooring stiffness matrix in a given scenario
@@ -286,9 +287,9 @@ class FOWT():
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
             self.ms.solveEquilibrium()
-            if self.ms.moorMod == 0 or self.ms.moorMod == 2:
+            if self.moorMod == 0 or self.moorMod == 2:
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
-            elif self.ms.moorMod == 1:
+            elif self.moorMod == 1:
                 self.ms.updateSystemDynamicMatrices()
                 _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
 
@@ -2025,7 +2026,7 @@ class FOWT():
             T_moor_std  = np.zeros([2*nLines], dtype=float)
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
             T_moor = self.ms.getTensions()  # get line end mean tensions                        
-            if self.ms.moorMod == 0:
+            if self.moorMod == 0:
                 for ih in range(self.nWaves+1):
                     for iw in range(self.nw):
                         T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions

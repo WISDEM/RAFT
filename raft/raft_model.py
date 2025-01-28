@@ -102,7 +102,7 @@ class Model():
                 else:
                     raise Exception("When using 'array_mooring', a MoorDyn-style input file must be provided as 'file'.")
 
-                self.ms.moorMod = getFromDict(design['array_mooring'], 'moorMod', default=0, dtype=int)
+                self.moorMod = getFromDict(design['array_mooring'], 'moorMod', default=0, dtype=int)
             else:
                 self.ms = None
                 
@@ -211,9 +211,9 @@ class Model():
         
         if self.ms:
             try: 
-                if self.ms.moorMod == 0 or self.ms.moorMod == 2:
+                if self.moorMod == 0 or self.moorMod == 2:
                     C_moor = self.ms.getCoupledStiffness(lines_only=True)
-                elif self.ms.moorMod == 1:
+                elif self.moorMod == 1:
                     self.ms.updateLumpedMassSystem()                    
                     _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
 
@@ -224,9 +224,9 @@ class Model():
         
         if self.fowtList[0].ms:
             try: 
-                if self.fowtList[0].ms.moorMod == 0 or self.fowtList[0].ms.moorMod == 2:
+                if self.fowtList[0].moorMod == 0 or self.fowtList[0].moorMod == 2:
                     C_moor = self.fowtList[0].ms.getCoupledStiffness(lines_only=True)
-                elif self.fowtList[0].ms.moorMod == 1:
+                elif self.fowtList[0].moorMod == 1:
                     self.fowtList[0].ms.updateSystemDynamicMatrices()
                     _, _, _, C_moor = self.fowtList[0].ms.getCoupledDynamicMatrices(lines_only=True)
 
@@ -377,7 +377,7 @@ class Model():
                 T_moor = self.ms.getTensions()  # get line end mean tensions
                 
             
-                if self.ms.moorMod == 0:
+                if self.moorMod == 0:
                     for ih in range(nWaves+1):
                         for iw in range(self.nw):
                             T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
@@ -461,9 +461,9 @@ class Model():
             
         # include array-level mooring stiffness
         if self.ms:
-            if self.ms.moorMod == 0 or self.ms.moorMod == 2:
+            if self.moorMod == 0 or self.moorMod == 2:
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
-            elif self.ms.moorMod == 1:
+            elif self.moorMod == 1:
                 self.ms.updateSystemDynamicMatrices()
                 _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
             C_tot += C_moor
@@ -732,9 +732,9 @@ class Model():
             
             # add array mooring system stiffness (if applicable)
             if self.ms:
-                if self.ms.moorMod == 0 or self.ms.moorMod == 2:
+                if self.moorMod == 0 or self.moorMod == 2:
                     Kmoor = self.ms.getCoupledStiffnessA(lines_only=True)
-                elif self.ms.moorMod == 1:
+                elif self.moorMod == 1:
                     self.ms.updateSystemDynamicMatrices()
                     _, _, _, Kmoor = self.ms.getCoupledDynamicMatrices(lines_only=True)
 
@@ -752,9 +752,9 @@ class Model():
                 if fowt.ms:
                     if fowt.ms:
                         fowt.ms.solveEquilibrium()
-                        if fowt.ms.moorMod == 0 or fowt.ms.moorMod == 2:
+                        if fowt.moorMod == 0 or fowt.moorMod == 2:
                             Kmoor_fowt = fowt.ms.getCoupledStiffnessA(lines_only=True)
-                        elif fowt.ms.moorMod == 1:
+                        elif fowt.moorMod == 1:
                             fowt.ms.updateSystemDynamicMatrices()
                             _, _, _, Kmoor_fowt = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
                     K6 += Kmoor_fowt
@@ -961,12 +961,12 @@ class Model():
             # We would need to pass the motions of the extremities of the mooring lines within getCoupledDynamicMatrices
             # I think this would be straightforward for lines connecting the fairlead to the anchor, but not sure about cases with buoys
             M_moor, A_moor, B_moor, C_moor = (np.zeros([6,6]) for _ in range(4))
-            if not fowt.ms or fowt.ms.moorMod == 0:
+            if not fowt.ms or fowt.moorMod == 0:
                 C_moor = fowt.C_moor
-            elif fowt.ms.moorMod == 1:
+            elif fowt.moorMod == 1:
                 fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
                 M_moor, A_moor, B_moor, C_moor = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
-            elif fowt.ms.moorMod == 2:
+            elif fowt.moorMod == 2:
                 C_moor = fowt.C_moor
                 fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
                 M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
@@ -1007,7 +1007,7 @@ class Model():
                 # Recompute mooring damping matrix as it depends on body motions (linearization of drag lods). The other matrices are kept the same.
                 # Note: Is it worth recomputing the mooring damping matrix at each step? The impact of mooring damping on body dynamics is small, and the motion
                 # RAOs are probably not changing much. Perhaps compute this only once and keep it constant? 
-                if fowt.ms and (fowt.ms.moorMod == 1 or fowt.ms.moorMod == 2):
+                if fowt.ms and (fowt.moorMod == 1 or fowt.moorMod == 2):
                     fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
                     _, _, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
 
@@ -1112,12 +1112,12 @@ class Model():
         # include array-level mooring stiffness
         if self.ms:
             M_moor, A_moor, B_moor, C_moor = (np.zeros([Z_sys.shape[0], Z_sys.shape[1]]) for _ in range(4))
-            if self.ms.moorMod == 0:                
+            if self.moorMod == 0:                
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
-            elif self.ms.moorMod == 1:                 
+            elif self.moorMod == 1:                 
                 self.updateMooringDynamicMatrices(XiLast_all, self.fowtList[0].S[0,:])
                 M_moor, A_moor, B_moor, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
-            elif self.ms.moorMod == 2:
+            elif self.moorMod == 2:
                 self.updateMooringDynamicMatrices(XiLast_all, self.fowtList[0].S[0,:])
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
                 M_moor, A_moor, B_moor, _ = self.ms.getCoupledDynamicMatrices(lines_only=True)

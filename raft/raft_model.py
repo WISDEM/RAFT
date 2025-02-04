@@ -1854,7 +1854,7 @@ class Model():
             
             # Not sure how the pitch angle should be handled if wind comes at angle.....
             ### NOTE: this CCBlade print statement comes after the mean offset printouts
-            loads, derivs = self.fowtList[nfowt].rotorList[nrotor].runCCBlade(uhub,  ptfm_pitch=turbine_tilt, )
+            loads, derivs = self.fowtList[nfowt].rotorList[nrotor].runCCBlade(uhub, tilt=turbine_tilt, )
             cp.append(loads["CP"][0])
             ct.append(loads["CT"][0])
             pitch.append(rad2deg(self.fowtList[nfowt].Xi0[4]))
@@ -1907,15 +1907,15 @@ class Model():
             Path to turbine library of yaml files
 
         '''
-        from floris.tools import FlorisInterface
+        from floris import FlorisModel
         
         # Setup FLORIS interface using base yaml file
-        self.fi = FlorisInterface(config)
+        self.fi = FlorisModel(config)
         
         # Update floris interface settings to match RAFT design
-        self.fi.reinitialize(air_density = self.design["site"]["rho_air"], wind_shear = self.design["site"]["shearExp"])
+        self.fi.set(air_density = self.design["site"]["rho_air"], wind_shear = self.design["site"]["shearExp"])
         fowtInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
-        self.fi.reinitialize(layout_x=[fowtInfo[j]["x_location"] for j in range(0,len(fowtInfo))], layout_y=[fowtInfo[j]["y_location"] for j in range(0,len(fowtInfo))])
+        self.fi.set(layout_x=[fowtInfo[j]["x_location"] for j in range(0,len(fowtInfo))], layout_y=[fowtInfo[j]["y_location"] for j in range(0,len(fowtInfo))])
         
         # create new turbine yaml file for each turbine with a unique turbine, platform, mooring, or heading adjustment
         # this is because these effect the pitch of the platform in the power-thrust curve
@@ -1948,13 +1948,13 @@ class Model():
                 #Find turbine ID and use yaml file associated with that ID as basis
                 turbData['hub_height'] = self.design["turbines"][turbID - 1]["hHub"]
                 turbData['rotor_diameter'] = self.design["turbines"][turbID - 1]["blade"][0]["Rtip"]*2 # Check this (takes the rotor radius from first blade)
-                turbData['ref_density_cp_ct'] = self.design["site"]["rho_air"]
+                turbData['power_thrust_table']['ref_air_density'] = self.design["site"]["rho_air"]
                 
                 #RAFT may want to name the turbines
                 turbData['turbine_type'] ='turb'+str(ID)+'_floating'
                 
                 #Cp and Ct curves already incorporate the floating tilt... so FLORIS can ignore
-                turbData['floating_correct_cp_ct_for_tilt'] = False 
+                turbData['correct_cp_ct_for_tilt'] = False 
                 
                 #set up list of hub velocities to match floris 
                 uhubs=list(np.arange(3,25,0.5))
@@ -1967,7 +1967,7 @@ class Model():
                 #In reality, the mooring system stiffness would slightly change the Cp curve based on heading (because the pitch angle would change)
                 power, thrust, pitch = self.powerThrustCurve(i, 0, uhubs, 0, yaw = 0, plot = False)
                 turbData['power_thrust_table']['power'] = np.array(power).tolist()
-                turbData['power_thrust_table']['thrust'] = np.array(thrust).tolist()
+                turbData['power_thrust_table']['thrust_coefficient'] = np.array(thrust).tolist()
                 turbData['power_thrust_table']['wind_speed'] = np.array(uhubs).tolist()
                 
                 print('len winds ', len(uhubs))
@@ -1975,7 +1975,7 @@ class Model():
                 
                 
                 #Set floating tilt table only for use in Empirical Gaussian wake model (wake deflection for pitch angle)
-                turbData['floating_tilt_table']['wind_speeds'] = np.array(uhubs).tolist() # match roughly the wind speeds in example files
+                turbData['floating_tilt_table']['wind_speed'] = np.array(uhubs).tolist() # match roughly the wind speeds in example files
                 turbData['floating_tilt_table']['tilt'] = np.array(pitch).tolist()
     
                 with open(path+'\\'+'turb'+str(ID)+'.yaml', 'w') as file:
@@ -1983,7 +1983,7 @@ class Model():
             turblist.append('turb'+str(ID)+'.yaml')
             
         #reinitialize floris interface with updated turbine yaml files
-        self.fi.reinitialize(turbine_type= turblist, turbine_library_path= path)
+        self.fi.set(turbine_type= turblist, turbine_library_path= path)
            
         self.turblist = turblist
     
@@ -1996,8 +1996,8 @@ class Model():
 
         
         #FLORIS inputs the wind direction as direction wind is coming from (where the -X axis is 0)
-        self.fi.reinitialize(wind_directions = [-case['wind_heading']+270], wind_speeds = [case['wind_speed']], turbulence_intensity= case['turbulence'])
-        yaw_angles = np.ones([1,1,self.nFOWT]) 
+        self.fi.set(wind_directions = [-case['wind_heading']+270], wind_speeds = [case['wind_speed']], turbulence_intensities= np.array([case['turbulence']]))
+        yaw_angles = np.zeros([1,self.nFOWT]) 
         
         
         #calc yaw misalignment to input into FLORIS
@@ -2029,7 +2029,7 @@ class Model():
 
             # inflow misalignment heading relative to turbine heading [deg]
             yaw_misalign = turbine_heading - np.radians(heading) 
-            yaw_angles[0,0,nfowt] = np.degrees(yaw_misalign)
+            yaw_angles[0,nfowt] = np.degrees(yaw_misalign)
         
         print('Yaw misalignment angles: ', yaw_angles)
         
@@ -2050,31 +2050,32 @@ class Model():
             if n > 0:
                 xnew = [0.9*(self.fowtList[nfowt].Xi0[0] + fowtInfo[nfowt]["x_location"]) + 0.1*xpositions[-1][nfowt] for nfowt in range(len(self.fowtList))]
                 ynew = [0.9*(self.fowtList[nfowt].Xi0[1]  + fowtInfo[nfowt]["y_location"]) + 0.1*ypositions[-1][nfowt] for nfowt in range(len(self.fowtList))]
-                self.fi.reinitialize(layout_x=xnew, layout_y=ynew)
+                self.fi.set(layout_x=xnew, layout_y=ynew)
             else:
                 xnew = [self.fowtList[nfowt].Xi0[0] + fowtInfo[nfowt]["x_location"]  for nfowt in range(len(self.fowtList))]
                 ynew = [self.fowtList[nfowt].Xi0[1]  + fowtInfo[nfowt]["y_location"] for nfowt in range(len(self.fowtList))]
                
-            self.fi.reinitialize(layout_x=xnew, layout_y=ynew)
-            self.fi.calculate_wake(yaw_angles=yaw_angles)
+            self.fi.set(layout_x=xnew, layout_y=ynew)
+            self.fi.set(yaw_angles=yaw_angles)
+            self.fi.run()
             print('Turbine avg vels ', self.fi.turbine_average_velocities[0][0])
-            print('Turbine eff vels ', self.fi.turbine_effective_velocities[0][0])
+
             
             #update wind speed list for RAFT
-            case['wind_speed'] = list(self.fi.turbine_average_velocities[0][0])
-            winds.append(self.fi.turbine_average_velocities[0][0])
+            case['wind_speed'] = list(self.fi.turbine_average_velocities[0])
+            winds.append(self.fi.turbine_average_velocities[0])
             xpositions.append(xnew)
             ypositions.append(ynew)
             
             #return FLORIS turbine powers (in order of turbine list)
-            if min(self.fi.turbine_effective_velocities[0][0] > cutin):
-                powers.append(self.fi.get_turbine_powers()[0][0])
+            if min(self.fi.turbine_average_velocities[0] > cutin):
+                powers.append(self.fi.get_turbine_powers()[0])
             else:
                 powers.append([0])
 
             
             if n > 1:
-                if min(self.fi.turbine_effective_velocities[0][0] > cutin):
+                if min(self.fi.turbine_average_velocities[0] > cutin):
                     
                     #check if turbine powers from recent iteration and previous iteration are within 10 W, and if so break
                     if max([np.abs(powers[-1][i] - powers[-2][i]) for i in range(0, len(powers[-1]))]) < 10:
@@ -2092,32 +2093,51 @@ class Model():
      
 
         if plotting:
-            import floris.tools.visualization as wakeviz
-            horizontal_plane = self.fi.calculate_horizontal_plane(
+          
+            if ax == None:
+                fig, ax = plt.subplots(1, 1, figsize=(10, 8))
+            
+            import floris.layout_visualization as layoutviz
+            from floris.flow_visualization import visualize_cut_plane
+            
+            fmodel = self.fi
+            self.fi.set(yaw_angles=yaw_angles)
+            
+            
+            # Create the plotting objects using matplotlib
+            fig, ax = plt.subplots()
+
+          
+            layoutviz.plot_turbine_points(fmodel, ax=ax)
+            layoutviz.plot_turbine_labels(fmodel, ax=ax)
+            ax.set_title("Turbine Points and Labels")
+            ax.set_xlabel('X (m)')
+            ax.set_ylabel('Y (m)')
+            
+         
+            
+            #fmodel.set(wind_directions = [-case['wind_heading']+270], wind_speeds = [case['wind_speed']], turbulence_intensities= np.array([case['turbulence']]))
+            horizontal_plane = fmodel.calculate_horizontal_plane(
                 x_resolution=200,
                 y_resolution=100,
                 height=90.0,
-                yaw_angles=yaw_angles, 
             )
-    
-            y_plane = self.fi.calculate_y_plane(
-                x_resolution=200,
-                z_resolution=100,
-                crossstream_dist=0.0,
-                yaw_angles=yaw_angles,
+            
+            # Plot the flow field with rotors
+            fig, ax = plt.subplots()
+            visualize_cut_plane(
+                horizontal_plane,
+                ax=ax,
+                label_contours=False,
+                title="Horizontal Flow with Turbine Rotors and labels",
             )
-            cross_plane = self.fi.calculate_cross_plane(
-                y_resolution=100,
-                z_resolution=100,
-                downstream_dist=630.0,
-                yaw_angles=yaw_angles,
-            )
-    
-            # Create the plots
-            if ax == None:
-                fig, ax = plt.subplots(1, 1, figsize=(10, 8))
-            #ax_list = ax_list.flatten()
-            wakeviz.visualize_cut_plane(horizontal_plane, ax=ax)
+            ax.set_xlabel('X (m)')
+            ax.set_ylabel('Y (m)')
+            
+            # Plot the turbine rotors
+            layoutviz.plot_turbine_rotors(fmodel, ax=ax)
+            
+            plt.show()
             self.plot2d(Yuvec = [0, 1, 0], ax = ax)
     
             cmap = plt.cm.get_cmap('viridis_r')

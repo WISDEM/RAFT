@@ -678,21 +678,28 @@ class FOWT():
             # execute the HAMS analysis
             ph.run_hams(meshDir)
             
-            hydroPath = os.path.join(meshDir,'Output','Wamit_format','Buoy')
+            self.hydroPath = os.path.join(meshDir,'Output','Wamit_format','Buoy')
             
         elif self.potModMaster == 3: 
-            hydroPath = self.hydroPath
+            pass
 
         else:
             return
-        
+                
+        self.readHydro()
+
+    def readHydro(self):
+        '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's
+        added mass, damping, and excitation matrices. This is as an alternative 
+        to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.'''
         
         import pyhams.pyhams as ph
-        # read the HAMS WAMIT-style output files
-        addedMass, damping, w1 = ph.read_wamit1(hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
-        M, P, R, I, w3, heads  = ph.read_wamit3(hydroPath+'.3', TFlag=True)   
-        # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
         
+        # read the preexisting WAMIT-style output files
+        addedMass, damping, w1 = ph.read_wamit1(self.hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
+        M, P, R, I, w3, heads  = ph.read_wamit3(self.hydroPath+'.3', TFlag=True)
+        # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
+
         # process and sort headings and sort frequencies
         R_unsorted = R.copy()
         I_unsorted = I.copy()
@@ -714,10 +721,12 @@ class FOWT():
         
         # copy results over to the FOWT's coefficient arrays
         self.A_BEM = self.rho_water * addedMassInterp
-        self.B_BEM = self.rho_water * dampingInterp                                 
-        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
+        self.B_BEM = self.w * self.rho_water * dampingInterp                                 
+        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)      
         
-        
+        # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
+        self.X_BEM = np.zeros_like(X_BEM_temp)     
+
         # Transform excitation coefficients so that DOFs are always 
         # relative to incident wave heading rather than global frame,
         # for accurate magnitudes when interpolating between directions.
@@ -734,60 +743,6 @@ class FOWT():
             self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
             self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
             
-        # HAMS results error checks  >>> any more we should have? <<<
-        if np.isnan(self.A_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
-        if np.isnan(self.B_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for damping. Check the geometry.")
-        if np.isnan(self.X_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for excitation. Check the geometry.")
-
-        # TODO: add support for multiple wave headings <<<
-        # note: RAFT will only be using finite-frequency potential flow coefficients
-
-    def readHydro(self):
-        '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's
-        added mass, damping, and excitation matrices. This is as an alternative 
-        to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.  NOT USED!!!'''
-        
-        import pyhams.pyhams as ph
-        
-        # read the preexisting WAMIT-style output files
-        addedMass, damping, w1 = ph.read_wamit1(self.hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
-        M, P, R, I, w3, heads  = ph.read_wamit3(self.hydroPath+'.3', TFlag=True)   
-        
-        # process headings and sort frequencies
-        self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using
-
-        # interpolate to RAFT model frequencies
-        # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
-        addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
-        dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
-        fExRealInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       R, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
-        fExImagInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       I, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
-        # note: fEx tensors are sized according to [nHeadings, 6 DOFs, frequencies]
-        
-        # copy results over to the FOWT's coefficient arrays
-        self.A_BEM = self.rho_water * addedMassInterp
-        self.B_BEM = self.rho_water * dampingInterp                                 
-        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
-        
-        
-        # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
-        self.X_BEM = np.zeros_like(X_BEM_temp)
-        
-        for ih in range(len(heads)):
-            sin_heading = np.sin(np.radians(heads[ih]))
-            cos_heading = np.cos(np.radians(heads[ih]))
-            
-            self.X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
-            self.X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]
-            self.X_BEM[ih,2,:] = X_BEM_temp[ih,2,:]
-            self.X_BEM[ih,3,:] =  cos_heading * X_BEM_temp[ih,3,:] + sin_heading * X_BEM_temp[ih,4,:]
-            self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
-            self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
-            
-        
         # HAMS results error checks  >>> any more we should have? <<<
         if np.isnan(self.A_BEM).any():
             raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")

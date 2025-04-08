@@ -225,21 +225,21 @@ def mesh():#yaml_path="designs/VolturnUS-S.yaml"):
             combined = geom.boolean_union(all_shapes)
             geom.add_physical(combined, label="CombinedGeometry")
             mesh = geom.generate_mesh()
-            mesh.write("VolturnUS.stl")
+            mesh.write("Platform.stl")
         except Exception as e:
             print(f"Boolean union or meshing failed: {e}")
             return
 
     try:
         subprocess.run([
-            r"C:\\Users\\mlekkala\\.conda\\envs\\wisdem-env\\Scripts\\meshmagick.exe",
-            "VolturnUS.stl", "-o", "VolturnUS.pnl",
+            r"meshmagick.exe",
+            "Platform.stl", "-o", "Platform.pnl",
             "--input-format", "stl", "--output-format", "pnl"
         ], check=True)
 
         subprocess.run([
-            r"C:\\Users\\mlekkala\\.conda\\envs\\wisdem-env\\Scripts\\meshmagick.exe",
-            "VolturnUS.pnl", "-c", "Oxy", "-o", r"C:\\Code\\RAFT\\BEM\\Input\\HullMesh.pnl"
+            r"meshmagick.exe",
+            "Platform.pnl", "-c", "Oxy", "-o", r"C:\\Code\\RAFT\\BEM\\Input\\HullMesh.pnl"
         ], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Meshmagick failed: {e}")

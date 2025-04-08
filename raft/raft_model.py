@@ -17,7 +17,7 @@ except:
 import moorpy as mp
 import raft.raft_fowt as fowt
 from raft.helpers import *
-from moorpy.helpers import dsolve2, set_axes_equal, dsolvePlot, lines2ss
+from moorpy.helpers import dsolve2, set_axes_equal, dsolvePlot
 import copy
 #import F6T1RNA as structural    # import turbine structural model functions
 

@@ -47,7 +47,8 @@ class Member:
 
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
         self.MCF    = getFromDict(mi, 'MCF', dtype=bool, default=False) # Flag to use MacCamy-Fuchs correction or not
-        
+        self.extensionA = getFromDict(mi, 'extensionA', default=0)
+        self.extensionB = getFromDict(mi, 'extensionB', default=0)
         self.gamma = getFromDict(mi, 'gamma', default=0.)  # twist angle about the member's z-axis [degrees] (if gamma=90, then the side lengths are flipped)
         rAB = self.rB0-self.rA0       # The relative coordinates of upper node from lower node [m]
         self.l = np.linalg.norm(rAB)  # member length [m]

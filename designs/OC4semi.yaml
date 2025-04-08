@@ -1060,10 +1060,13 @@ turbine:
 
 platform:
 
+    intersectMesh : 1     #  [-]   0 for without and 1 for intersection
     min_freq_BEM : 0.03   #  [Hz]  lowest frequency and frequency interval to use in BEM analysis
     dz_BEM       : 3.0    #  [m]   axial discretization panel length target for BEM analysis
     da_BEM       : 2.0    #  [m]   azimuthal discretization panel length target for BEM analysis
-    potModMaster : 1
+    potModMaster : 2
+    characteristic_length_min: 0.5   # [m] Min mesh element size
+    characteristic_length_max: 0.9   # [m] Max mesh element size
     
     members:   # list all members here
         
@@ -1078,6 +1081,8 @@ platform:
         stations  :  [-20, 10 ]                # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [ 6.5,  6.5]              # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.03                      # [m]    wall thicknesses (scalar or list of same length as stations)
+        extensionA : 0.0                       # [m]    length of extension on end A of the main column   
+        extensionB : 0.0                       # [m]    length of extension on end B of the main column
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1102,6 +1107,8 @@ platform:
         stations  :  [-20, -14, -14, 12 ]      # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [ 24, 24, 12,  12]        # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.06                      # [m]    wall thicknesses (scalar or list of same length as stations)
+        extensionA : 0.0                       # [m]    length of extension on both sides of the offset column   
+        extensionB : 0.0                       # [m]    length of extension on both sides of the offset column
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1129,6 +1136,8 @@ platform:
         stations  :  [0, 1 ]                   # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [ 1.6, 1.6]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.0175                    # [m]    wall thicknesses (scalar or list of same length as stations)
+        extensionA : 5.0                       # [m]    length of extension on both sides of the pontoon   
+        extensionB : 5.0                       # [m]    length of extension on both sides of the pontoon
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1148,6 +1157,8 @@ platform:
         stations  :  [0, 1 ]                   # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [ 1.6, 1.6]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.0175                    # [m]    wall thicknesses (scalar or list of same length as stations)
+        extensionA : 5.0                       # [m]    length of extension on both sides of the pontoon   
+        extensionB : 5.0                       # [m]    length of extension on both sides of the pontoon
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1167,6 +1178,8 @@ platform:
         stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [ 1.6, 1.6]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.0175                    # [m]    wall thicknesses (scalar or list of same length as stations)
+        extensionA : 5.0                       # [m]    length of extension on both sides of the pontoon   
+        extensionB : 5.0                       # [m]    length of extension on both sides of the pontoon
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1186,6 +1199,8 @@ platform:
         stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [ 1.6, 1.6]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.0175                    # [m]    wall thicknesses (scalar or list of same length as stations)
+        extensionA : 5.0                       # [m]    length of extension on both sides of the pontoon   
+        extensionB : 5.0                       # [m]    length of extension on both sides of the pontoon
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1205,6 +1220,8 @@ platform:
         stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [ 1.6, 1.6]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.0175                    # [m]    wall thicknesses (scalar or list of same length as stations)
+        extensionA : 3.0                       # [m]    length of extension on both sides of the pontoon   
+        extensionB : 3.0                       # [m]    length of extension on both sides of the pontoon
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)

@@ -51,6 +51,11 @@ class FOWT():
         self.Xi0 = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
         self.Xi  = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]
         self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
+        self.intersectMesh = design.get('platform', {}).get('intersectMesh', 0)
+        self.design = design
+        self.characteristic_length_min = design['platform'].get('characteristic_length_min', 0.3)
+        self.characteristic_length_max = design['platform'].get('characteristic_length_max', 0.9)
+        print(f"Characteristic lengths: min={self.characteristic_length_min}, max={self.characteristic_length_max}")
         
         # position in the array
         self.x_ref = x_ref      # reference x position of the FOWT in the array [m]
@@ -604,30 +609,85 @@ class FOWT():
             dz = self.dz_BEM if dz==0 else dz  # allow override if provided
             da = self.da_BEM if da==0 else da
             #dh = self.dh_BEM if dh==0 else dh
-
-            for mem in self.memberList: 
-                if mem.potMod:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
-                    if mem.shape == "circular":
-                        pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
-                        # for GDF output
-                        vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
-                        vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
-                    elif mem.shape == "rectangular":
-                        widths = mem.sl[:, 0]
-                        heights = mem.sl[:, 1]
-                        pnl.meshRectangularMember(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh, savedNodes=nodes, savedPanels=panels) #
-                        # for GDF output
-                        vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
-                        vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
+            if self.intersectMesh == 0:
+                for mem in self.memberList: 
+                    if mem.potMod:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
+                        if mem.shape == "circular":
+                            pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+                            # for GDF output
+                            vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                            vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
+                        elif mem.shape == "rectangular":
+                            widths = mem.sl[:, 0]
+                            heights = mem.sl[:, 1]
+                            pnl.meshRectangularMember(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh, savedNodes=nodes, savedPanels=panels) #
+                            # for GDF output
+                            vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
+                            vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
                 
 
-                    
+            elif self.intersectMesh == 1:
+                intersectMesh.cylindrical_members = []
+                intersectMesh.rectangular_members = []
+
+                platform = self.design.get("platform", {})
+                intersectMesh.characteristic_length_min = self.characteristic_length_min
+                intersectMesh.characteristic_length_max = self.characteristic_length_max
+                
+                for i, mem in enumerate(self.memberList):
+                    if not mem.potMod:
+                        continue
+                          
+                    stations = mem.stations
+                    rA = mem.rA_original if hasattr(mem, "rA_original") else mem.rA
+                    rB = mem.rB_original if hasattr(mem, "rB_original") else mem.rB
+                    headings = mem.heading if hasattr(mem, "heading") else [0]
+                    #print("name from raft:", mem.name)
+                    #print("rA from raft: ",mem.rA)
+                    #print("rB from raft: ", mem.rB)
+                    #print(headings)
+                    if mem.shape == "circular":
+                        radius = mem.d / 2 if isinstance(mem.d, (int, float)) else None
+                        diameters = mem.d
+                        extensionA = getattr(mem, "extensionA", 0)
+                        extensionB = getattr(mem, "extensionB", 0)
+                        intersectMesh.cylindrical_members.append({
+                            "rA": rA,
+                            "rB": rB,
+                            "radius": radius,
+                            "heading": headings,
+                            "stations": stations,
+                            "diameters": diameters,
+                            "extensionA": extensionA,
+                            "extensionB": extensionB
+                        })
+
+                    elif mem.shape == "rectangular":
+                        widths = mem.sl[:, 0].tolist()
+                        heights = mem.sl[:, 1].tolist()
+                        extensionA = getattr(mem, "extensionA", 0)
+                        extensionB = getattr(mem, "extensionB", 0)
+                        #print(f"Extension for {mem.name}: {extensionA}")
+                        intersectMesh.rectangular_members.append({
+                            "rA": rA,
+                            "rB": rB,
+                            "widths": widths,
+                            "heights": heights,
+                            "heading": headings,
+                            "stations": stations,
+                            "extensionA": extensionA,
+                            "extensionB": extensionB
+                        })
+        
+
+                intersectMesh.mesh()
+
             if len(panels) == 0:
                 print("WARNING: no panels to mesh.")
 
-            pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
+            #pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
 
-            pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
+            #pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
 
             ph.create_hams_dirs(meshDir)                #
 
@@ -666,64 +726,64 @@ class FOWT():
         else:
             return
         
-        
-        import pyhams.pyhams as ph
-        # read the HAMS WAMIT-style output files
-        addedMass, damping, w1 = ph.read_wamit1(hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
-        M, P, R, I, w3, heads  = ph.read_wamit3(hydroPath+'.3', TFlag=True)   
-        # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
-        
-        # process and sort headings and sort frequencies
-        R_unsorted = R.copy()
-        I_unsorted = I.copy()
-        self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using        
-        sorted_indices = np.argsort(self.BEM_headings)
-        self.BEM_headings = self.BEM_headings[sorted_indices]
-        M = M[sorted_indices,:,:]
-        P = P[sorted_indices,:,:]
-        R = R[sorted_indices,:,:]
-        I = I[sorted_indices,:,:]
-
-        # interpolate to RAFT model frequencies
-        # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
-        addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
-        dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
-        fExRealInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       R, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
-        fExImagInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       I, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
-        # note: fEx tensors are sized according to [nHeadings, 6 DOFs, frequencies]
-        
-        # copy results over to the FOWT's coefficient arrays
-        self.A_BEM = self.rho_water * addedMassInterp
-        self.B_BEM = self.rho_water * dampingInterp                                 
-        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
-        
-        
-        # Transform excitation coefficients so that DOFs are always 
-        # relative to incident wave heading rather than global frame,
-        # for accurate magnitudes when interpolating between directions.
-        self.X_BEM = np.zeros_like(X_BEM_temp)
-        
-        for ih in range(len(self.BEM_headings)):
-            sin_heading = np.sin(np.radians(self.BEM_headings[ih]))
-            cos_heading = np.cos(np.radians(self.BEM_headings[ih]))
+        if True:     
+            import pyhams.pyhams as ph
+            # read the HAMS WAMIT-style output files
+            addedMass, damping, w1 = ph.read_wamit1(hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
+            M, P, R, I, w3, heads  = ph.read_wamit3(hydroPath+'.3', TFlag=True)   
+            # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
             
-            self.X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
-            self.X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]
-            self.X_BEM[ih,2,:] = X_BEM_temp[ih,2,:]
-            self.X_BEM[ih,3,:] =  cos_heading * X_BEM_temp[ih,3,:] + sin_heading * X_BEM_temp[ih,4,:]
-            self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
-            self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
-            
-        # HAMS results error checks  >>> any more we should have? <<<
-        if np.isnan(self.A_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
-        if np.isnan(self.B_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for damping. Check the geometry.")
-        if np.isnan(self.X_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for excitation. Check the geometry.")
+            # process and sort headings and sort frequencies
+            R_unsorted = R.copy()
+            I_unsorted = I.copy()
+            self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using        
+            sorted_indices = np.argsort(self.BEM_headings)
+            self.BEM_headings = self.BEM_headings[sorted_indices]
+            M = M[sorted_indices,:,:]
+            P = P[sorted_indices,:,:]
+            R = R[sorted_indices,:,:]
+            I = I[sorted_indices,:,:]
 
-        # TODO: add support for multiple wave headings <<<
-        # note: RAFT will only be using finite-frequency potential flow coefficients
+            # interpolate to RAFT model frequencies
+            # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
+            addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
+            dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
+            fExRealInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       R, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
+            fExImagInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       I, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
+            # note: fEx tensors are sized according to [nHeadings, 6 DOFs, frequencies]
+            
+            # copy results over to the FOWT's coefficient arrays
+            self.A_BEM = self.rho_water * addedMassInterp
+            self.B_BEM = self.rho_water * dampingInterp                                 
+            X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
+            
+            
+            # Transform excitation coefficients so that DOFs are always 
+            # relative to incident wave heading rather than global frame,
+            # for accurate magnitudes when interpolating between directions.
+            self.X_BEM = np.zeros_like(X_BEM_temp)
+            
+            for ih in range(len(self.BEM_headings)):
+                sin_heading = np.sin(np.radians(self.BEM_headings[ih]))
+                cos_heading = np.cos(np.radians(self.BEM_headings[ih]))
+                
+                self.X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
+                self.X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]
+                self.X_BEM[ih,2,:] = X_BEM_temp[ih,2,:]
+                self.X_BEM[ih,3,:] =  cos_heading * X_BEM_temp[ih,3,:] + sin_heading * X_BEM_temp[ih,4,:]
+                self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
+                self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
+                
+            # HAMS results error checks  >>> any more we should have? <<<
+            if np.isnan(self.A_BEM).any():
+                raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
+            if np.isnan(self.B_BEM).any():
+                raise Exception("NaN values detected in HAMS calculations for damping. Check the geometry.")
+            if np.isnan(self.X_BEM).any():
+                raise Exception("NaN values detected in HAMS calculations for excitation. Check the geometry.")
+
+            # TODO: add support for multiple wave headings <<<
+            # note: RAFT will only be using finite-frequency potential flow coefficients
 
     def readHydro(self):
         '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's

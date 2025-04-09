@@ -909,19 +909,19 @@ class Rotor:
             for iw, omega in enumerate(self.w):
                 
                 # Denominator of control transfer function
-                D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm + self.kp_beta * dQ_dPi - self.Ng * kp_tau) * 1j * omega + self.ki_beta* dQ_dPi - self.Ng * ki_tau
+                D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm[0] + self.kp_beta * dQ_dPi[0] - self.Ng * kp_tau) * 1j * omega + self.ki_beta* dQ_dPi[0] - self.Ng * ki_tau
 
                 # control transfer function
-                C[iw] = 1j * omega * (dQ_dU - self.k_float * dQ_dPi / self.r3[2]) / D[iw]
+                C[iw] = 1j * omega * (dQ_dU[0] - self.k_float * dQ_dPi[0] / self.r3[2]) / D[iw]
 
                 # Thrust transfer function
-                E[iw] = ((dT_dOm + self.kp_beta * dT_dPi) * 1j * omega + self.ki_beta * dT_dPi )
+                E[iw] = ((dT_dOm[0] + self.kp_beta * dT_dPi[0]) * 1j * omega + self.ki_beta * dT_dPi[0] )
 
                 # alternative for debugging
                 C2[iw] = C[iw] / (1j * omega)
 
                 # Complex aero damping
-                T = 1j * omega * (dT_dU - self.k_float * dT_dPi / self.r3[2]) - ( E[iw] * C[iw])
+                T = 1j * omega * (dT_dU[0] - self.k_float * dT_dPi[0] / self.r3[2]) - ( E[iw] * C[iw])
                 
                 # Aerodynamic coefficients
                 a_aer[iw] = -(1/omega**2) * np.real(T)

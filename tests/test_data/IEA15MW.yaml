@@ -26,8 +26,8 @@ turbine:
     nBlades     : 3          # number of blades
     Zhub        : 150.0      # hub height [m]
     Rhub        : 3.97       # hub radius [m]
-    precone     : 4.0        # [deg]
-    shaft_tilt  : 6.0        # [deg]
+    precone     : -4.0        # [deg]
+    shaft_tilt  : -6.0        # [deg]
     overhang    : -12.0313    # [m]
     aeroServoMod     : 1          # 0 aerodynamics off; 1 aerodynamics on
 

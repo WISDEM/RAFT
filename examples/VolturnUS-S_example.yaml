@@ -21,8 +21,8 @@ cases:
     keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading  ]
     data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)
         -  [     0,         0,            0,          operating,          0,        JONSWAP,         12,         6,           0        ]
-        -  [    16,         0,            IIB_NTM,    operating,          0,        JONSWAP,         12,         6,           30       ]
-        -  [    16,         0,            0.1,        operating,          0,        JONSWAP,         12,         6,           30       ]
+        # -  [    16,         0,            IIB_NTM,    operating,          0,        JONSWAP,         12,         6,           30       ]
+        # -  [    16,         0,            0.1,        operating,          0,        JONSWAP,         12,         6,           30       ]
     
 
 turbine:
@@ -40,8 +40,8 @@ turbine:
     nBlades     : 3          # number of blades
     Zhub        : 150.0      # hub height [m]
     Rhub        : 3.97       # hub radius [m]
-    precone     : 4.0        # [deg]
-    shaft_tilt  : 6.0        # [deg]
+    precone     : -4.0        # [deg]
+    shaft_tilt  : -6.0        # [deg]
     overhang    : -12.0313    # [m]
     aeroServoMod     : 1          # 0 aerodynamics off; 1 aerodynamics on
 

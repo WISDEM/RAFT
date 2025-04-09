@@ -411,7 +411,7 @@ class Model():
             i1 = i*6                                              # range of DOFs for the current turbine
             i2 = i*6+6
             
-            M_tot[i1:i2, i1:i2] += fowt.M_struc + fowt.A_hydro_morison  # mass (BEM option not supported yet)
+            M_tot[i1:i2, i1:i2] += fowt.M_struc + fowt.A_hydro_morison + fowt.A_BEM[:,:,0] # Mass. Using added mass at w=0 because it is closer to the expected natural frequencies than w=inf
             C_tot[i1:i2, i1:i2] += fowt.C_struc + fowt.C_hydro + fowt.C_moor
             
             # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)

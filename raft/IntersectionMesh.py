@@ -4,6 +4,7 @@ import meshmagick
 import subprocess
 import numpy as np
 import os
+import platform
 import yaml
 
 cylindrical_members = []
@@ -177,7 +178,7 @@ def meshRectangularMember(geom, heading, rA, rB, widths, heights, mesh_size=1, m
     return boxes
 
 
-def mesh():#yaml_path="designs/VolturnUS-S.yaml"):
+def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), dmin=1, dmax=3):#yaml_path="designs/VolturnUS-S.yaml"):
     global savedNodes, savedPanels, cylindrical_members, rectangular_members
     savedNodes = []
     savedPanels = []
@@ -189,11 +190,11 @@ def mesh():#yaml_path="designs/VolturnUS-S.yaml"):
 
     print(f"Total cylindrical members: {len(cylindrical_members)}")
     print(f"Total rectangular members: {len(rectangular_members)}")
+    all_shapes = []
 
     with pygmsh.occ.Geometry() as geom:
-        geom.characteristic_length_min = characteristic_length_min
-        geom.characteristic_length_max = characteristic_length_max
-        all_shapes = []
+        geom.characteristic_length_min = dmin
+        geom.characteristic_length_max = dmax
 
         for member_id, cyl in enumerate(cylindrical_members):
             try:
@@ -225,22 +226,42 @@ def mesh():#yaml_path="designs/VolturnUS-S.yaml"):
             combined = geom.boolean_union(all_shapes)
             geom.add_physical(combined, label="CombinedGeometry")
             mesh = geom.generate_mesh()
-            mesh.write("Platform.stl")
+            stl_path = os.path.join(meshDir, "Platform.stl")
+            print("stil_path", stl_path)
+            mesh.write(stl_path)
         except Exception as e:
             print(f"Boolean union or meshing failed: {e}")
             return
 
-    try:
-        subprocess.run([
-            r"meshmagick.exe",
-            "Platform.stl", "-o", "Platform.pnl",
-            "--input-format", "stl", "--output-format", "pnl"
-        ], check=True)
+    if os.path.isdir(meshDir) is not True:
+        os.makedirs(meshDir)
 
-        subprocess.run([
-            r"meshmagick.exe",
-            "Platform.pnl", "-c", "Oxy", "-o", r"C:\\Code\\RAFT\\BEM\\Input\\HullMesh.pnl"
-        ], check=True)
+    try:
+        mesh_path = os.path.join(meshDir, "HullMesh.pnl")
+        intermediate_path = os.path.join(meshDir, "Platform.pnl")
+        if platform.system() == "Windows":
+
+            subprocess.run([
+                r"meshmagick.exe",
+                stl_path, "-o", intermediate_path,
+                "--input-format", "stl", "--output-format", "pnl"
+            ], check=True)
+
+            subprocess.run([
+                r"meshmagick.exe",
+                intermediate_path, "-c", "Oxy", "-o", mesh_path
+            ], check=True)
+        else:
+            subprocess.run([
+                r"meshmagick",
+                stl_path, "-o", intermediate_path,
+                "--input-format", "stl", "--output-format", "pnl"
+            ], check=True)
+
+            subprocess.run([
+                r"meshmagick",
+                intermediate_path, "-c", "Oxy", "-o", mesh_path
+            ], check=True)
     except subprocess.CalledProcessError as e:
         print(f"Meshmagick failed: {e}")
 

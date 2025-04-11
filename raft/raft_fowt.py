@@ -570,7 +570,7 @@ class FOWT():
         self.props['Izz_sub'] = M_sub[5,5]
 
 
-    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, dh=0, headings=[0], meshDir=os.path.join(os.getcwd(),'BEM')):
+    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, dh=0, headings=[0], meshDir=os.path.join(os.getcwd(),'BEM'), dmin=1, dmax=3):
         '''This generates a mesh for the platform and runs a BEM analysis on it
         using pyHAMS. It can also write adjusted .1 and .3 output files suitable
         for use with OpenFAST.
@@ -680,7 +680,7 @@ class FOWT():
                         })
         
 
-                intersectMesh.mesh()
+                intersectMesh.mesh(meshDir=os.path.join(meshDir,'Input'), dmin=dmin, dmax=dmax)
 
             if len(panels) == 0:
                 print("WARNING: no panels to mesh.")

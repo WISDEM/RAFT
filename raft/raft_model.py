@@ -129,7 +129,7 @@ class Model():
                     design_i['platform'] = design['platforms'][fowtInfo[i]['platformID']-1]
                     
                 if fowtInfo[i]['mooringID'] == 0:  # no mooring on this FOWT (array-level moorings may be used instead)
-                    design_i['mooring'] = None
+                    design_i.pop('mooring', None)
                 else:
                     design_i['mooring'] = design['moorings'][fowtInfo[i]['mooringID']-1]
                 

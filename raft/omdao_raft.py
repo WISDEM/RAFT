@@ -354,6 +354,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
         member_scalar_t = members_opt['scalar_thicknesses']
         member_scalar_d = members_opt['scalar_diameters']
         member_scalar_coeff = members_opt['scalar_coefficients']
+        intersectMesh = modeling_opt ['intersectMesh']
+
         
         nlines = mooring_opt['nlines']
         nline_types = mooring_opt['nline_types']
@@ -501,6 +503,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['platform'] = {}
         design['platform']['potModMaster'] = int(modeling_opt['potential_model_override'])
         design['platform']['dlsMax'] = float(modeling_opt['dls_max'])
+        design['platform']["intersectMesh"] = intersectMesh
         # lowest BEM freq needs to be just below RAFT min_freq because of interpolation in RAFT
         if float(modeling_opt['min_freq_BEM']) >= modeling_opt['min_freq']:
             modeling_opt['min_freq_BEM'] = modeling_opt['min_freq'] - 1e-7
@@ -525,10 +528,14 @@ class RAFT_OMDAO(om.ExplicitComponent):
             mnpts = len(idx)
             rA = rA_0 + s_ghostA*(rB_0-rA_0)
             rB = rA_0 + s_ghostB*(rB_0-rA_0)
+            extensionA = np.linalg.norm(rA_0-rA)
+            extensionB = np.linalg.norm(rB_0-rB)
             design['platform']['members'][i]['name'] = m_name
             design['platform']['members'][i]['type'] = i + 2
             design['platform']['members'][i]['rA'] = rA
             design['platform']['members'][i]['rB'] = rB
+            design['platform']['members'][i]['extensionA'] = extensionA
+            design['platform']['members'][i]['extensionB'] = extensionB
             design['platform']['members'][i]['shape'] = m_shape
             design['platform']['members'][i]['gamma'] = float(inputs[m_name+'gamma'][0])
             design['platform']['members'][i]['potMod'] = members_opt[m_name+'potMod']

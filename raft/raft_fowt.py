@@ -53,7 +53,7 @@ class FOWT():
         self.Xi0 = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
         self.Xi  = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]
         self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
-        self.intersectMesh = design.get('platform', {}).get('intersectMesh', 0)
+        # self.intersectMesh = design.get('platform', {}).get('intersectMesh', 0)
         self.design = design
         self.characteristic_length_min = design['platform'].get('characteristic_length_min', 0.3)
         self.characteristic_length_max = design['platform'].get('characteristic_length_max', 0.9)
@@ -619,7 +619,7 @@ class FOWT():
             dz = self.dz_BEM if dz==0 else dz  # allow override if provided
             da = self.da_BEM if da==0 else da
             #dh = self.dh_BEM if dh==0 else dh
-            if self.intersectMesh == 0:
+            if self.design["platform"]["intersectMesh"] == 0:
                 for mem in self.memberList: 
                     if mem.potMod:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
                         if mem.shape == "circular":
@@ -636,7 +636,7 @@ class FOWT():
                             vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
                 
 
-            elif self.intersectMesh == 1:
+            elif self.design["platform"]["intersectMesh"] == 1:
                 intersectMesh.cylindrical_members = []
                 intersectMesh.rectangular_members = []
 

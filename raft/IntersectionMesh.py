@@ -237,15 +237,15 @@ def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), dmin=0.1, dmax=1):#yaml_path="
         if os.path.isdir(meshDir) is not True:
             os.makedirs(meshDir)
 
-        # try:
-        combined = geom.boolean_union(all_shapes)
-        geom.add_physical(combined, label="CombinedGeometry")
-        mesh = geom.generate_mesh()
-        stl_path = os.path.join(meshDir, "Platform.stl")
-        mesh.write(stl_path)
-        # except Exception as e:
-        #     print(f"Boolean union or meshing failed: {e}")
-        #     return
+        try:
+            combined = geom.boolean_union(all_shapes)
+            geom.add_physical(combined, label="CombinedGeometry")
+            mesh = geom.generate_mesh()
+            stl_path = os.path.join(meshDir, "Platform.stl")
+            mesh.write(stl_path)
+        except Exception as e:
+            print(f"Boolean union or meshing failed: {e}")
+            return
 
     try:
         mesh_path = os.path.join(meshDir, "HullMesh.pnl")

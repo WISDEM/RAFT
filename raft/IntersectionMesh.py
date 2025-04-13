@@ -1,5 +1,6 @@
 import math
 import pygmsh
+import gmsh
 import meshmagick
 import subprocess
 import numpy as np
@@ -88,34 +89,45 @@ def meshMember(geom, headings, rA, rB, radius, mesh_size=1, member_id=0,
     uniform = isinstance(diameters, (int, float)) or (isinstance(diameters, list) and len(diameters) == 1)
 
     for idx in range(len(headings)):
-        for s in range(len(stations) - 1):
-            t0 = (stations[s] - stations[0]) / (stations[-1] - stations[0])
-            t1 = (stations[s + 1] - stations[0]) / (stations[-1] - stations[0])
-
-            if abs(t1 - t0) < 1e-6:
-                continue
-
-            # ⏱ Interpolate segment along extended axis
-            start = [rA_ext[i] + t0 * axis_full[i] for i in range(3)]
-            end   = [rA_ext[i] + t1 * axis_full[i] for i in range(3)]
+        if np.all(diameters==diameters[0]):
+            start = rA_ext
+            end   = rB_ext
             axis_segment = [end[i] - start[i] for i in range(3)]
-
-            if uniform or diameters is None:
-                radius_start = radius_end = radius
-            else:
-                radius_start = diameters[s] / 2
-                radius_end = diameters[s + 1] / 2
-
-            label = f"Cylinder_{member_id}_{idx}_seg{s}"
-            print(f"Meshing {label} | Start: {start} | End: {end} | Radius: {radius_start}->{radius_end}")
-
-            if abs(radius_start - radius_end) < 1e-6:
-                cone = geom.add_cylinder(start, axis_segment, radius_start)
-            else:
-                cone = geom.add_cone(start, axis_segment, radius_start, radius_end)
+            cone = geom.add_cylinder(start, axis_segment, diameters[0]/2)
+            label = f"Cylinder_{member_id}_{idx}"
+            print(f"Meshing {label} | Start: {start} | End: {end} | Radius: {diameters[0]/2}->{diameters[0]/2}")
 
             geom.add_physical(cone, label=label)
             cylinders.append(cone)
+        else:
+            for s in range(len(stations) - 1):
+                t0 = (stations[s] - stations[0]) / (stations[-1] - stations[0])
+                t1 = (stations[s + 1] - stations[0]) / (stations[-1] - stations[0])
+
+                if abs(t1 - t0) < 1e-6:
+                    continue
+
+                # ⏱ Interpolate segment along extended axis
+                start = [rA_ext[i] + t0 * axis_full[i] for i in range(3)]
+                end   = [rA_ext[i] + t1 * axis_full[i] for i in range(3)]
+                axis_segment = [end[i] - start[i] for i in range(3)]
+
+                if uniform or diameters is None:
+                    radius_start = radius_end = radius
+                else:
+                    radius_start = diameters[s] / 2
+                    radius_end = diameters[s + 1] / 2
+
+                label = f"Cylinder_{member_id}_{idx}_seg{s}"
+                print(f"Meshing {label} | Start: {start} | End: {end} | Radius: {radius_start}->{radius_end}")
+
+                if abs(radius_start - radius_end) < 1e-6:
+                    cone = geom.add_cylinder(start, axis_segment, radius_start)
+                else:
+                    cone = geom.add_cone(start, axis_segment, radius_start, radius_end)
+
+                geom.add_physical(cone, label=label)
+                cylinders.append(cone)
 
     return cylinders
 
@@ -171,14 +183,14 @@ def meshRectangularMember(geom, heading, rA, rB, widths, heights, mesh_size=1, m
         geom.translate(box, box_center)
 
         label = f"Box_{member_id}_seg{s}"
-        print(f"Box: {label} | Center: {box_center} | Heading: {math.degrees(theta):.1f}°")
+        print(f"Box: {label} | Center: {box_center} | Heading: {math.degrees(theta):.1f} | theta: {theta:.1f} | Size: {box_size}")
         geom.add_physical(box, label=label)
         boxes.append(box)
 
     return boxes
 
 
-def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), dmin=1, dmax=3):#yaml_path="designs/VolturnUS-S.yaml"):
+def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), dmin=0.1, dmax=1):#yaml_path="designs/VolturnUS-S.yaml"):
     global savedNodes, savedPanels, cylindrical_members, rectangular_members
     savedNodes = []
     savedPanels = []
@@ -221,20 +233,19 @@ def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), dmin=1, dmax=3):#yaml_path="de
         if not all_shapes:
             print("No shapes were added! Check your YAML or input logic.")
             return
+        
+        if os.path.isdir(meshDir) is not True:
+            os.makedirs(meshDir)
 
-        try:
-            combined = geom.boolean_union(all_shapes)
-            geom.add_physical(combined, label="CombinedGeometry")
-            mesh = geom.generate_mesh()
-            stl_path = os.path.join(meshDir, "Platform.stl")
-            print("stil_path", stl_path)
-            mesh.write(stl_path)
-        except Exception as e:
-            print(f"Boolean union or meshing failed: {e}")
-            return
-
-    if os.path.isdir(meshDir) is not True:
-        os.makedirs(meshDir)
+        # try:
+        combined = geom.boolean_union(all_shapes)
+        geom.add_physical(combined, label="CombinedGeometry")
+        mesh = geom.generate_mesh()
+        stl_path = os.path.join(meshDir, "Platform.stl")
+        mesh.write(stl_path)
+        # except Exception as e:
+        #     print(f"Boolean union or meshing failed: {e}")
+        #     return
 
     try:
         mesh_path = os.path.join(meshDir, "HullMesh.pnl")
@@ -242,24 +253,24 @@ def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), dmin=1, dmax=3):#yaml_path="de
         if platform.system() == "Windows":
 
             subprocess.run([
-                r"meshmagick.exe",
+                "meshmagick.exe",
                 stl_path, "-o", intermediate_path,
                 "--input-format", "stl", "--output-format", "pnl"
             ], check=True)
 
             subprocess.run([
-                r"meshmagick.exe",
+                "meshmagick.exe",
                 intermediate_path, "-c", "Oxy", "-o", mesh_path
             ], check=True)
         else:
             subprocess.run([
-                r"meshmagick",
+                "meshmagick",
                 stl_path, "-o", intermediate_path,
                 "--input-format", "stl", "--output-format", "pnl"
             ], check=True)
 
             subprocess.run([
-                r"meshmagick",
+                "meshmagick",
                 intermediate_path, "-c", "Oxy", "-o", mesh_path
             ], check=True)
     except subprocess.CalledProcessError as e:

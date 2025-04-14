@@ -13,10 +13,6 @@ rectangular_members = []
 savedNodes = []
 savedPanels = []
 
-characteristic_length_min = 0.3  # fallback default
-characteristic_length_max = 0.9  # fallback default
-
-
 def load_yaml(file_path):
     try:
         with open(file_path, "r") as file:

@@ -54,8 +54,8 @@ class FOWT():
         self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
         # self.intersectMesh = design.get('platform', {}).get('intersectMesh', 0)
         self.design = design
-        self.characteristic_length_min = design['platform'].get('characteristic_length_min', 0.3)
-        self.characteristic_length_max = design['platform'].get('characteristic_length_max', 0.9)
+        self.characteristic_length_min = design['platform'].get('characteristic_length_min', 1)
+        self.characteristic_length_max = design['platform'].get('characteristic_length_max', 3)
         print(f"Characteristic lengths: min={self.characteristic_length_min}, max={self.characteristic_length_max}")
         
         # position in the array
@@ -632,9 +632,6 @@ class FOWT():
                 intersectMesh.rectangular_members = []
 
                 platform = self.design.get("platform", {})
-                intersectMesh.characteristic_length_min = self.characteristic_length_min
-                intersectMesh.characteristic_length_max = self.characteristic_length_max
-                
                 for i, mem in enumerate(self.memberList):
                     if not mem.potMod:
                         continue
@@ -681,7 +678,7 @@ class FOWT():
                         })
         
 
-                intersectMesh.mesh(meshDir=os.path.join(meshDir,'Input'), dmin=dmin, dmax=dmax)
+                intersectMesh.mesh(meshDir=os.path.join(meshDir,'Input'), dmin=self.characteristic_length_min, dmax=self.characteristic_length_max)
 
             if len(panels) == 0:
                 print("WARNING: no panels to mesh.")

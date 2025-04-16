@@ -354,7 +354,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         member_scalar_t = members_opt['scalar_thicknesses']
         member_scalar_d = members_opt['scalar_diameters']
         member_scalar_coeff = members_opt['scalar_coefficients']
-        intersectMesh = modeling_opt ['intersectMesh']
+        intersectMesh = modeling_opt['intersection_mesh']
 
         
         nlines = mooring_opt['nlines']
@@ -750,7 +750,33 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # option to run level 1 load cases
         if True: #processCases:
             model.analyzeCases(meshDir=modeling_opt['BEM_dir'])
+
+        # Plot mesh
+        if modeling_opt['plot_designs'] and intersectMesh:
+            try:
+                import trimesh
+                import matplotlib.pyplot as plt
+            except:
+                raise ImportError('trimesh not installed, please install trimesh to plot mesh')
             
+            mesh = trimesh.load(os.path.join(modeling_opt['BEM_dir'],"Input/Platform.stl"))
+            # Create a figure and axes
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+
+            # Get mesh vertices and faces
+            verts = mesh.vertices
+            faces = mesh.faces
+
+            # Plot the mesh
+            ax.plot_trisurf(
+                verts[:, 0], verts[:, 1], faces, verts[:, 2],
+                color='lightblue', edgecolor='black', linewidth=0.2, alpha=0.8
+            )
+            ax.set_box_aspect([ub - lb for lb, ub in (getattr(ax, f'get_{a}lim')() for a in 'xyz')])
+            plt.savefig(os.path.join(modeling_opt['BEM_dir'],"mesh_plot.png"), pad_inches=0, dpi=300)
+            
+
         # get and process results
         results = model.calcOutputs()
         # Pattern matching for "responses" annd "properties"

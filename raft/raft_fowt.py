@@ -637,8 +637,14 @@ class FOWT():
                 
 
             elif self.design["platform"]["intersectMesh"] == 1:
-                intersectMesh.cylindrical_members = []
-                intersectMesh.rectangular_members = []
+                try:
+                    import pygmsh
+                    import meshmagick
+                except ImportError:
+                    raise ImportError("pygmsh and meshmagick are required separately for intersectMesh option. Please install them using pip.")
+                
+                cylindrical_members = []
+                rectangular_members = []
 
                 platform = self.design.get("platform", {})
                 for i, mem in enumerate(self.memberList):
@@ -658,7 +664,7 @@ class FOWT():
                         diameters = mem.d
                         extensionA = getattr(mem, "extensionA", 0)
                         extensionB = getattr(mem, "extensionB", 0)
-                        intersectMesh.cylindrical_members.append({
+                        cylindrical_members.append({
                             "rA": rA,
                             "rB": rB,
                             "radius": radius,
@@ -675,7 +681,7 @@ class FOWT():
                         extensionA = getattr(mem, "extensionA", 0)
                         extensionB = getattr(mem, "extensionB", 0)
                         #print(f"Extension for {mem.name}: {extensionA}")
-                        intersectMesh.rectangular_members.append({
+                        rectangular_members.append({
                             "rA": rA,
                             "rB": rB,
                             "widths": widths,
@@ -687,14 +693,10 @@ class FOWT():
                         })
         
 
-                intersectMesh.mesh(meshDir=os.path.join(meshDir,'Input'), dmin=self.characteristic_length_min, dmax=self.characteristic_length_max)
+                intersectMesh.mesh(meshDir=os.path.join(meshDir,'Input'), cylindrical_members=cylindrical_members, rectangular_members=rectangular_members, dmin=self.characteristic_length_min, dmax=self.characteristic_length_max)
 
             if len(panels) == 0:
                 print("WARNING: no panels to mesh.")
-
-            #pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
-
-            #pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
 
             ph.create_hams_dirs(meshDir)                #
 

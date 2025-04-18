@@ -1,6 +1,5 @@
 import math
 import pygmsh
-import gmsh
 import meshmagick
 import subprocess
 import numpy as np
@@ -8,10 +7,6 @@ import os
 import platform
 import yaml
 
-cylindrical_members = []
-rectangular_members = []
-savedNodes = []
-savedPanels = []
 
 def load_yaml(file_path):
     try:
@@ -22,51 +17,6 @@ def load_yaml(file_path):
         print(f"Error loading YAML file: {e}")
         return None
 
-'''def set_values_from_yaml(yaml_data):
-    global cylindrical_members, rectangular_members
-    cylindrical_members = []
-    rectangular_members = []
-
-    if yaml_data is None:
-        print("YAML data is None.")
-        return
-
-    for member in yaml_data.get("platform", {}).get("members", []):
-        shape = member.get("shape")
-        print(f"Member found: {member.get('name', 'Unnamed')} with shape: {shape}")
-
-        if shape == "circ":
-            cylindrical_members.append({
-                "rA": member["rA"],
-                "rB": member["rB"],
-                "radius": member["d"] / 2 if isinstance(member["d"], (int, float)) else None,
-                "heading": member.get("heading", [0]),
-                "stations": member.get("stations", [0.0, 1.0]),
-                "diameters": member.get("d")
-            })
-
-        elif shape == "rect":
-            rA = member["rA"]
-            rB = member["rB"]
-            d_values = member["d"]
-            stations = member.get("stations", [0.0, 1.0])
-
-            if isinstance(d_values, list) and isinstance(d_values[0], list):
-                widths = [d[0] for d in d_values]
-                heights = [d[1] for d in d_values]
-            else:
-                width, height = d_values if isinstance(d_values, list) and len(d_values) == 2 else (12.5, 7.0)
-                widths = [width] * len(stations)
-                heights = [height] * len(stations)
-
-            rectangular_members.append({
-                "rA": rA,
-                "rB": rB,
-                "widths": widths,
-                "heights": heights,
-                "heading": member.get("heading", [0]),
-                "stations": stations
-            })'''
 
 def meshMember(geom, headings, rA, rB, radius, mesh_size=1, member_id=0,
                stations=[0.0, 1.0], diameters=None, extensionA=0, extensionB=0):
@@ -186,15 +136,7 @@ def meshRectangularMember(geom, heading, rA, rB, widths, heights, mesh_size=1, m
     return boxes
 
 
-def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), dmin=0.1, dmax=1):#yaml_path="designs/VolturnUS-S.yaml"):
-    global savedNodes, savedPanels, cylindrical_members, rectangular_members
-    savedNodes = []
-    savedPanels = []
-
-    '''if not cylindrical_members and not rectangular_members:
-        print(f"Auto-loading YAML: {yaml_path}")
-        yaml_data = load_yaml(yaml_path)
-        set_values_from_yaml(yaml_data)'''
+def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), cylindrical_members=[], rectangular_members=[], dmin=0.1, dmax=1):
 
     print(f"Total cylindrical members: {len(cylindrical_members)}")
     print(f"Total rectangular members: {len(rectangular_members)}")

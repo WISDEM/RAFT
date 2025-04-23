@@ -11,7 +11,25 @@ from raft.raft_member import Member
 from raft.raft_rotor import Rotor
 import moorpy as mp
 from moorpy.helpers import lines2ss
-import raft.IntersectionMesh as intersectMesh
+
+# Attempt to import pygmsh and meshmagick with warnings if not installed
+try:
+    import pygmsh
+except ImportError:
+    pygmsh = None
+    print("Warning: 'pygmsh' is not installed. Meshing intersected members will not be available. Install it using 'pip install pygmsh==7.1.17'.")
+
+try:
+    import meshmagick
+except ImportError:
+    meshmagick = None
+    print("Warning: 'meshmagick' is not installed. Meshing intersected members will not be available. Install it using 'pip install https://github.com/LHEEA/meshmagick/archive/refs/tags/3.4.zip'.")
+
+try:
+    import trimesh
+except ImportError:
+    trimesh = None
+    print("Warning: 'trimesh' is not installed. Automatically plotting intermediate BEM meshes will not be available. Install it using 'pip install trimesh'.")
 
 # deleted call to ccblade in this file, since it is called in raft_rotor
 # also ignoring changes to solveEquilibrium3 in raft_model and the re-addition of n=len(stations) in raft_member, based on raft_patch
@@ -53,7 +71,6 @@ class FOWT():
         self.Xi0 = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
         self.Xi  = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]
         self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
-        # self.intersectMesh = design.get('platform', {}).get('intersectMesh', 0)
         self.design = design
         self.characteristic_length_min = design['platform'].get('characteristic_length_min', 1)
         self.characteristic_length_max = design['platform'].get('characteristic_length_max', 3)
@@ -637,11 +654,10 @@ class FOWT():
                 
 
             elif self.design["platform"]["intersectMesh"] == 1:
-                try:
-                    import pygmsh
-                    import meshmagick
-                except ImportError:
-                    raise ImportError("pygmsh and meshmagick are required separately for intersectMesh option. Please install them using pip.")
+                if pygmsh is None or meshmagick is None:
+                    raise ImportError("The 'intersectMesh' option requires 'pygmsh' and 'meshmagick'. Please install them.")
+    
+                import raft.IntersectionMesh as intersectMesh
                 
                 cylindrical_members = []
                 rectangular_members = []

@@ -18,7 +18,7 @@ def load_yaml(file_path):
         return None
 
 
-def meshMember(geom, headings, rA, rB, radius, mesh_size=1, member_id=0,
+def meshMember(geom, headings, rA, rB, radius, member_id=0,
                stations=[0.0, 1.0], diameters=None, extensionA=0, extensionB=0):
     cylinders = []
 
@@ -79,7 +79,7 @@ def meshMember(geom, headings, rA, rB, radius, mesh_size=1, member_id=0,
 
 
 
-def meshRectangularMember(geom, heading, rA, rB, widths, heights, mesh_size=1, member_id=0,
+def meshRectangularMember(geom, heading, rA, rB, widths, heights, member_id=0,
                           stations=[0.0, 1.0], extensionA=0, extensionB=0):
     boxes = []
 
@@ -150,7 +150,7 @@ def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), cylindrical_members=[], rectan
             try:
                 cylinders = meshMember(
                     geom, cyl.get("heading", [0]), cyl["rA"], cyl["rB"], cyl.get("radius"),
-                    mesh_size=1, member_id=member_id,
+                    member_id=member_id,
                     stations=cyl.get("stations", [0.0, 1.0]), diameters=cyl.get("diameters"), extensionA=cyl.get("extensionA", 0),  extensionB=cyl.get("extensionB", 0)
                 )
                 all_shapes.extend(cylinders)
@@ -161,7 +161,7 @@ def mesh(meshDir=os.path.join(os.getcwd(),'BEM'), cylindrical_members=[], rectan
             try:
                 boxes = meshRectangularMember(
                     geom, rect.get("heading", [0]), rect["rA"], rect["rB"],
-                    rect["widths"], rect["heights"], mesh_size=1,
+                    rect["widths"], rect["heights"],
                     member_id=rect_id, stations=rect.get("stations", [0.0, 1.0]), extensionA=rect.get("extensionA", 0), extensionB=rect.get("extensionB", 0)
                 )
                 all_shapes.extend(boxes)

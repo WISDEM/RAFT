@@ -286,9 +286,9 @@ Platform
 .. code-block:: python
 
     platform:
-
-        potModMaster :   1      # [int] master switch for potMod variables; 0=keeps all member potMod vars the same, 1=turns all potMod vars to False (no HAMS), 2=turns all potMod vars to True (no strip)
-        dlsMax       :  5.0     # maximum node splitting section amount for platform members; can't be 0
+        intersectMesh :  1       # [int] 0 for disabling and 1 for enabling meshing for intersected members, make sure you install pygmsh and meshmagick before using this option
+        potModMaster  :  1       # [int] master switch for potMod variables; 0=keeps all member potMod vars the same, 1=turns all potMod vars to False (no HAMS), 2=turns all potMod vars to True (no strip)
+        dlsMax        :  5.0     # maximum node splitting section amount for platform members; can't be 0
 
         members:   # list all members here
             
@@ -300,14 +300,16 @@ Platform
             gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
             potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
             # --- outer shell including hydro---
-            stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-            d         :  10.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-            t         :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
-            Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-            Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-            CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-            CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-            rho_shell :  7850                      # [kg/m3] 
+            stations   :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+            d          :  10.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+            t          :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
+            extensionA :  0.0                       # [m]    length of extension on end A of the center column. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.    
+            extensionB :  0.0                       # [m]    length of extension on end B of the center column. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.
+            Cd         :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+            Ca         :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+            CdEnd      :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+            CaEnd      :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+            rho_shell  :  7850                      # [kg/m3] 
             # --- handling of end caps or any internal structures if we need them ---
             cap_stations :  [ 0    ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
             cap_t        :  [ 0.001  ]             # [m]  thickness of any internal structures
@@ -322,14 +324,16 @@ Platform
             gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
             potMod    :  True                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
             # --- outer shell including hydro---
-            stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-            d         :  12.5                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-            t         :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
-            Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-            Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-            CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-            CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-            rho_shell :  7850                      # [kg/m3] 
+            stations   :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+            d          :  12.5                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+            t          :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
+            extensionA : 0.0                        # [m]    length of extension on end A of the outer column. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.   
+            extensionB : 0.0                        # [m]    length of extension on end B of the outer column. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.
+            Cd         :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+            Ca         :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+            CdEnd      :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+            CaEnd      :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+            rho_shell  :  7850                      # [kg/m3] 
             # --- ballast ---
             l_fill    :  1.4                       # [m]
             rho_fill  :  5000                      # [kg/m3]
@@ -347,16 +351,18 @@ Platform
             gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
             potMod    :  False                     # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
             # --- outer shell including hydro---
-            stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
-            d         :  [12.5, 7.0]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
-            t         :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
-            Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
-            Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
-            CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
-            CaEnd     :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
-            rho_shell :  7850                      # [kg/m3]
-            l_fill    :  43.0                      # [m]
-            rho_fill  :  1025.0                    # [kg/m3]
+            stations   :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+            d          :  [12.5, 7.0]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+            t          :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
+            extensionA :  5.0                       # [m]    length of extension on end A of the pontoon. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.   
+            extensionB :  5.0                       # [m]    length of extension on end B of the pontoon. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.
+            Cd         :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+            Ca         :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+            CdEnd      :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+            CaEnd      :  0.6                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+            rho_shell  :  7850                      # [kg/m3]
+            l_fill     :  43.0                      # [m]
+            rho_fill   :  1025.0                    # [kg/m3]
             
           - ...
 

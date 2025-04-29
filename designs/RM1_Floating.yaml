@@ -23,7 +23,7 @@ cases:
     keys : [wind_speed, wind_heading, turbulence, turbine_status, turbine_heading, wave_spectrum, wave_period, wave_height, wave_heading, current_speed, current_heading, current_turbulence  ]
     data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)          (m)          (deg)         (m/s)           (deg)         % or e.g. IIB_NTM     
         #-  [    0.0,        0,            0,           parked,            0,        none,         8.0,         2.0,           0,           0.0,             0,                  0          ]
-        -  [    0.0,        0,            0,           operating,            0,        none,         8.0,         2.0,           0,           1.9,             0,                  0          ]
+        -  [    0.0,        0,            0,           operating,            0,        JONSWAP,         8.0,         2.0,           0,           1.9,             0,                  0          ]
 
 
 turbine:

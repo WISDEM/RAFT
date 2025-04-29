@@ -666,8 +666,8 @@ class Model():
                 print("Net forces")
                 printVec(Fnet)
                 
-                RMSeForce  = np.linalg.norm([Y[6*i  :6*i+3] for i in range(self.nFOWT)])
-                RMSeMoment = np.linalg.norm([Y[6*i+3:6*i+6] for i in range(self.nFOWT)])
+                RMSeForce  = np.linalg.norm([Fnet[6*i  :6*i+3] for i in range(self.nFOWT)])
+                RMSeMoment = np.linalg.norm([Fnet[6*i+3:6*i+6] for i in range(self.nFOWT)])
                 print(f"Iteration RMS force and moment errors: {RMSeForce:8.2e} {RMSeMoment:8.2e}")
             
             Y = Fnet
@@ -2041,7 +2041,6 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
         print(f"'{design['name']}'")
     
     
-    depth = float(design['mooring']['water_depth'])
        
     # Create and run the model
     print(" --- making model ---")

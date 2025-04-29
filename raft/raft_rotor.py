@@ -1072,8 +1072,7 @@ class Rotor:
         
             P2 = np.matmul(R_precone, P)
             P2 = np.matmul(R_azimuth[ib], P2)  # rotate around shaft
-            #P2 = np.matmul(self.R_q, P2)  # rotate to actual rotor orientation
-            P2 = np.matmul(self.R_ptfm, P2)  # rotate to actual rotor orientation
+            P2 = np.matmul(self.R_q, P2)  # rotate to actual rotor orientation
             P2 = P2 + self.r3[:,None]  # translate from PRP to absolute hub location
             
             

@@ -180,7 +180,7 @@ class FOWT():
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
         # this FOWT's own MoorPy system (may not be used)
-        if design['mooring']:
+        if 'mooring' in design:
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])

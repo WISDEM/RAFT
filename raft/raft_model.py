@@ -160,7 +160,10 @@ class Model():
         self.design = design # save design dictionary for possible later use/reference
 
         # Set mooring current modeling mode (0: no current; 1: uniform current included in MoorPy)
-        self.mooring_currentMod = getFromDict(design['mooring'], 'currentMod', default=0, dtype=int)
+        if 'mooring' in design:
+            self.mooring_currentMod = getFromDict(design['mooring'], 'currentMod', default=0, dtype=int)
+        else:
+            self.mooring_currentMod = 0
 
         # Initialize array-level mooring system if it exists
         if self.ms:
@@ -666,8 +669,8 @@ class Model():
                 print("Net forces")
                 printVec(Fnet)
                 
-                RMSeForce  = np.linalg.norm([Y[6*i  :6*i+3] for i in range(self.nFOWT)])
-                RMSeMoment = np.linalg.norm([Y[6*i+3:6*i+6] for i in range(self.nFOWT)])
+                RMSeForce  = np.linalg.norm([Fnet[6*i  :6*i+3] for i in range(self.nFOWT)])
+                RMSeMoment = np.linalg.norm([Fnet[6*i+3:6*i+6] for i in range(self.nFOWT)])
                 print(f"Iteration RMS force and moment errors: {RMSeForce:8.2e} {RMSeMoment:8.2e}")
             
             Y = Fnet
@@ -2041,7 +2044,6 @@ def runRAFT(input_file, turbine_file="", plot=0, ballast=False, station_plot=[])
         print(f"'{design['name']}'")
     
     
-    depth = float(design['mooring']['water_depth'])
        
     # Create and run the model
     print(" --- making model ---")

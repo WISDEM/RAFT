@@ -7,8 +7,8 @@
    starting
    structure
    usage
-   ctopt
    theory
+   ctopt
 
 
 RAFT Documentation

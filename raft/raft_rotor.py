@@ -866,8 +866,8 @@ class Rotor:
         # inflow direction?  *np.cos(turbine_tilt)*np.cos(yaw_misalign) <<<
 
         # Rotate rotor hydro inertial excitation matrix into global frame
-        if current:
-            I_hydro = rotateMatrix6(self.I_hydro, self.R_q)
+        #if current:
+            #I_hydro = rotateMatrix6(self.I_hydro, self.R_q)
 
         # no-control option
         if self.aeroServoMod == 1:  

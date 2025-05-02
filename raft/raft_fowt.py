@@ -180,7 +180,7 @@ class FOWT():
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
         # this FOWT's own MoorPy system (may not be used)
-        if design['mooring']:
+        if 'mooring' in design:
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
@@ -300,7 +300,7 @@ class FOWT():
         
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
-            self.ms.solveEquilibrium()
+            self.ms.solveEquilibrium(tol=0.05)
             self.C_moor = self.ms.getCoupledStiffnessA()
             self.F_moor0 = self.ms.bodyList[0].getForces(lines_only=True)
         

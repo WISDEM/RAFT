@@ -11,6 +11,20 @@ from raft.raft_member import Member
 from raft.raft_rotor import Rotor
 import moorpy as mp
 
+# Attempt to import pygmsh and meshmagick with warnings if not installed
+try:
+    import pygmsh
+except ImportError:
+    pygmsh = None
+    print("Warning: 'pygmsh' is not installed. Meshing intersected members will not be available. Install it using 'pip install pygmsh==7.1.17'.")
+
+try:
+    import meshmagick
+except ImportError:
+    meshmagick = None
+    print("Warning: 'meshmagick' is not installed. Meshing intersected members will not be available. Install it using 'pip install https://github.com/LHEEA/meshmagick/archive/refs/tags/3.4.zip'.")
+
+
 # deleted call to ccblade in this file, since it is called in raft_rotor
 # also ignoring changes to solveEquilibrium3 in raft_model and the re-addition of n=len(stations) in raft_member, based on raft_patch
 
@@ -51,6 +65,16 @@ class FOWT():
         self.Xi0 = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
         self.Xi  = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]
         self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
+        
+        self.design = design
+        self.intersectMesh = design['platform'].get('intersectMesh', 0) # Default to 0 (no intersection mesh)
+        self.characteristic_length_min = design['platform'].get('characteristic_length_min', 1.0)
+        self.characteristic_length_max = design['platform'].get('characteristic_length_max', 3.0)
+        if self.intersectMesh == 1:
+            # make sure the mesh size are positive
+            assert self.characteristic_length_min > 0, "characteristic_length_min must be positive"
+            assert self.characteristic_length_max > 0, "characteristic_length_max must be positive"
+        print(f"Mesh characteristic lengths: min={self.characteristic_length_min}, max={self.characteristic_length_max}")
         
         # position in the array
         self.x_ref = x_ref      # reference x position of the FOWT in the array [m]
@@ -594,7 +618,7 @@ class FOWT():
         self.props['Izz_sub'] = M_sub[5,5]
 
 
-    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, headings=[0], meshDir=os.path.join(os.getcwd(),'BEM')):
+    def calcBEM(self, dw=0, wMax=0, wInf=10.0, dz=0, da=0, dh=0, headings=[0], meshDir=os.path.join(os.getcwd(),'BEM'), dmin=1, dmax=3):
         '''This generates a mesh for the platform and runs a BEM analysis on it
         using pyHAMS. It can also write adjusted .1 and .3 output files suitable
         for use with OpenFAST.
@@ -632,22 +656,84 @@ class FOWT():
 
             dz = self.dz_BEM if dz==0 else dz  # allow override if provided
             da = self.da_BEM if da==0 else da
+            #dh = self.dh_BEM if dh==0 else dh
+            if self.intersectMesh == 0:
+                for mem in self.memberList: 
+                    if mem.potMod:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
+                        if mem.shape == "circular":
+                            pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+                            # for GDF output
+                            vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                            vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
+                        elif mem.shape == "rectangular":
+                            widths = mem.sl[:, 0]
+                            heights = mem.sl[:, 1]
+                            pnl.meshRectangularMember(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh, savedNodes=nodes, savedPanels=panels) #
+                            # for GDF output
+                            vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
+                            vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
+                
 
-            for mem in self.memberList:
-                if mem.potMod:
-                    pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB,
-                            dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+            elif self.design["platform"]["intersectMesh"] == 1:
+                if pygmsh is None or meshmagick is None:
+                    raise ImportError("The 'intersectMesh' option requires 'pygmsh' and 'meshmagick'. Please install them.")
+    
+                import raft.IntersectionMesh as intersectMesh
+                
+                cylindrical_members = []
+                rectangular_members = []
 
-                    # for GDF output
-                    vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
-                    vertices = np.vstack([vertices, vertices_i])              # append the member's vertices to the master list
+                platform = self.design.get("platform", {})
+                for i, mem in enumerate(self.memberList):
+                    if not mem.potMod:
+                        continue
+                          
+                    stations = mem.stations
+                    rA = mem.rA_original if hasattr(mem, "rA_original") else mem.rA
+                    rB = mem.rB_original if hasattr(mem, "rB_original") else mem.rB
+                    headings = mem.heading if hasattr(mem, "heading") else [0]
+                    #print("name from raft:", mem.name)
+                    #print("rA from raft: ",mem.rA)
+                    #print("rB from raft: ", mem.rB)
+                    #print(headings)
+                    if mem.shape == "circular":
+                        radius = mem.d / 2 if isinstance(mem.d, (int, float)) else None
+                        diameters = mem.d
+                        extensionA = getattr(mem, "extensionA", 0)
+                        extensionB = getattr(mem, "extensionB", 0)
+                        cylindrical_members.append({
+                            "rA": rA,
+                            "rB": rB,
+                            "radius": radius,
+                            "heading": headings,
+                            "stations": stations,
+                            "diameters": diameters,
+                            "extensionA": extensionA,
+                            "extensionB": extensionB
+                        })
+
+                    elif mem.shape == "rectangular":
+                        widths = mem.sl[:, 0].tolist()
+                        heights = mem.sl[:, 1].tolist()
+                        extensionA = getattr(mem, "extensionA", 0)
+                        extensionB = getattr(mem, "extensionB", 0)
+                        #print(f"Extension for {mem.name}: {extensionA}")
+                        rectangular_members.append({
+                            "rA": rA,
+                            "rB": rB,
+                            "widths": widths,
+                            "heights": heights,
+                            "heading": headings,
+                            "stations": stations,
+                            "extensionA": extensionA,
+                            "extensionB": extensionB
+                        })
+        
+
+                intersectMesh.mesh(meshDir=os.path.join(meshDir,'Input'), cylindrical_members=cylindrical_members, rectangular_members=rectangular_members, dmin=self.characteristic_length_min, dmax=self.characteristic_length_max)
 
             if len(panels) == 0:
                 print("WARNING: no panels to mesh.")
-
-            pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
-
-            #pnl.writeMeshToGDF(vertices)                # also a GDF for visualization
 
             ph.create_hams_dirs(meshDir)                #
 
@@ -692,7 +778,6 @@ class FOWT():
         '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's
         added mass, damping, and excitation matrices. This is as an alternative 
         to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.'''
-        
         import pyhams.pyhams as ph
         
         # read the preexisting WAMIT-style output files

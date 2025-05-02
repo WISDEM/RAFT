@@ -31,6 +31,7 @@ class TestSpider(unittest.TestCase):
         opt['modeling']['model_potential'] = [True,False, False,False]
         opt['modeling']['nfreq'] = 10
         opt['modeling']['n_cases'] = 2
+        opt['modeling']['intersection_mesh'] = 0
 
         opt['turbine'] = {}
         opt['turbine']['npts'] = 11

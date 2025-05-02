@@ -294,7 +294,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 if n in ['surge','sway','heave']:
                     myunit = 'm'
                 elif n in ['roll','pitch','yaw']:
-                    myunit = 'rad'
+                    myunit = 'deg'
                 elif n in ['AxRNA']:
                     myunit = 'm/s/s'
                 elif n in ['Mbase']:

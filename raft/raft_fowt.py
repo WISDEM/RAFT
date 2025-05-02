@@ -65,6 +65,7 @@ class FOWT():
         self.Xi0 = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
         self.Xi  = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]
         self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
+        
         self.design = design
         self.intersectMesh = design['platform'].get('intersectMesh', 0) # Default to 0 (no intersection mesh)
         self.characteristic_length_min = design['platform'].get('characteristic_length_min', 1)

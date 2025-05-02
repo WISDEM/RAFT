@@ -1064,6 +1064,7 @@ platform:
     dz_BEM       : 3.0    #  [m]   axial discretization panel length target for BEM analysis
     da_BEM       : 2.0    #  [m]   azimuthal discretization panel length target for BEM analysis
     potModMaster : 1
+    
     members:   # list all members here
         
       - name      :  main_column               # [-]    an identifier (no longer has to be number)       

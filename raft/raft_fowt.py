@@ -24,11 +24,6 @@ except ImportError:
     meshmagick = None
     print("Warning: 'meshmagick' is not installed. Meshing intersected members will not be available. Install it using 'pip install https://github.com/LHEEA/meshmagick/archive/refs/tags/3.4.zip'.")
 
-try:
-    import trimesh
-except ImportError:
-    trimesh = None
-    print("Warning: 'trimesh' is not installed. Automatically plotting intermediate BEM meshes will not be available. Install it using 'pip install trimesh'.")
 
 # deleted call to ccblade in this file, since it is called in raft_rotor
 # also ignoring changes to solveEquilibrium3 in raft_model and the re-addition of n=len(stations) in raft_member, based on raft_patch

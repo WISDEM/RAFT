@@ -1083,11 +1083,8 @@ turbine:
 
 platform:
 
-    intersectMesh : 0       # 0 for without and 1 for intersection
-    potModMaster :  0      # [int] master switch for potMod variables; 0=keeps all member potMod vars the same, 1=turns all potMod vars to False (no HAMS), 2=turns all potMod vars to True (no strip)
+    potModMaster :  1      # [int] master switch for potMod variables; 0=keeps all member potMod vars the same, 1=turns all potMod vars to False (no HAMS), 2=turns all potMod vars to True (no strip)
     dlsMax       :  5.0     # maximum node splitting section amount for platform members; can't be 0
-    characteristic_length_min: 0.5   # [m] Min mesh element size
-    characteristic_length_max: 0.9   # [m] Max mesh element size
 
     members:   # list all members here
         
@@ -1102,8 +1099,6 @@ platform:
         stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  10.0                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
-        extensionA : 0.0                       # [m]    length of extension on end A of the center column. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.   
-        extensionB : 0.0                       # [m]    length of extension on end B of the center column. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1127,8 +1122,6 @@ platform:
         stations  :  [0, 35]                   # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  12.5                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
-        extensionA : 0.0                       # [m]    length of extension on end A of the outer column. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.   
-        extensionB : 0.0                       # [m]    length of extension on end B of the outer column. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1155,8 +1148,6 @@ platform:
         stations  :  [0, 40.5]                 # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [12.5, 7.0]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.05                      # [m]    wall thicknesses (scalar or list of same length as stations)
-        extensionA : 5.0                       # [m]    length of extension on end A of the pontoon. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.   
-        extensionB : 5.0                       # [m]    length of extension on end B of the pontoon. This extension is to ensure a valid boolean union operation when members are intersected. This will be autonatically determined when using within WEIS.
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
@@ -1178,8 +1169,6 @@ platform:
         stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  0.91                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
         t         :  0.01                      # [m]    wall thicknesses (scalar or list of same length as stations)
-        extensionA : 5.0                       # [m]    length of extension on end A of the pontoon   
-        extensionB : 5.0                       # [m]    length of extension on end B of the pontoon
         Cd        :  0.8                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
         Ca        :  1.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
         CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)

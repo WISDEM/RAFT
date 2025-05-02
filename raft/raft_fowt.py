@@ -71,6 +71,7 @@ class FOWT():
         self.Xi  = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]
         self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
         self.design = design
+        self.intersectMesh = design['platform'].get('intersectMesh', 0) # Default to 0 (no intersection mesh)
         self.characteristic_length_min = design['platform'].get('characteristic_length_min', 1)
         self.characteristic_length_max = design['platform'].get('characteristic_length_max', 3)
         print(f"Characteristic lengths: min={self.characteristic_length_min}, max={self.characteristic_length_max}")
@@ -627,7 +628,7 @@ class FOWT():
             dz = self.dz_BEM if dz==0 else dz  # allow override if provided
             da = self.da_BEM if da==0 else da
             #dh = self.dh_BEM if dh==0 else dh
-            if self.design["platform"]["intersectMesh"] == 0:
+            if self.intersectMesh == 0:
                 for mem in self.memberList: 
                     if mem.potMod:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
                         if mem.shape == "circular":

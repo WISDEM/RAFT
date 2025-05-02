@@ -593,11 +593,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
             if mnpts_lfill > 0:
                 design['platform']['members'][i]['l_fill'] = inputs[m_name+'l_fill']
                 design['platform']['members'][i]['rho_fill'] = inputs[m_name+'rho_fill']
-            if ( (mncaps > 0) or (inputs[m_name+'ring_spacing'] > 0) ):
+            if ( (mncaps > 0) or (inputs[m_name+'ring_spacing'][0] > 0) ):
                 # Member discretization
                 s_height = s_grid[-1] - s_grid[0]
                 # Get locations of internal structures based on spacing
-                ring_spacing = inputs[m_name+'ring_spacing']
+                ring_spacing = inputs[m_name+'ring_spacing'][0]
                 n_stiff = 0 if ring_spacing == 0.0 else int(np.floor(s_height / ring_spacing))
                 s_ring = (np.arange(1, n_stiff + 0.1) - 0.5) * (ring_spacing / s_height)
                 if np.any(s_ring):

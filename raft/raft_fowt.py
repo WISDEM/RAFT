@@ -67,9 +67,13 @@ class FOWT():
         self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
         self.design = design
         self.intersectMesh = design['platform'].get('intersectMesh', 0) # Default to 0 (no intersection mesh)
-        self.characteristic_length_min = design['platform'].get('characteristic_length_min', 1)
-        self.characteristic_length_max = design['platform'].get('characteristic_length_max', 3)
-        print(f"Characteristic lengths: min={self.characteristic_length_min}, max={self.characteristic_length_max}")
+        self.characteristic_length_min = design['platform'].get('characteristic_length_min', 1.0)
+        self.characteristic_length_max = design['platform'].get('characteristic_length_max', 3.0)
+        if self.intersectMesh == 1:
+            # make sure the mesh size are positive
+            assert self.characteristic_length_min > 0, "characteristic_length_min must be positive"
+            assert self.characteristic_length_max > 0, "characteristic_length_max must be positive"
+        print(f"Mesh characteristic lengths: min={self.characteristic_length_min}, max={self.characteristic_length_max}")
         
         # position in the array
         self.x_ref = x_ref      # reference x position of the FOWT in the array [m]

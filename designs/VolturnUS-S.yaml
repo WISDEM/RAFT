@@ -1141,7 +1141,7 @@ platform:
         rA        :  [  5  , 0, -16.5]         # [m]    end A coordinates
         rB        :  [ 45.5, 0, -16.5]         # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
-        shape     :  rec                      # [-]    circular or rectangular
+        shape     :  rect                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
         potMod    :  False                     # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
         # --- outer shell including hydro---

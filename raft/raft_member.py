@@ -39,9 +39,10 @@ class Member:
         if (self.rA0[2] == 0 or self.rB0[2] == 0) and self.type != 3:
             raise ValueError("RAFT Members cannot start or end on the waterplane")
         if self.rB0[2] < self.rA0[2]:
-            print(f"The z position of rA is {self.rA0[2]}, and the z position of rB is {self.rB0[2]}. RAFT Members can have trouble when their rA position is below the rB position. Switching rA and rB now.")
-            self.rA0 = np.array(mi['rB'], dtype=np.double)
-            self.rB0 = np.array(mi['rA'], dtype=np.double)
+            pass
+            #print(f"The z position of rA is {self.rA0[2]}, and the z position of rB is {self.rB0[2]}. RAFT Members can have trouble when their rA position is below the rB position")
+            #self.rA0 = np.array(mi['rB'], dtype=np.double)
+            #self.rB0 = np.array(mi['rA'], dtype=np.double)
 
         shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
 
@@ -104,7 +105,7 @@ class Member:
                 self.MCF = False
 
 
-        self.t         = getFromDict(mi, 't', shape=n)               # shell thickness at each station [m]
+        self.t         = getFromDict(mi, 't', shape=n, default=0)  # shell thickness at each station [m]
         self.rho_shell = getFromDict(mi, 'rho_shell', shape=0, default=8500.) # shell mass density [kg/m^3]
         
         
@@ -175,7 +176,7 @@ class Member:
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair
-        dlsMax = getFromDict(mi, 'dlsMax', shape=1, default=5)
+        dlsMax = getFromDict(mi, 'dlsMax', shape=0, default=5)
 
         
         # start things off with the strip for end A
@@ -708,7 +709,7 @@ class Member:
         self.mshell = mshell
         self.mfill  = mfill
         mass = self.M_struc[0,0]        # total mass of the entire member [kg]
-        center = mass_center/mass       # total center of mass of the entire member from the PRP [m]
+        center = mass_center/mass if mass!=0 else np.array([0,0,0])       # total center of mass of the entire member from the PRP [m]
 
 
         return mass, center, mshell, mfill, pfill

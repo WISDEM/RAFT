@@ -80,7 +80,24 @@ class FOWT():
         self.x_ref = x_ref      # reference x position of the FOWT in the array [m]
         self.y_ref = y_ref      # reference y position of the FOWT in the array [m]
         self.r6 = np.zeros(6)   # mean position/orientation in absolute/array coordinates [m,rad]
-        
+
+        # Platform lumped inertias
+        self.pointInertias = []        
+        if 'pointInertias' in design['platform']:
+            nPoints = len(design['platform']['pointInertias'])            
+            for ip, pointInertia in enumerate(design['platform']['pointInertias']):
+                self.pointInertias.append({'m': 0, 'inertia': np.zeros([6, 6]), 'r': np.zeros([3,])}) # mass, inertia, and position of each point mass to be added to the platform
+                pointMass = getFromDict(pointInertia, 'mass', shape=0, default=0) # mass of the substructure [kg]
+                self.pointInertias[-1]['m'] = pointMass
+                auxInertia = getFromDict(pointInertia, 'moments_of_inertia', shape=6, default=[0,0,0]) # moments of inertia of the substructure [kg*m^2] - specified in the order Jxx, Jyy, Jzz, Jxy, Jxz, Jyz
+                self.pointInertias[-1]['inertia'] = np.array([[pointMass, 0, 0, 0, 0, 0],
+                                                              [0, pointMass, 0, 0, 0, 0],
+                                                              [0, 0, pointMass, 0, 0, 0],
+                                                              [0, 0, 0, auxInertia[0], auxInertia[3], auxInertia[4]],
+                                                              [0, 0, 0, auxInertia[3], auxInertia[1], auxInertia[5]],
+                                                              [0, 0, 0, auxInertia[4], auxInertia[5], auxInertia[2]]])
+                self.pointInertias[-1]['r'] = getFromDict(pointInertia, 'location', shape=3, default=[0,0,0])
+                        
         # count number of platform members
         self.nplatmems = 0
         for platmem in design['platform']['members']:
@@ -187,7 +204,7 @@ class FOWT():
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
         # this FOWT's own MoorPy system (may not be used)
-        if design['mooring']:
+        if design['mooring'] is not None and isinstance(design['mooring'], dict):
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
@@ -307,7 +324,7 @@ class FOWT():
         
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
-            self.ms.solveEquilibrium()
+            self.ms.solveEquilibrium(tol=0.05)
             self.C_moor = self.ms.getCoupledStiffnessA()
             self.F_moor0 = self.ms.bodyList[0].getForces(lines_only=True)
         
@@ -502,6 +519,18 @@ class FOWT():
             self.W_struc += translateForce3to6DOF(np.array([0,0, -g*rotor.mRNA]), rotor.r_CG_rel )   # weight vector
             self.M_struc += translateMatrix6to6DOF(Mmat, rotor.r_CG_rel)                            # mass/inertia matrix
             m_center_sum += rotor.r_CG_rel*rotor.mRNA
+
+
+        # ------------------------- include point inertia properties -----------------------------
+        for ip, pointInertia in enumerate(self.pointInertias):            
+            self.M_struc += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r'])
+            self.W_struc += translateForce3to6DOF( np.array([0,0, -g*pointInertia['m']]), pointInertia['r'] )
+            m_center_sum += pointInertia['r']*pointInertia['m']
+
+            self.m_sub += pointInertia['m']
+            self.M_struc_sub += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r'])     # mass matrix of the substructure about the PRP
+            m_sub_sum += pointInertia['r']*pointInertia['m']        # product sum of the substructure members and their centers of mass [kg-m]
+
 
         # ----------- process inertia-related totals ----------------
 
@@ -735,20 +764,27 @@ class FOWT():
             # execute the HAMS analysis
             ph.run_hams(meshDir)
             
-            hydroPath = os.path.join(meshDir,'Output','Wamit_format','Buoy')
+            self.hydroPath = os.path.join(meshDir,'Output','Wamit_format','Buoy')
             
         elif self.potModMaster == 3: 
-            hydroPath = self.hydroPath
+            pass
 
         else:
             return
-        
+                
+        self.readHydro()
+
+    def readHydro(self):
+        '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's
+        added mass, damping, and excitation matrices. This is as an alternative 
+        to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.'''
         import pyhams.pyhams as ph
-        # read the HAMS WAMIT-style output files
-        addedMass, damping, w1 = ph.read_wamit1(hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
-        M, P, R, I, w3, heads  = ph.read_wamit3(hydroPath+'.3', TFlag=True)   
-        # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
         
+        # read the preexisting WAMIT-style output files
+        addedMass, damping, w1 = ph.read_wamit1(self.hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
+        M, P, R, I, w3, heads  = ph.read_wamit3(self.hydroPath+'.3', TFlag=True)
+        # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
+
         # process and sort headings and sort frequencies
         R_unsorted = R.copy()
         I_unsorted = I.copy()
@@ -770,10 +806,12 @@ class FOWT():
         
         # copy results over to the FOWT's coefficient arrays
         self.A_BEM = self.rho_water * addedMassInterp
-        self.B_BEM = self.rho_water * dampingInterp                                 
-        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
+        self.B_BEM = self.w * self.rho_water * dampingInterp                                 
+        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)      
         
-        
+        # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
+        self.X_BEM = np.zeros_like(X_BEM_temp)     
+
         # Transform excitation coefficients so that DOFs are always 
         # relative to incident wave heading rather than global frame,
         # for accurate magnitudes when interpolating between directions.
@@ -790,60 +828,6 @@ class FOWT():
             self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
             self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
             
-        # HAMS results error checks  >>> any more we should have? <<<
-        if np.isnan(self.A_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
-        if np.isnan(self.B_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for damping. Check the geometry.")
-        if np.isnan(self.X_BEM).any():
-            raise Exception("NaN values detected in HAMS calculations for excitation. Check the geometry.")
-
-        # TODO: add support for multiple wave headings <<<
-        # note: RAFT will only be using finite-frequency potential flow coefficients
-
-    def readHydro(self):
-        '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's
-        added mass, damping, and excitation matrices. This is as an alternative 
-        to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.  NOT USED!!!'''
-        
-        import pyhams.pyhams as ph
-        
-        # read the preexisting WAMIT-style output files
-        addedMass, damping, w1 = ph.read_wamit1(self.hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
-        M, P, R, I, w3, heads  = ph.read_wamit3(self.hydroPath+'.3', TFlag=True)   
-        
-        # process headings and sort frequencies
-        self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using
-
-        # interpolate to RAFT model frequencies
-        # zero frequency values are being stacked on to give smooth results if the requested frequency is below what's available from HAMS
-        addedMassInterp = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([addedMass[:,:,2:], addedMass[:,:,0]]), assume_sorted=False, axis=2)(self.w)
-        dampingInterp   = interp1d(np.hstack([w1[2:],  0.0]), np.dstack([  damping[:,:,2:], np.zeros([6,6]) ]), assume_sorted=False, axis=2)(self.w)
-        fExRealInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       R, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
-        fExImagInterp   = interp1d(np.hstack([w3,      0.0]), np.dstack([       I, np.zeros([len(heads),6]) ]), assume_sorted=False, axis=2)(self.w)
-        # note: fEx tensors are sized according to [nHeadings, 6 DOFs, frequencies]
-        
-        # copy results over to the FOWT's coefficient arrays
-        self.A_BEM = self.rho_water * addedMassInterp
-        self.B_BEM = self.rho_water * dampingInterp                                 
-        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
-        
-        
-        # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
-        self.X_BEM = np.zeros_like(X_BEM_temp)
-        
-        for ih in range(len(heads)):
-            sin_heading = np.sin(np.radians(heads[ih]))
-            cos_heading = np.cos(np.radians(heads[ih]))
-            
-            self.X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
-            self.X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]
-            self.X_BEM[ih,2,:] = X_BEM_temp[ih,2,:]
-            self.X_BEM[ih,3,:] =  cos_heading * X_BEM_temp[ih,3,:] + sin_heading * X_BEM_temp[ih,4,:]
-            self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
-            self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
-            
-        
         # HAMS results error checks  >>> any more we should have? <<<
         if np.isnan(self.A_BEM).any():
             raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
@@ -1410,7 +1394,8 @@ class FOWT():
                 if mem.r[il,2] < 0:
 
                     # calculate current velocity as a function of node depth [x,y,z] (assumes no vertical current velocity)
-                    v = speed * (((self.depth) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water
+                    #v = speed * (((self.depth) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water
+                    v = np.nanmax([ speed * (((self.depth) - abs(mem.r[il,2]))/(self.depth + Zref))**self.shearExp_water,  0])
                     #v = speed
                     vcur = np.array([v*np.cos(np.deg2rad(heading)), v*np.sin(np.deg2rad(heading)), 0])
 

@@ -1,19 +1,30 @@
 type: input file for RAFT
-name: IEA 15 MW wind turbine
-comments: Used to perform some tests on rotor class functionality.
+name: IEA 15 MW with VolturnUS-S steel semi
+comments: Used to perform tests on FOWT and model class functionality. This file should contain a single FOWT.
 
 
 settings:                   # global Settings
-    min_freq     :  0.02    #  [Hz]       lowest frequency to consider, also the frequency bin width     
+    min_freq     :  0.005    #  [Hz]       lowest frequency to consider, also the frequency bin width     
     max_freq     :  0.20    #  [Hz]       highest frequency to consider
     XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
+    nIter        :   4      # sets how many iterations to perform in Model.solveDynamics()
     
 site:
+    water_depth : 200        # [m]      uniform water depth
+    rho_water   : 1025.0     # [kg/m^3] water density
     rho_air     : 1.225      # [kg/m^3] air density
     mu_air      : 1.81e-05   #          air dynamic viscosity
     shearExp    : 0.12       #          shear exponent
 
-turbine:    
+cases:
+
+    keys : [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading, current_speed, current_heading ]
+    data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)         (m)         (deg)
+        -  [     0,         0,            0,          operating,          0,        JONSWAP,         12,         6,           0      ,       0,             0  ] 
+        -  [    10,        30,            0,          operating,          0,        JONSWAP,         12,         6,           0      ,       1,            15  ]
+    
+turbine:
+    
     mRNA          :     1001505.907   #  [kg]       RNA mass: m_blades = 3*68076.969 = 204230.907 kg (from ED.sum), m_yawbearing = 100000 kg, m_hub = 190000 kg, m_nacelle = 507275 kg
     IxRNA         :          0        #  [kg-m2]    RNA moment of inertia about local x axis (assumed to be identical to rotor axis for now, as approx) [kg-m^2]
     IrRNA         :          0        #  [kg-m2]    RNA moment of inertia about local y or z axes [kg-m^2]
@@ -1065,3 +1076,170 @@ turbine:
         CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
         CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
         rho_shell :  7850                      # [kg/m3]   material density
+            
+
+platform:
+
+ 
+    dlsMax       :  5.0     # maximum node splitting section amount for platform members; can't be 0
+    potModMaster : 1
+    potSecOrder  :  1        # [int] master switch for computing second-order wave forces; 0=do not compute, 1=compute QTFs using slender body approximation, 2=read QTF file in WAMIT format (.11d or .12d)
+    min_freq2nd  :  0.040   # [Hz] minimum frequency for second-order wave forces
+    df_freq2nd   :  0.008   # [Hz] frequency step for second-order wave forces
+    max_freq2nd  :  0.200   # [Hz] maximum frequency for second-order wave forces
+
+    pointInertias: # Optional section
+     - name : point1
+       mass : 1.687e+7
+       moments_of_inertia: [1.105e+10, 1.105e+10, 2.053E+10, 0, 0, 0]
+       location : [0, 0, -14.94]
+
+
+    members:   # list all members here
+        
+      - name      :  center_column             # [-]    an identifier (no longer has to be number)       
+        type      :  2                         # [-]    
+        rA        :  [ 0, 0, -20]              # [m]    end A coordinates
+        rB        :  [ 0, 0,  15]              # [m]    and B coordinates
+        shape     :  circ                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
+        potMod    :  False                     # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        MCF       :  True
+        # --- outer shell including hydro---
+        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  9.85                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        Cd        :  0.6                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  0.85                      # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd     :  0.6                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  0.7                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        # --- handling of end caps or any internal structures if we need them ---
+        cap_stations :  [ 0    ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
+        cap_t        :  [ 0.001  ]             # [m]  thickness of any internal structures
+        cap_d_in     :  [ 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+
+        
+      - name      :  outer_column              # [-]    an identifier (no longer has to be number)       
+        type      :  2                         # [-]    
+        rA        :  [51.75, 0, -20]           # [m]    end A coordinates
+        rB        :  [51.75, 0,  15]           # [m]    and B coordinates
+        heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
+        shape     :  circ                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
+        potMod    :  False                      # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        MCF       :  True
+        # --- outer shell including hydro---
+        stations  :  [0, 35]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  12.23                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        Cd        :  0.6                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  0.85                      # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd     :  1.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  0.7 # value of 3.0 gives more heave response        # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        # --- handling of end caps or any internal structures if we need them ---
+        cap_stations :  [ 0    ]               # [m]  location along member of any inner structures (in same scaling as set by 'stations')
+        cap_t        :  [ 0.001  ]             # [m]  thickness of any internal structures
+        cap_d_in     :  [ 0    ]               # [m]  inner diameter of internal structures (0 for full cap/bulkhead, >0 for a ring shape)
+
+        
+      - name      :  pontoon                   # [-]    an identifier (no longer has to be number)       
+        type      :  2                         # [-]    
+        rA        :  [  5  , 0, -16.5]         # [m]    end A coordinates
+        rB        :  [ 45.5, 0, -16.5]         # [m]    and B coordinates
+        heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
+        shape     :  rect                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
+        potMod    :  False                     # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        # --- outer shell including hydro---
+        stations  :  [0, 40.5]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  [12.4, 7.0]               # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        Cd        :  [1.5, 2.2 ]               # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  [0.9, 0.9 ]               # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+        
+        
+      - name      :  upper_support             # [-]    an identifier (no longer has to be number)       
+        type      :  2                         # [-]    
+        rA        :  [  5  , 0, 14.545]        # [m]    end A coordinates
+        rB        :  [ 45.5, 0, 14.545]        # [m]    and B coordinates
+        heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
+        shape     :  circ                      # [-]    circular or rectangular
+        gamma     :  0.0                       # [deg]  twist angle about the member's z-axis
+        potMod    :  False                     # [bool] Whether to model the member with potential flow (BEM model) plus viscous drag or purely strip theory
+        # --- outer shell including hydro---
+        stations  :  [0, 1]                    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
+        d         :  0.91                      # [m]    diameters if circular or side lengths if rectangular (can be pairs)
+        Cd        :  0.0                       # [-]    transverse drag coefficient       (optional, scalar or list of same length as stations)
+        Ca        :  0.0                       # [-]    transverse added mass coefficient (optional, scalar or list of same length as stations)
+        CdEnd     :  0.0                       # [-]    end axial drag coefficient        (optional, scalar or list of same length as stations)
+        CaEnd     :  0.0                       # [-]    end axial added mass coefficient  (optional, scalar or list of same length as stations)
+     
+
+mooring:
+    water_depth: 200                                  # [m]       uniform water depth
+    
+    points:
+        - name: line1_anchor
+          type: fixed
+          location: [-837, 0.0, -200.0]
+          anchor_type: drag_embedment
+
+        - name: line2_anchor
+          type: fixed
+          location: [418, 725, -200.0]
+          anchor_type: drag_embedment
+
+        - name: line3_anchor
+          type: fixed
+          location: [418, -725, -200.0]
+          anchor_type: drag_embedment
+
+        - name: line1_vessel
+          type: vessel
+          location: [-58,      0.0,     -14.0]
+
+        - name: line2_vessel
+          type: vessel
+          location: [29,      50,     -14.0]
+
+        - name: line3_vessel
+          type: vessel
+          location: [29,     -50,     -14.0]
+
+    lines:
+        - name: line1
+          endA: line1_anchor
+          endB: line1_vessel
+          type: chain
+          length: 850
+
+        - name: line2
+          endA: line2_anchor
+          endB: line2_vessel
+          type: chain
+          length: 850
+
+        - name: line3
+          endA: line3_anchor
+          endB: line3_vessel
+          type: chain
+          length: 850
+
+    line_types:
+        - name: chain
+          diameter:         0.185
+          mass_density:   685.0
+          stiffness:     3270e6
+          breaking_load:    1e8
+          cost: 100.0
+          transverse_added_mass: 1.0
+          tangential_added_mass: 0.0
+          transverse_drag: 1.6
+          tangential_drag: 0.1
+
+    anchor_types:
+        - name: drag_embedment
+          mass: 1e3
+          cost: 1e4
+          max_vertical_load: 0.0
+          max_lateral_load: 1e5
+    

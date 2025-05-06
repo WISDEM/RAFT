@@ -5,6 +5,15 @@ RAFT is a Python code for frequency-domain analysis of floating wind turbines. I
 RAFT v1.0.0 includes the capabilities described above, and further development is planned to expand these capabilities. Documentation and verification efforts are ongoing. Please see [RAFT's documentation](https://openraft.readthedocs.io/en/latest/) for more information.
 
 
+## Part of the WETO Stack
+
+RAFT is primarily developed with the support of the U.S. Department of Energy and is part of the [WETO Software Stack](https://nrel.github.io/WETOStack). For more information and other integrated modeling software, see:
+- [Portfolio Overview](https://nrel.github.io/WETOStack/portfolio_analysis/overview.html)
+- [Entry Guide](https://nrel.github.io/WETOStack/_static/entry_guide/index.html)
+- [Systems Engineering Workshop](https://nrel.github.io/WETOStack/workshops/user_workshops_2024.html#systems-engineering)
+- [OpenFAST Workshop](https://nrel.github.io/WETOStack/workshops/user_workshops_2024.html#openfast-ecosystem)
+
+
 ## Best Practices for Using `conda`
 
 Installation with [Anaconda](https://www.anaconda.com) is the recommended approach because of the ability to create self-contained environments suitable for testing and analysis.  RAFT requires [Anaconda 64-bit](https://www.anaconda.com/distribution/).  However, the `conda` command has begun to show its age and we now recommend the one-for-one replacement with the [Miniforge3 distribution](https://github.com/conda-forge/miniforge?tab=readme-ov-file#miniforge3), which is much more lightweight and more easily solves for the RAFT package dependencies.

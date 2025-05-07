@@ -290,11 +290,7 @@ class TestSpider(unittest.TestCase):
         prob['mooring_point6_location'] = [-2.6000000000000023, -4.5033320996790795, -70.0]
         prob['mooring_water_depth'] = [320.0]
 
-        try:
-            prob.run_model()
-            self.assertTrue(True)
-        except Exception:
-            self.assertTrue(False)
+        prob.run_model()
 
 
 def suite():

@@ -775,7 +775,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             except:
                 raise ImportError('trimesh not installed, please install trimesh to plot mesh')
             
-            mesh = trimesh.load(os.path.join(modeling_opt['BEM_dir'],"Input/Platform.stl"))
+            mesh = trimesh.load(os.path.join(modeling_opt['BEM_dir'],"Input", "Platform.stl"))
             # Create a figure and axes
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')

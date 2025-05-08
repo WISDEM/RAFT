@@ -16,13 +16,11 @@ try:
     import pygmsh
 except ImportError:
     pygmsh = None
-    print("Warning: 'pygmsh' is not installed. Meshing intersected members will not be available. Install it using 'pip install pygmsh==7.1.17'.")
 
 try:
     import meshmagick
 except ImportError:
     meshmagick = None
-    print("Warning: 'meshmagick' is not installed. Meshing intersected members will not be available. Install it using 'pip install https://github.com/LHEEA/meshmagick/archive/refs/tags/3.4.zip'.")
 
 
 # deleted call to ccblade in this file, since it is called in raft_rotor
@@ -676,7 +674,7 @@ class FOWT():
 
             elif self.design["platform"]["intersectMesh"] == 1:
                 if pygmsh is None or meshmagick is None:
-                    raise ImportError("The 'intersectMesh' option requires 'pygmsh' and 'meshmagick'. Please install them.")
+                    raise ImportError("The 'intersectMesh' option requires 'pygmsh' and 'meshmagick'. Please install them using 'pip install pygmsh==7.1.17' and 'pip install https://github.com/LHEEA/meshmagick/archive/refs/tags/3.4.zip'")
     
                 import raft.IntersectionMesh as intersectMesh
                 

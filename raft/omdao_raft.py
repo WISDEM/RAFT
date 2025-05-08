@@ -363,7 +363,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
 
         # save inputs for RAFT testing/debugging
         if DEBUG_OMDAO:
-            from weis.aeroelasticse.FileTools import save_yaml
+            from openfast_io.FileTools import save_yaml
             # Options
             all_options = {}
             all_options['modeling_options']     = copy.deepcopy(self.options['modeling_options'])

@@ -670,7 +670,9 @@ class FOWT():
                             # for GDF output
                             vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
                             vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
-                
+                if len(panels) == 0:
+                    print("WARNING: no panels to mesh.")
+                pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
 
             elif self.design["platform"]["intersectMesh"] == 1:
                 if pygmsh is None or meshmagick is None:
@@ -730,8 +732,6 @@ class FOWT():
 
                 intersectMesh.mesh(meshDir=os.path.join(meshDir,'Input'), cylindrical_members=cylindrical_members, rectangular_members=rectangular_members, dmin=self.characteristic_length_min, dmax=self.characteristic_length_max)
 
-            if len(panels) == 0:
-                print("WARNING: no panels to mesh.")
 
             ph.create_hams_dirs(meshDir)                #
 

@@ -16,13 +16,11 @@ try:
     import pygmsh
 except ImportError:
     pygmsh = None
-    print("Warning: 'pygmsh' is not installed. Meshing intersected members will not be available. Install it using 'pip install pygmsh==7.1.17'.")
 
 try:
     import meshmagick
 except ImportError:
     meshmagick = None
-    print("Warning: 'meshmagick' is not installed. Meshing intersected members will not be available. Install it using 'pip install https://github.com/LHEEA/meshmagick/archive/refs/tags/3.4.zip'.")
 
 
 # deleted call to ccblade in this file, since it is called in raft_rotor
@@ -672,11 +670,13 @@ class FOWT():
                             # for GDF output
                             vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
                             vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
-                
+                if len(panels) == 0:
+                    print("WARNING: no panels to mesh.")
+                pnl.writeMesh(nodes, panels, oDir=os.path.join(meshDir,'Input')) # generate a mesh file in the HAMS .pnl format
 
             elif self.design["platform"]["intersectMesh"] == 1:
                 if pygmsh is None or meshmagick is None:
-                    raise ImportError("The 'intersectMesh' option requires 'pygmsh' and 'meshmagick'. Please install them.")
+                    raise ImportError("The 'intersectMesh' option requires 'pygmsh' and 'meshmagick'. Please install them using 'pip install pygmsh==7.1.17' and 'pip install https://github.com/LHEEA/meshmagick/archive/refs/tags/3.4.zip'")
     
                 import raft.IntersectionMesh as intersectMesh
                 
@@ -732,8 +732,6 @@ class FOWT():
 
                 intersectMesh.mesh(meshDir=os.path.join(meshDir,'Input'), cylindrical_members=cylindrical_members, rectangular_members=rectangular_members, dmin=self.characteristic_length_min, dmax=self.characteristic_length_max)
 
-            if len(panels) == 0:
-                print("WARNING: no panels to mesh.")
 
             ph.create_hams_dirs(meshDir)                #
 

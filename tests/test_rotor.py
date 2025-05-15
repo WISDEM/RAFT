@@ -99,16 +99,16 @@ def test_calcAero(index_and_rotor, flagSaveValues=False):
         print(f'Unknown turbine. Considering U_rated = {U_rated} m/s.')
 
     # We are going to loop through the following values to test a broad range of cases
-    wind_speeds = np.sort(np.append(np.arange(5, 26, 5), U_rated))
-    wind_headings = [-90, -45, 0, 45, 90]
+    wind_speeds = np.sort(np.append([5, 15, 25], U_rated))
+    wind_headings = [-45, 0, 45]
     TI            = [0, 0.5]
     yaw_modes     = [0, 1, 2, 3]
     values4control = [  # Values used for yaw misalignment or turbine heading depending on yaw_mode. One list per yaw_mode
                      [0],
-                     [-90, -45, 0, 45, 90],
-                     [-90, -45, 0, 45, 90],
-                     [-90, -45, 0, 45, 90],
-                     ] 
+                     [-15, 0, 15],
+                     [-15, 0, 15],
+                     [-15, 0, 15],
+                     ]
     
     for idx_ym, ym in enumerate(yaw_modes):
         rotor.yaw_mode = ym

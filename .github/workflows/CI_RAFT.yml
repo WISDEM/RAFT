@@ -10,20 +10,20 @@ jobs:
         runs-on: ${{ matrix.os }}
         defaults:
             run:
-                shell: bash -l {0}
+                shell: bash -el {0}
                 
         strategy:
             fail-fast: false #true
             matrix:
                 os: ["ubuntu-latest", "macOS-latest", "windows-latest"]
-                python-version: ["3.10", "3.11"]
+                python-version: ["3.11", "3.12"]
 
 
         steps:
             - name: checkout repository
               uses: actions/checkout@v4
 
-            - uses: conda-incubator/setup-miniconda@v2
+            - uses: conda-incubator/setup-miniconda@v3
               # https://github.com/marketplace/actions/setup-miniconda
               with:
                   # To use mamba, uncomment here, comment out the miniforge line

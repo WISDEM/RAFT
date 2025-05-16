@@ -499,6 +499,351 @@ def meshMemberForGDF(stations, diameters, rA, rB, dz_max=0, da_max=0, endA=True,
     return vertices2.T
 
 
+# For rectangular members
+
+def meshRectangularMember(stations, widths, heights, rA, rB, dz_max=0, dw_max=0, dh_max=0, savedNodes=[], savedPanels=[]):
+    '''
+    Creates mesh for a rectangular member.
+
+    Parameters
+    ----------
+    stations:  list 
+        locations along member axis at which the cross section will be specified
+    widths: list 
+        corresponding widths along member
+    heights: list
+        corresponding heights along member
+    rA, rB: list
+        member end point coordinates
+    dz_max: float
+        maximum panel height
+    dw_max: float
+        maximum panel width
+    dh_max: float
+        maximum panel height
+    savedNodes : list of lists
+        all the node coordinates already saved
+    savedPanels : list
+        the information for all the panels already saved: panel_number number_of_vertices   Vertex1_ID   Vertex2_ID   Vertex3_ID   (Vertex4_ID)
+
+    Returns
+    -------
+    nodes : list
+        list of node coordinates
+    panels : list
+        the information for all the panels: panel_number number_of_vertices   Vertex1_ID   Vertex2_ID   Vertex3_ID   (Vertex4_ID)
+    '''
+
+    # discretization defaults
+    if dz_max == 0:
+        dz_max = stations[-1] / 20
+    if dw_max == 0:
+        dw_max = np.max(widths) / 8
+    if dh_max == 0:
+        dh_max = np.max(heights) / 8
+
+    # calculate member rotation matrix
+    rAB = rB - rA  # displacement vector from end A to end B [m]
+    beta = np.arctan2(rAB[1], rAB[0])  # member incline heading from x axis
+    phi = np.arctan2(np.sqrt(rAB[0]**2 + rAB[1]**2), rAB[2])  # member incline angle from vertical
+
+    s1 = np.sin(beta)
+    c1 = np.cos(beta)
+    s2 = np.sin(phi)
+    c2 = np.cos(phi)
+    s3 = np.sin(0.0)
+    c3 = np.cos(0.0)
+
+    R = np.array([[c1 * c2 * c3 - s1 * s3, -c3 * s1 - c1 * c2 * s3, c1 * s2],
+                  [c1 * s3 + c2 * c3 * s1, c1 * c3 - c2 * s1 * s3, s1 * s2],
+                  [-c3 * s2, s2 * s3, c2]])  # Z1Y2Z3 from https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
+
+    nSavedPanelsOld = len(savedPanels)
+
+    # Create intermediate stations based on dz_max
+    new_stations = [stations[0]]
+    new_widths = [widths[0]]
+    new_heights = [heights[0]]
+    for i in range(len(stations) - 1):
+        z1, z2 = stations[i], stations[i + 1]
+        w1, w2 = widths[i], widths[i + 1]
+        h1, h2 = heights[i], heights[i + 1]
+
+        dz = z2 - z1
+        num_divisions = max(int(np.ceil(dz / dz_max)), 1)
+        z_divisions = np.linspace(z1, z2, num_divisions + 1)
+        for j in range(1, num_divisions + 1):
+            new_stations.append(z_divisions[j])
+            new_widths.append(w1 + (w2 - w1) * (z_divisions[j] - z1) / dz)
+            new_heights.append(h1 + (h2 - h1) * (z_divisions[j] - z1) / dz)
+
+    # Generate panels for all divisions
+    for i in range(len(new_stations) - 1):
+        w1, w2 = new_widths[i], new_widths[i + 1]
+        h1, h2 = new_heights[i], new_heights[i + 1]
+        z1, z2 = new_stations[i], new_stations[i + 1]
+
+        nw = max(int(np.ceil(w1 / dw_max)), int(np.ceil(w2 / dw_max)))
+        nh = max(int(np.ceil(h1 / dh_max)), int(np.ceil(h2 / dh_max)))
+
+        x_divisions_w1 = np.linspace(-w1 / 2, w1 / 2, nw + 1)
+        x_divisions_w2 = np.linspace(-w2 / 2, w2 / 2, nw + 1)
+        y_divisions_h1 = np.linspace(-h1 / 2, h1 / 2, nh + 1)
+        y_divisions_h2 = np.linspace(-h2 / 2, h2 / 2, nh + 1)
+
+        for iw in range(nw):
+            for ih in range(nh):
+                # Panel 1: Front face
+                X = [x_divisions_w1[iw], x_divisions_w1[iw + 1], x_divisions_w2[iw + 1], x_divisions_w2[iw]]
+                Y = [-h1 / 2, -h1 / 2, -h2 / 2, -h2 / 2]
+                Z = [z1, z1, z2, z2]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                makePanel(nodes[0], nodes[1], nodes[2], savedNodes, savedPanels)
+
+                # Panel 2: Back face
+                X = [x_divisions_w1[iw], x_divisions_w1[iw + 1], x_divisions_w2[iw + 1], x_divisions_w2[iw]]
+                Y = [h1 / 2, h1 / 2, h2 / 2, h2 / 2]
+                Z = [z1, z1, z2, z2]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                makePanel(nodes[0], nodes[1], nodes[2], savedNodes, savedPanels)
+
+        for iw in range(nw):
+            for ih in range(nh):
+                # Panel 3: Left face
+                X = [-w1 / 2, -w1 / 2, -w2 / 2, -w2 / 2]
+                Y = [y_divisions_h1[ih], y_divisions_h1[ih + 1], y_divisions_h2[ih + 1], y_divisions_h2[ih]]
+                Z = [z1, z1, z2, z2]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                makePanel(nodes[0], nodes[1], nodes[2], savedNodes, savedPanels)
+
+                # Panel 4: Right face
+                X = [w1 / 2, w1 / 2, w2 / 2, w2 / 2]
+                Y = [y_divisions_h1[ih], y_divisions_h1[ih + 1], y_divisions_h2[ih + 1], y_divisions_h2[ih]]
+                Z = [z1, z1, z2, z2]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                makePanel(nodes[0], nodes[1], nodes[2], savedNodes, savedPanels)
+
+    # Mesh the end faces
+    wA = new_widths[0]
+    hA = new_heights[0]
+    wB = new_widths[-1]
+    hB = new_heights[-1]
+    zA = new_stations[0]
+    zB = new_stations[-1]
+
+    # End A face
+    nwA = max(int(np.ceil(wA / dw_max)), 1)
+    nhA = max(int(np.ceil(hA / dh_max)), 1)
+    x_divisions_wA = np.linspace(-wA / 2, wA / 2, nwA + 1)
+    y_divisions_hA = np.linspace(-hA / 2, hA / 2, nhA + 1)
+
+    for iw in range(nwA):
+        for ih in range(nhA):
+            X = [x_divisions_wA[iw], x_divisions_wA[iw + 1], x_divisions_wA[iw + 1], x_divisions_wA[iw]]
+            Y = [y_divisions_hA[ih], y_divisions_hA[ih], y_divisions_hA[ih + 1], y_divisions_hA[ih + 1]]
+            Z = [zA, zA, zA, zA]
+            nodes0 = np.array([X, Y, Z])
+            nodes = np.matmul(R, nodes0) + rA[:, None]
+            makePanel(nodes[0], nodes[1], nodes[2], savedNodes, savedPanels)
+
+    # End B face
+    nwB = max(int(np.ceil(wB / dw_max)), 1)
+    nhB = max(int(np.ceil(hB / dh_max)), 1)
+    x_divisions_wB = np.linspace(-wB / 2, wB / 2, nwB + 1)
+    y_divisions_hB = np.linspace(-hB / 2, hB / 2, nhB + 1)
+
+    for iw in range(nwB):
+        for ih in range(nhB):
+            X = [x_divisions_wB[iw], x_divisions_wB[iw + 1], x_divisions_wB[iw + 1], x_divisions_wB[iw]]
+            Y = [y_divisions_hB[ih], y_divisions_hB[ih], y_divisions_hB[ih + 1], y_divisions_hB[ih + 1]]
+            Z = [zB, zB, zB, zB]
+            nodes0 = np.array([X, Y, Z])
+            nodes = np.matmul(R, nodes0) + rA[:, None]
+            makePanel(nodes[0], nodes[1], nodes[2], savedNodes, savedPanels)
+
+    print(f'Of {len(savedPanels) - nSavedPanelsOld} generated panels, {len(savedPanels) - nSavedPanelsOld} were submerged and have been used in the mesh.')
+
+    return savedNodes, savedPanels
+
+def meshRectangularMemberForGDF(stations, widths, heights, rA, rB, dz_max=0, dw_max=0, dh_max=0, endA=True, endB=True):
+    '''
+    Creates mesh for a rectangular member.
+
+    Parameters
+    ----------
+    stations: list of locations along member axis at which the cross section will be specified
+    widths: list of corresponding widths along member
+    heights: list of corresponding heights along member
+    rA, rB: member end point coordinates
+    dz_max: maximum panel height
+    dw_max: maximum panel width
+    dh_max: maximum panel height
+    endA/endB: flag for whether to mesh each end
+
+    Returns
+    -------
+    vertices : array
+        An array containing the mesh point coordinates, size [3, 4*npanel]
+    '''
+
+    if len(stations) != len(widths) or len(stations) != len(heights):
+        raise ValueError("The lengths of stations, widths, and heights must be the same.")
+
+    if dz_max == 0:
+        dz_max = stations[-1] / 20
+    if dw_max == 0:
+        dw_max = max(widths) / 8
+    if dh_max == 0:
+        dh_max = max(heights) / 8
+
+    rAB = np.array(rB) - np.array(rA)
+    beta = np.arctan2(rAB[1], rAB[0])
+    phi = np.arctan2(np.sqrt(rAB[0]**2 + rAB[1]**2), rAB[2])
+
+    s1 = np.sin(beta)
+    c1 = np.cos(beta)
+    s2 = np.sin(phi)
+    c2 = np.cos(phi)
+    s3 = np.sin(0.0)
+    c3 = np.cos(0.0)
+
+    R = np.array([[c1 * c2 * c3 - s1 * s3, -c3 * s1 - c1 * c2 * s3, c1 * s2],
+                  [c1 * s3 + c2 * c3 * s1, c1 * c3 - c2 * s1 * s3, s1 * s2],
+                  [-c3 * s2, s2 * s3, c2]])
+
+    nSavedPanelsOld = 0
+
+    new_stations = [stations[0]]
+    new_widths = [widths[0]]
+    new_heights = [heights[0]]
+    for i in range(len(stations) - 1):
+        z1, z2 = stations[i], stations[i + 1]
+        w1, w2 = widths[i], widths[i + 1]
+        h1, h2 = heights[i], heights[i + 1]
+
+        dz = z2 - z1
+        if dz == 0:
+            continue
+
+        num_divisions = max(int(np.ceil(dz / dz_max)), 1)
+        z_divisions = np.linspace(z1, z2, num_divisions + 1)
+        for j in range(1, num_divisions + 1):
+            new_stations.append(z_divisions[j])
+            new_widths.append(w1 + (w2 - w1) * (z_divisions[j] - z1) / dz)
+            new_heights.append(h1 + (h2 - h1) * (z_divisions[j] - z1) / dz)
+
+    x, y, z = [], [], []
+
+    for i in range(len(new_stations) - 1):
+        w1, w2 = new_widths[i], new_widths[i + 1]
+        h1, h2 = new_heights[i], new_heights[i + 1]
+        z1, z2 = new_stations[i], new_stations[i + 1]
+
+        if w1 == 0 or w2 == 0 or h1 == 0 or h2 == 0:
+            continue
+
+        if dw_max == 0 or dh_max == 0:
+            raise ValueError("dw_max and dh_max must be non-zero.")
+
+        nw = max(int(np.ceil(w1 / dw_max)), int(np.ceil(w2 / dw_max)))
+        nh = max(int(np.ceil(h1 / dh_max)), int(np.ceil(h2 / dh_max)))
+
+        x_divisions_w1 = np.linspace(-w1 / 2, w1 / 2, nw + 1)
+        x_divisions_w2 = np.linspace(-w2 / 2, w2 / 2, nw + 1)
+        y_divisions_h1 = np.linspace(-h1 / 2, h1 / 2, nh + 1)
+        y_divisions_h2 = np.linspace(-h2 / 2, h2 / 2, nh + 1)
+
+        for iw in range(nw):
+            for ih in range(nh):
+                X = [x_divisions_w1[iw], x_divisions_w1[iw + 1], x_divisions_w2[iw + 1], x_divisions_w2[iw]]
+                Y = [-h1 / 2, -h1 / 2, -h2 / 2, -h2 / 2]
+                Z = [z1, z1, z2, z2]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                x.extend(nodes[0])
+                y.extend(nodes[1])
+                z.extend(nodes[2])
+
+                X = [x_divisions_w1[iw], x_divisions_w1[iw + 1], x_divisions_w2[iw + 1], x_divisions_w2[iw]]
+                Y = [h1 / 2, h1 / 2, h2 / 2, h2 / 2]
+                Z = [z1, z1, z2, z2]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                x.extend(nodes[0])
+                y.extend(nodes[1])
+                z.extend(nodes[2])
+
+        for iw in range(nw):
+            for ih in range(nh):
+                X = [-w1 / 2, -w1 / 2, -w2 / 2, -w2 / 2]
+                Y = [y_divisions_h1[ih], y_divisions_h1[ih + 1], y_divisions_h2[ih + 1], y_divisions_h2[ih]]
+                Z = [z1, z1, z2, z2]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                x.extend(nodes[0])
+                y.extend(nodes[1])
+                z.extend(nodes[2])
+
+                X = [w1 / 2, w1 / 2, w2 / 2, w2 / 2]
+                Y = [y_divisions_h1[ih], y_divisions_h1[ih + 1], y_divisions_h2[ih + 1], y_divisions_h2[ih]]
+                Z = [z1, z1, z2, z2]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                x.extend(nodes[0])
+                y.extend(nodes[1])
+                z.extend(nodes[2])
+
+    wA = new_widths[0]
+    hA = new_heights[0]
+    wB = new_widths[-1]
+    hB = new_heights[-1]
+    zA = new_stations[0]
+    zB = new_stations[-1]
+
+    if endA and wA > 0 and hA > 0:
+        nwA = max(int(np.ceil(wA / dw_max)), 1)
+        nhA = max(int(np.ceil(hA / dh_max)), 1)
+        x_divisions_wA = np.linspace(-wA / 2, wA / 2, nwA + 1)
+        y_divisions_hA = np.linspace(-hA / 2, hA / 2, nhA + 1)
+
+        for iw in range(nwA):
+            for ih in range(nhA):
+                X = [x_divisions_wA[iw], x_divisions_wA[iw + 1], x_divisions_wA[iw + 1], x_divisions_wA[iw]]
+                Y = [y_divisions_hA[ih], y_divisions_hA[ih], y_divisions_hA[ih + 1], y_divisions_hA[ih + 1]]
+                Z = [zA, zA, zA, zA]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                x.extend(nodes[0])
+                y.extend(nodes[1])
+                z.extend(nodes[2])
+
+    if endB and wB > 0 and hB > 0:
+        nwB = max(int(np.ceil(wB / dw_max)), 1)
+        nhB = max(int(np.ceil(hB / dh_max)), 1)
+        x_divisions_wB = np.linspace(-wB / 2, wB / 2, nwB + 1)
+        y_divisions_hB = np.linspace(-hB / 2, hB / 2, nhB + 1)
+
+        for iw in range(nwB):
+            for ih in range(nhB):
+                X = [x_divisions_wB[iw], x_divisions_wB[iw + 1], x_divisions_wB[iw + 1], x_divisions_wB[iw]]
+                Y = [y_divisions_hB[ih], y_divisions_hB[ih], y_divisions_hB[ih + 1], y_divisions_hB[ih + 1]]
+                Z = [zB, zB, zB, zB]
+                nodes0 = np.array([X, Y, Z])
+                nodes = np.matmul(R, nodes0) + rA[:, None]
+                x.extend(nodes[0])
+                y.extend(nodes[1])
+                z.extend(nodes[2])
+
+    vertices = np.array([x, y, z])
+
+    vertices2 = np.matmul(R, vertices) + rA[:, None]
+
+    return vertices2.T
+
 def writeMeshToGDF(vertices, filename="platform.gdf", aboveWater=True):
 
     npan = int(vertices.shape[0]/4)
@@ -532,15 +877,33 @@ def writeMeshToGDF(vertices, filename="platform.gdf", aboveWater=True):
     
 
 if __name__ == "__main__":
+
+    shape = "rectangular"
+
+    if shape == "circular":
     
-    stations = [0, 6, 6,32]
-    diameters = [24, 24, 12,  12]
-    
-    rA = np.array([0, 0,-20])
-    rB = np.array([0, 0, 12])
-    
-    #nodes, panels = meshMember(stations, diameters, rA, rB, dz_max=1, da_max=1)    
-    #writeMesh(nodes, panels)
-    
-    vertices = meshMemberForGDF(stations, diameters, rA, rB, dz_max=5, da_max=5)    
-    writeMeshToGDF(vertices)
+        stations = [0, 6, 6,32]
+        diameters = [24, 24, 12,  12]
+        
+        rA = np.array([0, 0,-20])
+        rB = np.array([0, 0, 12])
+        
+        #nodes, panels = meshMember(stations, diameters, rA, rB, dz_max=1, da_max=1)    
+        #writeMesh(nodes, panels)
+        
+        vertices = meshMemberForGDF(stations, diameters, rA, rB, dz_max=5, da_max=5)    
+        writeMeshToGDF(vertices)
+
+    elif shape == "rectangular":
+        stations= [-120, -12,  -4,  10]
+        widths = [24, 24, 24,  24]
+        heights = [24, 24, 24,  24]
+        
+        rA = np.array([0, 0,-10])
+        rB = np.array([0, 0, 22])
+
+
+        vertices = meshRectangularMemberForGDF(stations, widths, heights, rA, rB, dz_max=20, dw_max=20, dh_max=20)
+        writeMeshToGDF(vertices)
+        savedNodes, savedPanels = meshRectangularMember(stations, widths, heights, rA, rB, dz_max=20, dw_max=20, dh_max=20)
+        writeMesh(savedNodes, savedPanels, "Test")

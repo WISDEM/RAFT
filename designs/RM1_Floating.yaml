@@ -23,7 +23,7 @@ cases:
     keys : [wind_speed, wind_heading, turbulence, turbine_status, turbine_heading, wave_spectrum, wave_period, wave_height, wave_heading, current_speed, current_heading, current_turbulence  ]
     data :  #   m/s        deg    % or e.g. IIB_NTM    string            deg         string          (s)          (m)          (deg)         (m/s)           (deg)         % or e.g. IIB_NTM     
         #-  [    0.0,        0,            0,           parked,            0,        none,         8.0,         2.0,           0,           0.0,             0,                  0          ]
-        -  [    0.0,        0,            0,           operating,            0,        none,         8.0,         2.0,           0,           1.9,             0,                  0          ]
+        -  [    0.0,        0,            0,           operating,            0,        JONSWAP,         8.0,         2.0,           0,           1.9,             0,                  0          ]
 
 
 turbine:
@@ -39,7 +39,7 @@ turbine:
     hHub        : -25.2             # [m]        hub height above water line [m], Maybe try to put it underwater???
     Fthrust     : 0.0           # [N]        temporary thrust force to use
     
-    I_drivetrain: 0.0           # full rotor + drivetrain inertia as felt on the high-speed shaft | only used for aeroServoMod==2 and B_gyro
+    I_drivetrain: 222.3           # full rotor + drivetrain inertia as felt on the high-speed shaft | only used for aeroServoMod==2 and B_gyro
     
     nBlades     : 2                 # [-]        number of blades
     Zhub        : -25.2             # [m]        hub height [m]
@@ -672,8 +672,8 @@ turbine:
       GS_Ki: [-0.07416547, -0.06719673, -0.0614251 , -0.05656651, -0.0524202 ,       -0.04884022, -0.04571796, -0.04297091, -0.04053528, -0.03836094,       -0.03640799, -0.03464426, -0.03304352, -0.03158417, -0.03024826,       -0.02902079, -0.02788904, -0.02684226, -0.02587121, -0.02496797,       -0.02412567, -0.02333834, -0.02260078, -0.02190841, -0.0212572 ,       -0.02064359, -0.0200644 , -0.01951683, -0.01899836, -0.01850671]
       Fl_Kp:   -9.35
     wt_ops:          # operating points: wind speed [m/s], blade pitch [deg], rotor speed [rpm]
-        v: [0.50, 0.60, 0.70, 0.80, 0.90, 1.00, 1.10, 1.20, 1.30, 1.40, 1.50, 1.60, 1.70, 1.80, 1.90, 2.00, 2.10, 2.20, 2.30, 2.40, 2.50, 2.60, 2.70, 2.80, 2.90, 3.00]
-        pitch_op: [0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 1.70, 4.30, 6.00, 7.40, 8.60, 9.70, 10.80, 11.70, 12.70, 13.50, 14.40]
+        v:        [0.50, 0.60, 0.70, 0.80, 0.90, 1.00, 1.10, 1.20, 1.30, 1.40,  1.50,  1.60,  1.70,  1.80,  1.90,  2.00,  2.10,  2.20,  2.30,  2.40,  2.50,  2.60,  2.70,  2.80,  2.90,  3.00]
+        pitch_op: [0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00, 0.00,  0.00,  0.00,  0.00,  0.00,  0.00,  1.70,  4.30,  6.00,  7.40,  8.60,  9.70, 10.80, 11.70, 12.70, 13.50, 14.40]
         omega_op: [3.34, 4.01, 4.68, 5.35, 6.02, 6.68, 7.35, 8.02, 8.69, 9.36, 10.03, 10.70, 11.36, 11.50, 11.50, 11.50, 11.50, 11.50, 11.50, 11.50, 11.50, 11.50, 11.50, 11.50, 11.50, 11.50]
     gear_ratio: 1
     torque_control:
@@ -1096,6 +1096,7 @@ platform:
 
 mooring:
     water_depth: 50                            # [m]       uniform water depth
+    currentMod: 0
 
     points:
         - name: sw_anchor

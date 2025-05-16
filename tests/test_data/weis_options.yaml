@@ -15,6 +15,7 @@ modeling_options:
     runPyHAMS: true
     BEM_dir: /Users/dzalkind/Tools/WEIS-Main/examples/15_RAFT_Studies/none/BEM
     model_potential: [false, false, false, false, false, false, false, false, false, false]
+    intersection_mesh: 0
     nfreq: 20
     n_cases: 98
     raft_dlcs:

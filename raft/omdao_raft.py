@@ -294,7 +294,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 if n in ['surge','sway','heave']:
                     myunit = 'm'
                 elif n in ['roll','pitch','yaw']:
-                    myunit = 'rad'
+                    myunit = 'deg'
                 elif n in ['AxRNA']:
                     myunit = 'm/s/s'
                 elif n in ['Mbase']:
@@ -354,6 +354,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
         member_scalar_t = members_opt['scalar_thicknesses']
         member_scalar_d = members_opt['scalar_diameters']
         member_scalar_coeff = members_opt['scalar_coefficients']
+        intersectMesh = modeling_opt['intersection_mesh']
+
         
         nlines = mooring_opt['nlines']
         nline_types = mooring_opt['nline_types']
@@ -361,7 +363,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
 
         # save inputs for RAFT testing/debugging
         if DEBUG_OMDAO:
-            from weis.aeroelasticse.FileTools import save_yaml
+            from openfast_io.FileTools import save_yaml
             # Options
             all_options = {}
             all_options['modeling_options']     = copy.deepcopy(self.options['modeling_options'])
@@ -501,6 +503,13 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['platform'] = {}
         design['platform']['potModMaster'] = int(modeling_opt['potential_model_override'])
         design['platform']['dlsMax'] = float(modeling_opt['dls_max'])
+        design['platform']["intersectMesh"] = intersectMesh
+        if intersectMesh==1:
+            design['platform']['characteristic_length_min'] = float(modeling_opt['characteristic_length_min'])
+            design['platform']['characteristic_length_max'] = float(modeling_opt['characteristic_length_max'])
+        else:
+            design['platform']['characteristic_length_min'] = 1.0
+            design['platform']['characteristic_length_max'] = 3.0
         # lowest BEM freq needs to be just below RAFT min_freq because of interpolation in RAFT
         if float(modeling_opt['min_freq_BEM']) >= modeling_opt['min_freq']:
             modeling_opt['min_freq_BEM'] = modeling_opt['min_freq'] - 1e-7
@@ -525,21 +534,29 @@ class RAFT_OMDAO(om.ExplicitComponent):
             mnpts = len(idx)
             rA = rA_0 + s_ghostA*(rB_0-rA_0)
             rB = rA_0 + s_ghostB*(rB_0-rA_0)
+            extensionA = np.linalg.norm(rA_0-rA)
+            extensionB = np.linalg.norm(rB_0-rB)
             design['platform']['members'][i]['name'] = m_name
             design['platform']['members'][i]['type'] = i + 2
             design['platform']['members'][i]['rA'] = rA
             design['platform']['members'][i]['rB'] = rB
+            design['platform']['members'][i]['extensionA'] = extensionA
+            design['platform']['members'][i]['extensionB'] = extensionB
             design['platform']['members'][i]['shape'] = m_shape
             design['platform']['members'][i]['gamma'] = float(inputs[m_name+'gamma'][0])
             design['platform']['members'][i]['potMod'] = members_opt[m_name+'potMod']
             design['platform']['members'][i]['stations'] = s_grid
             
+            mesh_size_ok = True
             # updated version to better handle 'diameters' between circular and rectangular members
             if m_shape == 'circ' or m_shape == 'square':
                 if member_scalar_d[i]:
                     design['platform']['members'][i]['d'] = [float(inputs[m_name+'d'])]*mnpts
                 else:
                     design['platform']['members'][i]['d'] = np.interp(s_grid, s_0, inputs[m_name+'d'])
+                if design['platform']['members'][i]['potMod']:
+                    if design['platform']['characteristic_length_max'] > np.min(design['platform']['members'][i]['d']):
+                        mesh_size_ok = False
             elif m_shape == 'rect':
                 if member_scalar_d[i]:
                     design['platform']['members'][i]['d'] = np.zeros([mnpts,2])
@@ -549,6 +566,12 @@ class RAFT_OMDAO(om.ExplicitComponent):
                     design['platform']['members'][i]['d'] = np.zeros([len(s_grid),2])
                     design['platform']['members'][i]['d'][:,0] = np.interp(s_grid, s_0, inputs[m_name+'d'][:,0])
                     design['platform']['members'][i]['d'][:,1] = np.interp(s_grid, s_0, inputs[m_name+'d'][:,1])
+                if design['platform']['members'][i]['potMod']:
+                    if design['platform']['characteristic_length_max'] > np.min(design['platform']['members'][i]['d']):
+                        mesh_size_ok = False
+            if not mesh_size_ok:
+                print(f"Mesh warning: charateristic length max might be too large for member {i+1} with scales {design['platform']['members'][i]['d']}. Check the output mesh to see if it is valid.")
+
             ''' original version of handling diameters
             if member_scalar_d[i]:
                 design['platform']['members'][i]['d'] = float(inputs[m_name+'d'])
@@ -743,7 +766,33 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # option to run level 1 load cases
         if True: #processCases:
             model.analyzeCases(meshDir=modeling_opt['BEM_dir'])
+
+        # Plot mesh
+        if modeling_opt['plot_designs'] and intersectMesh:
+            try:
+                import trimesh
+                import matplotlib.pyplot as plt
+            except:
+                raise ImportError('trimesh not installed, please install trimesh to plot mesh')
             
+            mesh = trimesh.load(os.path.join(modeling_opt['BEM_dir'],"Input", "Platform.stl"))
+            # Create a figure and axes
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+
+            # Get mesh vertices and faces
+            verts = mesh.vertices
+            faces = mesh.faces
+
+            # Plot the mesh
+            ax.plot_trisurf(
+                verts[:, 0], verts[:, 1], faces, verts[:, 2],
+                color='lightblue', edgecolor='black', linewidth=0.2, alpha=0.8
+            )
+            ax.set_box_aspect([ub - lb for lb, ub in (getattr(ax, f'get_{a}lim')() for a in 'xyz')])
+            plt.savefig(os.path.join(modeling_opt['BEM_dir'],"mesh_plot.png"), pad_inches=0, dpi=300)
+            
+
         # get and process results
         results = model.calcOutputs()
         # Pattern matching for "responses" annd "properties"

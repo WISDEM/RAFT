@@ -52,13 +52,7 @@ class Rotor:
                 raise Exception("For designs with more than one rotor, the RNA reference point must be specified for each of them.")
             self.r_rel = [0, 0, 100.]
 
-        self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]  # rotor offset in +x before yaw [m]
-        if self.overhang > 0:
-            print("WARNING: The turbine overhang input was positive for upwind turbines.")
-            print("The sign convention is now along +x (opposite of before)")
-            print("so that the specified overhang is a downwind rotor. Please flip the")
-            print("sign (negative overhang) if you wanted an upwind rotor.")
-            
+        self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]  # rotor offset in +x before yaw [m]        
         self.xCG_RNA = getFromDict(turbine, 'xCG_RNA', shape=turbine['nrotors'])[ir]  # RNA CG offset in +x before yaw [m]
         
         # mass/inertia
@@ -85,8 +79,8 @@ class Rotor:
         default_azimuths    = list(np.arange(self.nBlades) * 360. / self.nBlades) # equally distribute blades
         self.azimuths       = getFromDict(turbine, 'headings', shape=-1, default=default_azimuths)  # [deg]
         
-        self.Rhub       = getFromDict(turbine, 'Rhub', shape=turbine['nrotors'])[ir]            # [m]
-        self.precone    = getFromDict(turbine, 'precone', shape=turbine['nrotors'])[ir]         # [m]
+        self.Rhub       = getFromDict(turbine, 'Rhub', shape=turbine['nrotors'])[ir]              # [m]
+        self.precone    = getFromDict(turbine, 'precone', shape=turbine['nrotors'])[ir]*np.pi/180 # [rad]
         
         # Rotor shaft tilt and toe angles in directions of pitch and yaw, respectively [rad]
         self.shaft_tilt = getFromDict(turbine, 'shaft_tilt', shape=turbine['nrotors'])[ir]*np.pi/180
@@ -95,8 +89,22 @@ class Rotor:
         
         self.aeroServoMod = getFromDict(turbine, 'aeroServoMod', shape=turbine['nrotors'], default=1)[ir]  # flag for aeroservodynamics (0=none, 1=aero only, 2=aero and control)
 
+        if self.overhang > 0:
+            print("\n\n IMPORTANT WARNING: Now, positive overhang corresponds to DOWNWIND turbines.")
+            print("This is the opposite of some previous RAFT versions.")
+            print("Please specify a negative overhang if you wanted an upwind rotor.\n\n")
+        if self.precone > 0:
+            print("\n\n IMPORTANT WARNING: Now, positive precone is away from the rotor plane for DOWNWIND turbines.")
+            print("This is the opposite of some previous RAFT versions.")
+            print("Please specify a negative precone if you wanted a conventional upwind rotor.\n\n")
+        if self.shaft_tilt > 0:
+            print("\n\n IMPORTANT WARNING: Now, positive shaft_tilt is upwards for DOWNWIND turbines.")
+            print("This is the opposite of some previous RAFT versions.")
+            print("Please specify a negative shaft_tilt if you wanted a conventional upwind rotor.\n\n")
+
+
         # Unit vector of rotor axis, facing downflow [-]. Relative to the FOWT. Includes shaft tilt and initial yaw
-        self.q_rel = np.matmul(rotationMatrix(0, self.shaft_tilt, self.shaft_toe), np.array([1.,0.,0.]) )        
+        self.q_rel = np.matmul(rotationMatrix(0, -self.shaft_tilt, self.shaft_toe), np.array([1.,0.,0.]) )        
         
         # initialize absolute position/orientation variables
         self.r3 = np.zeros(3)  # instantaneous global position of rotor hub location       
@@ -345,11 +353,11 @@ class Rotor:
             self.nBlades,                   # number of blades
             self.rho,                       # (kg/m^3) freestream fluid density
             self.mu,                        # (kg/m/s) dynamic viscosity of fluid
-            self.precone,                   # (deg) hub precone angle
-            np.degrees(self.shaft_tilt),    # (deg) hub tilt angle  
+            np.degrees(-self.precone),                  # (deg) hub precone angle
+            np.degrees(-self.shaft_tilt),   # (deg) hub tilt angle - CCBlade uses a different convention. Positive tilt is a positive rotation about the y-axis (positive for upwind turbines, negative for downwind turbines)
             0.0,                            # (deg) nacelle yaw angle
             self.shearExp,                  # shear exponent for a power-law wind profile across hub
-            self.r3[2],                      # (m) hub height used for power-law wind profile.  U = Uref*(z/hubHt)**shearExp
+            self.r3[2],                     # (m) hub height used for power-law wind profile.  U = Uref*(z/hubHt)**shearExp
             nSector,                        # number of azimuthal sectors to descretize aerodynamic calculation.  automatically set to 1 if tilt, yaw, and shearExp are all 0.0.  Otherwise set to a minimum of 4.
             blade_precurve,                 # (m) location of blade pitch axis in x-direction of :ref:`blade coordinate system <azimuth_blade_coord>`
             turbine['blade'][ir]['precurveTip'],# (m) location of blade pitch axis in x-direction at the tip (analogous to Rtip)
@@ -448,7 +456,7 @@ class Rotor:
         self.turbine_heading = self.platform_heading + self.yaw
 
         # Rotation matrix from platform local x to rotor axis
-        R_q_rel = rotationMatrix(0, self.shaft_tilt, self.shaft_toe + self.yaw) 
+        R_q_rel = rotationMatrix(0, -self.shaft_tilt, self.shaft_toe + self.yaw) 
         self.R_q = np.matmul(R_q_rel, self.R_ptfm)  # this one's from global x
         
         # Compute shaft axis unit vector in FOWT and global frames 
@@ -858,8 +866,8 @@ class Rotor:
         # inflow direction?  *np.cos(turbine_tilt)*np.cos(yaw_misalign) <<<
 
         # Rotate rotor hydro inertial excitation matrix into global frame
-        if current:
-            I_hydro = rotateMatrix6(self.I_hydro, self.R_q)
+        #if current:
+            #I_hydro = rotateMatrix6(self.I_hydro, self.R_q)
 
         # no-control option
         if self.aeroServoMod == 1:  
@@ -909,19 +917,19 @@ class Rotor:
             for iw, omega in enumerate(self.w):
                 
                 # Denominator of control transfer function
-                D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm + self.kp_beta * dQ_dPi - self.Ng * kp_tau) * 1j * omega + self.ki_beta* dQ_dPi - self.Ng * ki_tau
+                D[iw] = self.I_drivetrain * omega**2 + (dQ_dOm[0] + self.kp_beta * dQ_dPi[0] - self.Ng * kp_tau) * 1j * omega + self.ki_beta* dQ_dPi[0] - self.Ng * ki_tau
 
                 # control transfer function
-                C[iw] = 1j * omega * (dQ_dU - self.k_float * dQ_dPi / self.r3[2]) / D[iw]
+                C[iw] = 1j * omega * (dQ_dU[0] - self.k_float * dQ_dPi[0] / self.r3[2]) / D[iw]
 
                 # Thrust transfer function
-                E[iw] = ((dT_dOm + self.kp_beta * dT_dPi) * 1j * omega + self.ki_beta * dT_dPi )
+                E[iw] = ((dT_dOm[0] + self.kp_beta * dT_dPi[0]) * 1j * omega + self.ki_beta * dT_dPi[0] )
 
                 # alternative for debugging
                 C2[iw] = C[iw] / (1j * omega)
 
                 # Complex aero damping
-                T = 1j * omega * (dT_dU - self.k_float * dT_dPi / self.r3[2]) - ( E[iw] * C[iw])
+                T = 1j * omega * (dT_dU[0] - self.k_float * dT_dPi[0] / self.r3[2]) - ( E[iw] * C[iw])
                 
                 # Aerodynamic coefficients
                 a_aer[iw] = -(1/omega**2) * np.real(T)
@@ -1055,9 +1063,9 @@ class Rotor:
         
         # ----- rotation matrices ----- 
         # (blade pitch would be a -rotation about local z)
-        R_precone = rotationMatrix(0, -self.ccblade.precone, 0)  
+        R_precone = rotationMatrix(0, self.precone, 0)  
         R_azimuth = [rotationMatrix(azimuth + azi, 0, 0) for azi in (2*np.pi/self.nBlades)*np.arange(self.nBlades)]
-        R_tilt    = rotationMatrix(0, self.shaft_tilt, 0)   # # define x as along shaft downwind, y is same as ptfm y
+        R_tilt    = rotationMatrix(0, -self.shaft_tilt, 0)   # # define x as along shaft downwind, y is same as ptfm y
         
         # ----- transform coordinates -----
         for ib in range(self.nBlades):

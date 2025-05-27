@@ -56,11 +56,8 @@ class Member:
     
         # heading feature for rotation members about the z axis (used for rotated patterns)
         if heading != 0.0:
-            c = np.cos(np.deg2rad(heading))
-            s = np.sin(np.deg2rad(heading))
-            rotMat = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
-            self.rA0 = np.matmul(rotMat, self.rA0)
-            self.rB0 = np.matmul(rotMat, self.rB0)
+            self.rA0 = applyHeadingToPoint(self.rA0, heading)
+            self.rB0 = applyHeadingToPoint(self.rB0, heading)
             
             if rAB[0] == 0.0 and rAB[1] == 0:  # special case of vertical member
                 self.gamma += heading  # heading must be applied as twist about z

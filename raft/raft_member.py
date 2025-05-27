@@ -13,7 +13,7 @@ from scipy.special import jn, yn, jv, kn, hankel1
 #  used during the model's operation.
 class Member:
 
-    def __init__(self, mi, nw, BEM=[], heading=0):
+    def __init__(self, mi, nw, BEM=[], heading=0, part_of='platform'):
         '''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
 
         PARAMETERS
@@ -26,13 +26,15 @@ class Member:
         heading : float, optional
             Heading rotation to apply to the coordinates when setting up the 
             member. Used for member arrangements or FOWT heading offsets [deg].
-
+        part_of : str, optional
+            String identifying the subcomponent of the FOWT that this member is part of (platform, tower, nacelle, ...)
         '''
 
         # overall member parameters
-        self.id    = int(1)                                          # set the ID value of the member
-        self.name  = str(mi['name'])
-        self.type  = int(mi['type'])                                 # set the type of the member (for now, just arbitrary numbers: 0,1,2, etc.)
+        self.id       = int(1)                                       # set the ID value of the member
+        self.name     = str(mi['name'])
+        self.type     = str(mi['type'])                              # set the type of the member (will be used to identify rigid and flexible members)
+        self.part_of  = part_of.lower()                              # String identifying the subcomponent of the FOWT that this member is part of
 
         self.rA0 = np.array(mi['rA'], dtype=np.double)               # [x,y,z] coordinates of lower node relative to PRP [m]
         self.rB0 = np.array(mi['rB'], dtype=np.double)               # [x,y,z] coordinates of upper node relative to PRP [m]

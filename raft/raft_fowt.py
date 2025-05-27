@@ -182,20 +182,20 @@ class FOWT():
             
             # create member object
             if np.isscalar(headings):
-                self.memberList.append(Member(mi, self.nw, heading=headings+heading_adjust))
+                self.memberList.append(Member(mi, self.nw, heading=headings+heading_adjust, part_of='platform'))  # if only one heading is specified, then just create one member
             else:
                 for heading in headings:
-                    self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust))
+                    self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust, part_of='platform'))
         
         
         # add tower(s) and nacelle(s) to member list if applicable
         if 'turbine' in design:
             if 'tower' in design['turbine']:
                 for mem in design['turbine']['tower']:
-                    self.memberList.append(Member(mem, self.nw))
+                    self.memberList.append(Member(mem, self.nw, part_of='tower'))
             if 'nacelle' in design['turbine']:
                 for mem in design['turbine']['nacelle']:
-                    self.memberList.append(Member(mem, self.nw))
+                    self.memberList.append(Member(mem, self.nw, part_of='nacelle'))
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
         
         # array-level mooring system connection
@@ -392,11 +392,11 @@ class FOWT():
             m_center_sum += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
 
             # Tower calculations
-            if mem.type <= 1:   # <<<<<<<<<<<< maybe find a better way to do the if condition
+            if mem.part_of == 'tower':   # <<<<<<<<<<<< maybe find a better way to do the if condition
                 self.mtower[i-self.nplatmems] = mass                  # mass of the tower [kg]
                 self.rCG_tow.append(center)               # center of mass of the tower from the PRP [m]
             # Substructure calculations
-            if mem.type > 1:
+            else:
                 self.m_sub += mass              # mass of the substructure
                 self.M_struc_sub += mem.M_struc     # mass matrix of the substructure about the PRP
                 m_sub_sum += center*mass        # product sum of the substructure members and their centers of mass [kg-m]

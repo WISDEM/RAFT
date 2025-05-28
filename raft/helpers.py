@@ -678,8 +678,11 @@ def JONSWAP(ws, Hs, Tp, Gamma=None):
 
 def getRAO(Xi, zeta):
     '''Calculates the response amplitude operator (RAO).
-    It is simply the reponse (motion, load, anything) for unitary wave amplitude.
-    Xi can have any number of dimensions, but the last dimension must be the same length as zeta.
+    It is simply the reponse (motion, load, anything) for unitary wave amplitude.    
+    
+    Inputs:
+    Xi: Motions amplitudes with any number of dimensions, but the last dimension must be the same length as zeta.
+    zeta: Wave amplitudes. Must be a 1D array. 
     '''
     # Check if zeta is a 1D array
     if len(zeta.shape) != 1:
@@ -697,6 +700,37 @@ def getRAO(Xi, zeta):
     RAO[..., idx] = Xi[..., idx] / zeta[idx]
     return RAO
 
+def getLineEndsRAO(line, ms, w, Xi, S, rBody):
+    '''Compute the RAOs of the ends of a MoorPy line object
+    Inputs
+    line: MoorPy line object
+    ms: MoorPy system object
+    w:  Frequency vector of length nw [rad/s]
+    Xi: List with nFOWTs arrays, each with size 6 x nFreq arrays, corresponding to the motion amplitudes of the fowts in the array [m] and [rad]
+    S: Wave spectrum vector with length nw [m]
+    rBody: List of arrays with the x,y,z position of the bodies in the array [m] - len(rBody) = nFOWTs
+    '''
+    zeta = np.sqrt(2*S*(w[1]-w[0])) # Wave amplitude
+
+    # End A of the line
+    RAO_A = np.zeros([3, len(w)])
+    endA = [point for point in ms.pointList if all(point.r==line.rA)][0] # find the point that correspond to the line's end A
+    for ibody, body in enumerate(ms.bodyList):
+        if endA.number in body.attachedP:
+            fowtRAO = getRAO(Xi[ibody], zeta)
+            RAO_A, _, _ = getKinematics(endA.r - rBody[ibody], fowtRAO, w)
+            break
+                
+    # End B of the line
+    RAO_B = np.zeros([3, len(w)])
+    endB = [point for point in ms.pointList if all(point.r==line.rB)][0] # find the point that correspond to the line's end A
+    for ibody, body in enumerate(ms.bodyList):
+        if endB.number in body.attachedP:
+            fowtRAO = getRAO(Xi[ibody], zeta)
+            RAO_B, _, _ = getKinematics(endB.r - rBody[ibody], fowtRAO, w)
+            break
+
+    return RAO_A, RAO_B
 
 def printMat(mat):
     '''Print a matrix'''

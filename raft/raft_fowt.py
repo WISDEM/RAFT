@@ -10,6 +10,7 @@ from raft.helpers import *
 from raft.raft_member import Member
 from raft.raft_rotor import Rotor
 import moorpy as mp
+from moorpy.helpers import lines2ss
 
 # Attempt to import pygmsh and meshmagick with warnings if not installed
 try:
@@ -206,6 +207,7 @@ class FOWT():
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
+            self.moorMod = getFromDict(design['mooring'], 'moorMod', default=0, dtype=int)
             
             # ensure proper setup with one coupled Body tied to this FOWT
             if len(self.ms.bodyList) == 0:
@@ -226,6 +228,7 @@ class FOWT():
 
         else:
             self.ms = None
+            self.moorMod = 0
         
         self.F_moor0 = np.zeros(6)     # mean mooring forces in a given scenario
         self.C_moor = np.zeros([6,6])  # mooring stiffness matrix in a given scenario
@@ -323,7 +326,13 @@ class FOWT():
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
             self.ms.solveEquilibrium(tol=0.05)
-            self.C_moor = self.ms.getCoupledStiffnessA()
+            if self.moorMod == 0 or self.moorMod == 2:
+                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
+            elif self.moorMod == 1:
+                self.ms.updateSystemDynamicMatrices()
+                _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
+
+            self.C_moor = C_moor
             self.F_moor0 = self.ms.bodyList[0].getForces(lines_only=True)
         
 
@@ -1060,7 +1069,7 @@ class FOWT():
         
         
         self.beta = deg2rad(case['wave_heading'])   # array of wave headings. Input in [deg], but the code uses [rad]
-        self.zeta = np.zeros([self.nWaves,self.nw], dtype=complex)
+        self.zeta = np.zeros([self.nWaves,self.nw])
 
         # make wave spectrum for each heading
         self.S = np.zeros([self.nWaves,self.nw])
@@ -1529,6 +1538,131 @@ class FOWT():
 
         return f_mean, f
 
+    def moorDynamicTension(self, inMDFl):
+        '''Compute dynamic tension in mooring lines.
+        We use the algebraic approximation given by
+        Aranha and Pinto, "Dynamic tension in risers and mooring lines:an algebraic approximation for harmonic excitation", 2001
+        '''
+
+        # Read data in MoorDyn output file to a dictionary
+        from pyFAST.input_output import FASTOutputFile
+        mdData = FASTOutputFile(inMDFl).toDataFrame()
+
+        # Dont like the units together with the variable names. I also prefer to have all keys in lower case.
+        mdData.columns = mdData.columns.str.split('_').str[0]
+        mdData.columns = mdData.columns.str.lower()
+
+        # Extract relevant data from MoorPy and use the same notation as in the paper
+        # Make this a loop later
+        line = self.ms.lineList[0]
+        rho = self.rho_water
+
+        EA = line.type['EA']                        # Elastic stiffness
+        W  = line.type['w']                         # Weight in air
+        D  = line.type['d_vol']                     # Equivalent diameter for volume
+        q  = W - rho*np.pi/4*D**2*self.g            # Linear submerged weight, i.e. weight minus buoyancy
+        l  = line.L                                # SUspended line length
+
+        # For now, we use the curvature of a catenary line touching the seabed at line.rA
+        # T0   = line.TA                             # Tension at TDP
+        # TS   = line.TB                             # Tension at top of the line 
+        # chi0 = q/T0                                # Curvature at TDP
+        # s    = np.linspace(0, line.L, line.nNodes) # Curvilinear coordinate along the line
+        # ds   = s[1] - s[0]                         # Increment in curvilinear coordinate
+        # chi  = chi0 * 1/(1+(chi0*s)**2) * TS/q     # Nondimensional curvature along the line
+        # l    = line.L                              # SUspended line length
+        # fig, ax = plt.subplots()
+        # ax.plot(s, chi, '-k')
+
+        # Line properties
+        s = np.linspace(0, line.L, line.nNodes)
+        ds   = s[1] - s[0]
+        Xs, Ys, Zs, Ts = line.getLineCoords(0)
+
+        T0 = line.TA # Tension at TDP. For now, it is the same as the anchor because friction is not taken into account        
+        TS = line.TB # Tension at top of the line 
+        # T0 = mdData['anchten1'][0]
+        # TS = mdData['fairten1'][0]
+        
+        # Compute curvature
+        n = len(Xs)
+        theta = np.zeros(n-1) # Angle of each segment with respect to the horizontal
+        for i in range(1, n - 1):
+            # Segment
+            dx1 = Xs[i] - Xs[i - 1]
+            dy1 = Ys[i] - Ys[i - 1]
+            dz1 = Zs[i] - Zs[i - 1]
+
+            # Angle with horizontal plane
+            theta[i] = np.arctan2(dz1, np.sqrt(dx1**2 + dy1**2))
+        chi = np.zeros(n)
+        chi[1:-1] = np.diff(theta)/ds * TS/q
+        # ax.plot(s, curvature, '--r')       
+
+
+        # Motion of the extremity of the line
+        # Part of the excitation parameters - Defined in section 2.3
+        tanVec = line.fB/np.linalg.norm(line.fB) # Tangent vector at the top of the line. In line with the force.
+        U      = np.array([mdData['body1px'], mdData['body1py'], mdData['body1pz']]) # Motion of the top of the line        
+        U      = U[0,:]*tanVec[0] + U[1,:]*tanVec[1] + U[2,:]*tanVec[2] # Project U along tanVec
+        sigmaU = np.std(U)
+        ampU   = 2**0.5 * sigmaU
+        a      = ampU/sigmaU     # normalized wave envelope
+
+        # Get period from inMDFl. File name follows a format such that md-T10p0-A2p0.MD.out
+        # corresponds to a period of 10.0s and amplitude of 2.0m
+        T = float(inMDFl.split('-')[-2].replace('p','.').replace('T',''))
+        w = 2*np.pi/T # Excitation frequency - rad/s
+
+        # Effective length. Defined in Eq 2.1b
+        if line.cb == 0:
+            lp = line.LBot
+        else:
+            lp  = min(line.LBot, T0/(q*line.cb))
+
+        # Static parameters - Defined in section 2.1
+        I2     = 1/l * np.trapz(chi**2, s)               # Integral parameter related to cable's lateral kinetic energy
+        I3     = 1/l * np.trapz(chi**3, s)               # Integral parameter related to dissipated power in the lateral motion
+        Ic     = 0                                       # This one is for the current. Implement that later
+        Lambda = q*l/TS * np.sqrt(I2 * EA/TS * l/(l+lp)) # Ratio between elastic and geometric restoring forces
+
+        # Dynamic parameters - Defined in section 2.2
+        # ca = self.ms.lineTypes[line.type['name']]
+        ca    = 1.00
+        cd    = 1.20
+        m     = 1/(I2*l) * np.trapz(W/self.g * chi**2, s)
+        ma    = 1/(I2*l) * np.trapz(rho*np.pi*D**2/4 * chi**2 * ca, s)
+        CD0   = 1/(I3*l) * np.trapz(cd * np.abs(chi)**3, s) # We are assuming uniform diameter
+        CDc   = 0 # Used when current is2 involved. Do it later
+        Zeta0 = 8/3/np.pi * 2*CD0/np.pi * rho*np.pi*D**2/4/(m+ma) * TS/(q*l) * I3/I2**2 * sigmaU/D
+        ZetaC = 0 # Used when current is involved. Do it later
+        wc    = np.pi/l * np.sqrt(TS/(m+ma)) # Characteristic frequency associeted with the geometric restoring force
+        we    = np.pi/(l+lp) * np.sqrt(EA/m) # Characteristic frequency associated with the elastic restoring force
+
+        # Remaining excitation parameters - Defined in section 2.3
+        Te    = EA * sigmaU / (l+lp)
+        Omega = np.pi/Lambda * (w/wc)
+
+
+        # Finally, the algebraic expression for the dynamic tension - Defined in section 2.4
+        b = ((1-Omega**2)/Omega**2)**2 + ZetaC
+        c1 = (1 - l/(l+lp) * np.pi**2 * (w/we)**2 * s/l)**2
+        c2 = (1 + (1-Omega**2)/Omega**2 * l/(l+lp) * np.pi**2 * (w/we)**2 * s/l)**2 + ZetaC**2*c1
+
+        aux = np.sqrt(b**2+(4*Zeta0**2/Omega**4)*a**2) - b
+        Tau = np.sqrt( (c1*aux**2 + 2*c2*aux)/(4*Zeta0**2/Omega**4) )
+
+        return Tau, Te, T0, TS
+
+    def updateMooringDynamicMatrices(self, Xi, S):
+        '''Update matrices from mooring dynamics
+        Inputs
+        Xi: 6 x Nfreq array with the motion amplitudes of the fowt
+        S:  1 x Nfreq array with the wave spectrum
+        '''
+        for line in self.ms.lineList:
+            RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, [Xi], S, [self.r6[:3]]) # Need Xi and r6 within a list
+            line.updateLumpedMass(self.w, S, self.depth, kbot=0, cbot=0, RAO_A=RAO_A.T, RAO_B=RAO_B.T) # Need to transpose RAO_fl so that it is in the right shape (nFreq x 3)
 
     def saveTurbineOutputs(self, results, case):
         '''Calculate and store output metrics of the FOWT response at the current load case.
@@ -1587,23 +1721,46 @@ class FOWT():
         results['yaw_RA' ] = rad2deg(self.Xi[:,5,:])
         
         # ----- turbine-level mooring outputs (similar code as array-level) -----
-        if self.ms:
+        if self.ms:            
+            self.ms = lines2ss(self.ms) # convert composite lines to subsystem
             nLines = len(self.ms.lineList)
-            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
+            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each wave component and each line end
+            T_moor_psd  = np.zeros([2*nLines, self.nw], dtype=float)
+            T_moor_std  = np.zeros([2*nLines], dtype=float)
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
-            T_moor = self.ms.getTensions()  # get line end mean tensions
+            T_moor = self.ms.getTensions()  # get line end mean tensions                        
+            if self.moorMod == 0:
+                for ih in range(self.nWaves+1):
+                    for iw in range(self.nw):
+                        T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
+
+                for iT in range(2*nLines):
+                    T_moor_psd[iT,:]  = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
+                    T_moor_std[iT] = getRMS(T_moor_amps[:,iT,:])
             
-            for ih in range(self.nWaves+1):
-                for iw in range(self.nw):
-                    T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
-        
+            else:
+                for il, line in enumerate(self.ms.lineList):                    
+                    for ih in range(self.nWaves):
+                        RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, [self.Xi[ih,:,:]], self.S[ih,:], [self.r6[:3]]) # Need Xi and r6 within a list
+                        T_nodes_amp, _, _, _, _, _, _, _ = line.dynamicSolve(self.w, self.S[ih,:], RAO_A=RAO_A.T, RAO_B=RAO_B.T, depth=self.depth, kbot=0,cbot=0, tol = 0.01, conv_time=False)
+
+                        # Tension at the end nodes of the line
+                        T_moor_amps[ih, il, :] += T_nodes_amp[:,0]
+                        T_moor_amps[ih, il+nLines,:] += T_nodes_amp[:,-1]
+
+                # Compute PSD and std from the different wave component
+                for iT in range(2*nLines):
+                    T_moor_psd[iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[1]-self.w[0])       
+                    T_moor_std[iT] = getRMS(T_moor_amps[:,iT,:])
+
+                
             results['Tmoor_avg'] = T_moor
             results['Tmoor_std'] = np.zeros(2*nLines)
             results['Tmoor_max'] = np.zeros(2*nLines)
             results['Tmoor_min'] = np.zeros(2*nLines)
             results['Tmoor_PSD'] = np.zeros([ 2*nLines, self.nw])
             for iT in range(2*nLines):
-                TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
+                TRMS = T_moor_std[iT]
                 results['Tmoor_std'][iT] = TRMS
                 results['Tmoor_max'][iT] =  T_moor[iT] + 3*TRMS
                 results['Tmoor_min'][iT] =  T_moor[iT] - 3*TRMS

@@ -40,7 +40,7 @@ class Node:
         self.nodeList = None # Reference to the list of nodes in the structure. Assigned when initializing the Structure object.
         self.T        = None # Transformation matrix that relates the 6 dofs of this node to the reduced dofs of the STRUCTURE (rows of structure.T that correspond to this node)
         self.parentNode_id = None # ID of the parent node. Assigned when attaching this node to another node.
-        self.reducedDOFs   = None # Reduced DoFs that are needed to describe this node. This is a subset of the reduced dofs of the whole structure. List of lists with two elements: [node_id, dof_id]. E.g., [[3, 5]] is the rotation around z of node with id equal to 3.
+        self.reducedDOF   = None # Reduced DoFs that are needed to describe this node. This is a subset of the reduced dofs of the whole structure. List of lists with two elements: [node_id, dof_id]. E.g., [[3, 5]] is the rotation around z of node with id equal to 3.
         self.T_aux         = None # Subset of the transformation matrix T. T_aux relates the 6 dofs of this node to a subset of the reduced dofs required to describe this node only.          
 
         self.joint_id      = None
@@ -83,7 +83,7 @@ class Node:
     def attachToNode(self, node, rigid_link=False):
         '''
         Attach this node to another node. This is done by assigning
-        > `self.reducedDOFs`: the set of reduced dofs needed to describe the motions of this node. A subset of the reduced dofs of the whole structure
+        > `self.reducedDOF`: the set of reduced dofs needed to describe the motions of this node. A subset of the reduced dofs of the whole structure
         > `self.T_aux`: transformation matrix, with nDOF rows and len(self.reducedDOF) columns, that relates the reduced dofs of this node to the full dofs. A subset of the transformation matrix T of the whole structure
         > `self.parentNode_id`: ID of the node to which this node is attached
         based on the reduced dofs of the other node and the joint type.
@@ -104,7 +104,7 @@ class Node:
         if node.parentNode_id == self.id:
             return
         
-        dofs2assign = node.reducedDOFs.copy() # `node.reducedDOFs` is a subset of the reducedDOFs of the structure (just the dofs that describe the motions of `node`)
+        dofs2assign = node.reducedDOF.copy() # `node.reducedDOF` is a subset of the reducedDOF of the structure (just the dofs that describe the motions of `node`)
         T2assign = node.T_aux.copy() # `T_aux` is a subset of `self.T`, corresponding to the reducedDoFs needed to describe this node only        
 
         if rigid_link:
@@ -138,7 +138,7 @@ class Node:
                     dofs2assign.pop(i)
         
         # If cantilever, self has the same dofs as the input node and the same transformation matrix,
-        # so we were done already when we did `dofs2assign = node.reducedDOFs.copy()` and `T2assign = node.T_aux.copy()`
+        # so we were done already when we did `dofs2assign = node.reducedDOF.copy()` and `T2assign = node.T_aux.copy()`
         # Leaving this `pass` here to make it clear that we are not doing anything else.
         elif joint_type == 'cantilever':
             pass
@@ -156,8 +156,8 @@ class Node:
                 dofs2assign[idof] = eqDof
 
         # If `self` did not have reduced dofs assigned yet, we can simply assign the dofs determined above  
-        if self.reducedDOFs is None:
-            self.reducedDOFs = dofs2assign.copy()
+        if self.reducedDOF is None:
+            self.reducedDOF = dofs2assign.copy()
             self.T_aux = T2assign.copy()
             self.parentNode_id = node.id
             return
@@ -167,20 +167,20 @@ class Node:
         # For now, it's best to avoid closed kinematic loops, for example using flexible elements.            
         #
         # If the node already had reduced dofs assigned (when we have a closed kinematic loop), we need to ensure compatibility with the dofs that we are trying to assign.
-        if dofs2assign != self.reducedDOFs:
+        if dofs2assign != self.reducedDOF:
             # The incompatibility is between two sets of reduced dofs. We need to know which set has more dofs than the other.
             # It doesn't matter which set is longer (if the one already assined or the one that we're trying to assing), 
             # we just need to distinguish between the long list and the short list of dofs
-            if len(dofs2assign) >= len(self.reducedDOFs):
-                longListDofs, shortListDofs = dofs2assign.copy(), self.reducedDOFs.copy()
+            if len(dofs2assign) >= len(self.reducedDOF):
+                longListDofs, shortListDofs = dofs2assign.copy(), self.reducedDOF.copy()
                 T_long, T_short = T2assign.copy(), self.T_aux.copy()
             else:
-                longListDofs, shortListDofs = self.reducedDOFs.copy(), dofs2assign.copy()
+                longListDofs, shortListDofs = self.reducedDOF.copy(), dofs2assign.copy()
                 T_long, T_short = self.T_aux.copy(), T2assign.copy()
 
             # In the end, we want to keep the short list of dofs. 
             # The other dofs are redundant and will be removed below.
-            self.reducedDOFs = shortListDofs.copy()
+            self.reducedDOF = shortListDofs.copy()
             self.T_aux = T_short.copy()
 
             # The long list of dofs (or redundant list) can be written as a linear combination of the short list of dofs,
@@ -227,19 +227,19 @@ class Node:
             # Basically, we loop the dofs of longListDofs and replace them in the reduced list of dofs
             # by the linear combination of the dofs of shortListDofs
             for n in self.nodeList:
-                if n.reducedDOFs is not None: # Only if reduced dofs were already assigned
+                if n.reducedDOF is not None: # Only if reduced dofs were already assigned
                     for irowIn, dofLong in enumerate(longListDofs): # Loop through the dofs of the long list
-                        if dofLong in n.reducedDOFs: # Only need to do something if this dof is part of the reduced dofs of the node                            
-                            icolOut = n.reducedDOFs.index(dofLong) # Index of the dof in the reduced dofs of the node n
+                        if dofLong in n.reducedDOF: # Only need to do something if this dof is part of the reduced dofs of the node                            
+                            icolOut = n.reducedDOF.index(dofLong) # Index of the dof in the reduced dofs of the node n
                             col2multiply = n.T_aux[:, icolOut].copy() # Column of the transformation matrix that corresponds to this dof
                             n.T_aux[:, icolOut] = 0 # Clear the column to fill it with the linear combination of the dofs of the short list                            
 
                             # Loop through the dofs of the short list
                             for icolIn, dofShort in enumerate(shortListDofs):
-                                if dofShort not in n.reducedDOFs:
-                                    n.reducedDOFs.append(dofShort)
+                                if dofShort not in n.reducedDOF:
+                                    n.reducedDOF.append(dofShort)
                                     n.T_aux = np.hstack((n.T_aux, np.zeros((n.T_aux.shape[0], 1))))
-                                iColOut = n.reducedDOFs.index(dofShort) # Index of the dof in the reduced dofs of the node n
+                                iColOut = n.reducedDOF.index(dofShort) # Index of the dof in the reduced dofs of the node n
                                 for irowOut in range(n.T_aux.shape[0]):
                                     # n.T_aux[:, iColOut] = T_short[:, icolIn] + compatMatrix[irowIn, icolIn] * T_long[:, icolOut]
                                     n.T_aux[irowOut, iColOut] += compatMatrix[irowIn, icolIn] * col2multiply[irowOut]
@@ -248,7 +248,7 @@ class Node:
                     for i in range(n.T_aux.shape[1]-1, -1, -1): # Iterate starting from the last column and going to the first column index (inclusive)
                         if np.all(n.T_aux[:, i] == 0):
                             n.T_aux = np.delete(n.T_aux, i, axis=1)
-                            n.reducedDOFs.pop(i)
+                            n.reducedDOF.pop(i)
 
     def findEquivalentDof(self, dof):
         # TODO: I don't think we need this anymore. After we have a nice set of tests, remove this function to see if things change.
@@ -271,7 +271,7 @@ class Node:
         PARAMETERS
         ----------
         reducedDoFs_structure : list of lists
-            Reduced dofs of the whole structure. It has the same format as self.reducedDOFs, a list of lists where each sublist has two elements: node ID and dof ID.
+            Reduced dofs of the whole structure. It has the same format as self.reducedDOF, a list of lists where each sublist has two elements: node ID and dof ID.
         '''
         # Based on the dofs of this node and the matrix T_aux, we can fill the transformation matrix T
         # that relates the full dofs of this node (rows of matrix T) to the reduced dofs of the structure (columns of matrix T).
@@ -284,11 +284,11 @@ class Node:
             # The row in T is the same row in T_aux, as both correspond to the full dofs
             # of the node (0: x, 1: y, 2: z, 3: rotation around x, 4: rotation around y, 5: rotation around z)
             for j in range(self.T_aux.shape[1]):  # Loop through columns
-                # The index j corresponds to the list of reduced dofs stored in self.reducedDOFs. 
-                # self.reducedDOFs is a subset of the reduced dofs of the whole structure, so we
+                # The index j corresponds to the list of reduced dofs stored in self.reducedDOF. 
+                # self.reducedDOF is a subset of the reduced dofs of the whole structure, so we
                 # need to know the index of this dof in the list of reduced dofs of the structure
                 try:
-                    col = reducedDoFs_structure.index(self.reducedDOFs[j])
+                    col = reducedDoFs_structure.index(self.reducedDOF[j])
                     self.T[i, col] = self.T_aux[i, j]
                 except ValueError:
                     raise Exception(f"Node {self.id} has a dof that is not part of the reduced dofs of the structure. Why???")

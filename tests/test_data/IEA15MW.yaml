@@ -1049,7 +1049,7 @@ turbine:
         dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
     
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
-        type      :  1                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [ 0, 0,  15]              # [m]    end A coordinates
         rB        :  [ 0, 0, 144.582]          # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular

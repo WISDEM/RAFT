@@ -1032,7 +1032,7 @@ turbine:
 
     tower:  # (could remove some entries that don't apply for the tower)
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
-        type      :  1                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [ 0, 0,   10]             # [m]    end A coordinates
         rB        :  [ 0, 0, 87.6]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
@@ -1076,7 +1076,7 @@ platform:
     members:   # list all members here
         
       - name      :  main_column               # [-]    an identifier (no longer has to be number)
-        type      :  2                         # [-]    (1=turbine, >1=substructure, for now)
+        type      :  rigid                     # [-]    (1=turbine, >1=substructure, for now)
         rA        :  [ 0, 0,  -20]             # [m]    end A coordinates
         rB        :  [ 0, 0,   10]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
@@ -1100,7 +1100,7 @@ platform:
       
       
       - name      :  offset_column             # [-]    an identifier (no longer has to be number)       
-        type      :  3                         # [-]    (1=turbine, >1=substructure, for now)
+        type      :  rigid                     # [-]    (1=turbine, >1=substructure, for now)
         rA        :  [ 28.86 , 0,  -20]        # [m]    end A coordinates
         rB        :  [ 28.86 , 0,   12]        # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)

@@ -183,10 +183,10 @@ class FOWT():
             
             # create member object
             if np.isscalar(headings):
-                self.memberList.append(Member(mi, self.nw, heading=headings+heading_adjust, part_of='platform'))  # if only one heading is specified, then just create one member
-            else:
-                for heading in headings:
-                    self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust, part_of='platform'))
+                headings = [headings] # if only one heading is specified, then just create one member
+
+            for heading in headings:
+                self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust, part_of='platform'))
         
         
         # add tower(s) and nacelle(s) to member list if applicable

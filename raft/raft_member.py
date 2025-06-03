@@ -3,6 +3,7 @@
 import numpy as np
 
 from raft.helpers import *
+from raft.raft_node import Node
 
 from moorpy.helpers import transformPosition
 from scipy.special import jn, yn, jv, kn, hankel1
@@ -13,7 +14,7 @@ from scipy.special import jn, yn, jv, kn, hankel1
 #  used during the model's operation.
 class Member:
 
-    def __init__(self, mi, nw, BEM=[], heading=0, part_of='platform'):
+    def __init__(self, mi, nw, BEM=[], heading=0, part_of='platform', first_node_id=0):
         '''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
 
         PARAMETERS
@@ -28,8 +29,9 @@ class Member:
             member. Used for member arrangements or FOWT heading offsets [deg].
         part_of : str, optional
             String identifying the subcomponent of the FOWT that this member is part of (platform, tower, nacelle, ...)
+        first_node_id : int, optional
+            The ID of the first node of this member. Rigid members have a single node, while flexible members have multiple nodes. TODO: What if we use the ID of the member instead? And create the node id based on it, like memberid_# 
         '''
-
         # overall member parameters
         self.id       = int(1)                                       # set the ID value of the member
         self.name     = str(mi['name'])
@@ -46,7 +48,18 @@ class Member:
             #self.rA0 = np.array(mi['rB'], dtype=np.double)
             #self.rB0 = np.array(mi['rA'], dtype=np.double)
 
-        shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
+        shape = str(mi['shape']) # the shape of the cross section of the member as a string (the first letter should be c or r)
+
+        if self.type == 'beam':
+            if np.all(self.rA0 == self.rB0):
+                raise Exception(f"Member {self.name} has the same start and end points. Please specify a flexible element with non-zero length element.")
+
+            if 'E' not in mi:
+                raise ValueError(f"Member {self.name} of type {self.type} requires Young's modulus (E) to be specified in the input.")
+            if 'G' not in mi:
+                raise ValueError(f"Member {self.name} of type {self.type} requires Shear modulus (G) to be specified in the input.")
+            self.E  = np.array(mi['E'], dtype=np.double)  # Young's modulus
+            self.G  = np.array(mi['G'], dtype=np.double)  # Shear modulus
 
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
         self.MCF    = getFromDict(mi, 'MCF', dtype=bool, default=False) # Flag to use MacCamy-Fuchs correction or not
@@ -107,6 +120,8 @@ class Member:
         self.t         = getFromDict(mi, 't', shape=n, default=0)  # shell thickness at each station [m]
         self.rho_shell = getFromDict(mi, 'rho_shell', shape=0, default=8500.) # shell mass density [kg/m^3]
         
+        if self.type != 'rigid' and any(self.t <= 0):
+            raise ValueError(f"Member {self.name} of type {self.type} requires positive shell thicknesses (t) at all stations. Please check the input.")
         
         # ----- ballast inputs (for each section between stations) -----
         
@@ -174,15 +189,18 @@ class Member:
         # ----- Strip theory discretization -----
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
-        dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair
+        dorsl     = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair
+        dorsl_int = list(self.d-2*self.t) if self.shape=='circular' else list(self.sl-2*self.t) # Same but for internal diameter
         dlsMax = getFromDict(mi, 'dlsMax', shape=0, default=5)
 
         
         # start things off with the strip for end A
         ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
         dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
-        ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
-        drs    = [0.5*dorsl[0]]       # change in radius (or side half-length pair) over each strip (from node i-1 to node i)
+        ds     = [0.5*dorsl[0]]        # mean diameter or side length pair of each strip
+        drs    = [0.5*dorsl[0]]        # change in radius (or side half-length pair) over each strip (from node i-1 to node i)        
+        dis    = [0.5*dorsl_int[0]]    # internal diameter or side length pair of each strip
+        dris   = [0.5*dorsl_int[0]]    # change in internal diameter over each strip (from node i-1 to node i)
 
         for i in range(1,n):
 
@@ -191,11 +209,15 @@ class Member:
             if lstrip > 0.0:
                 ns= int(np.ceil( (lstrip) / dlsMax ))             # number of strips to split this segment into
                 dlstrip = lstrip/ns
-                m   = 0.5*(dorsl[i] - dorsl[i-1])/lstrip          # taper ratio
-                ls  += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
-                dls += [dlstrip]*ns
-                ds  += [dorsl[i-1] + dlstrip*2*m*(0.5+j) for j in range(ns)]
-                drs += [dlstrip*m]*ns
+                m    = 0.5*(dorsl[i] - dorsl[i-1])/lstrip          # taper ratio
+                ls   += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
+                dls  += [dlstrip]*ns
+                ds   += [dorsl[i-1] + dlstrip*2*m*(0.5+j) for j in range(ns)]
+                drs  += [dlstrip*m]*ns
+                m_int = 0.5*(dorsl_int[i] - dorsl_int[i-1])/lstrip  # taper ratio for internal diameter
+                dis  += [dorsl_int[i-1] + dlstrip*2*m_int*(0.5+j) for j in range(ns)]
+                dris += [dlstrip*m_int]*ns
+                
                 
             elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions), a single strip for this section
                 dlstrip = 0
@@ -203,6 +225,8 @@ class Member:
                 dls += [dlstrip]
                 ds  += [0.5*(dorsl[i-1] + dorsl[i])]               # set diameter as midpoint diameter
                 drs += [0.5*(dorsl[i] - dorsl[i-1])]
+                dis += [0.5*(dorsl_int[i-1] + dorsl_int[i])]
+                dris += [0.5*(dorsl_int[i] - dorsl_int[i-1])]
 
         # finish things off with the strip for end B
         dlstrip = 0
@@ -210,19 +234,38 @@ class Member:
         dls += [0.0]
         ds  += [0.5*dorsl[-1]]
         drs += [-0.5*dorsl[-1]]
+        dis += [0.5*dorsl_int[-1]]
+        dris += [-0.5*dorsl_int[-1]]
         
         # >>> may want to have a way to not have an end strip for members that intersect things <<<
         
-        self.ns  = len(ls)                                           # number of hydrodynamic strip theory nodes per member
+        self.ns  = len(ls)                                           # number of nodes per member
         self.ls  = np.array(ls, dtype=float)                          # node locations along member axis
         self.dls = np.array(dls)
         self.ds  = np.array(ds)
         self.drs = np.array(drs)
         self.mh  = np.array(m)
+        self.dis = np.array(dis)
+        self.dris= np.array(dris)
 
-        self.r   = np.zeros([self.ns,3])                             # undisplaced node positions along member  [m]
+        self.r   = np.zeros([self.ns,3])                                 # node positions along member  [m]
         for i in range(self.ns):
-            self.r[i,:] = self.rA0 + (ls[i]/self.l)*rAB              # locations of hydrodynamics nodes (will later be displaced) [m]
+            self.r[i,:] = self.rA0 + (ls[i]/self.l)*(self.rB0-self.rA0)  # locations of hydrodynamics nodes [m]
+
+        # Create a list of structural nodes
+        # For rigid members, only 1 node. For flexible members, a list of nodes coinciding with the hydrodynamic loads.
+        # TODO: In the future, we might want to have different discretizations for the hydro and structural calculations.
+        self.nodes = []
+        node_id = first_node_id # ID of the first node of this member
+        if self.type == 'rigid':
+            self.nodes.append(Node(node_id, self.rA0, member=self, end_node=True))
+        elif self.type == 'beam':
+            for i in range(self.ns):
+                end_node = True if (i == 0 or i == self.ns-1) else False
+                self.nodes.append(Node(node_id, self.r[i,:], member=self, end_node=end_node))
+                node_id += 1
+        else:
+            raise Exception(f"Member type {self.type} not supported.")
         
         # ----- initialize arrays used later for hydro calculations -----
         self.a_i       = np.zeros([self.ns])            # signed axial area vector that dynamic pressure will act on [m2]
@@ -246,17 +289,29 @@ class Member:
         self.Imat = np.zeros([self.ns,3,3])
         self.Imat_MCF = np.zeros([self.ns,3,3, nw], dtype=complex)
 
+        # Internal stiffness matrix of the member. For flexible members only
+        # TODO: Not the best place. Should be located in the same place where the inertia matrix is computed
+        # self.computeStiffnessMatrix()
 
-    def setPosition(self, r6=np.zeros(6)):
-        '''Calculates member pose -- node positions and vectors q, p1, and p2 
+
+    def setPosition(self, r6=None):
+        '''Calculates member pose -- hydrodynamic node positions and vectors q, p1, and p2 
         as well as member orientation matrix R based on the end positions and 
-        twist angle gamma along with any mean displacements and rotations.
+        twist angle gamma along with any mean displacements and rotations of the structural nodes.
+
+        The position of structural nodes must be set at FOWT level before calling this function.
         
+        Alternatively, the absolute position/orientation of the FOWT can be provided.
+        This is mostly for backwards compatibility previous versions of the code. Might be removed later.
+        
+        TODO: For now, we are assuming that the deformations of flexible members are small,
+              such that q, p1, p2 and etc are approximately the same across the whole member.
+              Need to change that later.
+
         Parameters
         ----------
         r6 : array, optional
             Absolute position/orientation of FOWT to which member is attached.
-            
         '''
         # formerly calcOrientation
 
@@ -280,7 +335,20 @@ class Member:
 
         p1 = np.matmul( R, [1,0,0] )               # unit vector that is in the 'beta' plane if gamma is zero
         p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
-        
+                
+        if r6 is None or self.type != 'rigid':
+            if any(n.X is None for n in self.nodes):
+                raise Exception(f"Nodes of member {self.name} have not been assigned a position yet. Please set the position of the nodes before calling member.setPosition(), or use rigid elements and provide the platform position r6.")
+
+        # update member-end position
+        if r6 is None:
+            # Use the position of the first node, which has to be set before calling this function            
+            r6 = self.nodes[0].X
+            self.rA = self.nodes[0].X[0:3] # position of the first node (end A) [m]
+        else:
+            # If providing the platform r6, then the member's end A position is relative to the platform reference point (PRP)
+            self.rA = transformPosition(self.rA0, r6)
+
         # apply any platform offset and rotation to the values already obtained
         R_platform = rotationMatrix(*r6[3:])  # rotation matrix for the platform roll, pitch, yaw
     
@@ -289,13 +357,14 @@ class Member:
         p1 = np.matmul(R_platform, p1)
         p2 = np.matmul(R_platform, p2)
         
-        self.rA = transformPosition(self.rA0, r6)
-        self.rB = transformPosition(self.rB0, r6)
-               
-        # update node positions
-        rAB = self.rB - self.rA
-        for i in range(self.ns):
-            self.r[i,:] = self.rA + (self.ls[i]/self.l)*rAB              # locations of hydrodynamics nodes (will later be displaced) [m]
+        if self.type == 'rigid':
+            self.rB = self.rA + self.l*q
+            for i in range(self.ns):
+                self.r[i,:] = self.rA + (self.ls[i]/self.l) * (self.rB - self.rA) # locations of hydrodynamics nodes (will later be displaced) [m]
+        else:                        
+            self.rB = self.nodes[-1].X[0:3]
+            for i in range(self.ns):
+                self.r[i,:] = self.nodes[i].X[0:3]
 
         # save direction vectors and matrices
         self.R  = R
@@ -1703,6 +1772,140 @@ class Member:
                     F_hydro_drag[:,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)
         return F_hydro_drag
 
+    def computeStiffnessMatrix(self):
+        '''
+        Calculate the structural stiffnes matrix of the member (Linear Frame Finite-Element model with Timoshenko beam)
+        It is a 6Nnodes x 6Nnodes matrix, where Nnodes is the number of member nodes.
+
+        Each element (subdivision of the member between two nodes) provides a 12x12 matrix in the local reference frame,
+        with axes p1, p2, q. The matrices of each element are assembled to provide the 6Nnodes x 6Nnodes matrix of the member.
+                
+        TODO: Implement rectangular elements
+        '''
+        if self.type != 'beam':
+            self.K = None # No stiffness matrix for non-flexible members
+            return # Only compute stiffness matrix for flexible members
+
+        if len(self.nodes) < 2:
+            raise Exception("Flexible member {self.name} must have at least two nodes to compute the stiffness matrix.")
+        Nn = len(self.nodes)
+        nDOF = self.nodes[0].nDOF # Number of dofs per node
+        self.K = np.zeros((nDOF*Nn, nDOF*Nn)) # Stiffness matrix of the member
+
+        E  = self.E    # Young's modulus    
+        G  = self.G    # Shear modulus
+        nu = E/(2*G)-1 # Poisson's ratio - Assuming isotropic, homogeneous material
+        
+        # Only working for circular elements for now
+        if self.shape != 'circular':
+            return self.K
+
+        for i in range(len(self.nodes)-1):
+            L = np.linalg.norm(self.nodes[i+1].X[0:3] - self.nodes[i].X[0:3])
+            if L == 0:
+                raise Exception("Element length cannot be zero.")
+                       
+            Do_A, Di_A  = (self.ds[i],   self.dis[i])
+            Do_B, Di_B  = (self.ds[i+1], self.dis[i+1])
+            if i==0: # Add drs to have the outer diameter of the node at the ends of the member
+                Do_A += self.drs[i]
+                Di_A += self.dris[i]
+            if i==len(self.nodes)-2:
+                Do_B -= self.drs[i+1]
+                Di_B -= self.dris[i+1]
+
+            Do = 0.5 * (Do_A + Do_B)           # Outer diameter of the element
+            Di = 0.5 * (Di_A + Di_B)           # Inner diameter
+            A  = np.pi * (Do**2 - Di**2) / 4   # Cross-sectional area
+            Jy = np.pi * (Do**4 - Di**4) / 64  # Polar moment of inertia around y axis
+            Jx = Jy                            # Polar moment of inertia around x axis
+            Jz = Jy + Jx                       # Polar moment of inertia around z axis
+
+            # Terms for shear correction
+            kax_num = 6*(1+nu)**2 * (1+(Di/Do)**2)**2
+            kax_den = (1+(Di/Do)**2)**2 * (7+14*nu+8*nu**2) + 4 * (Di/Do)**2 * (5+10*nu+4*nu**2)
+            kax = kax_num / kax_den
+            kay = kax
+
+            Ksx = 12*E*Jy / (G*kax*A*L**2)
+            Ksy = 12*E*Jx / (G*kay*A*L**2)
+
+            # # For Euler-Bernoulli beam - Using this to debug for now
+            # Ksx*=0
+            # Ksy*=0
+            
+            # Fill the 12x12 local stiffness matrix of the element
+            # Top left corner - 6x6 matrix of node 1 acting on itself
+            K11 = np.zeros((nDOF, nDOF))
+            K11[0,0] = 12*E*Jy/L**3/(1+Ksy)
+            K11[1,1] = 12*E*Jx/L**3/(1+Ksx)
+            K11[2,2] = E*A/L
+            K11[3,3] = (4+Ksx)*E*Jx/L/(1+Ksx)
+            K11[4,4] = (4+Ksy)*E*Jy/L/(1+Ksy)
+            K11[5,5] = G*Jz/L
+            K11[0,4] = 6*E*Jy/L**2/(1+Ksy)
+            K11[1,3] = -6*E*Jx/L**2/(1+Ksx)
+
+            # Bottom right corner - 6x6 matrix of node 2 acting on itself. 
+            # It's the same as K11, but off-diagonal terms have opposite sign.
+            K22 = K11.copy() 
+            K22[0,4] *= -1
+            K22[1,3] *= -1
+
+            # Top right corner
+            K12 = np.zeros((nDOF, nDOF))            
+            K12[0,0] = -K11[0,0]
+            K12[1,1] = -K11[1,1]
+            K12[2,2] = -K11[2,2]
+            K12[3,3] = (2-Ksx)*E*Jx/L/(1+Ksx) # This term uses 2-Ksx instead of 4+Ksx and doesn't have a sign change
+            K12[4,4] = (2-Ksy)*E*Jy/L/(1+Ksy) # Same
+            K12[5,5] = -K11[5,5]
+            K12[0,4] =  K11[0,4]
+            K12[1,3] =  K11[1,3]
+            K12[4,0] = -K11[0,4]
+            K12[3,1] = -K11[1,3]
+
+            # Fill lower triangle of the matrices (they're symmetric)
+            K11 = K11 + K11.T - np.diag(K11.diagonal())
+            K22 = K22 + K22.T - np.diag(K22.diagonal())
+
+            # Assemble the 12x12 matrix
+            Ke = np.block([
+                [K11, K12],       # Top row: K11 and K12
+                [K12.T, K22]      # Bottom row: K12.T and K22
+            ])
+
+
+            # Make the local reference frame
+            ze = (self.nodes[i+1].X[0:3] - self.nodes[i].X[0:3])/L # Vector from node 1 to node 2
+            ze_projected_xy = np.array([ze[0], ze[1], 0])
+
+            # Check if ze is aligned with the global Z axis
+            if np.linalg.norm(ze_projected_xy) == 0:
+                xe = np.array([1, 0, 0])  # Default to global X axis
+                ye = np.array([0, 1, 0])  # Default to global Y axis
+            else:
+                xe = np.cross(ze, [0, 0, 1])  # xe in the horizontal plane
+                xe /= np.linalg.norm(xe)
+
+                ye = np.cross(ze, xe)
+                ye /= np.linalg.norm(ye)
+
+            # Rotation matrix to transform from local to global coordinates
+            Dc_aux = np.column_stack((xe, ye, ze))
+
+            # Make the 12x12 rotation matrix
+            Dc = np.zeros((2*nDOF, 2*nDOF))
+            Dc[0:3, 0:3]   = Dc_aux
+            Dc[3:6, 3:6]   = Dc_aux
+            Dc[6:9, 6:9]   = Dc_aux
+            Dc[9:12, 9:12] = Dc_aux
+                        
+            # Transform the local stiffness matrix to global coordinates
+            Ke_global = (Dc @ Ke) @ Dc.T
+            self.K[i*nDOF:(i+2)*nDOF, i*nDOF:(i+2)*nDOF] += Ke_global
+
+        return self.K
 
     def getSectionProperties(self, station):
         '''Get member cross sectional area and moments of inertia at a user-
@@ -1815,4 +2018,17 @@ class Member:
         
         return linebit
 
+    def plot_structFrame(self, ax=None, colorMember='k', linewidth=2, colorNode='default', size=5, marker='o', markerfacecolor='default', writeID=False):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
 
+        for i, node in enumerate(self.nodes):
+            ax = node.plot(ax, color=colorNode, size=size, marker=marker, markerfacecolor=markerfacecolor, writeID=writeID)
+
+            if i < len(self.nodes)-1:
+                # Plot the element between two nodes
+                x1, y1, z1 = node.X[0], node.X[1], node.X[2]
+                x2, y2, z2 = self.nodes[i+1].X[0], self.nodes[i+1].X[1], self.nodes[i+1].X[2]
+                ax.plot([x1, x2], [y1, y2], [z1, z2], color=colorMember, linewidth=linewidth)        
+        return ax

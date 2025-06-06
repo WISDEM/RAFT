@@ -7,7 +7,7 @@ from raft.helpers import getH
 class Node:
     ''' This class is used to represent nodes in the FOWT, which are responsible for describing the motions of the structure.'''
 
-    def __init__(self, node_id, r, member=None, end_node=True):
+    def __init__(self, node_id, r0, nw, member=None, end_node=True):
         ''' 
         Initialize a Node object.
 
@@ -15,23 +15,31 @@ class Node:
         ----------
         node_id : int
             Unique identifier for the node.
-        r : 3-component array
-            Position of the node in the global coordinate system (x, y, z).
+        r0 : float array
+            If 3-component array, this is the position of the node wrt to the platform reference point (PRP).
+            If 6-component array, this is the position of the node wrt to the PRP, and the initial attitude (roll, pitch, yaw).
         member : Member object, optional
             Reference to the member that this node belongs to. Not all nodes are part of a member, e.g. nodes that are part of a rigid link will have this set to None.
         end_node : bool, optional
             True if this is an end node of a member, False if this is an internal node of a flexible member. Default is True.
         '''
         self.id = node_id
-
         self.nTransDOF = 3 # Number of translation dofs per node
         self.nRotDOF   = 3 # Number of rotational dofs
-        self.nDOF      = self.nTransDOF + self.nRotDOF # Total number of dofs per node        
-
+        self.nDOF      = self.nTransDOF + self.nRotDOF # Total number of dofs per node
         self.member = member # Reference to the member that this node belongs to. If part of a rigid link, this will be None once we start using RAFT members
-                
-        self.X  = np.hstack((r, np.zeros(self.nRotDOF))) # Node position + angle (r takes care of the 3 translational dofs, the zeros are the initial rotation).
-        self.X0 = self.X # Initial position and attitude - Should rename this to         
+
+        # Node position + attitude of the node relative to PRP [m, rad]
+        if len(r0) == 3:
+            self.r0  = np.hstack((r0, np.zeros(self.nRotDOF)))
+        elif len(r0) == 6:
+            self.r0  = r0.copy()
+        else:
+            raise Exception(f"Node {node_id} position must be a 3- or 6-component vector, but got {len(r0)} components instead.")
+
+        self.r  = self.r0.copy() # Current position and attitude of the node in the global reference frame (current wrp to PRP but updated when updating the FOWT's position)
+        self.Xi0 = np.zeros(self.nDOF) # mean offsets of the node from its reference point [m, rad]
+        self.Xi  = np.zeros([self.nDOF, nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]        
         self.end_node = end_node # True if this is an end node of a member, False if this is an internal node of a flexible member
         self.F = np.zeros((self.nDOF)) # Force vector acting on this node (from hydrodynamics, weight, aerodynamics, moorings, etc)
         self.K = np.zeros((self.nDOF, self.nDOF)) # Stiffness matrix of this node (from hydrostatics, moorings, etc)
@@ -119,7 +127,7 @@ class Node:
             # > both nodes have the same rotation, 
             # > the translation of one node is equal to the translation of the other node + the cross product of the rotation and the distance vector between the two nodes
             rotation = node.T_aux[self.nTransDOF:self.nDOF, :] # 'rotation' that corresponds to the rotations written in the reduced dofs
-            T2assign[:self.nTransDOF, :] += getH(self.X - node.X) @ rotation
+            T2assign[:self.nTransDOF, :] += getH(self.r - node.r) @ rotation
 
         # If ball joint, this node starts with the same reduced dofs as the input node + its own rotation
         # We remove some dofs if their columns are zero in the transformation matrix
@@ -293,7 +301,21 @@ class Node:
                 except ValueError:
                     raise Exception(f"Node {self.id} has a dof that is not part of the reduced dofs of the structure. Why???")
 
+    def setDisplacementLinear(self, reducedDisp_structure):
+        '''
+        Compute node displacements using the linear transformation, self.T
+        
+        PARAMETERS
+        ----------
+        reducedDisp_structure: vector with nReducedDisp components
+            Reduced displacements of the whole structure written in the reduced set of dofs of the structure.
+        '''
+        if self.T is None:
+            raise Exception("Transformation matrix T is not set yet. Call setT() before calling setDisplacementLinear().")
+        self.Xi0 = self.T @ reducedDisp_structure
+
     def setPositionLinear(self, reducedDisp_structure):
+        # TODO: Remove this function. Set the position within the fowt class
         '''
         Set node position and attitude using the linear transformation, self.T
         
@@ -302,7 +324,8 @@ class Node:
         reducedDisp_structure: vector with nReducedDisp components
             Reduced displacements of the whole structure written in the reduced set of dofs of the structure.
         '''
-        self.X = self.X0 + self.T @ reducedDisp_structure
+        self.setDisplacementLinear(reducedDisp_structure)
+        self.r = self.r0 + self.Xi0
 
     def plot(self, ax=None, color='default', size=5, marker='o', markerfacecolor='default', writeID=False):
         if color == 'default':
@@ -318,12 +341,12 @@ class Node:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
         
-        ax.scatter(self.X[0], self.X[1], self.X[2], color=color, marker=marker, s=size, facecolors=markerfacecolor)
+        ax.scatter(self.r[0], self.r[1], self.r[2], color=color, marker=marker, s=size, facecolors=markerfacecolor)
         
         # Convert marker size from points to data units
         fig = ax.get_figure()
         d = (size / 72.0) * fig.dpi / ax.transData.transform((1, 0))[0]
 
         if writeID:
-            ax.text(self.X[0], self.X[1], self.X[2], str(self.id), color=color)
+            ax.text(self.r[0], self.r[1], self.r[2], str(self.id), color=color)
         return ax

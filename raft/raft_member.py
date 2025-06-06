@@ -255,14 +255,14 @@ class Member:
         # Create a list of structural nodes
         # For rigid members, only 1 node. For flexible members, a list of nodes coinciding with the hydrodynamic loads.
         # TODO: In the future, we might want to have different discretizations for the hydro and structural calculations.
-        self.nodes = []
+        self.nodeList = []
         node_id = first_node_id # ID of the first node of this member
         if self.type == 'rigid':
-            self.nodes.append(Node(node_id, self.rA0, member=self, end_node=True))
+            self.nodeList.append(Node(node_id, self.rA0, nw, member=self, end_node=True))
         elif self.type == 'beam':
             for i in range(self.ns):
                 end_node = True if (i == 0 or i == self.ns-1) else False
-                self.nodes.append(Node(node_id, self.r[i,:], member=self, end_node=end_node))
+                self.nodeList.append(Node(node_id, self.r[i,:], nw, member=self, end_node=end_node))
                 node_id += 1
         else:
             raise Exception(f"Member type {self.type} not supported.")
@@ -336,15 +336,11 @@ class Member:
         p1 = np.matmul( R, [1,0,0] )               # unit vector that is in the 'beta' plane if gamma is zero
         p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
                 
-        if r6 is None or self.type != 'rigid':
-            if any(n.X is None for n in self.nodes):
-                raise Exception(f"Nodes of member {self.name} have not been assigned a position yet. Please set the position of the nodes before calling member.setPosition(), or use rigid elements and provide the platform position r6.")
-
         # update member-end position
         if r6 is None:
             # Use the position of the first node, which has to be set before calling this function            
-            r6 = self.nodes[0].X
-            self.rA = self.nodes[0].X[0:3] # position of the first node (end A) [m]
+            r6 = self.nodeList[0].r
+            self.rA = self.nodeList[0].r[0:3] # position of the first node (end A) [m]
         else:
             # If providing the platform r6, then the member's end A position is relative to the platform reference point (PRP)
             self.rA = transformPosition(self.rA0, r6)
@@ -362,9 +358,9 @@ class Member:
             for i in range(self.ns):
                 self.r[i,:] = self.rA + (self.ls[i]/self.l) * (self.rB - self.rA) # locations of hydrodynamics nodes (will later be displaced) [m]
         else:                        
-            self.rB = self.nodes[-1].X[0:3]
+            self.rB = self.nodeList[-1].r[0:3]
             for i in range(self.ns):
-                self.r[i,:] = self.nodes[i].X[0:3]
+                self.r[i,:] = self.nodeList[i].r[0:3]
 
         # save direction vectors and matrices
         self.R  = R
@@ -1786,10 +1782,10 @@ class Member:
             self.K = None # No stiffness matrix for non-flexible members
             return # Only compute stiffness matrix for flexible members
 
-        if len(self.nodes) < 2:
+        if len(self.nodeList) < 2:
             raise Exception("Flexible member {self.name} must have at least two nodes to compute the stiffness matrix.")
-        Nn = len(self.nodes)
-        nDOF = self.nodes[0].nDOF # Number of dofs per node
+        Nn = len(self.nodeList)
+        nDOF = self.nodeList[0].nDOF # Number of dofs per node
         self.K = np.zeros((nDOF*Nn, nDOF*Nn)) # Stiffness matrix of the member
 
         E  = self.E    # Young's modulus    
@@ -1800,8 +1796,8 @@ class Member:
         if self.shape != 'circular':
             return self.K
 
-        for i in range(len(self.nodes)-1):
-            L = np.linalg.norm(self.nodes[i+1].X[0:3] - self.nodes[i].X[0:3])
+        for i in range(len(self.nodeList)-1):
+            L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
             if L == 0:
                 raise Exception("Element length cannot be zero.")
                        
@@ -1810,7 +1806,7 @@ class Member:
             if i==0: # Add drs to have the outer diameter of the node at the ends of the member
                 Do_A += self.drs[i]
                 Di_A += self.dris[i]
-            if i==len(self.nodes)-2:
+            if i==len(self.nodeList)-2:
                 Do_B -= self.drs[i+1]
                 Di_B -= self.dris[i+1]
 
@@ -1877,7 +1873,7 @@ class Member:
 
 
             # Make the local reference frame
-            ze = (self.nodes[i+1].X[0:3] - self.nodes[i].X[0:3])/L # Vector from node 1 to node 2
+            ze = (self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])/L # Vector from node 1 to node 2
             ze_projected_xy = np.array([ze[0], ze[1], 0])
 
             # Check if ze is aligned with the global Z axis
@@ -2018,17 +2014,18 @@ class Member:
         
         return linebit
 
+    # TODO: Reformulate this function. Make it part of plot with some options
     def plot_structFrame(self, ax=None, colorMember='k', linewidth=2, colorNode='default', size=5, marker='o', markerfacecolor='default', writeID=False):
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
 
-        for i, node in enumerate(self.nodes):
+        for i, node in enumerate(self.nodeList):
             ax = node.plot(ax, color=colorNode, size=size, marker=marker, markerfacecolor=markerfacecolor, writeID=writeID)
 
-            if i < len(self.nodes)-1:
+            if i < len(self.nodeList)-1:
                 # Plot the element between two nodes
-                x1, y1, z1 = node.X[0], node.X[1], node.X[2]
-                x2, y2, z2 = self.nodes[i+1].X[0], self.nodes[i+1].X[1], self.nodes[i+1].X[2]
+                x1, y1, z1 = node.r[0], node.r[1], node.r[2]
+                x2, y2, z2 = self.nodeList[i+1].r[0], self.nodeList[i+1].r[1], self.nodeList[i+1].r[2]
                 ax.plot([x1, x2], [y1, y2], [z1, z2], color=colorMember, linewidth=linewidth)        
         return ax

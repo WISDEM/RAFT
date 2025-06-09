@@ -1471,7 +1471,7 @@ class Model():
     def plot(self, ax=None, hideGrid=False, draw_body=True, color=None, nodes=0, 
              xbounds=None, ybounds=None, zbounds=None, plot_rotor=True, airfoils=False, 
              station_plot=[], zorder=2, figsize=(6,4), plot_fowt=True, plot_ms=True, 
-             shadow=True, plot_water=False, plot_soil=False, mp_args={}):
+             shadow=True, plot_water=False, plot_soil=False, mp_args={}, plot_frame=False):
         '''plots the whole model, including FOWTs and mooring system
         
         mp_args
@@ -1506,7 +1506,7 @@ class Model():
         for fowt in self.fowtList:
             fowt.plot(ax, color=color, zorder=zorder, nodes=nodes, 
                     plot_rotor=plot_rotor, station_plot=station_plot, 
-                    airfoils=airfoils, plot_ms=plot_ms, plot_fowt=plot_fowt, shadow=shadow, mp_args=mp_args)
+                    airfoils=airfoils, plot_ms=plot_ms, plot_fowt=plot_fowt, shadow=shadow, plot_frame=plot_frame, mp_args=mp_args)
         
         set_axes_equal(ax)
         

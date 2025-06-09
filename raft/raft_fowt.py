@@ -9,6 +9,7 @@ import raft.member2pnl as pnl
 from raft.helpers import *
 from raft.raft_member import Member
 from raft.raft_rotor import Rotor
+from raft.raft_node import Node
 import moorpy as mp
 from moorpy.helpers import lines2ss
 
@@ -59,11 +60,14 @@ class FOWT():
         print("Making FOWT")
        
         # basic setup
-        self.nDOF = 6
-        self.nw = len(w)                                          # number of frequencies
-        self.Xi0 = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
-        self.Xi  = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]
-        self.heading_adjust = heading_adjust                      # rotation to the heading of the platform and mooring system to be applied [deg]
+        self.nw = len(w)                     # number of frequencies
+        self.heading_adjust = heading_adjust # rotation to the heading of the platform and mooring system to be applied [deg]
+
+        # Lists of components used to describe the FOWT
+        self.memberList    = [] # list of member objects
+        self.nodeList      = [] # list of node objects
+        self.jointList     = [] # list of joint dictionaries
+        self.rigidLinkList = {'id': [], 'node1': [], 'node2': []} # Dict of lists instead of list of dicts because this does not come from the input file, so easier to check what the keys are
         
         self.design = design
         self.intersectMesh = design['platform'].get('intersectMesh', 0) # Default to 0 (no intersection mesh)
@@ -80,8 +84,17 @@ class FOWT():
         self.y_ref = y_ref      # reference y position of the FOWT in the array [m]
         self.r6 = np.zeros(6)   # mean position/orientation in absolute/array coordinates [m,rad]
 
+        # Check if we have repeated member names
+        # TODO: Only if we have joints? Or always? And do we even need this? 
+        # Check later after structural capabilities are working and we have tests
+        if 'platform' in design:
+            member_names = [m['name'] for m in design['platform']['members']]
+            if len(member_names) != len(set(member_names)):
+                raise Exception("Member names must be unique. Please check the input data.")
+
         # Platform lumped inertias
-        self.pointInertias = []        
+        # TODO: Include this at member level and lump to closest node? Or create a separate node that's connected to the rest?
+        self.pointInertias = []
         if 'pointInertias' in design['platform']:
             nPoints = len(design['platform']['pointInertias'])            
             for ip, pointInertia in enumerate(design['platform']['pointInertias']):
@@ -163,10 +176,62 @@ class FOWT():
         self.dz_BEM  = getFromDict(design['platform'], 'dz_BEM', default=3.0)
         self.da_BEM  = getFromDict(design['platform'], 'da_BEM', default=2.0)
 
+        # Create list of joint DATA from the input data.
+        # Actual joints are created when creating the members.
+        #
+        # If no joint data is specified, we create a single joint entry at the origin to rigidly connect all members to it.
+        # We can only do this if all platform members are rigid.
+        self.joint_data = []
+        if 'joints' in design:
+            self.joint_data = design['joints']
+
+            # Check if we have repeated joint names in the data dictionary.
+            # We can have repeated joint names in the joints list due to headings but not in the joint_data dictionary
+            joint_names = [j['name'] for j in self.joint_data]
+            if len(joint_names) != len(set(joint_names)):
+                raise Exception("Joint names must be unique. Please check the input data.")        
+        else:
+            j_member_names = [] # To store the names of the members which will be connected to the virtual joint
+            j_location = [0, 0, 0] # Place the joint at the origin
+
+            # Add platform members to the list of members connected to the tower + check if any of the platform members is flexible, which would require joints to be specified
+            if 'platform' in design:
+                for m in design['platform']['members']:
+                    if m['type' ] == 'beam':
+                        raise Exception("To model platforms with flexible members, RAFT needs joints in the input data.")
+                    j_member_names.append(m['name'])
+                
+            # Add towers to the list of members connected to the joint
+            if 'turbine' in design:
+                if 'tower' in design['turbine']:                    
+                    j_member_names += [m['name'] for m in design['turbine']['tower']] # Add all towers to the list of members connected to the joint
+            self.joint_data.append({'name': 'tower_base', 'type': 'cantilever', 'location': j_location, 'members': j_member_names})
+
+
+        # Check consistency between joints and members
+        # In particular, check if headings in joints are consistent with the headings in the connected members                
+        for j_data in self.joint_data:
+            for m_name in j_data['members']: # Loop all the members that are connected to this joint
+                # Check if the member is in the list of tower members, in which case they don't have headings
+                if 'turbine' in design and 'tower' in design['turbine']:
+                    if m_name in [m['name'] for m in design['turbine']['tower']]:
+                        continue
+
+                # Check if the member is in the list of platform members
+                m = [m for m in design['platform']['members'] if m['name'] == m_name]
+                if len(m) == 0:
+                    raise Exception(f"Member {m_name} not found in the list of members. Please check the input data.")
+                else:
+                    m = m[0]
+
+                # A single joint/member can be connected to multiple members/joints
+                # But if the user provides a list of headings for both, they must have the same length
+                if 'heading' in j_data.keys() and 'heading' in m.keys():
+                    if len(j_data['heading']) != 1 and len(m['heading']) != 1:
+                        if len(j_data['heading']) != len(m['heading']):
+                            raise Exception(f"Joint '{j_data['name']}' has {len(j_data['heading'])} headings, but connected member '{m_name}' has {len(m['heading'])} headings. Please check the input data.")
 
         # member-based platform description
-        self.memberList = []                                         # list of member objects
-
         for mi in design['platform']['members']:
 
             # prepare member info
@@ -186,20 +251,75 @@ class FOWT():
                 headings = [headings] # if only one heading is specified, then just create one member
 
             for heading in headings:
-                self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust, part_of='platform'))
-        
+                self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust, part_of='platform', first_node_id=len(self.nodeList)))
+                self.nodeList += self.memberList[-1].nodeList                
         
         # add tower(s) and nacelle(s) to member list if applicable
         if 'turbine' in design:
             if 'tower' in design['turbine']:
                 for mem in design['turbine']['tower']:
-                    self.memberList.append(Member(mem, self.nw, part_of='tower'))
+                    self.memberList.append(Member(mem, self.nw, part_of='tower', first_node_id=len(self.nodeList)))
+                    self.nodeList += self.memberList[-1].nodeList
             if 'nacelle' in design['turbine']:
                 for mem in design['turbine']['nacelle']:
-                    self.memberList.append(Member(mem, self.nw, part_of='nacelle'))
+                    self.memberList.append(Member(mem, self.nw, part_of='nacelle', first_node_id=len(self.nodeList)))
+                    self.nodeList += self.memberList[-1].nodeList
         #TODO: consider putting the tower somewhere else rather than in end of memberList <<<
         
+        # Create joints
+        for j_data in self.joint_data:
+            j_headings = getFromDict(j_data, 'heading', shape=-1, default=0.)
+            if np.isscalar(j_headings):
+                j_headings = [j_headings]
+
+            for count_heading, j_heading in enumerate(j_headings):
+                this_joint = self.addJoint(j_data, heading=j_heading)
+
+                for member_name in this_joint['members']:
+                    # Find the members with this name. We already know this is a non-empty list because we checked above
+                    members = [m for m in self.memberList if m.name == member_name]
+
+                    # If a single member with this name (i.e., a single heading), attach it to the joint
+                    if len(members) == 1:
+                        self.attachMemberToJoint(members[0], this_joint)
+                        continue
+                    
+                    # If multiple members but a single joint heading, attach all members to the joint
+                    if len(j_headings) == 1:
+                        for m in members:
+                            self.attachMemberToJoint(m, this_joint)
+                    
+                    # If multiple members and multiple joint headings, we attach the member corresponding to the heading of this joint
+                    # We already checked above if the number of headings of the joint is the same as the number of headings of the connected members (when both are lists)
+                    else:
+                        this_member = members[count_heading]
+                        self.attachMemberToJoint(this_member, this_joint)
+        
+        # Define a node to be used as a reference for rigid body motions
+        # TODO: For now, using the node that is the closest to (0,0,0) for compatibility with previous code,
+        #       as the equations of motion are still solved by lumping everything at (0,0,0).
+        #       But need to change this, as it wouldn't work if the node is part of a flexible member.
+        #       In the future, let the user pick the end node of a member, either rigid or flexible
+        self.rigidBodyNode = min(self.nodeList, key=lambda n: np.linalg.norm(n.r0[0:3]))
+        # print(f"Rigid body motions correspond to node located at {self.rigidBodyNode.r0[0:3]} wrp to the PRP.")
+
+        # Move this node to be the first node in the list
+        self.nodeList.remove(self.rigidBodyNode)
+        self.nodeList.insert(0, self.rigidBodyNode)
+
+        # Store the list of nodes of the FOWT in each node for reference
+        for n in self.nodeList:
+            n.nodeList = self.nodeList 
+
+        self.nFullDOF = sum([n.nDOF for n in self.nodeList])       # total number of DOFs of the structure (including virtual nodes created by rigid links)
+        self.reduceDOF()                                           # evaluate the set of reduced dofs
+        self.computeTransformationMatrix()                         # set the matrix that transforms from the reduced dofs to the full dofs
+        self.nDOF = len(self.reducedDOF)                           # number of reduced dofs needed to describe the structure
+        self.Xi0  = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
+        self.Xi   = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]        
+
         # array-level mooring system connection
+        # TODO: Will need to be connected to nodes instead of the body
         self.body = mpb                                              # reference to Body in mooring system corresponding to this turbine
 
         # this FOWT's own MoorPy system (may not be used)
@@ -299,17 +419,313 @@ class FOWT():
             self.outFolderQTF = design['platform']['outFolderQTF']
     
     
-    def setPosition(self, r6):
-        '''Updates the FOWT's (mean) position including all components.
+    def addJoint(self, this_joint_data, heading=0., tol=1e-3):
+        ''' Add a joint to the list of joints.        
+        Also returns the joint data as a dictionary with the following fields:
+        [id, r, type, name, heading, members]
         
-        r6 : float array
-            6 DOF absolute position of FOWT [m, rad]
+        PARAMETERS
+        ----------
+        this_joint_data: Dictionary with fields 'name', 'type', and 'location'
+            Data corresponding to this joint, as provided in the `joint` section of the yaml file.        
+        eps: float
+            olerance for comparing joint position
+        heading: float
+            Z rotation around (x,y)=(0,0) in the the local frame of the FOWT.
         '''
+        r = np.array(this_joint_data['location'])
+        r = applyHeadingToPoint(r, heading=heading)
+
+        # Check if an equivalent joint already exists
+        for joint in self.jointList:
+            if joint['name'] == this_joint_data['name']:
+                # Compare position           
+                existing_position = np.array(joint['r'])
+                if np.linalg.norm(existing_position - r) <= tol:
+                    # Joint already exists, return it instead of adding a new one
+                    return joint
+
+        j_id = len(self.jointList)
+        joint = {}
+        joint['id'] = j_id
+        joint['r']  = r.copy()
+        joint['name'] = this_joint_data['name']
+        joint['type'] = this_joint_data['type']
+        joint['heading'] = heading
+        joint['members'] = this_joint_data['members']
         
+        self.jointList.append(joint)
+        return joint
+
+    def attachMemberToJoint(self, member, joint, tol=1e-3):
+        ''' 
+        Attach the member to the joint by assigning joint_id and joint_type to a member's node.
+        
+        For rigid elements, which correspond to a single node, this is done by
+        1. Assigning the joint to the node if the joint and node are within the tolerance
+        2. Creating two extra nodes connected by a rigid link. One of the rigid-link nodes is attached to the joint, while the other is cantilevered to the member node.
+                 
+        Same thing for flexible elements, but we use the end node that is the closest to the joint
+
+        PARAMETERS
+        ----------
+        member: Member object
+            Member to be attached to the joint
+        joint: dict
+            Joint dictionary, as returned by addJoint() and stored in self.jointList
+        tol: float
+            Tolerance for comparing joint position and node position [m]
+        ''' 
+        # print(f"Attaching member {member.name} to joint {joint['name']}")
+
+        # Get the node that will be connected to the joint
+        # - Rigid members have only one node, so we use that node
+        # - Flexible members have several nodes. We use the end one that is closest to the joint        
+        if member.type == 'rigid':
+            node = member.nodeList[0]
+            dist = np.linalg.norm(node.r0[0:3] - joint['r'])
+        elif member.type == 'beam':
+            nA = member.nodeList[0]
+            dA = np.linalg.norm(nA.r0[0:3] - joint['r'])
+
+            nB = member.nodeList[-1]
+            dB = np.linalg.norm(nB.r0[0:3] - joint['r'])
+
+            node, dist = (nA, dA) if dA < dB else (nB,dB)
+        else:
+            raise Exception(f"Member type {member.type} not supported.")
+        
+        # If the joint and node are close enough, just connect them by the joint
+        if dist <= tol:
+            node.joint_id   = joint['id']
+            node.joint_type = joint['type']
+        
+        # Otherwise, we need to create a rigid link between the joint and the node
+        # TODO: Each rigid links create two dummy nodes that increase the size of the system.
+        #       This does not impact computation time, as expensive computations are performed in the reduced dofs,
+        #       but it would be nice to find a different way to join nodes with a geommetric offset.
+        else:
+            # Add two new nodes: one at the joint location, and one at the member's node location
+            newNodeA = Node(len(self.nodeList)  , joint['r']  , self.nw, member=None, end_node=True)
+            newNodeB = Node(len(self.nodeList)+1, node.r0[0:3], self.nw, member=None, end_node=True)
+
+            # Add a rigid link between the two nodes
+            self.rigidLinkList['id'].append(len(self.rigidLinkList['id'])) # Don't think we need an id, could use the index in the list instead
+            self.rigidLinkList['node1'].append(newNodeA)
+            self.rigidLinkList['node2'].append(newNodeB)
+
+            # newNodeA is connected to the joint
+            newNodeA.joint_id      = joint['id']
+            newNodeA.joint_type    = joint['type']
+            newNodeA.rigid_link_id = self.rigidLinkList['id'][-1]
+            self.nodeList.append(newNodeA)
+
+            # Node B is cantilevered to the member node. We add a new cantilever joint attached to both nodes
+            j_data = {'name': f"joint4rigidLink", 'type': 'cantilever', 'location': newNodeB.r0[0:3].tolist(), 'members': []} # We won't use members for rigid-link joints
+            jointB = self.addJoint(j_data)
+            newNodeB.joint_id      = jointB['id']
+            newNodeB.joint_type    = jointB['type']
+            newNodeB.rigid_link_id = self.rigidLinkList['id'][-1]
+            node.joint_id          = jointB['id']
+            node.joint_type        = jointB['type']
+            self.nodeList.append(newNodeB)
+
+    def reduceDOF(self):
+        '''
+        Find reduced set of dofs of the structure.
+        They are stored in self.reducedDOF, a list where each element is a sublist of the form [node_id, dof_index].
+        Where dof_index can be (0,1,2,3,4,5) corresponding to (x,y,z,roll,pitch,yaw) of a node.
+        '''
+        if len(self.nodeList) < 1:
+            raise Exception("No nodes in the structure. Cannot compute reduced dofs.")
+
+        # Reset dofs of all nodes
+        for n in self.nodeList:
+            if n.end_node:
+                n.reducedDOF = None
+                n.T = None
+                n.T_aux = None
+                n.parentNode_id = None        
+
+        # We will loop all nodes based on the connected nodes        
+        queue = []      # Store the nodes that still need to be processed
+        visited = set() # Store the nodes that have been processed (to avoid repeating nodes)
+        queue.append(self.nodeList[0]) # We will start with the first node of the list        
+
+        while queue:
+            node = queue.pop(0)
+
+            # If this node does not have reducedDOF, assign its own dofs
+            if node.reducedDOF is None:
+                node.reducedDOF = []
+                for i in range(node.nDOF):
+                    node.reducedDOF.append([node.id, i])
+                node.T_aux = np.eye(node.nDOF)
+                node.parentNode_id = node.id
+                visited.add(self.nodeList[0].id)
+
+            # Attach the node connected by a rigid link (if it exists)
+            rigidConnectedNode = node.getRigidConnectedNode()
+            if (rigidConnectedNode is not None) and (rigidConnectedNode.id not in visited):
+                rigidConnectedNode.attachToNode(node, rigid_link=True)
+                queue.append(rigidConnectedNode)
+                visited.add(rigidConnectedNode.id)
+
+            # Attach the nodes connected by the joint
+            connectedNodes = node.getNodesConnectedByJoint()
+            for n in connectedNodes:
+                if n.id not in visited:
+                    n.attachToNode(node)
+                    queue.append(n)
+                    visited.add(n.id)
+
+            # If this is the end of a flexible member, we need to add the other nodes to the queue
+            if node.member and node.member.type == 'beam' and node.end_node:
+                for n in node.member.nodeList:
+                    if (n.id != node.id) and (n.id not in visited):
+                        queue.append(n)
+
+        # Get unique dofs of the whole structure
+        reducedDOF = []
+        for n in self.nodeList:
+            if n.reducedDOF is not None:
+                for dof in n.reducedDOF:
+                    if dof not in reducedDOF:
+                        reducedDOF.append(dof)
+        self.reducedDOF = reducedDOF
+
+        # TODO: Maybe call computeTransformationMatrix() here?    
+
+    def computeTransformationMatrix(self):
+        '''
+        Compute the transformation matrix T that transforms from the reduced degrees of freedom 
+        to the full degrees of freedom, fullDOF = T @ reducedDOF.
+
+        The transformation matrix is stored in self.T, which is a (nFullDOF, nReducedDOF) matrix.
+        '''
+        nFullDofs = np.sum([n.nDOF for n in self.nodeList])
+        nReducedDoFs = len(self.reducedDOF)
+        self.T = np.zeros((nFullDofs, nReducedDoFs))
+
+        row0 = 0
+        for n in self.nodeList:
+            n.setT(self.reducedDOF)
+            self.T[row0:row0+n.nDOF, :] = n.T
+            row0 += n.nDOF
+        return self.T
+
+    def setNodesPosition(self, reducedXi0, linear=False):
+        '''Set the mean displacements, node.Xi0, and positions, node.r, of all the nodes 
+        of the structure based on the displacements in the reduced degrees of freedom.
+
+        PARAMETERS
+        ----------
+        reducedXi0 : (nReducedDoF,) float array 
+            Mean displacements of the FOWT in the reduced degrees of freedom [m, rad]
+        linear: bool, optional
+            If True, the displacements are obtained using linear relations. This option
+            does not preserve distance between nodes connected by rigid links.
+        '''
+        # If setting the displacement using linear relations, we can simply use the T matrix stored in each node
+        # This does not preserve the lengths of rigid links but should be good enough for small rotations
+        if linear:            
+            for n in self.nodeList:
+                n.setDisplacementLinear(reducedDisp)
+            return
+            
+        # Otherwise, set nodes' displacement using nonlinear relations. More work but preserves the lenghts of rigid links.
+        # The nonlinearities arise from the rotations of rigid links, which include sin and cos.        
+        self.nodeList[0].setDisplacementLinear(reducedXi0) # The first node is always the first of the reduced dofs, so we simply use the linear relation
+
+        # The remaining nodes depend on how they are connected to the previous node
+        # We will loop all nodes in the same way as in reduceDOF()
+        queue = []      # Store the nodes that still need to be processed
+        visited = set() # Store the nodes that have been processed (to avoid repeating nodes)
+        queue.append(self.nodeList[0]) # We will start with the first node of the list
+        visited.add(self.nodeList[0].id)
+
+        while queue:
+            node = queue.pop(0)
+
+            # We just loop through the end nodes. Internal nodes are taken care based on their end nodes
+            if not node.end_node:
+                continue
+
+            # Deal with the node connected by a rigid link (if it exists)
+            rigidConnectedNode = node.getRigidConnectedNode()
+            if (rigidConnectedNode is not None) and (rigidConnectedNode.id != node.parentNode_id) and (rigidConnectedNode.id not in visited):
+                dx = rigidConnectedNode.r0[0] - node.r0[0]
+                dy = rigidConnectedNode.r0[1] - node.r0[1]
+                dz = rigidConnectedNode.r0[2] - node.r0[2]
+
+                # Get rotation (displacement part, not including initial value) around node. x, y, and z components
+                rotation = (node.T @ reducedXi0)[-3:]
+                rotMat   = rotationMatrix(*rotation) - np.eye(3) # Remove identity matrix to get the displacement only
+                
+                # RigidConnectedNode has the same rotation but the translation accounts for the distance between both nodes
+                rigidConnectedNode.Xi0 = node.Xi0.copy()
+                rigidConnectedNode.Xi0[0:rigidConnectedNode.nTransDOF] += rotMat @ np.array([dx, dy, dz])
+
+                queue.append(rigidConnectedNode)
+                visited.add(rigidConnectedNode.id)                    
+
+            # Deal with the nodes connected by the joint
+            connectedNodes = node.getNodesConnectedByJoint()
+            for n in connectedNodes:
+                if (n.id != node.parentNode_id) and (n.id not in visited):
+                    n.Xi0 = node.Xi0.copy() # Assign the same displacements to the connected nodes
+                    if n.joint_type == "ball": # But if ball joint, overried rotation with the node's own rotation
+                        n.Xi0[-3:] = (node.Xi0 @ reducedXi0)[-3:]
+                    queue.append(n)
+                    visited.add(n.id)
+
+            # If this node is part of a flexible element, we need to set the displacement of the other nodes (remember that we are looping through the end nodes)
+            # We do that by adding the difference between the nonlinear and linear displacements of the end node to the linear displacement of the other nodes
+            if node.member and node.member.type == 'beam':
+                # We need to add the other end to the queue to visit the nodes that are connected to it.
+                # Only do that if the other end wasn't visited yet - it could have been visited by nodes connected to the other side of the flexible member.
+                for n in [node.member.nodeList[0], node.member.nodeList[-1]]:
+                    if (n.id != node.id) and (n.id not in visited):
+                        queue.append(n)
+
+                disp     = node.Xi0            # Nonlinear displacement of the end node
+                disp_lin = node.T @ reducedXi0 # Linear displacement of the end node
+                dR       = disp - disp_lin     # Difference between nonlinear and linear displacements
+                for n in node.member.nodeList:
+                    if n.id != node.id and (n.id not in visited):
+                        n.setDisplacementLinear(reducedXi0) # Start by setting the displacement linearly
+                        n.Xi0 += dR # then we add the difference between nonlinear and linear displacements of the first node
+                        visited.add(n.id)
+
+        for n in self.nodeList:
+            n.r = n.r0 + n.Xi0
+
+    def setPosition(self, rReducedDOF):
+        '''Updates the FOWT's (mean) position including all components.
+
+        PARAMETERS
+        ----------
+        rReducedDOF : (nDOF, ) float array 
+            Mean positions along the reduced dofs of the FOWT [m, rad]        
+        '''
         # if offset provided, set things according to those positions, otherwise zero it
-        self.r6 = r6
-        self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref, 0, 0, 0, 0])
+        self.rReducedDOF = rReducedDOF
+        initial_displacement = np.zeros(self.nDOF)  # Initialize the displacement vector in the reduced dofs
+        for i, dof in enumerate(self.reducedDOF):
+            initial_displacement += self.x_ref if dof[1] == 0 else 0 # If this is a translation in the X direction (Global dof 0)
+            initial_displacement += self.y_ref if dof[1] == 1 else 0 # If this is a translation in the Y direction (Global dof 1)
+        self.Xi0 = self.rReducedDOF - initial_displacement
+
+        # Set the position of all nodes
+        # rReducedDOF can be interpreted as a displacement in the reduced degrees of freedom, as the r0's of the nodes are wrp to the platform
+        self.setNodesPosition(rReducedDOF)
         
+        # Compute motions of the PRP as a rigid body transformation from the rigidBodyNode to the PRP
+        from moorpy.helpers import transformPosition
+        self.r6[0:3] = transformPosition(-self.rigidBodyNode.r0[:3], self.rigidBodyNode.r)
+        self.r6[3:]  = self.rigidBodyNode.r[-3:]
+        # self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref, 0, 0, 0, 0])
+
         # calculate and save a rotation/orientation matrix
         self.Rmat = rotationMatrix(*self.r6[3:])  # rotation matrix for fowt orientation
         
@@ -321,7 +737,8 @@ class FOWT():
             rot.setPosition(r6=self.r6)
             
         for mem in self.memberList:
-            mem.setPosition(r6=self.r6)
+            mem.setPosition(r6=self.r6) # TODO: Change this to use the position of the node attached to the member
+            mem.computeStiffnessMatrix() # Recompute stiffness matrix at the updated position
         
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
@@ -1538,6 +1955,32 @@ class FOWT():
 
         return f_mean, f
 
+    def evaluateStiffnessMatrix(self):        
+        if len(self.nodeList) == 0:
+            raise Exception("No nodes in the structure. Cannot compute stiffness matrix.")
+        nDOF = self.nodeList[0].nDOF # Number of dofs of a single node
+
+        # Stiffness matrix of the whole 6*Nnodes system of equations
+        self.Kfull = np.zeros([len(self.nodeList)*nDOF, len(self.nodeList)*nDOF])
+
+        # Node's external stiffness - will be hydrostatics, mooring, etc in the future
+        for i, node in enumerate(self.nodeList):            
+            self.Kfull[i*nDOF:(i+1)*nDOF, i*nDOF:(i+1)*nDOF] = node.K
+        
+        # Internal stiffness for flexible members
+        # TODO: Make this directly from node? Store the rows of the matrix in the node
+        for m in self.memberList:
+            m.computeStiffnessMatrix() # Make sure the stiffness matrix is computed
+            if m.type == 'beam':
+                col_first = m.nodeList[0].id*nDOF # ID of the first node of the member
+                col_last  = (m.nodeList[-1].id+1)*nDOF # ID of the last node of the member
+                for n in m.nodeList:
+                    # Assign the rows of m.K that correspond to this node to matrix self.Kfull
+                    i   = n.id # Node of the current member - Index in the matrix with all nodes
+                    i_m = i - m.nodeList[0].id # Index of the node in the member list of nodes
+                    self.Kfull[i*nDOF:(i+1)*nDOF, col_first:col_last] += m.K[i_m*nDOF:(i_m+1)*nDOF, :]
+        return self.Kfull        
+
     def moorDynamicTension(self, inMDFl):
         '''Compute dynamic tension in mooring lines.
         We use the algebraic approximation given by
@@ -1976,10 +2419,10 @@ class FOWT():
         self.add_output('tower_maxMy_My', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         self.add_output('tower_maxMy_Mz', val=np.zeros(n_full_tow-1), units='kN*m', desc='distributed moment around tower-aligned x-axis corresponding to maximum fore-aft moment at tower base')
         '''
-
+    
     def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], 
              airfoils=False, zorder=2, plot_fowt=True, plot_ms=True, 
-             shadow=True, mp_args={}):
+             shadow=True, plot_frame=False, mp_args={}):
         '''plots the FOWT...'''
 
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
@@ -2008,6 +2451,19 @@ class FOWT():
 
                 mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, 
                         nodes=nodes, station_plot=station_plot, zorder=zorder)
+        if plot_frame:
+            for mem in self.memberList:
+                mem.plot_structFrame(ax, colorMember=color, colorNode='default', marker='.', markerfacecolor='default', writeID=False)
+            for joint in self.jointList:
+                color = 'green' if joint['type'] == 'ball' else 'red'
+                ax.scatter(joint['r'][0], joint['r'][1], joint['r'][2], marker='o', facecolors='None')
+            for i_rl in range(len(self.rigidLinkList['id'])):
+                nodeA = self.rigidLinkList['node1'][i_rl]
+                nodeB = self.rigidLinkList['node2'][i_rl]
+                ax.plot([nodeA.X[0], nodeB.X[0]], [nodeA.X[1], nodeB.X[1]], [nodeA.X[2], nodeB.X[2]], color='gray')
+                ax.scatter(nodeA.X[0], nodeA.X[1], nodeA.X[2], color='gray', facecolors='None')
+                ax.scatter(nodeB.X[0], nodeB.X[1], nodeB.X[2], color='gray', facecolors='None')
+
 
         # in future should consider ability to animate mode shapes and also to animate response at each frequency
         # including hydro excitation vectors stored in each member
@@ -2072,3 +2528,62 @@ class FOWT():
                 Xs2d = np.matmul(Xuvec, P2)
                 Ys2d = np.matmul(Yuvec, P2)
                 ax.plot(Xs2d, Ys2d, color=color, lw=1.0)
+
+    '''
+    Temporary functions that I'm using for testing right now. Might be converted to permanent functions
+    '''
+    def computeReducedLoadVector(self):
+        # self.F = np.zeros(len(self.reducedDOF))
+        # for node in self.nodeList:
+        #     self.F += node.T.T @ node.F 
+        # return self.F
+        self.F = self.T.T @ self.Ffull
+        return self.F
+    
+    def computeReducedStiffnessMatrix(self):
+        # self.K = np.zeros((len(self.reducedDOF), len(self.reducedDOF)))
+        # for node in self.nodeList:
+        #     self.K += node.T.T @ node.K @ node.T
+        # return self.K
+        self.K = self.T.T @ self.Kfull @ self.T
+        return self.K
+
+    def assignLoadToNodes(self, F):
+        if len(F) != len(self.nodeList):
+            raise Exception("Number of loads (forces and moments) must be equal to the number of nodes.")
+        for i, node in enumerate(self.nodeList):
+            node.assignLoadToNode(F[i])        
+
+    def assignStiffnessToNodes(self, K):
+        if len(K) != len(self.nodeList):
+            raise Exception("Number of stiffness matrices must be equal to the number of nodes.")                
+        for i, node in enumerate(self.nodeList):
+            node.assignStiffnessToNode(K[i])
+
+    # Compute the load vector and stiffness matrix of the whole structure (6*Nnodes system of equations)
+    def evaluateLoadVector(self):
+        self.Ffull = np.zeros([len(self.nodeList)*self.nodeList[0].nDOF])
+        for i, node in enumerate(self.nodeList):
+            self.Ffull[i*node.nDOF:(i+1)*node.nDOF] = node.F
+        return self.Ffull
+
+    def plot_temp(self, ax=None, colorMember='k', linewidth=2, colorNode='default', size=15, marker='o', markerfacecolor='default', writeID=False):
+        if ax is None:
+            fig = plt.figure()
+            ax = fig.add_subplot(111, projection='3d')
+        for member in self.memberList:
+            ax = member.plot_structFrame(ax, colorMember=colorMember, linewidth=linewidth, colorNode=colorNode, size=size, marker=marker, markerfacecolor=markerfacecolor, writeID=writeID)
+            member.plot(ax)
+        for joint in self.jointList:
+            color = 'green' if joint['type'] == 'ball' else 'red'
+            ax.scatter(joint['r'][0], joint['r'][1], joint['r'][2], color=color, s=2*size, marker='o', facecolors='None')
+        for i_rl in range(len(self.rigidLinkList['id'])):
+            nodeA = self.rigidLinkList['node1'][i_rl]
+            nodeB = self.rigidLinkList['node2'][i_rl]
+            ax.plot([nodeA.r[0], nodeB.r[0]], [nodeA.r[1], nodeB.r[1]], [nodeA.r[2], nodeB.r[2]], color='k', linewidth=linewidth)
+            ax.scatter(nodeA.r[0], nodeA.r[1], nodeA.r[2], color='k', s=0.5*size, marker=marker, facecolors='None')
+            ax.scatter(nodeB.r[0], nodeB.r[1], nodeB.r[2], color='k', s=0.5*size, marker=marker, facecolors='None')
+
+        # Set equal aspect ratio
+        ax.set_box_aspect([1, 1, 1])  # Aspect ratio is 1:1:1
+        return ax

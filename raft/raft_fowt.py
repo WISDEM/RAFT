@@ -675,7 +675,7 @@ class FOWT():
                 if (n.id != node.parentNode_id) and (n.id not in visited):
                     n.Xi0 = node.Xi0.copy() # Assign the same displacements to the connected nodes
                     if n.joint_type == "ball": # But if ball joint, overried rotation with the node's own rotation
-                        n.Xi0[-3:] = (node.Xi0 @ reducedXi0)[-3:]
+                        n.Xi0[-3:] = (node.T @ reducedXi0)[-3:]
                     queue.append(n)
                     visited.add(n.id)
 

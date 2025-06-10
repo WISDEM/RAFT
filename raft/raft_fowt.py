@@ -65,6 +65,7 @@ class FOWT():
 
         # Lists of components used to describe the FOWT
         self.memberList    = [] # list of member objects
+        self.rotorList     = [] # list of rotor objects
         self.nodeList      = [] # list of node objects
         self.jointList     = [] # list of joint dictionaries
         self.rigidLinkList = {'id': [], 'node1': [], 'node2': []} # Dict of lists instead of list of dicts because this does not come from the input file, so easier to check what the keys are
@@ -153,16 +154,11 @@ class FOWT():
             self.nrotors = 0  # this will ensure RAFT doesn't set up or look for any Rotor objects
             self.ntowers = 0
             
-            # note: RNA descriptions are not defined because there is no turbine
-
-
-        self.rotorList = []
+            # note: RNA descriptions are not defined because there is no turbine      
 
         self.depth = depth
-
         self.w = np.array(w)
-        self.dw = w[1]-w[0]         # frequency increment [rad/s]    
-        
+        self.dw = w[1]-w[0] # frequency increment [rad/s]
         self.k = np.array([waveNumber(w, self.depth) for w in self.w])  # wave number [m/rad]
 
         self.rho_water = getFromDict(design['site'], 'rho_water', default=1025.0)
@@ -205,7 +201,7 @@ class FOWT():
             if 'turbine' in design:
                 if 'tower' in design['turbine']:                    
                     j_member_names += [m['name'] for m in design['turbine']['tower']] # Add all towers to the list of members connected to the joint
-            self.joint_data.append({'name': 'tower_base', 'type': 'cantilever', 'location': j_location, 'members': j_member_names})
+            self.joint_data.append({'name': 'origin_joint', 'type': 'cantilever', 'location': j_location, 'members': j_member_names})
 
 
         # Check consistency between joints and members
@@ -294,6 +290,17 @@ class FOWT():
                     else:
                         this_member = members[count_heading]
                         self.attachMemberToJoint(this_member, this_joint)
+
+        # build Rotor list
+        # Each rotor is connected to the top of its corresponding tower by a cantilever joint
+        towerList = [m for m in self.memberList if m.part_of == 'tower']
+        for ir in range(self.nrotors):
+            self.rotorList.append(Rotor(design['turbine'], self.w, ir))
+            towerTopJoint = self.addJoint({'name': 'tower2rotor', 'type': 'cantilever', 'location': self.rotorList[ir].r_RRP, 'members': []}) # Do not need the members list in the joint data because we will provide the members directly
+            
+            self.attachMemberToJoint(towerList[ir], towerTopJoint)       # attach the tower to the joint
+            self.attachMemberToJoint(self.rotorList[-1], towerTopJoint)  # attach the rotor to the tower top joint
+
         
         # Define a node to be used as a reference for rigid body motions
         # TODO: For now, using the node that is the closest to (0,0,0) for compatibility with previous code,
@@ -357,10 +364,6 @@ class FOWT():
             self.yawstiff = design['platform']['yaw_stiffness']       # If you're modeling OC3 spar, for example, import the manual yaw stiffness needed by the bridle config
         else:
             self.yawstiff = 0
-
-        # build Rotor list
-        for ir in range(self.nrotors):
-            self.rotorList.append(Rotor(design['turbine'], self.w, ir))
         
         # initialize mean force arrays to zero, so the model can work before we calculate excitation
         self.f_aero0 = np.zeros([6, self.nrotors])
@@ -481,9 +484,9 @@ class FOWT():
         # Get the node that will be connected to the joint
         # - Rigid members have only one node, so we use that node
         # - Flexible members have several nodes. We use the end one that is closest to the joint        
-        if member.type == 'rigid':
+        if member.type == 'rigid' or member.type == 'rotor':
             node = member.nodeList[0]
-            dist = np.linalg.norm(node.r0[0:3] - joint['r'])
+            dist = np.linalg.norm(node.r0[0:3] - joint['r'])            
         elif member.type == 'beam':
             nA = member.nodeList[0]
             dA = np.linalg.norm(nA.r0[0:3] - joint['r'])
@@ -733,8 +736,8 @@ class FOWT():
         if self.ms:
             self.ms.bodyList[0].setPosition(self.r6)
         
-        for rot in self.rotorList:
-            rot.setPosition(r6=self.r6)
+        for rot in self.rotorList:            
+            rot.setPosition()
             
         for mem in self.memberList:
             mem.setPosition(r6=self.r6) # TODO: Change this to use the position of the node attached to the member
@@ -2455,8 +2458,12 @@ class FOWT():
         if ax is None:
             fig = plt.figure()
             ax = fig.add_subplot(111, projection='3d')
+        for rotor in self.rotorList:
+            rotor.plot(ax, color=colorMember)
+            for n in rotor.nodeList:
+                n.plot(ax)
         for member in self.memberList:
-            ax = member.plot_structFrame(ax, colorMember=colorMember, linewidth=linewidth, colorNode=colorNode, size=size, marker=marker, markerfacecolor=markerfacecolor, writeID=writeID)
+            member.plot_structFrame(ax, colorMember=colorMember, linewidth=linewidth, colorNode=colorNode, size=size, marker=marker, markerfacecolor=markerfacecolor, writeID=writeID)
             member.plot(ax)
         for joint in self.jointList:
             color = 'green' if joint['type'] == 'ball' else 'red'
@@ -2470,4 +2477,39 @@ class FOWT():
 
         # Set equal aspect ratio
         ax.set_box_aspect([1, 1, 1])  # Aspect ratio is 1:1:1
+
+
+        # --- Ensure equal axis limits ---
+        # Gather all points
+        xs, ys, zs = [], [], []
+        for member in self.memberList:
+            for n in member.nodeList:
+                xs.append(n.r[0])
+                ys.append(n.r[1])
+                zs.append(n.r[2])
+        for rotor in self.rotorList:
+            for n in rotor.nodeList:
+                xs.append(n.r[0])
+                ys.append(n.r[1])
+                zs.append(n.r[2])
+        for i_rl in range(len(self.rigidLinkList['id'])):
+            nodeA = self.rigidLinkList['node1'][i_rl]
+            nodeB = self.rigidLinkList['node2'][i_rl]
+            xs += [nodeA.r[0], nodeB.r[0]]
+            ys += [nodeA.r[1], nodeB.r[1]]
+            zs += [nodeA.r[2], nodeB.r[2]]
+
+        # Compute limits
+        xlim = [np.min(xs), np.max(xs)]
+        ylim = [np.min(ys), np.max(ys)]
+        zlim = [np.min(zs), np.max(zs)]
+        max_range = max(np.ptp(xlim), np.ptp(ylim), np.ptp(zlim))
+        mid_x = np.mean(xlim)
+        mid_y = np.mean(ylim)
+        mid_z = np.mean(zlim)
+
+        ax.set_xlim(mid_x - max_range/2, mid_x + max_range/2)
+        ax.set_ylim(mid_y - max_range/2, mid_y + max_range/2)
+        ax.set_zlim(mid_z - max_range/2, mid_z + max_range/2)
+        
         return ax

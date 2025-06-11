@@ -11,7 +11,7 @@ from raft.raft_member import Member
 from raft.raft_rotor import Rotor
 from raft.raft_node import Node
 import moorpy as mp
-from moorpy.helpers import lines2ss
+from moorpy.helpers import lines2ss, transformPosition
 
 # Attempt to import pygmsh and meshmagick with warnings if not installed
 try:
@@ -83,7 +83,7 @@ class FOWT():
         # position in the array
         self.x_ref = x_ref      # reference x position of the FOWT in the array [m]
         self.y_ref = y_ref      # reference y position of the FOWT in the array [m]
-        self.r6 = np.zeros(6)   # mean position/orientation in absolute/array coordinates [m,rad]
+        self.r6 = np.zeros(6)   # rigid body position/orientation in absolute/array coordinates [m,rad] TODO: replace this by the rigid-body node
 
         # Check if we have repeated member names
         # TODO: Only if we have joints? Or always? And do we even need this? 
@@ -296,6 +296,7 @@ class FOWT():
         towerList = [m for m in self.memberList if m.part_of == 'tower']
         for ir in range(self.nrotors):
             self.rotorList.append(Rotor(design['turbine'], self.w, ir))
+            self.nodeList += self.rotorList[-1].nodeList  # add the rotor nodes to the node list
             towerTopJoint = self.addJoint({'name': 'tower2rotor', 'type': 'cantilever', 'location': self.rotorList[ir].r_RRP, 'members': []}) # Do not need the members list in the joint data because we will provide the members directly
             
             self.attachMemberToJoint(towerList[ir], towerTopJoint)       # attach the tower to the joint
@@ -310,20 +311,25 @@ class FOWT():
         self.rigidBodyNode = min(self.nodeList, key=lambda n: np.linalg.norm(n.r0[0:3]))
         # print(f"Rigid body motions correspond to node located at {self.rigidBodyNode.r0[0:3]} wrp to the PRP.")
 
-        # Move this node to be the first node in the list
+        # Move this node to be the first node in the list.
+        # TODO: Only doing this now for compatibility with previous code. Remove lines later
         self.nodeList.remove(self.rigidBodyNode)
         self.nodeList.insert(0, self.rigidBodyNode)
+        for i, n in enumerate(self.nodeList): # Reset the id of all nodes to be their index in the list. TODO: maybe just assign the ids here instead at node creation. I think I just need to set them before reduceDOF() and computeTransformationMatrix(), but not sure
+            n.id = i
 
         # Store the list of nodes of the FOWT in each node for reference
+        # And initialize the inertia and flexibility stiffness matrices of each node
+        self.nFullDOF = sum([n.nDOF for n in self.nodeList])       # total number of DOFs of the structure (including virtual nodes created by rigid links)        
         for n in self.nodeList:
-            n.nodeList = self.nodeList 
+            n.nodeList = self.nodeList
 
-        self.nFullDOF = sum([n.nDOF for n in self.nodeList])       # total number of DOFs of the structure (including virtual nodes created by rigid links)
         self.reduceDOF()                                           # evaluate the set of reduced dofs
         self.computeTransformationMatrix()                         # set the matrix that transforms from the reduced dofs to the full dofs
         self.nDOF = len(self.reducedDOF)                           # number of reduced dofs needed to describe the structure
         self.Xi0  = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
         self.Xi   = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]        
+        self.rReducedDOF = np.zeros(self.nDOF)                     # position of the platform in the reduced dofs         
 
         # array-level mooring system connection
         # TODO: Will need to be connected to nodes instead of the body
@@ -709,7 +715,8 @@ class FOWT():
         PARAMETERS
         ----------
         rReducedDOF : (nDOF, ) float array 
-            Mean positions along the reduced dofs of the FOWT [m, rad]        
+            Mean positions along the reduced dofs of the FOWT [m, rad].
+            For a fully rigid FOWT, this is a 6-dof array with the position and attitude of the PRP.
         '''
         # if offset provided, set things according to those positions, otherwise zero it
         self.rReducedDOF = rReducedDOF
@@ -724,7 +731,6 @@ class FOWT():
         self.setNodesPosition(rReducedDOF)
         
         # Compute motions of the PRP as a rigid body transformation from the rigidBodyNode to the PRP
-        from moorpy.helpers import transformPosition
         self.r6[0:3] = transformPosition(-self.rigidBodyNode.r0[:3], self.rigidBodyNode.r)
         self.r6[3:]  = self.rigidBodyNode.r[-3:]
         # self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref, 0, 0, 0, 0])

@@ -316,13 +316,13 @@ def index_and_member(request):
 '''
 def test_inertia(index_and_member):
     index, member = index_and_member
-    mass, cg, mshell, mfill, pfill = member.getInertia()
+    mass, cg, mshell, mfill, pfill = member.getInertia(rRP=np.zeros(3))
     assert_allclose([mshell, mfill[0], cg[0], cg[1], cg[2]], desired_inertiaBasic[index], rtol=1e-05, atol=1e-5, verbose=True)
     assert_allclose(member.M_struc, desired_inertiaMatrix[index], rtol=1e-05, atol=0, verbose=True)
 
 def test_hydrostatics(index_and_member):
     index, member = index_and_member
-    Fvec, Cmat, _, r_center, _, _, xWP, yWP = member.getHydrostatics(rho=1025, g=9.81)
+    Fvec, Cmat, _, r_center, _, _, xWP, yWP = member.getHydrostatics(rho=1025, g=9.81, rRP=np.zeros(3))
     assert_allclose([Fvec[2], Fvec[3], Fvec[4], Cmat[2,2], Cmat[3,3], Cmat[4,4], r_center[0], r_center[1], r_center[2], xWP, yWP], desired_hydrostatics[index], rtol=1e-05, atol=1e-5, verbose=True)
 
 def test_hydroConstants(index_and_member):

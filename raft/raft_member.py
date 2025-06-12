@@ -266,6 +266,7 @@ class Member:
                 node_id += 1
         else:
             raise Exception(f"Member type {self.type} not supported.")
+        self.nDOF = self.nodeList[0].nDOF * len(self.nodeList) # number of degrees of freedom of this member
         
         # ----- initialize arrays used later for hydro calculations -----
         self.a_i       = np.zeros([self.ns])            # signed axial area vector that dynamic pressure will act on [m2]
@@ -294,24 +295,16 @@ class Member:
         # self.computeStiffnessMatrix()
 
 
-    def setPosition(self, r6=None):
+    def setPosition(self):
         '''Calculates member pose -- hydrodynamic node positions and vectors q, p1, and p2 
         as well as member orientation matrix R based on the end positions and 
         twist angle gamma along with any mean displacements and rotations of the structural nodes.
 
         The position of structural nodes must be set at FOWT level before calling this function.
         
-        Alternatively, the absolute position/orientation of the FOWT can be provided.
-        This is mostly for backwards compatibility previous versions of the code. Might be removed later.
-        
         TODO: For now, we are assuming that the deformations of flexible members are small,
               such that q, p1, p2 and etc are approximately the same across the whole member.
               Need to change that later.
-
-        Parameters
-        ----------
-        r6 : array, optional
-            Absolute position/orientation of FOWT to which member is attached.
         '''
         # formerly calcOrientation
 
@@ -337,13 +330,9 @@ class Member:
         p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
                 
         # update member-end position
-        if r6 is None:
-            # Use the position of the first node, which has to be set before calling this function            
-            r6 = self.nodeList[0].r
-            self.rA = self.nodeList[0].r[0:3] # position of the first node (end A) [m]
-        else:
-            # If providing the platform r6, then the member's end A position is relative to the platform reference point (PRP)
-            self.rA = transformPosition(self.rA0, r6)
+        # Use the position of the first node, which has to be set before calling this function            
+        r6 = self.nodeList[0].r
+        self.rA = self.nodeList[0].r[0:3] # position of the first node (end A) [m]
 
         # apply any platform offset and rotation to the values already obtained
         R_platform = rotationMatrix(*r6[3:])  # rotation matrix for the platform roll, pitch, yaw
@@ -371,20 +360,26 @@ class Member:
         # matrices of vector multiplied by vector transposed, used in computing force components
         self.qMat  = VecVecTrans(self.q)
         self.p1Mat = VecVecTrans(self.p1)
-        self.p2Mat = VecVecTrans(self.p2)                 
+        self.p2Mat = VecVecTrans(self.p2)
 
 
-    def getInertia(self, rPRP=np.zeros(3)):
-        '''Calculates member inertia properties: mass, center of mass, moments of inertia.
-        Properties are calculated relative to the platform reference point (PRP) in the
-        global orientation directions.
+    def getInertia(self, rRP=None):
+        '''Returns member inertia properties: mass, center of mass, moments of inertia.
+        Properties are calculated relative to the RP in the global orientation directions.
+
+        Also updates the member's inertia matrix, self.M_struc, which is a (self.nDOF, self.nDOF),
+        matrix with respect to RP
+         
+        TODO: Still need to implement flexible members here
         
         Parameters
         ----------
-        rPRP : float array
-            Coordinates of the platform reference point (the first three entries of fowt.Xi0),
-            which the moment of inertia matrix will be calculated relative to. [m]
+        rRP : float array, optional
+            Coordinates of the reference point which the moment of inertia matrix will be calculated relative to. [m]
+            If not provided, we use the first node of the member
         '''
+        if rRP is None:
+            rRP = self.nodeList[0].r[:3]
 
         # Moment of Inertia Helper Functions (to move to helper file) <<<
         
@@ -471,16 +466,15 @@ class Member:
 
             return Ixx, Iyy, Izz
 
-
-
-        # ------- member inertial calculations ---------
-        
-        mass_center = 0                                 # total sum of mass the center of mass of the member [kg-m]
-        mshell = 0                                      # total mass of the shell material only of the member [kg]
-        self.vfill = []                                 # list of ballast volumes in each submember [m^3] - stored in the object for later access
-        mfill = []                                      # list of ballast masses in each submember [kg]
-        pfill = []                                      # list of ballast densities in each submember [kg]
-        self.M_struc = np.zeros([6,6])                  # member mass/inertia matrix [kg, kg-m, kg-m^2]
+        # ------- member inertial calculations ---------        
+        mass_center = 0                                   # total sum of mass the center of mass of the member [kg-m]
+        mshell = 0                                        # total mass of the shell material only of the member [kg]
+        self.vfill = []                                   # list of ballast volumes in each submember [m^3] - stored in the object for later access
+        mfill = []                                        # list of ballast masses in each submember [kg]
+        pfill = []                                        # list of ballast densities in each submember [kg]        
+        self.M_struc = np.zeros([self.nDOF,self.nDOF])    # member mass/inertia matrix [kg, kg-m, kg-m^2]
+        M_aux        = np.zeros([6,6])                    # auxiliary inertia matrix that is used for rigid members
+        self.C_struc = np.zeros([self.nDOF,self.nDOF])    # Hydrostatic stiffness matrix       
 
         # loop through each sub-member
         for i in range(1,len(self.stations)):                            # start at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
@@ -594,8 +588,8 @@ class Member:
                     Izz_end = Izz_end_shell + Izz_end_fill
                     Izz = Izz_end       # the total MoI of the member about the z-axis is the same at any point along the z-axis
 
-                # center of mass of the submember from the PRP in global orientation (note: some of above could streamlined out of the if/else)
-                center = self.rA + self.q*(self.stations[i-1] + hc) - rPRP      # center of mass of the submember relative to the PRP [m]
+                # center of mass of the submember from the RP in global orientation (note: some of above could streamlined out of the if/else)
+                center = self.rA + self.q*(self.stations[i-1] + hc) - rRP      # center of mass of the submember relative to the RP [m]                   
 
             # add/append terms
             mass_center += mass*center                  # total sum of mass the center of mass of the member [kg-m]
@@ -613,8 +607,9 @@ class Member:
 
             Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
 
-            # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
-            self.M_struc += translateMatrix6to6DOF(Mmat, center) # mass matrix of the member about the PRP
+            # translate this submember's local inertia matrix to the RP and add it to the total member's M_struc matrix
+            # M_aux += translateMatrix6to6DOF(Mmat, center-self.nodeList[0].r[:3]) # mass matrix of the member about its first node
+            M_aux += translateMatrix6to6DOF(Mmat, center) # mass matrix of the member about the RP
 
 
             # end of submember for loop
@@ -742,8 +737,8 @@ class Member:
                 Izz = Izz_end
 
 
-            # get centerpoint of cap relative to PRP
-            pos_cap = self.rA + self.q*L - rPRP                 # position of the referenced cap station from the PRP
+            # get centerpoint of cap relative to RP
+            pos_cap = self.rA + self.q*L - rRP                 # position of the referenced cap station from the rRP
             if L==self.stations[0]:         # if it's a bottom end cap, the position is at the bottom of the end cap
                 center_cap = pos_cap + self.q*hc_cap            # and the CG of the cap is at hc from the bottom, so this is the simple case
             elif L==self.stations[-1]:      # if it's a top end cap, the position is at the top of the end cap
@@ -767,13 +762,24 @@ class Member:
 
             Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
 
-            # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
-            self.M_struc += translateMatrix6to6DOF(Mmat, center_cap) # mass matrix of the member about the PRP
+            # translate this submember's local inertia matrix to the RP and add it to the total member's M_struc matrix
+            # M_aux += translateMatrix6to6DOF(Mmat, center_cap-self.nodeList[0].r[:3]) # mass matrix of the member about the first node
+            M_aux += translateMatrix6to6DOF(Mmat, center_cap) # mass matrix of the member about the RP
 
         self.mshell = mshell
         self.mfill  = mfill
-        mass = self.M_struc[0,0]        # total mass of the entire member [kg]
-        center = mass_center/mass if mass!=0 else np.zeros(3)       # total center of mass of the entire member from the PRP [m]
+        mass = M_aux[0,0]        # total mass of the entire member [kg]
+        center = mass_center/mass if mass!=0 else np.zeros(3)       # total center of mass of the entire member from the RP [m]
+                
+        self.mass = mass
+        self.cog  = center
+        
+        if self.type == 'rigid':
+            # store the (6,6) matrix given wrp to the reference point
+            self.M_struc = M_aux
+        else: 
+            # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrp to the member's nodes. 
+            raise ValueError(f'getInertia() only works for rigid members for now, but member {member.name} is of type {self.type}.')
 
 
         return mass, center, mshell, mfill, pfill
@@ -781,17 +787,23 @@ class Member:
 
 
 
-    def getHydrostatics(self, rPRP=np.zeros(3), rho=1025, g=9.81):
+    def getHydrostatics(self, rRP=None, rho=1025, g=9.81):
         '''Calculates member hydrostatic properties, namely buoyancy and stiffness matrix.
-        Properties are calculated relative to the platform reference point (PRP) in the
-        global orientation directions.
+        Properties are calculated relative to the reference point in the global orientation directions.
         
+        Also updates the member's inertia matrix, self.K_hydro, which is a (self.nDOF, self.nDOF)
+        matrix with respect to the members' nodes. This can be different than rRP.
+         
+        TODO: Still need to implement flexible members here
+
         Parameters
         ----------
-        rPRP : float array
-            Coordinates of the platform reference point (the first three entries of fowt.Xi0),
-            which the moment of inertia matrix will be calculated relative to. [m]
+        rRP : float array, optional
+            Coordinates of the reference point which the moment of inertia matrix will be calculated relative to. [m]
+            If not provided, we use the first node of the member
         '''
+        if rRP is None:
+            rRP = self.nodeList[0].r[:3]
     
         pi = np.pi
 
@@ -812,11 +824,10 @@ class Member:
 
         for i in range(1,n):     # starting at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
 
-            # calculate end locations for this segment relative to the point on 
-            # the waterplane directly above the PRP in unrotated directions (rHS_ref)
-            rHS_ref = np.array([rPRP[0], rPRP[1], 0])
-            rA = self.rA + self.q*self.stations[i-1] - rHS_ref
-            rB = self.rA + self.q*self.stations[i  ] - rHS_ref
+            # calculate end locations for this segment relative to the reference point in unrotated directions
+            # rHS_ref = np.array([rRP[0], rRP[1], 0])
+            rA = self.rA + self.q*self.stations[i-1] - rRP
+            rB = self.rA + self.q*self.stations[i  ] - rRP
 
             # partially submerged case
             if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
@@ -850,7 +861,7 @@ class Member:
                     IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
                     I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
                     T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
-                    I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as PRP
+                    I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as RP
                     IxWP = I_rot[0,0]
                     IyWP = I_rot[1,1]
 
@@ -865,7 +876,7 @@ class Member:
                 elif self.shape=='rectangular':
                     V_UWi, hc = FrustumVCV(self.sl[i-1], slWP, LWP)
 
-                r_center = rA + self.q*hc          # absolute coordinates of center of volume of this segment [m]
+                r_center = rA + self.q*hc          # coordinates of center of volume of this segment relative to RP [m]
 
 
                 # >>>> question: should this function be able to use displaced/rotated values? <<<<
@@ -904,8 +915,10 @@ class Member:
                 Cmat[4,3] += rho*g*(      AWP*xWP*yWP)
                 Cmat[4,4] += rho*g*(IyWP + AWP*xWP**2 )
 
-                Cmat[3,3] += rho*g*V_UWi * r_center[2]
-                Cmat[4,4] += rho*g*V_UWi * r_center[2]
+                Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
+                Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
+                Cmat[3,5] += -rho*g*V_UWi * r_center[0]
+                Cmat[4,5] += -rho*g*V_UWi * r_center[1]
 
                 V_UW += V_UWi
                 r_centerV += r_center*V_UWi
@@ -920,14 +933,16 @@ class Member:
                 elif self.shape=='rectangular':
                     V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.stations[i]-self.stations[i-1])
 
-                r_center = rA + self.q*hc             # center of volume of this segment relative to PRP [m]
+                r_center = rA + self.q*hc             # center of volume of this segment relative to RP [m]
 
                 # buoyancy force (and moment) vector
                 Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center)
 
-                # hydrostatic stiffness matrix (about end A)
+                # hydrostatic stiffness matrix
                 Cmat[3,3] += rho*g*V_UWi * r_center[2]
                 Cmat[4,4] += rho*g*V_UWi * r_center[2]
+                Cmat[3,5] += -rho*g*V_UWi * r_center[0]
+                Cmat[4,5] += -rho*g*V_UWi * r_center[1]                
 
                 V_UW += V_UWi
                 r_centerV += r_center*V_UWi
@@ -942,10 +957,50 @@ class Member:
             r_center = np.zeros(3)       # temporary fix for out-of-water members
         
         self.V = V_UW  # store submerged volume
+
+        # Assign the hydrostatic stiffness matrix to the node object
+        if self.type == 'rigid':
+            # self.nodeList[0].K_hydro = translateMatrix6to6DOF(Cmat, rRP-self.nodeList[0].r[:3])
+            self.nodeList[0].K_hydro = Cmat
+        else:
+            raise ValueError(f'getHydrostatics() only works for rigid members for now, but member {member.name} is of type {self.type}.')
         
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
+    def getWeight(self, rRP=None, g=9.81):
+        '''Returns member weight relative to the reference point in the global orientation directions.
 
+        Also updates the member's stiffness matrix, self.C_struc, which is a (self.nDOF, self.nDOF),
+        matrix with respect to rRP. This terms is usually included in the hydrostatic stiffness matrix in naval architecture
+         
+        TODO: Still need to implement flexible members here
+        
+        Parameters
+        ----------
+        rRP : float array, optional
+            Coordinates of the reference point which the moment of inertia matrix will be calculated relative to. [m]
+            If not provided, we use the first node of the member
+        '''
+        if rRP is None:
+            rRP = self.nodeList[0].r[:3]
+
+        # Calculate the stiffness matrix relative to the reference point
+        C_aux        = np.zeros([6,6])
+        C_aux[3, 3] += -self.mass*g*rRP[2]  # Overturning roll moment
+        C_aux[4, 4] += -self.mass*g*rRP[2]  # Overturning pitch moment
+        C_aux[3, 5] +=  self.mass*g*self.center[0]
+        C_aux[4, 5] +=  self.mass*g*self.center[1]
+
+        W = translateForce3to6DOF( np.array([0,0, -g*self.mass]), self.center-rRP)
+
+        if self.type == 'rigid':
+            # store the (6,6) matrix given wrp to the member's node.
+            self.C_struc = C_aux
+        else: 
+            # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrp to the member's nodes. 
+            raise ValueError(f'getWeight() only works for rigid members for now, but member {member.name} is of type {self.type}.')
+        return W
+        
     def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81, k_array=None):
         '''Compute the Member's linear strip-theory-hydrodynamics terms, 
         related to drag and added mass, which are also a precursor to 
@@ -1899,7 +1954,16 @@ class Member:
                         
             # Transform the local stiffness matrix to global coordinates
             Ke_global = (Dc @ Ke) @ Dc.T
-            self.K[i*nDOF:(i+2)*nDOF, i*nDOF:(i+2)*nDOF] += Ke_global
+            self.K[i*nDOF:(i+2)*nDOF, i*nDOF:(i+2)*nDOF] += Ke_global            
+
+        # Store the rows of self.K in the nodes objects.
+        # Note that self.K_flexible has dimension (6, 6*nNodesStructure)
+        # whereas self.K has dimension (6*nNodesMember, 6*nNodesMember).
+        # That's why we need to find the column range that correspond to this member's matrix.
+        col_first = self.nodeList[0].id*self.nodeList[0].nDOF
+        col_last  = (self.nodeList[-1].id+1)*self.nodeList[0].nDOF
+        for i, n in enumerate(self.nodeList):            
+            n.K_flexible[:, col_first:col_last] = self.K[i*nDOF:(i+1)*nDOF, :]
 
         return self.K
 

@@ -746,7 +746,7 @@ class FOWT():
             rot.setPosition()
             
         for mem in self.memberList:
-            mem.setPosition(r6=self.r6) # TODO: Change this to use the position of the node attached to the member
+            mem.setPosition()
             mem.computeStiffnessMatrix() # Recompute stiffness matrix at the updated position
         
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
@@ -812,13 +812,13 @@ class FOWT():
         for i,mem in enumerate(memberList):
 
             # calculate member's orientation information (stored in the member and used in later steps)
-            mem.setPosition(r6=self.r6)  # <<< is this redundant, assume fowt.setPosition has been called?
+            mem.setPosition()  # <<< is this redundant, assume fowt.setPosition has been called?
             
             # note: quantities in the following section are relative to the PRP (but with global direcions)
 
             # ---------------------- get member's mass and inertia properties ------------------------------
             # get member mass and inertia info (including mem.M_struc) <<< still split between converting to PRP in or out of these functions
-            mass, center, m_shell, mfill, pfill = mem.getInertia(rPRP=self.r6[:3]) 
+            mass, center, m_shell, mfill, pfill = mem.getInertia(rRP=self.r6[:3]) 
 
             # Calculate the mass matrix of the FOWT about the PRP
             self.W_struc += translateForce3to6DOF( np.array([0,0, -g*mass]), center )  # weight vector
@@ -841,7 +841,7 @@ class FOWT():
 
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
 
-            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rPRP=self.r6[:3])
+            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rRP=self.r6[:3])
             
             # add to fowt's mean force vector and stiffness matrix
             self.W_hydro += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
@@ -897,7 +897,7 @@ class FOWT():
                         # >>>>>> can be used later if actual rectangular mass properties are desired other than mRNA <<<<<<<<
 
                         # calculate hydrostatic properties of the blade (sub)member and add them to the system matrices
-                        Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = afmem.getHydrostatics(rho=self.rho_water, g=self.g, rPRP=self.r6[:3])
+                        Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = afmem.getHydrostatics(rho=self.rho_water, g=self.g, rRP=self.r6[:3])
                         
                         # outputs of getHydrostatics should already be about the PRP
                         self.W_hydro += Fvec # buoyancy vector
@@ -923,7 +923,7 @@ class FOWT():
         for mem in nacelleMemberList:
 
             # call getHydroStatics for nacelles
-            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rPRP=self.r6[:3])
+            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rRP=self.r6[:3])
             
             # add to fowt's mean force vector and stiffness matrix
             self.W_hydro += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
@@ -2451,7 +2451,7 @@ class FOWT():
         if len(K) != len(self.nodeList):
             raise Exception("Number of stiffness matrices must be equal to the number of nodes.")                
         for i, node in enumerate(self.nodeList):
-            node.assignStiffnessToNode(K[i])
+            node.K_hydro = K[i]
 
     # Compute the load vector and stiffness matrix of the whole structure (6*Nnodes system of equations)
     def evaluateLoadVector(self):

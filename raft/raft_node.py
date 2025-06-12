@@ -40,30 +40,18 @@ class Node:
         self.r  = self.r0.copy() # Current position and attitude of the node in the global reference frame (current wrp to PRP but updated when updating the FOWT's position)
         self.Xi0 = np.zeros(self.nDOF) # mean offsets of the node from its reference point [m, rad]
         self.Xi  = np.zeros([self.nDOF, nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]        
-        self.end_node = end_node # True if this is an end node of a member, False if this is an internal node of a flexible member
-        self.F = np.zeros((self.nDOF)) # Force vector acting on this node (from hydrodynamics, weight, aerodynamics, moorings, etc)
-        self.K = np.zeros((self.nDOF, self.nDOF)) # Stiffness matrix of this node (from hydrostatics, moorings, etc)
+        self.end_node = end_node              # True if this is an end node of a member, False if this is an internal node of a flexible member
         
         # Things with `None` will be assigned later
-        self.nodeList = None # Reference to the list of nodes in the structure. Assigned when initializing the Structure object.
-        self.T        = None # Transformation matrix that relates the 6 dofs of this node to the reduced dofs of the STRUCTURE (rows of structure.T that correspond to this node)
+        self.nodeList      = None # Reference to the list of nodes in the structure. Assigned when initializing the Structure object.
+        self.T             = None # Transformation matrix that relates the 6 dofs of this node to the reduced dofs of the STRUCTURE (rows of structure.T that correspond to this node)
         self.parentNode_id = None # ID of the parent node. Assigned when attaching this node to another node.
-        self.reducedDOF   = None # Reduced DoFs that are needed to describe this node. This is a subset of the reduced dofs of the whole structure. List of lists with two elements: [node_id, dof_id]. E.g., [[3, 5]] is the rotation around z of node with id equal to 3.
+        self.reducedDOF    = None # Reduced DoFs that are needed to describe this node. This is a subset of the reduced dofs of the whole structure. List of lists with two elements: [node_id, dof_id]. E.g., [[3, 5]] is the rotation around z of node with id equal to 3.
         self.T_aux         = None # Subset of the transformation matrix T. T_aux relates the 6 dofs of this node to a subset of the reduced dofs required to describe this node only.          
 
         self.joint_id      = None
         self.joint_type    = None
         self.rigid_link_id = None
-
-    def assignLoadToNode(self, F):
-        if F.shape[0] != self.nDOF:
-            raise Exception(f"Force must have {self.nDOF} components")
-        self.F = F
-    
-    def assignStiffnessToNode(self,K):
-        if K.shape != (self.nDOF, self.nDOF):
-            raise Exception(f"Stiffness must be a {self.nDOF}x{self.nDOF} array")
-        self.K = K
 
     def getRigidConnectedNode(self):
         '''

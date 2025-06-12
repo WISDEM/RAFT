@@ -131,10 +131,6 @@ class Rotor:
         # and because we might want to have more nodes in the future.    
         self.nodeList = [Node(node_id, self.r_RRP, self.nw, member=self, end_node=True)] #
 
-        # Set an inertia matrix assuming the rotor is pointing to the -x direction. Will be updated in setPosition().
-        self.nodeList[0].M = np.diag([self.mRNA, self.mRNA, self.mRNA, 
-                                      self.IxRNA, self.IrRNA, self.IrRNA])
-
         # Call setPosition to properly initialize various location parameters
         self.setPosition()
 
@@ -423,8 +419,7 @@ class Rotor:
         
         # Set absolute hub coordinate [m] for use in various aero/hydro calcs
         # Also update the RNA inertia matrix
-        self.r3 = self.nodeList[0].r[:3] + self.r_hub_rel_PRP
-        self.nodeList[0].M = rotateMatrix6(self.nodeList[0].M, self.R_q)          
+        self.r3 = self.nodeList[0].r[:3] + self.r_hub_rel_PRP         
         
     
     def setYaw(self, yaw=None):

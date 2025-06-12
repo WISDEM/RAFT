@@ -419,7 +419,7 @@ class Rotor:
         
         # Set absolute hub coordinate [m] for use in various aero/hydro calcs
         # Also update the RNA inertia matrix
-        self.r3 = self.nodeList[0].r[:3] + self.r_hub_rel_PRP         
+        self.r3 = self.nodeList[0].r[:3] + self.r_hub_rel_RRP         
         
     
     def setYaw(self, yaw=None):
@@ -471,9 +471,9 @@ class Rotor:
         self.q = np.matmul(self.R_ptfm, self.q_rel) # Write in the global frame 
 
         # Update RNA point locations [m] w.r.t. PRP in global orientations
-        self.r_hub_rel_PRP = self.q*self.overhang                 # rotor hub location relative to RNA reference point
+        self.r_hub_rel_RRP = self.q*self.overhang                 # rotor hub location relative to RNA reference point
         self.r_CG_rel      = self.r_RRP_rel + self.q*self.xCG_RNA # RNA CG location
-        self.r_hub_rel     = self.r_RRP_rel + self.r_hub_rel_PRP  # rotor hub location
+        self.r_hub_rel     = self.r_RRP_rel + self.r_hub_rel_RRP  # rotor hub location
         
         return self.yaw
     

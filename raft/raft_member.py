@@ -983,15 +983,7 @@ class Member:
         '''
         if rRP is None:
             rRP = self.nodeList[0].r[:3]
-
-        # Calculate the stiffness matrix relative to the reference point
-        C_aux        = np.zeros([6,6])
-        C_aux[3, 3] += -self.mass*g*rRP[2]  # Overturning roll moment
-        C_aux[4, 4] += -self.mass*g*rRP[2]  # Overturning pitch moment
-        C_aux[3, 5] +=  self.mass*g*self.center[0]
-        C_aux[4, 5] +=  self.mass*g*self.center[1]
-
-        W = translateForce3to6DOF( np.array([0,0, -g*self.mass]), self.center-rRP)
+        W, C_aux = getWeightOfPointMass(self.mass, self.cog, rRP, g=g)
 
         if self.type == 'rigid':
             # store the (6,6) matrix given wrp to the member's node.

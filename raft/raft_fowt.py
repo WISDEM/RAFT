@@ -819,10 +819,12 @@ class FOWT():
             # ---------------------- get member's mass and inertia properties ------------------------------
             # get member mass and inertia info (including mem.M_struc) <<< still split between converting to PRP in or out of these functions
             mass, center, m_shell, mfill, pfill = mem.getInertia(rRP=self.r6[:3]) 
+            W = mem.getWeight(g=g, rRP=np.zeros(3)) # Using zeros because mem.cog is about the PRP
 
             # Calculate the mass matrix of the FOWT about the PRP
-            self.W_struc += translateForce3to6DOF( np.array([0,0, -g*mass]), center )  # weight vector
+            self.W_struc += W  # weight vector
             self.M_struc += mem.M_struc     # mass/inertia matrix about the PRP
+            self.C_struc += mem.C_struc     # effective stiffness matrix about the PRP
             
             m_center_sum += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
 
@@ -834,6 +836,7 @@ class FOWT():
             else:
                 self.m_sub += mass              # mass of the substructure
                 self.M_struc_sub += mem.M_struc     # mass matrix of the substructure about the PRP
+                self.C_struc_sub += mem.C_struc     # effective stiffness matrix of the substructure about the PRP
                 m_sub_sum += center*mass        # product sum of the substructure members and their centers of mass [kg-m]
                 self.m_shell += m_shell               # mass of the substructure shell material [kg]
                 mballast.extend(mfill)              # list of ballast masses in each substructure member (list of lists) [kg]
@@ -949,19 +952,24 @@ class FOWT():
             Mmat = rotateMatrix6(Mmat, rotor.R_q)  
             
             # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-            self.W_struc += translateForce3to6DOF(np.array([0,0, -g*rotor.mRNA]), rotor.r_CG_rel )   # weight vector
+            rotor_W, rotor_C_struc = getWeightOfPointMass(rotor.mRNA, rotor.r_CG_rel, np.zeros(3), g=g)  # get weight vector and effective stiffness matrix of the rotor
+            self.W_struc += rotor_W   # weight vector
             self.M_struc += translateMatrix6to6DOF(Mmat, rotor.r_CG_rel)                            # mass/inertia matrix
+            self.C_struc += rotor_C_struc
             m_center_sum += rotor.r_CG_rel*rotor.mRNA
 
 
         # ------------------------- include point inertia properties -----------------------------
         for ip, pointInertia in enumerate(self.pointInertias):            
             self.M_struc += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r'])
-            self.W_struc += translateForce3to6DOF( np.array([0,0, -g*pointInertia['m']]), pointInertia['r'] )
+            point_W, point_C_struc = getWeightOfPointMass(pointInertia['m'], pointInertia['r'], np.zeros(3), g=g)  # get weight vector and effective stiffness matrix of the point inertia. Around (0,0,0) because 'r' is already wrp to the PRP
+            self.W_struc += point_W   # weight vector
+            self.C_struc += point_C_struc
             m_center_sum += pointInertia['r']*pointInertia['m']
 
             self.m_sub += pointInertia['m']
             self.M_struc_sub += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r'])     # mass matrix of the substructure about the PRP
+            self.C_struc_sub += point_C_struc
             m_sub_sum += pointInertia['r']*pointInertia['m']        # product sum of the substructure members and their centers of mass [kg-m]
 
 

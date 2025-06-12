@@ -974,6 +974,35 @@ def convertIEAturbineYAML2RAFT(fname_turbine):
     return d
     
     
+def getWeightOfPointMass(mass, center, rRP, g=9.81):
+    ''' Returns the 6-component weight load and the (6,6) weight stiffness matrix matrix with respect to the reference point (RP). 
+    This matrix is usually included in the hydrostatic stiffness matrix in naval architecture.
+
+    Parameters
+    ----------
+    mass : float
+        mass associated to the point [kg]
+    center : array(3,)
+        center of mass of the point [m]
+    rRP : array(3,)
+        reference point where the mass is applied [m]
+    g : float, optional
+        gravitational acceleration [m/s^2]
+    '''
+
+    W = translateForce3to6DOF( np.array([0,0, -g*mass]), center-rRP)
+
+    C  = np.zeros([6,6])
+    dR = center - rRP  # vector from RP to center of mass. Could provide dR as an input instead, but maybe this one is clearer
+    C[3, 3] += -mass*g*dR[2]  # Overturning roll moment
+    C[4, 4] += -mass*g*dR[2]  # Overturning pitch moment
+    # C[3, 5] +=  mass*g*dR[0] # Neglecting these components for now
+    # C[4, 5] +=  mass*g*dR[1]
+
+    return W, C
+
+
+
 # ----- additional helper functions from Joep van der Spek -----                                 
     
     

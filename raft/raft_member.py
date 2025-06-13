@@ -771,8 +771,8 @@ class Member:
         mass = M_aux[0,0]        # total mass of the entire member [kg]
         center = mass_center/mass if mass!=0 else np.zeros(3)       # total center of mass of the entire member from the RP [m]
                 
-        self.mass = mass
-        self.cog  = center
+        self.mass   = mass
+        self.rCoG  = rRP + center # coordinates of COG in global coordinates [m]
         
         if self.type == 'rigid':
             # store the (6,6) matrix given wrp to the reference point
@@ -824,10 +824,9 @@ class Member:
 
         for i in range(1,n):     # starting at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
 
-            # calculate end locations for this segment relative to the reference point in unrotated directions
-            # rHS_ref = np.array([rRP[0], rRP[1], 0])
-            rA = self.rA + self.q*self.stations[i-1] - rRP
-            rB = self.rA + self.q*self.stations[i  ] - rRP
+            # end locations of this segment
+            rA = self.rA + self.q*self.stations[i-1]
+            rB = self.rA + self.q*self.stations[i  ]
 
             # partially submerged case
             if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
@@ -876,7 +875,7 @@ class Member:
                 elif self.shape=='rectangular':
                     V_UWi, hc = FrustumVCV(self.sl[i-1], slWP, LWP)
 
-                r_center = rA + self.q*hc          # coordinates of center of volume of this segment relative to RP [m]
+                r_center = rA + self.q*hc          # coordinates of center of volume of this segment in the global frame [m]
 
 
                 # >>>> question: should this function be able to use displaced/rotated values? <<<<
@@ -899,26 +898,28 @@ class Member:
                 Mx = M*dPhi_dThx
                 My = M*dPhi_dThy
 
-                Fvec[2] += Fz                           # vertical buoyancy force [N]
-                Fvec[3] += Mx + Fz*rA[1]                # moment about x axis [N-m]
-                Fvec[4] += My - Fz*rA[0]                # moment about y axis [N-m]
-
+                Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), rA-rRP)
+                Fvec[3] += Mx                # moment about x axis [N-m]
+                Fvec[4] += My                # moment about y axis [N-m]
 
                 # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
+                xWP_rel = xWP - rRP[0]  # x coordinate of waterplane relative to RP [m]
+                yWP_rel = yWP - rRP[1] 
                 Cmat[2,2] += -dFz_dz
-                Cmat[2,3] += rho*g*(     -AWP*yWP    )
-                Cmat[2,4] += rho*g*(      AWP*xWP    )
-                Cmat[3,2] += rho*g*(     -AWP*yWP    )
-                Cmat[3,3] += rho*g*(IxWP + AWP*yWP**2 )
-                Cmat[3,4] += rho*g*(      AWP*xWP*yWP)
-                Cmat[4,2] += rho*g*(      AWP*xWP    )
-                Cmat[4,3] += rho*g*(      AWP*xWP*yWP)
-                Cmat[4,4] += rho*g*(IyWP + AWP*xWP**2 )
+                Cmat[2,3] += rho*g*(      -AWP*yWP_rel    )
+                Cmat[2,4] += rho*g*(       AWP*xWP_rel    )
+                Cmat[3,2] += rho*g*(      -AWP*yWP_rel    )
+                Cmat[3,3] += rho*g*(IxWP + AWP*yWP_rel**2 )
+                Cmat[3,4] += rho*g*(       AWP*xWP_rel*yWP_rel)
+                Cmat[4,2] += rho*g*(       AWP*xWP_rel    )
+                Cmat[4,3] += rho*g*(       AWP*xWP_rel*yWP_rel)
+                Cmat[4,4] += rho*g*(IyWP + AWP*xWP_rel**2 )
 
-                Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
-                Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
-                Cmat[3,5] += -rho*g*V_UWi * r_center[0]
-                Cmat[4,5] += -rho*g*V_UWi * r_center[1]
+                dR = r_center - rRP  # center of volume relative to RP [m]
+                Cmat[3,3] +=  rho*g*V_UWi * dR[2]
+                Cmat[4,4] +=  rho*g*V_UWi * dR[2]
+                Cmat[3,5] += -rho*g*V_UWi * dR[0]
+                Cmat[4,5] += -rho*g*V_UWi * dR[1]
 
                 V_UW += V_UWi
                 r_centerV += r_center*V_UWi
@@ -936,13 +937,14 @@ class Member:
                 r_center = rA + self.q*hc             # center of volume of this segment relative to RP [m]
 
                 # buoyancy force (and moment) vector
-                Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center)
+                Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center-rRP)
 
                 # hydrostatic stiffness matrix
-                Cmat[3,3] += rho*g*V_UWi * r_center[2]
-                Cmat[4,4] += rho*g*V_UWi * r_center[2]
-                Cmat[3,5] += -rho*g*V_UWi * r_center[0]
-                Cmat[4,5] += -rho*g*V_UWi * r_center[1]                
+                dR = r_center - rRP
+                Cmat[3,3] +=  rho*g*V_UWi * dR[2]
+                Cmat[4,4] +=  rho*g*V_UWi * dR[2]
+                Cmat[3,5] += -rho*g*V_UWi * dR[0]
+                Cmat[4,5] += -rho*g*V_UWi * dR[1]
 
                 V_UW += V_UWi
                 r_centerV += r_center*V_UWi
@@ -983,7 +985,7 @@ class Member:
         '''
         if rRP is None:
             rRP = self.nodeList[0].r[:3]
-        W, C_aux = getWeightOfPointMass(self.mass, self.cog, rRP, g=g)
+        W, C_aux = getWeightOfPointMass(self.mass, self.rCoG-rRP, g=g)
 
         if self.type == 'rigid':
             # store the (6,6) matrix given wrp to the member's node.

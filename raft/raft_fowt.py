@@ -80,22 +80,35 @@ class FOWT():
         self.r6 = np.zeros(6)   # mean position/orientation in absolute/array coordinates [m,rad]
 
         # Platform lumped inertias
-        self.pointInertias = []        
-        if 'pointInertias' in design['platform']:
-            nPoints = len(design['platform']['pointInertias'])            
-            for ip, pointInertia in enumerate(design['platform']['pointInertias']):
-                self.pointInertias.append({'m': 0, 'inertia': np.zeros([6, 6]), 'r': np.zeros([3,])}) # mass, inertia, and position of each point mass to be added to the platform
-                pointMass = getFromDict(pointInertia, 'mass', shape=0, default=0) # mass of the substructure [kg]
-                self.pointInertias[-1]['m'] = pointMass
-                auxInertia = getFromDict(pointInertia, 'moments_of_inertia', shape=6, default=[0,0,0]) # moments of inertia of the substructure [kg*m^2] - specified in the order Jxx, Jyy, Jzz, Jxy, Jxz, Jyz
-                self.pointInertias[-1]['inertia'] = np.array([[pointMass, 0, 0, 0, 0, 0],
-                                                              [0, pointMass, 0, 0, 0, 0],
-                                                              [0, 0, pointMass, 0, 0, 0],
-                                                              [0, 0, 0, auxInertia[0], auxInertia[3], auxInertia[4]],
-                                                              [0, 0, 0, auxInertia[3], auxInertia[1], auxInertia[5]],
-                                                              [0, 0, 0, auxInertia[4], auxInertia[5], auxInertia[2]]])
-                self.pointInertias[-1]['r'] = getFromDict(pointInertia, 'location', shape=3, default=[0,0,0])
-                        
+        self.pointInertias = []
+        self.pointLoads    = []
+        if 'additional_effects' in design['platform']:
+            for ie, additional_effect in enumerate(design['platform']['additional_effects']):
+                if 'type' not in additional_effect:
+                    raise Exception(f"Additional effect {ie} in platform design must have a 'type' field.")
+
+                if additional_effect['type'] == 'point_inertia':
+                    self.pointInertias.append({'m': 0, 'inertia': np.zeros([6, 6]), 'r': np.zeros([3,])}) # mass, inertia, and position of each point mass to be added to the platform
+                    pointMass = getFromDict(additional_effect, 'mass', shape=0, default=0) # mass of the substructure [kg]
+                    auxInertia = getFromDict(additional_effect, 'moments_of_inertia', shape=6, default=[0,0,0]) # moments of inertia of the substructure [kg*m^2] - specified in the order Jxx, Jyy, Jzz, Jxy, Jxz, Jyz
+
+                    self.pointInertias[-1]['m'] = pointMass                    
+                    self.pointInertias[-1]['inertia'] = np.array([[pointMass, 0, 0, 0, 0, 0],
+                                                                [0, pointMass, 0, 0, 0, 0],
+                                                                [0, 0, pointMass, 0, 0, 0],
+                                                                [0, 0, 0, auxInertia[0], auxInertia[3], auxInertia[4]],
+                                                                [0, 0, 0, auxInertia[3], auxInertia[1], auxInertia[5]],
+                                                                [0, 0, 0, auxInertia[4], auxInertia[5], auxInertia[2]]])
+                    self.pointInertias[-1]['r'] = getFromDict(additional_effect, 'location', shape=3, default=[0,0,0])
+                elif additional_effect['type'] == 'mean_load':
+                    self.pointLoads.append({'f': np.zeros(6), 'r': np.zeros(3)}) # load and position of each point load to be added to the platform
+                    self.pointLoads[-1]['f'] = getFromDict(additional_effect, 'load', shape=6, default=np.zeros(6)) # load vector [N, N-m]
+                    self.pointLoads[-1]['r'] = getFromDict(additional_effect, 'location', shape=3, default=[0,0,0]) # position where the load is applied [m]
+
+        self.f0_additional = np.zeros([6], dtype=float)
+        for pointLoad in self.pointLoads:
+            self.f0_additional += transformForce(pointLoad['f'], offset=pointLoad['r'])
+                                            
         # count number of platform members
         self.nplatmems = 0
         for platmem in design['platform']['members']:

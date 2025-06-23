@@ -101,7 +101,7 @@ class Model():
                     self.ms.load(design['array_mooring']['file'], clear=False)  # add the array level mooring system to the already created bodies
                 else:
                     raise Exception("When using 'array_mooring', a MoorDyn-style input file must be provided as 'file'.")
-
+                self.ms_tol = getFromDict(design['mooring'], 'tol', dtype=float, default=0.05)  # mooring system tolerance for solving equilibrium
                 self.moorMod = getFromDict(design['array_mooring'], 'moorMod', default=0, dtype=int)
             else:
                 self.ms = None
@@ -650,7 +650,7 @@ class Model():
             
             # update array-level mooring system's internal equilibrium (free DOFs only)
             if self.ms:
-                self.ms.solveEquilibrium()
+                self.ms.solveEquilibrium(tol=self.ms_tol)
 
 
             # get updated forces on each FOWT and sum them up

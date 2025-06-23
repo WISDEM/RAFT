@@ -13,7 +13,7 @@ from scipy.special import jn, yn, jv, kn, hankel1
 #  used during the model's operation.
 class Member:
 
-    def __init__(self, mi, nw, BEM=[], heading=0):
+    def __init__(self, mi, nw, BEM=[], heading=0, part_of='platform'):
         '''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
 
         PARAMETERS
@@ -26,13 +26,15 @@ class Member:
         heading : float, optional
             Heading rotation to apply to the coordinates when setting up the 
             member. Used for member arrangements or FOWT heading offsets [deg].
-
+        part_of : str, optional
+            String identifying the subcomponent of the FOWT that this member is part of (platform, tower, nacelle, ...)
         '''
 
         # overall member parameters
-        self.id    = int(1)                                          # set the ID value of the member
-        self.name  = str(mi['name'])
-        self.type  = int(mi['type'])                                 # set the type of the member (for now, just arbitrary numbers: 0,1,2, etc.)
+        self.id       = int(1)                                       # set the ID value of the member
+        self.name     = str(mi['name'])
+        self.type     = str(mi['type'])                              # set the type of the member (will be used to identify rigid and flexible members)
+        self.part_of  = part_of.lower()                              # String identifying the subcomponent of the FOWT that this member is part of
 
         self.rA0 = np.array(mi['rA'], dtype=np.double)               # [x,y,z] coordinates of lower node relative to PRP [m]
         self.rB0 = np.array(mi['rB'], dtype=np.double)               # [x,y,z] coordinates of upper node relative to PRP [m]
@@ -56,11 +58,8 @@ class Member:
     
         # heading feature for rotation members about the z axis (used for rotated patterns)
         if heading != 0.0:
-            c = np.cos(np.deg2rad(heading))
-            s = np.sin(np.deg2rad(heading))
-            rotMat = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
-            self.rA0 = np.matmul(rotMat, self.rA0)
-            self.rB0 = np.matmul(rotMat, self.rB0)
+            self.rA0 = applyHeadingToPoint(self.rA0, heading)
+            self.rB0 = applyHeadingToPoint(self.rB0, heading)
             
             if rAB[0] == 0.0 and rAB[1] == 0:  # special case of vertical member
                 self.gamma += heading  # heading must be applied as twist about z
@@ -455,7 +454,7 @@ class Member:
                     v_shell = V_outer-V_inner               # volume of hollow frustum with shell thickness [m^3]
                     m_shell = v_shell*rho_shell             # mass of hollow frustum [kg]
                     
-                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0  # center of volume of hollow frustum with shell thickness [m]
+                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0.0  # center of volume of hollow frustum with shell thickness [m]
                          
                     dBi_fill = (dBi-dAi)*(l_fill/l) + dAi   # interpolated inner diameter of frustum that ballast is filled to [m] 
                     v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, l_fill)         # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
@@ -465,7 +464,7 @@ class Member:
                     # then the ballast sits on top of the end cap. Depending on the thickness of the end cap, this can affect m_fill, hc_fill, and MoI_fill >>>>>
                     
                     mass = m_shell + m_fill                 # total mass of the submember [kg]
-                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass!=0 else 0      # total center of mass of the submember from the submember's rA location [m]
+                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass!=0 else 0.0      # total center of mass of the submember from the submember's rA location [m]
                     
                     
                     # MOMENT OF INERTIA
@@ -498,14 +497,14 @@ class Member:
                     v_shell = V_outer-V_inner                   # volume of hollow frustum with shell thickness [m^3]
                     m_shell = v_shell*rho_shell                 # mass of hollow frustum [kg]
                     
-                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0  # center of volume of the hollow frustum with shell thickness [m]
+                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0.0  # center of volume of the hollow frustum with shell thickness [m]
                                         
                     slBi_fill = (slBi-slAi)*(l_fill/l) + slAi   # interpolated side lengths of frustum that ballast is filled to [m]
                     v_fill, hc_fill = FrustumVCV(slAi, slBi_fill, l_fill)   # volume and center of volume of inner frustum that ballast occupies [m^3]
                     m_fill = v_fill*rho_fill                    # mass of ballast in the submember [kg]
                     
                     mass = m_shell + m_fill                     # total mass of the submember [kg]
-                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass !=0 else 0     # total center of mass of the submember from the submember's rA location [m]
+                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass !=0 else 0.0     # total center of mass of the submember from the submember's rA location [m]
                     
                     
                     # MOMENT OF INERTIA
@@ -608,7 +607,7 @@ class Member:
                 V_inner, hci = FrustumVCV(dAi, dBi, h)
                 v_cap = V_outer-V_inner
                 m_cap = v_cap*rho_cap    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
-                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0
+                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0.0
                 
                 I_rad_end_outer, I_ax_outer = FrustumMOI(dA, dB, h, rho_cap)
                 I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, h, rho_cap)
@@ -666,7 +665,7 @@ class Member:
                 V_inner, hci = FrustumVCV(slAi, slBi, h)
                 v_cap = V_outer-V_inner
                 m_cap = v_cap*rho_cap    # assume it's made out of the same material as the shell for now (can add in cap density input later if needed)
-                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0
+                hc_cap = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0.0
 
                 Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA[0], slA[1], slB[0], slB[1], h, rho_cap)
                 Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi[0], slAi[1], slBi[0], slBi[1], h, rho_cap)
@@ -709,7 +708,7 @@ class Member:
         self.mshell = mshell
         self.mfill  = mfill
         mass = self.M_struc[0,0]        # total mass of the entire member [kg]
-        center = mass_center/mass if mass!=0 else np.array([0,0,0])       # total center of mass of the entire member from the PRP [m]
+        center = mass_center/mass if mass!=0 else np.zeros(3)       # total center of mass of the entire member from the PRP [m]
 
 
         return mass, center, mshell, mfill, pfill
@@ -1095,6 +1094,194 @@ class Member:
 
         return Cm_p1, Cm_p2
 
+    def calcQTF_slenderBody(self, Xi, beta, w, k, depth, rho=1025, g=9.8, verbose=False):
+        nw = len(w)
+        qtf = np.zeros([nw, nw, 6], dtype=complex)
+
+        # Don't do anything if the member is above the water        
+        if self.rA[2] > 0 and self.rB[2] > 0:
+            return qtf            
+
+        # convenience boolian for circular vs. rectangular cross sections
+        circ = self.shape=='circular'
+
+        # Get fluid and body kinematics at each node of the member
+        nodeV           = np.zeros([3, nw, self.ns], dtype=complex)    # Node velocity
+        dr              = np.zeros([3, nw, self.ns], dtype=complex)    # Node displacement
+        u               = np.zeros([3, nw, self.ns], dtype=complex)    # Incident fluid velocity at node
+        grad_u          = np.zeros([3, 3, nw, self.ns], dtype=complex) # Gradient matrix of first-order velocity
+        grad_dudt       = np.zeros([3, 3, nw, self.ns], dtype=complex) # Gradient matrix of first-order acceleration
+        nodeV_axial_rel = np.zeros([nw, self.ns], dtype=complex)       # Node relative axial velocity
+        grad_pres1st    = np.zeros([3, nw, self.ns], dtype=complex)    # Gradient of first order pressure at each node
+        for iNode, r in enumerate(self.r):
+            dr[:,:, iNode], nodeV[:,:, iNode], _ = getKinematics(r, Xi, w)
+            u[:,:, iNode], _, _ = getWaveKin(np.ones(w.shape), beta, w, k, depth, r, nw, rho=rho, g=g)
+
+            for iw in range(nw):
+                grad_u[:, :, iw, iNode]    = getWaveKin_grad_u1(w[iw], k[iw], beta, depth, r)
+                grad_dudt[:, :, iw, iNode] = getWaveKin_grad_dudt(w[iw], k[iw], beta, depth, r)
+                nodeV_axial_rel[iw, iNode] = np.dot(u[:, iw, iNode]-nodeV[:,iw, iNode], self.q)
+                grad_pres1st[:, iw, iNode] = getWaveKin_grad_pres1st(k[iw], beta, depth, r, rho=rho, g=g)
+                                            
+        # Get fluid and body kinematics at the intersection of the member intersection with the water line
+        eta   = np.zeros([nw], dtype=complex)    # Incoming wave elevation
+        eta_r = np.zeros([nw], dtype=complex)    # Relative incoming wave elevation (i.e. wave elevation - vertical body motion)
+        ud_wl = np.zeros([3, nw], dtype=complex) # Incoming wave acceleration
+        dr_wl = np.zeros([3, nw], dtype=complex) # Body displacement at intersection with water line
+        a_wl  = np.zeros([3, nw], dtype=complex) # Body acceleration at intersection with water line
+        if self.r[-1,2] * self.r[0,2] < 0: # Only if the member intersects the water line
+            r_int = self.r[0,:] + (self.r[-1,:] - self.r[0,:]) * (0. - self.r[0,2]) / (self.r[-1,2] - self.r[0,2]) # Intersection point
+            _, ud_wl, eta  = getWaveKin(np.ones(w.shape), beta, w, k, depth, r_int, nw, rho=1, g=1) # getWaveKin actually returns dynamic pressure, so we use unitary rho and g to get the wave elevation
+            dr_wl, _, a_wl = getKinematics(r_int, Xi, w)
+        
+        # Vector with the acceleration of gravity projected along the p1 and p2 axes of the member (which are perpendicular to the member's axis)
+        g_e1 = np.zeros([3, nw], dtype=complex)
+        for iw in range(nw):
+            g_e1[:, iw] = -g * (np.cross(Xi[3:, iw], self.p1)[2] * self.p1 + np.cross(Xi[3:, iw], self.p2)[2] * self.p2)
+
+        # Relative wave elevation
+        eta_r = eta-dr_wl[2,:]
+
+        # Loop through each pair of frequency
+        for i1, (w1, k1) in enumerate(zip(w, k)):
+            if verbose:
+                    print(f"     - Row {i1+1:02d} of {nw:02d}", end='\r')
+            for i2, (w2, k2) in enumerate(zip(w, k)):
+                F_2ndPot = np.zeros(6, dtype='complex') # Force component due to second-order wave potential
+                F_conv   = np.zeros(6, dtype='complex') # Force component due to convective acceleration
+                F_axdv   = np.zeros(6, dtype='complex') # Force component due to Rainey's axial-divergence acceleration
+                F_eta    = np.zeros(6, dtype='complex') # Force component due to the relative wave elevation
+                F_nabla  = np.zeros(6, dtype='complex') # Force component due to body motions within the first-order wave field
+                F_rslb   = np.zeros(6, dtype='complex') # Force component due to Rainey's body rotation term
+
+                # Need to loop only half of the matrix due to symmetry (QTFs are Hermitian matrices)
+                if w2 < w1:
+                    continue
+
+                # loop through each node of the member
+                for il in range(self.ns):
+                    # only process hydrodynamics if this node is submerged
+                    if self.r[il,2] >= 0:
+                        continue
+
+                    # interpolate coefficients for the current strip
+                    Ca_p1  = np.interp( self.ls[il], self.stations, self.Ca_p1 )
+                    Ca_p2  = np.interp( self.ls[il], self.stations, self.Ca_p2 )
+                    Ca_End = np.interp( self.ls[il], self.stations, self.Ca_End)
+
+                    # ----- compute side effects ---------------------------------------------------------
+                    if circ:
+                        v_i = 0.25*np.pi*self.ds[il]**2*self.dls[il]
+                    else:
+                        v_i = self.ds[il,0]*self.ds[il,1]*self.dls[il]  # member volume assigned to this node
+                        
+                    if self.r[il,2] + 0.5*self.dls[il] > 0:    # if member extends out of water              # <<< may want a better appraoch for this...
+                        v_i = v_i * (0.5*self.dls[il] - self.r[il,2]) / self.dls[il]  # scale volume by the portion that is under water
+
+                    # Force component due to second-order wave potential
+                    acc_2ndPot, p_2nd = getWaveKin_pot2ndOrd(w1, w2, k1, k2, beta, beta, depth, self.r[il,:], g=g, rho=rho) # Second-order pressure will be used later
+                    f_2ndPot = rho*v_i * np.matmul((1.+Ca_p1)*self.p1Mat + (1.+Ca_p2)*self.p2Mat, acc_2ndPot)
+
+                    # Force component due to convective acceleration
+                    conv_acc = 0.25 * ( np.matmul(grad_u[:, :, i1, il], np.conj(u[:, i2, il])) + np.matmul(np.conj(grad_u[:, :, i2, il]), u[:, i1, il]) )
+                    f_conv   = rho*v_i * np.matmul((1.+Ca_p1)*self.p1Mat + (1.+Ca_p2)*self.p2Mat, conv_acc)
+
+                    # Force component due to Rainey's axial-divergence acceleration
+                    f_axdv   = rho*v_i * np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, getWaveKin_axdivAcc(w1, w2, k1, k2, beta, beta, depth, self.r[il,:], nodeV[:, i1, il], nodeV[:, i2, il], self.q, g=g))
+                    
+                    # Force component due to body motions within the first-order wave field
+                    acc_nabla = 0.25*np.matmul(np.squeeze(grad_dudt[:, :, i1, il]), np.squeeze(np.conj(dr[:, i2, il]))) + 0.25*np.matmul(np.squeeze(np.conj(grad_dudt[:, :, i2, il])), np.squeeze(dr[:, i1, il]))
+                    f_nabla  = rho*v_i * np.matmul((1.+Ca_p1)*self.p1Mat + (1.+Ca_p2)*self.p2Mat, acc_nabla)
+
+                    # Force component due to Rainey's body rotation term
+                    OMEGA1  = -getH(1j*w1*Xi[3:,i1]) # The alternator matrix is the opposite of what we need, that is why we have a minus sign
+                    OMEGA2  = -getH(1j*w2*Xi[3:,i2])
+                    f_rslb  = -0.25*2*np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, np.matmul(OMEGA1, np.conj(nodeV_axial_rel[i2, il]*self.q)) + np.matmul(np.conj(OMEGA2), nodeV_axial_rel[i1, il]*self.q))
+                    f_rslb *= rho*v_i                                                
+                    
+                    # Rainey load that is only non zero for non-circular cylinders
+                    # TODO: Now that it's working, should be a separate variable and not inside f_rslb
+                    u1_aux  = u[:,i1, il]-nodeV[:,i1, il]
+                    u2_aux  = u[:,i2, il]-nodeV[:,i2, il]
+                    Vmatrix1 = getWaveKin_grad_u1(w1, k1, beta, depth, self.r[il,:]) + OMEGA1
+                    Vmatrix2 = getWaveKin_grad_u1(w2, k2, beta, depth, self.r[il,:]) + OMEGA2
+                    aux      = 0.25*(np.matmul(Vmatrix1, np.conj(np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, u2_aux))) + np.matmul(np.conj(Vmatrix2), np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, u1_aux)))
+                    aux     -= np.matmul(self.qMat, aux) # remove axial component                            
+                    f_rslb  += rho*v_i * aux
+
+                    # Similar to the one right above, but note that the order of multiplications with matmul is different
+                    u1_aux  -= np.matmul(self.qMat, u1_aux) # remove axial component
+                    u2_aux  -= np.matmul(self.qMat, u2_aux)
+                    aux      = 0.25*(np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, np.matmul(Vmatrix1, np.conj(u2_aux))) + np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, np.matmul(np.conj(Vmatrix2), u1_aux)))
+                    f_rslb  += - rho*v_i * aux
+
+                                                
+                    # ----- axial/end effects  ------
+                    # note : v_i and a_i work out to zero for non-tapered sections or non-end sections
+                    if circ:
+                        v_i = np.pi/12.0 * abs((self.ds[il]+self.drs[il])**3 - (self.ds[il]-self.drs[il])**3)  # volume assigned to this end surface
+                        a_i = np.pi*self.ds[il] * self.drs[il]   # signed end area (positive facing down) = mean diameter of strip * radius change of strip
+                    else:
+                        v_i = np.pi/12.0 * ((np.mean(self.ds[il]+self.drs[il]))**3 - (np.mean(self.ds[il]-self.drs[il]))**3)    # so far just using sphere eqn and taking mean of side lengths as d
+                        a_i = (self.ds[il,0]+self.drs[il,0])*(self.ds[il,1]+self.drs[il,1]) - (self.ds[il,0]-self.drs[il,0])*(self.ds[il,1]-self.drs[il,1])
+                    
+                    f_2ndPot += self.a_i[il]*p_2nd*self.q # 2nd order pressure
+                    f_2ndPot += rho*v_i*Ca_End*np.matmul(self.qMat, acc_2ndPot) # 2nd order axial acceleration
+                    f_conv   += rho*v_i*Ca_End*np.matmul(self.qMat, conv_acc)   # convective acceleration
+                    f_nabla  += rho*v_i*Ca_End*np.matmul(self.qMat, acc_nabla)  # due to body motions within the first-order wave field - acceleration part
+                    p_nabla   = 0.25*np.dot(grad_pres1st[:, i1, il], np.conj(dr[:, i2, il])) + 0.25*np.dot(np.conj(grad_pres1st[:, i2, il]), dr[:, i1, il])
+                    f_nabla  += self.a_i[il]*p_nabla*self.q # due to body motions within the first-order wave field - pressure part
+                    p_drop    = -2*0.25*0.5*rho*np.dot(np.matmul(self.p1Mat + self.p2Mat, u[:,i1, il]-nodeV[:, i1, il]), np.conj(np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, u[:,i2, il]-nodeV[:, i2, il])))
+                    f_conv   += self.a_i[il]*p_drop*self.q
+
+                    u1_aux    = np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, u1_aux)
+                    u2_aux    = np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, u2_aux)
+                    f_transv  = 0.25*self.a_i[il]*rho*(np.conj(u1_aux)*nodeV_axial_rel[i2, il] + u2_aux*np.conj(nodeV_axial_rel[i1, il]))
+                    f_conv   += f_transv
+
+                    F_2ndPot += translateForce3to6DOF(f_2ndPot, self.r[il,:])
+                    F_conv   += translateForce3to6DOF(f_conv, self.r[il,:])                   
+                    F_axdv   += translateForce3to6DOF(f_axdv, self.r[il,:])
+                    F_nabla  += translateForce3to6DOF(f_nabla, self.r[il,:])
+                    F_rslb   += translateForce3to6DOF(f_rslb, self.r[il,:])
+                                                    
+                # Force acting at the intersection of the member with the mean waterline
+                f_eta = np.zeros(3, dtype=complex)
+                F_eta = np.zeros(6, dtype=complex)
+                if self.r[-1,2] * self.r[0,2] < 0:
+                    # Need just the cross section area, as the length along the cylinder is the relative wave elevation
+                    # Get the area of the cross section at the mean waterline
+                    i_wl = np.where(self.r[:,2] < 0)[0][-1] # find index of self.r[:,2] that is right before crossing 0
+                    if circ:
+                        if i_wl != len(self.ds)-1:
+                            d_wl = 0.5*(self.ds[i_wl]+self.ds[i_wl+1])
+                        else:
+                            d_wl = self.ds[i_wl]
+                        a_i = 0.25*np.pi*d_wl**2
+                    else:
+                        if i_wl != len(self.ds)-1:
+                            d1_wl = 0.5*(self.ds[i_wl,0]+self.ds[i_wl+1,0])
+                            d2_wl = 0.5*(self.ds[i_wl,1]+self.ds[i_wl+1,1])
+                        else:
+                            d1_wl = self.ds[i_wl, 0]
+                            d2_wl = self.ds[i_wl, 1]
+                        a_i = d1_wl*d2_wl
+
+                    f_eta = 0.25*((ud_wl[:,i1])*np.conj(eta_r[i2])+np.conj((ud_wl[:,i2]))*eta_r[i1]) # Product between incoming wave acceleration and relative wave elevation
+                    f_eta = rho*a_i*np.matmul((1.+Ca_p1)*self.p1Mat + (1.+Ca_p2)*self.p2Mat, f_eta) # Project in the correct directions (and scale by the area and density)
+                    a_eta = 0.25*((a_wl[:,i1])*np.conj(eta_r[i2])+np.conj((a_wl[:,i2]))*eta_r[i1])  # Product between body acceleration and relative wave elevation
+                    f_eta -= rho*a_i*np.matmul(Ca_p1*self.p1Mat + Ca_p2*self.p2Mat, a_eta) # Project in the correct directions (and scale by the area and density)
+                    f_eta -= 0.25*rho*a_i * (g_e1[:,i1]*np.conj(eta_r[i2])+np.conj(g_e1[:,i2])*eta_r[i1]) # Add hydrostatic term
+
+                    F_eta = translateForce3to6DOF(f_eta, r_int) # Load vector in 6 DOF 
+                
+                # Total contribution to this frequency pair of the QTF due to the current member
+                qtf[i1, i2, :] += F_2ndPot + F_axdv + F_conv + F_nabla + F_eta + F_rslb
+
+                # Add Kim and Yue correction                                                     
+                qtf[i1, i2, :] += self.correction_KAY(depth, w1, w2, beta, rho=rho, g=g, k1=k1, k2=k2, Nm=10)        
+        return qtf
+
     def correction_KAY(self, h, w1, w2, beta, rho=1025, g=9.81, k1=None, k2=None, Nm=10):
         '''For surface-piercing vertical cylinders, we can partially account for second-order diffraction loads
            by using the analytical solution for a bottom-mounted, surface-piercing, vertical cylinder. 
@@ -1211,6 +1398,310 @@ class Member:
             F = np.conj(F)
         
         return F
+
+    def calcCurrentLoads(self, depth, speed=0, heading=0, Zref=0, shearExp_water=0.12, rho=1025, g=9.81, r_ref=np.zeros(3)):
+        '''method to calculate the "static" current loads on each member and save as a current force
+        Uses a simple power law relationship to calculate the current velocity as a function of member node depth
+        
+        Parameters
+        ----------
+        depth: float
+            Water depth [m]
+        speed: float
+            Current speed [m/s]
+        heading: float
+            Current heading from global X (rotates about global Z) [deg]
+        Zref: float
+            Reference z elevation for current profile (at the sea surface by default) [m]
+        shearExp_water: float
+            Exponent for current profile [-]
+        rho: float
+            Water density [kg/m^3]
+        g: float
+            Gravitational acceleration [m/s^2]
+        r_ref: size-3 vector
+            Reference point coordinates to compute current loads [m].
+
+        Returns:
+        D_hydro: 6x1 array
+            Mean current force and moment on the member in global coordinates wrp to r_ref [N, N-m]
+        '''
+        D_hydro = np.zeros(6)
+
+        circ = self.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
+
+        # loop through each node of the member
+        for il in range(self.ns):
+
+            # only process hydrodynamics if this node is submerged
+            if self.r[il,2] < 0:
+
+                # calculate current velocity as a function of node depth [x,y,z] (assumes no vertical current velocity)
+                v = speed * ((depth - abs(self.r[il,2]))/(depth + Zref))**shearExp_water
+                #v = speed
+                vcur = np.array([v*np.cos(np.deg2rad(heading)), v*np.sin(np.deg2rad(heading)), 0])
+
+                # interpolate coefficients for the current strip
+                Cd_q   = np.interp( self.ls[il], self.stations, self.Cd_q  )
+                Cd_p1  = np.interp( self.ls[il], self.stations, self.Cd_p1 )
+                Cd_p2  = np.interp( self.ls[il], self.stations, self.Cd_p2 )
+                Cd_End = np.interp( self.ls[il], self.stations, self.Cd_End)
+
+                # current (relative) velocity over node (no complex numbers bc not function of frequency)
+                vrel = np.array(vcur)
+                # break out velocity components in each direction relative to member orientation
+                vrel_q  = np.sum(vrel*self.q[:] )*self.q[:]
+                vrel_p  = vrel-vrel_q 
+                vrel_p1 = np.sum(vrel*self.p1[:])*self.p1[:]
+                vrel_p2 = np.sum(vrel*self.p2[:])*self.p2[:]
+                
+                # ----- compute side effects ------------------------
+
+                # member acting area assigned to this node in each direction
+                a_i_q  = np.pi*self.ds[il]*self.dls[il]  if circ else  2*(self.ds[il,0]+self.ds[il,0])*self.dls[il]
+                a_i_p1 =       self.ds[il]*self.dls[il]  if circ else             self.ds[il,0]      *self.dls[il]
+                a_i_p2 =       self.ds[il]*self.dls[il]  if circ else             self.ds[il,1]      *self.dls[il]
+
+                # calculate drag force wrt to each orientation using simple Morison's drag equation
+                Dq = 0.5 * rho * a_i_q * Cd_q * np.linalg.norm(vrel_q) * vrel_q
+
+                if circ: # Use the norm of the total perpendicular relative velocity
+                    normVrel_p1 = np.linalg.norm(vrel_p)
+                    normVrel_p2 = normVrel_p1
+                else: # Otherwise treat each direction separately
+                    normVrel_p1 = np.linalg.norm(vrel_p1)
+                    normVrel_p2 = np.linalg.norm(vrel_p2)
+                Dp1 = 0.5 * rho * a_i_p1 * Cd_p1 * normVrel_p1 * vrel_p1
+                Dp2 = 0.5 * rho * a_i_p2 * Cd_p2 * normVrel_p2 * vrel_p2
+                
+                # ----- end/axial effects drag ------
+
+                # end/axial area (removing sign for use as drag)
+                if circ:
+                    a_i_End = np.abs(np.pi*self.ds[il]*self.drs[il])
+                else:
+                    a_i_End = np.abs((self.ds[il,0]+self.drs[il,0])*(self.ds[il,1]+self.drs[il,1]) - (self.ds[il,0]-self.drs[il,0])*(self.ds[il,1]-self.drs[il,1]))
+                
+                Dq_End = 0.5 * rho * a_i_End * Cd_End * np.linalg.norm(vrel_q) * vrel_q
+
+                # ----- sum forces and add to total mean drag load about PRP ------
+                D = Dq + Dp1 + Dp2 + Dq_End     # sum drag forces at node in member's local orientation frame
+
+                D_hydro += translateForce3to6DOF(D, self.r[il,:] - r_ref)  # sum as forces and moments about PRP
+        return D_hydro
+
+    def computeWaveKinematics(self, zeta, beta, w, depth, k=None, rho=1025, g=9.81):
+        '''
+        Get wave kinematics (velocity, acceleration, and dynamic pressure) at member nodes given a certain wave condition
+        Because it uses the position of the member nodes, this function accounts for phasing due to the FOWT's mean offset position in the array.      
+        Parameters
+        ----------
+        zeta: [nWaves x nw] float array - nWaves: number of wave headings; nw: number of frequencies
+            Amplitude of each wave component [m]
+        beta: nWaves float array
+            Wave headings [rad]
+        w: nw float array
+            Wave frequencies [rad/s]
+        k: nw float array
+            Wave numbers [1/m] (related to w by the dispersion relation, but faster to pass it instead of recalculating)
+        depth: float
+            Water depth [m]
+        rho: float
+            Water density [kg/m^3]
+        g: float
+            Gravitational acceleration [m/s^2]        
+
+        Returns
+        ----------
+        Does not return anything. This function updates self.u, self.ud, and self.pDyn for each node of the member.
+        Updated these internal functions is required by other functions.
+        '''
+        nWaves    = zeta.shape[0]
+        nw        = len(w)
+        self.u    = np.zeros([nWaves, self.ns, 3, nw], dtype=complex)
+        self.ud   = np.zeros([nWaves, self.ns, 3, nw], dtype=complex)
+        self.pDyn = np.zeros([nWaves, self.ns,    nw], dtype=complex)
+
+        if k is None:
+            k = np.array([waveNumber(w, self.depth) for w in self.w])
+
+        for il in range(self.ns):
+            if self.r[il,2] < 0:
+                for ih in range(nWaves):
+                    self.u[ih,il,:,:], self.ud[ih,il,:,:], self.pDyn[ih,il,:] = getWaveKin(zeta[ih,:], beta[ih], w, k, depth, self.r[il,:], nw, rho=rho, g=g)
+
+
+    def calcHydroExcitation(self, zeta, beta, w, depth, k=None, rho=1025, g=9.81, r_ref=np.zeros(3)):
+        '''
+        Compute strip-theory wave excitation force (inertial part of Morison's equation).
+        Need to call computeWaveKinematics() first to get the wave kinematics at each node.        
+        Because computeWaveKinematics() uses the position of the member nodes, this function accounts for phasing due to the FOWT's mean offset position in the array.
+
+        Parameters
+        ----------
+        r_ref: size-3 vector
+            Reference point coordinates to compute hydrodynamic loads [m].
+        
+        Returns
+        ----------
+        self.F_hydro_iner: [nWaves x 6 x nw] complex array. nWaves: number of wave headings; 6: number of dofs; nw: number of frequencies
+        '''
+        self.computeWaveKinematics(zeta, beta, w, depth, k=k, rho=rho, g=g)
+
+        nWaves, _, _, nw = self.ud.shape
+        self.F_hydro_iner = np.zeros([nWaves, 6, nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]        
+
+        # loop through each node of the member
+        for il in range(self.ns):
+
+            # only process hydrodynamics if this node is submerged
+            if self.r[il,2] < 0:
+                if self.potMod == False:
+                    # calculate the linear excitation forces on this node for each wave heading and frequency
+                    for ih in range(nWaves):
+                        for i in range(nw):
+                            if self.MCF:
+                                Imat = self.Imat_MCF[il,:,:, i]
+                            else:
+                                Imat = self.Imat[il,:,:]
+                            F_exc_iner_temp = np.matmul(Imat, self.ud[ih,il,:,i]) + self.pDyn[ih,il,i]*self.a_i[il]*self.q 
+                            
+                            # add the excitation complex amplitude for this heading and frequency to the global excitation vector
+                            self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, self.r[il,:] - r_ref) # (about PRP)
+        return self.F_hydro_iner
+
+
+    def calcHydroLinearization(self, w, ih=0, Xi=np.zeros(6), rho=1025, r_ref=np.zeros(3)):
+        '''To be used within the FOWT's dynamics solve iteration method. This calculates the
+        amplitude-dependent linearized coefficients, including the system linearized drag damping matrix, 
+        of this member.
+        
+        Considers only one sea state which is specified by the index ih.        
+        
+        Parameters
+        ----------
+        w: nw float array
+            Wave frequencies [rad/s]
+        ih: int
+            Index of the wave heading to consider for the drag linearization
+        Xi : size-6 complex array
+            response of the FOWT that this member is attached to - displacement and rotation complex amplitudes [m, rad]
+            TODO: Change this to be the response of the member itself
+        rho: float
+            Water density [kg/m^3]
+        r_ref: size-3 vector
+            Reference point coordinates for outputs [m].
+        
+        Returns
+        ----------
+        B_hydro_drag: 6x6 array
+            Hydrodynamic damping matrix from linearized viscous drag [N-s/m, N-s, N-s-m]
+        F_hydro_drag: 6 x nw complex array
+            Excitation force/moment complex amplitude vector [N, N-m]
+
+        This function also updates self.Bmat (size nNodes x 3 x 3) and self.F_exc_drag (size nNodes x 3 x nw)
+        '''
+
+        circ = self.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
+        nw = len(w)
+        B_hydro_drag = np.zeros([6,6])             # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
+        F_hydro_drag = np.zeros([6, nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+
+        # loop through each node of the member
+        for il in range(self.ns):
+
+            # get node complex velocity amplitude based on platform motion's and relative position from PRP
+            # node displacement, velocity, and acceleration (each [3 x nw])
+            drnode, vnode, anode = getKinematics(self.r[il,:] - r_ref, Xi, w)
+
+            # only process hydrodynamics if this node is submerged
+            if self.r[il,2] < 0:
+
+                # interpolate coefficients for the current strip
+                Cd_q   = np.interp( self.ls[il], self.stations, self.Cd_q  )
+                Cd_p1  = np.interp( self.ls[il], self.stations, self.Cd_p1 )
+                Cd_p2  = np.interp( self.ls[il], self.stations, self.Cd_p2 )
+                Cd_End = np.interp( self.ls[il], self.stations, self.Cd_End)
+
+
+                # ----- compute side effects ------------------------
+
+                # member acting area assigned to this node in each direction
+                a_i_q  = np.pi*self.ds[il]*self.dls[il]  if circ else  2*(self.ds[il,0]+self.ds[il,0])*self.dls[il]
+                a_i_p1 =       self.ds[il]*self.dls[il]  if circ else             self.ds[il,0]       *self.dls[il]
+                a_i_p2 =       self.ds[il]*self.dls[il]  if circ else             self.ds[il,1]       *self.dls[il]
+
+                # water relative velocity over node (complex amplitude spectrum)  [3 x nw]
+                vrel = self.u[ih,il,:] - vnode
+
+                # break out velocity components in each direction relative to member orientation [nw]
+                vrel_q  = np.sum(vrel*self.q[ :,None], axis=0)*self.q[ :,None]     # (the ,None is for broadcasting q across all frequencies in vrel)
+                vrel_p  = vrel - vrel_q
+                vrel_p1 = np.sum(vrel*self.p1[:,None], axis=0)*self.p1[:,None]
+                vrel_p2 = np.sum(vrel*self.p2[:,None], axis=0)*self.p2[:,None]
+                
+                # get RMS of relative velocity component magnitudes (real-valued)
+                vRMS_q  = getRMS(vrel_q)
+                if circ: # Use the total perpendicular relative velocity 
+                    vRMS_p1 = getRMS(vrel_p)
+                    vRMS_p2 = vRMS_p1
+                else: # Otherwise treat each direction separately
+                    vRMS_p1 = getRMS(vrel_p1)
+                    vRMS_p2 = getRMS(vrel_p2)
+                
+                # linearized damping coefficients in each direction relative to member orientation [not explicitly frequency dependent...] (this goes into damping matrix)
+                Bprime_q  = np.sqrt(8/np.pi) * vRMS_q  * 0.5*rho * a_i_q  * Cd_q
+                Bprime_p1 = np.sqrt(8/np.pi) * vRMS_p1 * 0.5*rho * a_i_p1 * Cd_p1
+                Bprime_p2 = np.sqrt(8/np.pi) * vRMS_p2 * 0.5*rho * a_i_p2 * Cd_p2
+
+                # form damping matrix for the node based on linearized drag coefficients
+                Bmat_sides = Bprime_q*self.qMat + Bprime_p1*self.p1Mat + Bprime_p2*self.p2Mat 
+
+
+                # ----- add end/axial effects for added mass, drag, and excitation including dynamic pressure ------
+                # note : v_a and a_i work out to zero for non-tapered sections or non-end sections
+
+                # end/axial area (removing sign for use as drag)
+                if circ:
+                    a_i = np.abs(np.pi*self.ds[il]*self.drs[il])
+                else:
+                    a_i = np.abs((self.ds[il,0]+self.drs[il,0])*(self.ds[il,1]+self.drs[il,1]) - (self.ds[il,0]-self.drs[il,0])*(self.ds[il,1]-self.drs[il,1]))
+
+                Bprime_End = np.sqrt(8/np.pi)*vRMS_q*0.5*rho*a_i*Cd_End
+
+                # form damping matrix for the node based on linearized drag coefficients
+                Bmat_end = Bprime_End*self.qMat                                       #
+
+
+                # ----- sum up side and end damping matrices ------
+                
+                self.Bmat[il,:,:] = Bmat_sides + Bmat_end   # store in Member object to be called later to get drag excitation for each wave heading
+
+                B_hydro_drag += translateMatrix3to6DOF(self.Bmat[il,:,:], self.r[il,:] - r_ref)   # add to global damping matrix for Morison members
+
+
+                # ----- calculate wave drag excitation (this may be recalculated later) -----
+
+                for i in range(nw):
+
+                    self.F_exc_drag[il,:,i] = np.matmul(self.Bmat[il,:,:], self.u[ih,il,:,i])   # get local 3d drag excitation force complex amplitude for each frequency [3 x nw]
+
+                    F_hydro_drag[:,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)   # add to global excitation vector (frequency dependent)
+        
+        return B_hydro_drag, F_hydro_drag
+
+    def calcDragExcitation(self, ih, r_ref=np.zeros(3)):
+        nw = self.u.shape[3]
+        F_hydro_drag = np.zeros([6, nw], dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        for il in range(self.ns):  # loop through each node of the member
+            if self.r[il,2] < 0:   # only process hydrodynamics if this node is submerged
+                for i in range(nw):                    
+                    # get local 3d drag excitation force complex amplitude for each frequency [3 x nw]
+                    self.F_exc_drag[il,:,i] = np.matmul(self.Bmat[il,:,:], self.u[ih,il,:,i])   
+                    
+                    # add to global excitation vector (frequency dependent)
+                    F_hydro_drag[:,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)
+        return F_hydro_drag
 
 
     def getSectionProperties(self, station):

@@ -501,7 +501,22 @@ def translateMatrix6to6DOF(Min, r):
 
     return Mout
 
-
+def applyHeadingToPoint(r, heading=0):
+    '''Rotate the coordinates of a point with respect to the global Z axis
+    Parameters
+    ----------
+    r : array(3,)
+        coordinate of the point to be rotated
+    heading : float
+        heading angle in degrees to rotate the point about the Z axis (default = 0, meaning no rotation)
+    '''
+    if heading == 0.0:
+        return r
+    
+    c = np.cos(np.deg2rad(heading))
+    s = np.sin(np.deg2rad(heading))
+    rotMat = np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]])
+    return np.matmul(rotMat, r)
    
 def rotateMatrix6(Min, rotMat):
     '''apply a rotation to a 6-by-6 mass/inertia tensor (see Sadeghi and Incecik 2005 for theory)

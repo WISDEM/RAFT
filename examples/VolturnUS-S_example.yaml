@@ -1192,6 +1192,7 @@ platform:
 
 mooring:
     water_depth: 200                                  # [m]       uniform water depth
+    # tol        : 0.05                                 # Optional, tolerance for the equilibrium solver of the mooring system
     
     points:
         - name: line1_anchor

@@ -339,6 +339,7 @@ class FOWT():
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
             self.moorMod = getFromDict(design['mooring'], 'moorMod', default=0, dtype=int)
+            self.ms_tol = getFromDict(design['mooring'], 'tol', dtype=float, default=0.05)  # mooring system tolerance for solving equilibrium
             
             # ensure proper setup with one coupled Body tied to this FOWT
             if len(self.ms.bodyList) == 0:
@@ -769,7 +770,7 @@ class FOWT():
         
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
-            self.ms.solveEquilibrium(tol=0.05)
+            self.ms.solveEquilibrium(tol=self.ms_tol)
             if self.moorMod == 0 or self.moorMod == 2:
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
             elif self.moorMod == 1:

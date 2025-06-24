@@ -2239,16 +2239,17 @@ class FOWT():
         
         for ir, rotor in enumerate(self.rotorList):
             # mass and moment arm >>> should three-dimensionalize <<<
+            mem_tower = self.memberList[self.nplatmems+ir]
             m_turbine[ir] = self.mtower[ir] + rotor.mRNA  # total masses of each turbine
             zCG_turbine[ir] = (self.rCG_tow[ir][2]*self.mtower[ir]                 # CoG of each turbine
                                 + rotor.r_rel[2]*rotor.mRNA)/m_turbine[ir]
-            zBase[ir] = self.memberList[self.nplatmems + ir].rA[2]                  # tower base elevation [m]
+            zBase[ir] = mem_tower.rA[2]                  # tower base elevation [m]
             hArm[ir] = zCG_turbine[ir] - zBase[ir]                                 # vertical distance from tower base to turbine CG [m]
 
             aCG_turbine[:,ir,:] = -self.w**2 *( self.Xi[:,0,:] + zCG_turbine[ir]*self.Xi[:,4,:] )  # fore-aft acceleration of turbine CG
 
             # turbine pitch moment of inertia about CG [kg-m^2]
-            ICG_turbine[ir] = (translateMatrix6to6DOF(self.memberList[self.nplatmems+ir].M_struc, [0,0,-zCG_turbine[ir]])[4,4] # tower MOI about turbine CG
+            ICG_turbine[ir] = (translateMatrix6to6DOF(mem_tower.M_struc, mem_tower.nodeList[0].r0[:3] - [0,0, zCG_turbine[ir]])[4,4] # tower MOI about turbine CG
                         + rotor.mRNA*(rotor.r_rel[2]-zCG_turbine[ir])**2 + rotor.IrRNA)  # RNA MOI with parallel axis theorem
             # moment components and summation (all complex amplitudes)
             M_I[:,ir,:] = -m_turbine[ir]*aCG_turbine[:,ir,:]*hArm[ir] - ICG_turbine[ir]*(-self.w**2 *self.Xi[:,4,:] ) # tower base inertial reaction moment

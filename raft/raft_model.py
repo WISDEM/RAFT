@@ -851,6 +851,7 @@ class Model():
             print(f"Found mean offets of FOWT {i+1} with surge = {fowt.Xi0[0]: .2f} m,  sway  = {fowt.Xi0[1]: .2f},  and heave = {fowt.Xi0[2]: .2f} m")
             print(f"                                 roll  = {fowt.Xi0[3]*180/np.pi: .2f} deg, pitch = {fowt.Xi0[4]*180/np.pi: .2f} deg, and yaw   = {fowt.Xi0[5]*180/np.pi: .2f} deg")
 
+        # TODO: Shouldn't we call fowt.calcStatics() again to make sure that the inertia and stiffness matrices (C_hydro and C_struc) consider the displaced position?        
         
         #dsolvePlot(info) # plot solver convergence trajectories
         

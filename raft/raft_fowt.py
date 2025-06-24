@@ -325,8 +325,6 @@ class FOWT():
             n.nodeList = self.nodeList
 
         self.reduceDOF()                                           # evaluate the set of reduced dofs
-        self.computeTransformationMatrix()                         # set the matrix that transforms from the reduced dofs to the full dofs
-        self.nDOF = len(self.reducedDOF)                           # number of reduced dofs needed to describe the structure
         self.Xi0  = np.zeros( self.nDOF)                           # mean offsets of platform from its reference point [m, rad]
         self.Xi   = np.zeros([self.nDOF, self.nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]        
         self.rReducedDOF = np.zeros(self.nDOF)                     # position of the platform in the reduced dofs         
@@ -602,8 +600,8 @@ class FOWT():
                     if dof not in reducedDOF:
                         reducedDOF.append(dof)
         self.reducedDOF = reducedDOF
-
-        # TODO: Maybe call computeTransformationMatrix() here?    
+        self.nDOF = len(self.reducedDOF) # number of reduced dofs needed to describe the structure
+        self.computeTransformationMatrix()  
 
     def computeTransformationMatrix(self):
         '''
@@ -612,9 +610,7 @@ class FOWT():
 
         The transformation matrix is stored in self.T, which is a (nFullDOF, nReducedDOF) matrix.
         '''
-        nFullDofs = np.sum([n.nDOF for n in self.nodeList])
-        nReducedDoFs = len(self.reducedDOF)
-        self.T = np.zeros((nFullDofs, nReducedDoFs))
+        self.T = np.zeros((self.nFullDOF, self.nDOF))
 
         row0 = 0
         for n in self.nodeList:
@@ -622,6 +618,27 @@ class FOWT():
             self.T[row0:row0+n.nDOF, :] = n.T
             row0 += n.nDOF
         return self.T
+
+    def computeDerivativeTransformationMatrix(self):
+        '''Compute the derivative of the transformation matrix T with respect to the reduced degrees of freedom.
+        
+        The derivative is stored in self.dT, which is a (nFullDOF, nReducedDOF, nReducedDOF) matrix.
+        '''
+        self.dT = np.zeros((self.nFullDOF, self.nDOF, self.nDOF))
+
+        T0 = self.T.copy()  # Store the original transformation matrix
+        for i, dof in enumerate(self.reducedDOF):
+            reducedDisp = np.zeros(self.nDOF)
+            reducedDisp[i] = 1.0
+            self.setNodesPosition(self.rReducedDOF+reducedDisp, linear=True)  # Linearly set the nodes position based on the reduced displacements
+            self.reduceDOF()
+            self.dT[:, :, i] = self.T - T0  # Compute the derivative as the difference between the new and old transformation matrices
+        
+            # Reset the nodes position and transformation matrix to the original state
+            self.setNodesPosition(self.rReducedDOF)
+            self.reduceDOF()
+
+        return self.dT
 
     def setNodesPosition(self, reducedXi0, linear=False):
         '''Set the mean displacements, node.Xi0, and positions, node.r, of all the nodes 
@@ -639,72 +656,71 @@ class FOWT():
         # This does not preserve the lengths of rigid links but should be good enough for small rotations
         if linear:            
             for n in self.nodeList:
-                n.setDisplacementLinear(reducedDisp)
-            return
-            
-        # Otherwise, set nodes' displacement using nonlinear relations. More work but preserves the lenghts of rigid links.
-        # The nonlinearities arise from the rotations of rigid links, which include sin and cos.        
-        self.nodeList[0].setDisplacementLinear(reducedXi0) # The first node is always the first of the reduced dofs, so we simply use the linear relation
+                n.setDisplacementLinear(reducedXi0)
+        else:
+            # Otherwise, set nodes' displacement using nonlinear relations. More work but preserves the lenghts of rigid links.
+            # The nonlinearities arise from the rotations of rigid links, which include sin and cos.        
+            self.nodeList[0].setDisplacementLinear(reducedXi0) # The first node is always the first of the reduced dofs, so we simply use the linear relation
 
-        # The remaining nodes depend on how they are connected to the previous node
-        # We will loop all nodes in the same way as in reduceDOF()
-        queue = []      # Store the nodes that still need to be processed
-        visited = set() # Store the nodes that have been processed (to avoid repeating nodes)
-        queue.append(self.nodeList[0]) # We will start with the first node of the list
-        visited.add(self.nodeList[0].id)
+            # The remaining nodes depend on how they are connected to the previous node
+            # We will loop all nodes in the same way as in reduceDOF()
+            queue = []      # Store the nodes that still need to be processed
+            visited = set() # Store the nodes that have been processed (to avoid repeating nodes)
+            queue.append(self.nodeList[0]) # We will start with the first node of the list
+            visited.add(self.nodeList[0].id)
 
-        while queue:
-            node = queue.pop(0)
+            while queue:
+                node = queue.pop(0)
 
-            # We just loop through the end nodes. Internal nodes are taken care based on their end nodes
-            if not node.end_node:
-                continue
+                # We just loop through the end nodes. Internal nodes are taken care based on their end nodes
+                if not node.end_node:
+                    continue
 
-            # Deal with the node connected by a rigid link (if it exists)
-            rigidConnectedNode = node.getRigidConnectedNode()
-            if (rigidConnectedNode is not None) and (rigidConnectedNode.id != node.parentNode_id) and (rigidConnectedNode.id not in visited):
-                dx = rigidConnectedNode.r0[0] - node.r0[0]
-                dy = rigidConnectedNode.r0[1] - node.r0[1]
-                dz = rigidConnectedNode.r0[2] - node.r0[2]
+                # Deal with the node connected by a rigid link (if it exists)
+                rigidConnectedNode = node.getRigidConnectedNode()
+                if (rigidConnectedNode is not None) and (rigidConnectedNode.id != node.parentNode_id) and (rigidConnectedNode.id not in visited):
+                    dx = rigidConnectedNode.r0[0] - node.r0[0]
+                    dy = rigidConnectedNode.r0[1] - node.r0[1]
+                    dz = rigidConnectedNode.r0[2] - node.r0[2]
 
-                # Get rotation (displacement part, not including initial value) around node. x, y, and z components
-                rotation = (node.T @ reducedXi0)[-3:]
-                rotMat   = rotationMatrix(*rotation) - np.eye(3) # Remove identity matrix to get the displacement only
-                
-                # RigidConnectedNode has the same rotation but the translation accounts for the distance between both nodes
-                rigidConnectedNode.Xi0 = node.Xi0.copy()
-                rigidConnectedNode.Xi0[0:rigidConnectedNode.nTransDOF] += rotMat @ np.array([dx, dy, dz])
+                    # Get rotation (displacement part, not including initial value) around node. x, y, and z components
+                    rotation = (node.T @ reducedXi0)[-3:]
+                    rotMat   = rotationMatrix(*rotation) - np.eye(3) # Remove identity matrix to get the displacement only
+                    
+                    # RigidConnectedNode has the same rotation but the translation accounts for the distance between both nodes
+                    rigidConnectedNode.Xi0 = node.Xi0.copy()
+                    rigidConnectedNode.Xi0[0:rigidConnectedNode.nTransDOF] += rotMat @ np.array([dx, dy, dz])
 
-                queue.append(rigidConnectedNode)
-                visited.add(rigidConnectedNode.id)                    
+                    queue.append(rigidConnectedNode)
+                    visited.add(rigidConnectedNode.id)                    
 
-            # Deal with the nodes connected by the joint
-            connectedNodes = node.getNodesConnectedByJoint()
-            for n in connectedNodes:
-                if (n.id != node.parentNode_id) and (n.id not in visited):
-                    n.Xi0 = node.Xi0.copy() # Assign the same displacements to the connected nodes
-                    if n.joint_type == "ball": # But if ball joint, overried rotation with the node's own rotation
-                        n.Xi0[-3:] = (node.T @ reducedXi0)[-3:]
-                    queue.append(n)
-                    visited.add(n.id)
-
-            # If this node is part of a flexible element, we need to set the displacement of the other nodes (remember that we are looping through the end nodes)
-            # We do that by adding the difference between the nonlinear and linear displacements of the end node to the linear displacement of the other nodes
-            if node.member and node.member.type == 'beam':
-                # We need to add the other end to the queue to visit the nodes that are connected to it.
-                # Only do that if the other end wasn't visited yet - it could have been visited by nodes connected to the other side of the flexible member.
-                for n in [node.member.nodeList[0], node.member.nodeList[-1]]:
-                    if (n.id != node.id) and (n.id not in visited):
+                # Deal with the nodes connected by the joint
+                connectedNodes = node.getNodesConnectedByJoint()
+                for n in connectedNodes:
+                    if (n.id != node.parentNode_id) and (n.id not in visited):
+                        n.Xi0 = node.Xi0.copy() # Assign the same displacements to the connected nodes
+                        if n.joint_type == "ball": # But if ball joint, overried rotation with the node's own rotation
+                            n.Xi0[-3:] = (node.T @ reducedXi0)[-3:]
                         queue.append(n)
-
-                disp     = node.Xi0            # Nonlinear displacement of the end node
-                disp_lin = node.T @ reducedXi0 # Linear displacement of the end node
-                dR       = disp - disp_lin     # Difference between nonlinear and linear displacements
-                for n in node.member.nodeList:
-                    if n.id != node.id and (n.id not in visited):
-                        n.setDisplacementLinear(reducedXi0) # Start by setting the displacement linearly
-                        n.Xi0 += dR # then we add the difference between nonlinear and linear displacements of the first node
                         visited.add(n.id)
+
+                # If this node is part of a flexible element, we need to set the displacement of the other nodes (remember that we are looping through the end nodes)
+                # We do that by adding the difference between the nonlinear and linear displacements of the end node to the linear displacement of the other nodes
+                if node.member and node.member.type == 'beam':
+                    # We need to add the other end to the queue to visit the nodes that are connected to it.
+                    # Only do that if the other end wasn't visited yet - it could have been visited by nodes connected to the other side of the flexible member.
+                    for n in [node.member.nodeList[0], node.member.nodeList[-1]]:
+                        if (n.id != node.id) and (n.id not in visited):
+                            queue.append(n)
+
+                    disp     = node.Xi0            # Nonlinear displacement of the end node
+                    disp_lin = node.T @ reducedXi0 # Linear displacement of the end node
+                    dR       = disp - disp_lin     # Difference between nonlinear and linear displacements
+                    for n in node.member.nodeList:
+                        if n.id != node.id and (n.id not in visited):
+                            n.setDisplacementLinear(reducedXi0) # Start by setting the displacement linearly
+                            n.Xi0 += dR # then we add the difference between nonlinear and linear displacements of the first node
+                            visited.add(n.id)
 
         for n in self.nodeList:
             n.r = n.r0 + n.Xi0
@@ -729,6 +745,8 @@ class FOWT():
         # Set the position of all nodes
         # rReducedDOF can be interpreted as a displacement in the reduced degrees of freedom, as the r0's of the nodes are wrp to the platform
         self.setNodesPosition(rReducedDOF)
+        self.reduceDOF()  # Recompute the transformation matrix
+        self.computeDerivativeTransformationMatrix() # Also compute the derivative of the transformation matrix, which is used to compute the stiffness matrices
         
         # Compute motions of the PRP as a rigid body transformation from the rigidBodyNode to the PRP
         self.r6[0:3] = transformPosition(-self.rigidBodyNode.r0[:3], self.rigidBodyNode.r)
@@ -771,25 +789,33 @@ class FOWT():
         rho = self.rho_water
         g   = self.g
 
-        # structure-related arrays
-        self.M_struc = np.zeros([6,6])                # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
-        self.B_struc = np.zeros([6,6])                # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
-        self.C_struc = np.zeros([6,6])                # structure effective stiffness matrix [N/m, N, N-m]
-        self.W_struc = np.zeros([6])                  # static weight vector [N, N-m]
-        
-        # hydrostatic arrays
-        self.C_hydro = np.zeros([6,6])                # hydrostatic stiffness matrix [N/m, N, N-m]
-        self.W_hydro = np.zeros(6)                    # buoyancy force/moment vector [N, N-m]  <<<<< not used yet
+        # structure-related arrays - in the reduced set of dofs
+        self.M_struc = np.zeros([self.nDOF,self.nDOF])        # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
+        self.B_struc = np.zeros([self.nDOF,self.nDOF])        # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
+        self.C_struc = np.zeros([self.nDOF,self.nDOF])        # structure effective stiffness matrix [N/m, N, N-m]        
+        self.W_struc = np.zeros([self.nDOF])                  # static weight vector [N, N-m]        
 
+        # structure-related arrays - in the full set of dofs
+        # Transformed into the reduced set of dofs using the transformation matrix
+        self.M_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        self.B_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        self.C_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        self.W_struc_fullDOF = np.zeros([self.nFullDOF])
+        
+        # hydrostatic arrays - in the reduced set of dofs
+        self.C_hydro = np.zeros([self.nDOF,self.nDOF])        # hydrostatic stiffness matrix [N/m, N, N-m]
+        self.W_hydro = np.zeros(self.nDOF)                    # buoyancy force/moment vector [N, N-m]  <<<<< not used yet
+
+        self.C_hydro_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        self.W_hydro_fullDOF = np.zeros(self.nFullDOF)       
 
         # --------------- add in linear hydrodynamic coefficients here if applicable --------------------
         #[as in load them] <<<<<<<<<<<<<<<<<<<<<
 
         # --------------- Get general geometry properties including hydrostatics ------------------------
-
         # initialize some variables for running totals
         VTOT = 0.                   # Total underwater volume of all members combined
-        m_all = 0.                   # Total mass of all members [kg]
+        m_all = 0.                  # Total mass of all members [kg]
         AWP_TOT = 0.                # Total waterplane area of all members [m^2]
         IWPx_TOT = 0                # Total waterplane moment of inertia of all members about x axis [m^4]
         IWPy_TOT = 0                # Total waterplane moment of inertia of all members about y axis [m^4]
@@ -798,18 +824,26 @@ class FOWT():
         m_center_sum = np.zeros(3)  # product of each member's mass multiplied by its center of mass [kg-m] (Only considers the shell mass right now)
 
         self.m_sub = 0              # total mass of just the members that make up the substructure [kg]
-        self.C_struc_sub = np.zeros([6,6])  # substructure effective stiffness matrix [N/m, N, N-m]
-        self.M_struc_sub = np.zeros([6,6])  # total mass matrix of just the substructure about the PRP
+        self.C_struc_sub = np.zeros([self.nDOF,self.nDOF])  # substructure effective stiffness matrix [N/m, N, N-m]
+        self.M_struc_sub = np.zeros([self.nDOF,self.nDOF])  # total mass matrix of just the substructure about the PRP
+        self.W_struc_sub = np.zeros(self.nDOF)              # weight vector of just the substructure [N, N-m]
         m_sub_sum = 0               # product of each substructure member's mass and CG, to be used to find the total substructure CG [kg-m]
-        self.m_shell = 0             # total mass of the shells/steel of the members in the substructure [kg]
+        self.m_shell = 0            # total mass of the shells/steel of the members in the substructure [kg]
         mballast = []               # list to store the mass of the ballast in each of the substructure members [kg]
         pballast = []               # list to store the density of ballast in each of the substructure members [kg]
         self.mtower = np.zeros(self.ntowers)    # assume that the whole tower will always be one member
         self.rCG_tow = []
 
-        memberList = [mem for mem in self.memberList if mem.name != 'nacelle']
-        # loop through each member
+        C_struc_sub_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        M_struc_sub_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        W_struc_sub_fullDOF = np.zeros(self.nFullDOF)
+
+        # loop through each member that's not part of the nacelle
+        memberList = [mem for mem in self.memberList if mem.part_of != 'nacelle']
         for i,mem in enumerate(memberList):
+            # Find the indices of the first and last nodes of the member to fill the _fullDOF matrices
+            iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
+            iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[0].nDOF # Assuming all nodes have the same dofs, namely 6
 
             # calculate member's orientation information (stored in the member and used in later steps)
             mem.setPosition()  # <<< is this redundant, assume fowt.setPosition has been called?
@@ -818,14 +852,15 @@ class FOWT():
 
             # ---------------------- get member's mass and inertia properties ------------------------------
             # get member mass and inertia info (including mem.M_struc) <<< still split between converting to PRP in or out of these functions
-            mass, center, m_shell, mfill, pfill = mem.getInertia(rRP=self.r6[:3]) 
-            W = mem.getWeight(g=g, rRP=np.zeros(3)) # Using zeros because mem.cog is about the PRP
+            mass, center, m_shell, mfill, pfill = mem.getInertia()
+            W = mem.getWeight(g=g) # Using zeros because mem.cog is about the PRP
 
             # Calculate the mass matrix of the FOWT about the PRP
-            self.W_struc += W  # weight vector
-            self.M_struc += mem.M_struc     # mass/inertia matrix about the PRP
-            self.C_struc += mem.C_struc     # effective stiffness matrix about the PRP
-            
+            self.W_struc_fullDOF[iFirst:iLast]               += W               # weight vector
+            self.M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += mem.M_struc     # mass/inertia matrix
+            self.C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += mem.C_struc     # part of the hydrostatic stiffness that is due to weight           
+
+            center += mem.nodeList[0].r0[:3] # Update center position to be wrp to the PRP
             m_center_sum += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
 
             # Tower calculations
@@ -834,23 +869,27 @@ class FOWT():
                 self.rCG_tow.append(center)               # center of mass of the tower from the PRP [m]
             # Substructure calculations
             else:
+                M_struc_sub_fullDOF[iFirst:iLast, iFirst:iLast] += mem.M_struc     # mass matrix of the substructure about the PRP
+                C_struc_sub_fullDOF[iFirst:iLast, iFirst:iLast] += mem.C_struc
+                W_struc_sub_fullDOF[iFirst:iLast]               += W               # weight vector of the substructure [N, N-m]
+
                 self.m_sub += mass              # mass of the substructure
-                self.M_struc_sub += mem.M_struc     # mass matrix of the substructure about the PRP
-                self.C_struc_sub += mem.C_struc     # effective stiffness matrix of the substructure about the PRP
                 m_sub_sum += center*mass        # product sum of the substructure members and their centers of mass [kg-m]
-                self.m_shell += m_shell               # mass of the substructure shell material [kg]
-                mballast.extend(mfill)              # list of ballast masses in each substructure member (list of lists) [kg]
-                pballast.extend(pfill)              # list of ballast densities in each substructure member (list of lists) [kg/m^3]
+                self.m_shell += m_shell         # mass of the substructure shell material [kg]
+                mballast.extend(mfill)          # list of ballast masses in each substructure member (list of lists) [kg]
+                pballast.extend(pfill)          # list of ballast densities in each substructure member (list of lists) [kg/m^3]
 
             # -------------------- get each member's buoyancy/hydrostatic properties -----------------------
-
-            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rRP=self.r6[:3])
+            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g)
             
             # add to fowt's mean force vector and stiffness matrix
-            self.W_hydro += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
-            self.C_hydro += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
+            self.W_hydro_fullDOF[iFirst:iLast] += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
+            self.C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
        
-            # convert other metrics to also be about the PRP (platform reference point)
+            # convert metrics to be about the PRP (platform reference point)
+            r_CB += mem.nodeList[0].r0[:3]
+            xWP += mem.nodeList[0].r0[0]
+            yWP += mem.nodeList[0].r0[1]
             VTOT    += V_UW    # add to total underwater volume of all members combined
             AWP_TOT += AWP
             IWPx_TOT += IWP + AWP*yWP**2
@@ -871,6 +910,9 @@ class FOWT():
                         raise ValueError("The azimuths of the blades need to be equally spaced apart")
 
                     for k,afmem in enumerate(rotor.bladeMemberList):    # for each airfoil member in the bladeMemberList
+                        # Find the indices of the first and last nodes of the member to fill the _fullDOF matrices
+                        iFirst =  afmem.nodeList[ 0].id      * afmem.nodeList[0].nDOF
+                        iLast  = (afmem.nodeList[-1].id + 1) * afmem.nodeList[0].nDOF # Assuming all nodes have the same dofs, namely 6                            
 
                         # store original positions of the airfoil member about the original rotor axis
                         rA_OG = afmem.rA0
@@ -900,12 +942,16 @@ class FOWT():
                         # >>>>>> can be used later if actual rectangular mass properties are desired other than mRNA <<<<<<<<
 
                         # calculate hydrostatic properties of the blade (sub)member and add them to the system matrices
-                        Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = afmem.getHydrostatics(rho=self.rho_water, g=self.g, rRP=self.r6[:3])
+                        Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = afmem.getHydrostatics(rho=self.rho_water, g=self.g)
                         
                         # outputs of getHydrostatics should already be about the PRP
-                        self.W_hydro += Fvec # buoyancy vector
-                        self.C_hydro += Cmat # hydrostatic stiffness matrix
+                        self.W_hydro_fullDOF[iFirst:iLast] += Fvec # buoyancy vector
+                        self.C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # hydrostatic stiffness matrix
 
+                        # convert metrics to be about the PRP (platform reference point)
+                        r_CB += mem.nodeList[0].r0[:3]
+                        xWP += mem.nodeList[0].r0[0]
+                        yWP += mem.nodeList[0].r0[1]
                         VTOT    += V_UW    # add to total underwater volume of all members combined
                         AWP_TOT += AWP
                         IWPx_TOT += IWP + AWP*yWP**2
@@ -924,15 +970,21 @@ class FOWT():
         nacelleMemberList = [mem for mem in self.memberList if mem.name == 'nacelle']
         # include only hydrostatic properties of nacelles (inertia properties are stored in mRNA/IxRNA/IrRNA and used below)
         for mem in nacelleMemberList:
+            # Find the indices of the first and last nodes of the member to fill the _fullDOF matrices
+            iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
+            iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[0].nDOF # Assuming all nodes have the same dofs, namely 6            
 
             # call getHydroStatics for nacelles
-            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g, rRP=self.r6[:3])
+            Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g)
             
             # add to fowt's mean force vector and stiffness matrix
-            self.W_hydro += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
-            self.C_hydro += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
+            self.W_hydro_fullDOF[iFirst:iLast] += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
+            self.C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
        
-            # convert other metrics to also be about the PRP (platform reference point)
+            # convert metrics to be about the PRP (platform reference point)
+            r_CB += mem.nodeList[0].r0[:3]
+            xWP += mem.nodeList[0].r0[0]
+            yWP += mem.nodeList[0].r0[1]
             VTOT    += V_UW    # add to total underwater volume of all members combined
             AWP_TOT += AWP
             IWPx_TOT += IWP + AWP*yWP**2
@@ -943,38 +995,80 @@ class FOWT():
         
         # ------------------------- include RNA properties -----------------------------
         for i, rotor in enumerate(self.rotorList):
+            # Find the indices of the first and last nodes of the member to fill the _fullDOF matrices
+            iFirst =  rotor.nodeList[ 0].id      * rotor.nodeList[0].nDOF
+            iLast  = (rotor.nodeList[-1].id + 1) * rotor.nodeList[0].nDOF # Assuming all nodes have the same dofs, namely 6
             
             # create mass/inertia matrix
             Mmat = np.diag([rotor.mRNA, rotor.mRNA, rotor.mRNA, 
                             rotor.IxRNA, rotor.IrRNA, rotor.IrRNA])
             
             # Rotate RNA mass matrix into the global orientation
-            Mmat = rotateMatrix6(Mmat, rotor.R_q)  
+            Mmat = rotateMatrix6(Mmat, rotor.R_q)
             
-            # now convert everything to be about PRP (platform reference point) and add to global vectors/matrices
-            rotor_W, rotor_C_struc = getWeightOfPointMass(rotor.mRNA, rotor.r_CG_rel, np.zeros(3), g=g)  # get weight vector and effective stiffness matrix of the rotor
-            self.W_struc += rotor_W   # weight vector
-            self.M_struc += translateMatrix6to6DOF(Mmat, rotor.r_CG_rel)                            # mass/inertia matrix
-            self.C_struc += rotor_C_struc
+            # now convert everything to be about the RNA reference point and add to global vectors/matrices
+            rotor_W, rotor_C_struc = getWeightOfPointMass(rotor.mRNA, rotor.r_CG_rel - rotor.r_RRP_rel, g=g)  # get weight vector and effective stiffness matrix of the rotor
+            self.W_struc_fullDOF[iFirst:iLast] += rotor_W   # weight vector
+            self.M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(Mmat, rotor.r_CG_rel -  rotor.r_RRP_rel)      # mass/inertia matrix
+            self.C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += rotor_C_struc
+            
             m_center_sum += rotor.r_CG_rel*rotor.mRNA
 
-
         # ------------------------- include point inertia properties -----------------------------
-        for ip, pointInertia in enumerate(self.pointInertias):            
-            self.M_struc += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r'])
-            point_W, point_C_struc = getWeightOfPointMass(pointInertia['m'], pointInertia['r'], np.zeros(3), g=g)  # get weight vector and effective stiffness matrix of the point inertia. Around (0,0,0) because 'r' is already wrp to the PRP
-            self.W_struc += point_W   # weight vector
-            self.C_struc += point_C_struc
+        # TODO: For now, adding this inertia to the node that is closest to rigidBodyNode
+        #       In the future, add to nearest node?
+        for ip, pointInertia in enumerate(self.pointInertias):
+            iFirst =  self.rigidBodyNode.id      * self.rigidBodyNode.nDOF
+            iLast  = (self.rigidBodyNode.id + 1) * self.rigidBodyNode.nDOF
+            rRigidBodyNode = self.rigidBodyNode.r0[:3]  # rigid body node's position in the platform reference frame
+
+            point_W, point_C_struc = getWeightOfPointMass(pointInertia['m'], pointInertia['r'], g=g)  # get weight vector and effective stiffness matrix of the point inertia.
+            self.W_struc_fullDOF[iFirst:iLast] += point_W
+            self.M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r']-rRigidBodyNode)            
+            self.C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += point_C_struc
+
             m_center_sum += pointInertia['r']*pointInertia['m']
 
             self.m_sub += pointInertia['m']
-            self.M_struc_sub += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r'])     # mass matrix of the substructure about the PRP
-            self.C_struc_sub += point_C_struc
+            M_struc_sub_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r']-rRigidBodyNode)     # mass matrix of the substructure about the PRP
+            C_struc_sub_fullDOF[iFirst:iLast, iFirst:iLast] += point_C_struc
+            W_struc_sub_fullDOF[iFirst:iLast]               += point_W               # weight vector of the substructure [N, N-m]
             m_sub_sum += pointInertia['r']*pointInertia['m']        # product sum of the substructure members and their centers of mass [kg-m]
+
+        # ------------------------- Transform quantities above to the reduced set of dofs -----------------------------
+        self.M_struc     = self.T.T @ self.M_struc_fullDOF @ self.T
+        self.M_struc_sub = self.T.T @ M_struc_sub_fullDOF  @ self.T
+        self.C_hydro     = self.T.T @ self.C_hydro_fullDOF @ self.T
+        self.C_struc     = self.T.T @ self.C_struc_fullDOF @ self.T
+        self.C_struc_sub = self.T.T @ C_struc_sub_fullDOF  @ self.T
+        self.W_struc     = self.T.T @ self.W_struc_fullDOF
+        self.W_hydro     = self.T.T @ self.W_hydro_fullDOF
+
+        # Geommetric stiffness due to the variation of the transformation matrix
+        C_hydro_geom = np.zeros([self.nDOF,self.nDOF])
+        C_struc_geom = np.zeros([self.nDOF,self.nDOF])
+        C_struc_sub_geom = np.zeros([self.nDOF,self.nDOF])
+        for i in range(self.nDOF):
+            for j in range(self.nDOF):
+                dT = self.dT[:,:,j].T
+                C_hydro_geom[i,j] = -dT[i,:] @ self.W_hydro_fullDOF
+                C_struc_geom[i,j] = -dT[i,:] @ self.W_struc_fullDOF
+                C_struc_sub_geom[i,j] = -dT[i,:] @ W_struc_sub_fullDOF
+        self.C_hydro += C_hydro_geom
+        self.C_struc += C_struc_geom
+        self.C_struc_sub += C_struc_sub_geom
+
+        # Make the matrices symmetric. They should be, as the _fullDOF matrices are symmetric, but the matrix products
+        # above can introduce numerical errors because some elements are usually many orders of magnitude larger than others.
+        self.M_struc     = (self.M_struc + self.M_struc.T) / 2
+        self.M_struc_sub = (self.M_struc_sub + self.M_struc_sub.T) / 2
+        self.C_hydro     = (self.C_hydro + self.C_hydro.T) / 2
+        self.C_struc     = (self.C_struc + self.C_struc.T) / 2
+        self.C_struc_sub = (self.C_struc_sub + self.C_struc_sub.T) / 2
 
 
         # ----------- process inertia-related totals ----------------
-
+        # TODO: Revisit these summary quantities once we have examples with more than 6 reduced dofs
         m_all = self.M_struc[0,0]             # total mass of all the members
         rCG_all = m_center_sum/m_all          # total CG of all the members
         
@@ -1019,12 +1113,6 @@ class FOWT():
             zMeta = 0
         else:
             zMeta   = rCB_TOT[2] + IWPx_TOT/VTOT  # add center of buoyancy and BM=I/v to get z elevation of metecenter [m] (have to pick one direction for IWP)
-
-        self.C_struc[3,3] = -m_all*g*rCG_all[2]
-        self.C_struc[4,4] = -m_all*g*rCG_all[2]
-        
-        self.C_struc_sub[3,3] = -self.m_sub*g*self.rCG_sub[2]
-        self.C_struc_sub[4,4] = -self.m_sub*g*self.rCG_sub[2]
 
         # add relevant properties to this turbine's MoorPy Body
         # >>> should double check proper handling of mean weight and buoyancy forces throughout model <<<

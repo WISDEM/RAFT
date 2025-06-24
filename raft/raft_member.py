@@ -795,6 +795,7 @@ class Member:
         matrix with respect to the members' nodes. This can be different than rRP.
          
         TODO: Still need to implement flexible members here
+        TODO: For now, Fvec is simply the weight acting on the vertical direction. Split this into force along the member and at ends
 
         Parameters
         ----------
@@ -903,23 +904,23 @@ class Member:
                 Fvec[4] += My                # moment about y axis [N-m]
 
                 # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
-                xWP_rel = xWP - rRP[0]  # x coordinate of waterplane relative to RP [m]
-                yWP_rel = yWP - rRP[1] 
+                xWP -= rRP[0]  # x coordinate of waterplane relative to RP [m]
+                yWP -= rRP[1] 
                 Cmat[2,2] += -dFz_dz
-                Cmat[2,3] += rho*g*(      -AWP*yWP_rel    )
-                Cmat[2,4] += rho*g*(       AWP*xWP_rel    )
-                Cmat[3,2] += rho*g*(      -AWP*yWP_rel    )
-                Cmat[3,3] += rho*g*(IxWP + AWP*yWP_rel**2 )
-                Cmat[3,4] += rho*g*(       AWP*xWP_rel*yWP_rel)
-                Cmat[4,2] += rho*g*(       AWP*xWP_rel    )
-                Cmat[4,3] += rho*g*(       AWP*xWP_rel*yWP_rel)
-                Cmat[4,4] += rho*g*(IyWP + AWP*xWP_rel**2 )
+                Cmat[2,3] += rho*g*(      -AWP*yWP    )
+                Cmat[2,4] += rho*g*(       AWP*xWP    )
+                Cmat[3,2] += rho*g*(      -AWP*yWP    )
+                Cmat[3,3] += rho*g*(IxWP + AWP*yWP**2 )
+                Cmat[3,4] += rho*g*(       AWP*xWP*yWP)
+                Cmat[4,2] += rho*g*(       AWP*xWP    )
+                Cmat[4,3] += rho*g*(       AWP*xWP*yWP)
+                Cmat[4,4] += rho*g*(IyWP + AWP*xWP**2 )
 
-                dR = r_center - rRP  # center of volume relative to RP [m]
-                Cmat[3,3] +=  rho*g*V_UWi * dR[2]
-                Cmat[4,4] +=  rho*g*V_UWi * dR[2]
-                Cmat[3,5] += -rho*g*V_UWi * dR[0]
-                Cmat[4,5] += -rho*g*V_UWi * dR[1]
+                r_center -= rRP  # center of volume relative to RP [m]
+                Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
+                Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
+                Cmat[3,5] += -rho*g*V_UWi * r_center[0]
+                Cmat[4,5] += -rho*g*V_UWi * r_center[1]
 
                 V_UW += V_UWi
                 r_centerV += r_center*V_UWi
@@ -940,11 +941,11 @@ class Member:
                 Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center-rRP)
 
                 # hydrostatic stiffness matrix
-                dR = r_center - rRP
-                Cmat[3,3] +=  rho*g*V_UWi * dR[2]
-                Cmat[4,4] +=  rho*g*V_UWi * dR[2]
-                Cmat[3,5] += -rho*g*V_UWi * dR[0]
-                Cmat[4,5] += -rho*g*V_UWi * dR[1]
+                r_center -= rRP
+                Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
+                Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
+                Cmat[3,5] += -rho*g*V_UWi * r_center[0]
+                Cmat[4,5] += -rho*g*V_UWi * r_center[1]
 
                 V_UW += V_UWi
                 r_centerV += r_center*V_UWi

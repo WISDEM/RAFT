@@ -639,7 +639,7 @@ class Rotor:
                 mem.setPosition()
                 
                 # compute hydro added mass and inertial excitation terms relative to hub
-                A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True, rho=rho, g=g)
+                A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True, rho=rho, g=g, r_ref=np.zeros(3))
                 
                 A_hydro += A_hydro_i 
                 I_hydro += I_hydro_i

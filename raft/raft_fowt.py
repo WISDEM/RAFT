@@ -641,6 +641,7 @@ class FOWT():
         self.dT = np.zeros((self.nFullDOF, self.nDOF, self.nDOF))
 
         T0 = self.T.copy()  # Store the original transformation matrix
+        # TODO: only do rotational dofs of end nodes?
         for i, dof in enumerate(self.reducedDOF):
             reducedDisp = np.zeros(self.nDOF)
             reducedDisp[i] = 1.0
@@ -811,17 +812,17 @@ class FOWT():
 
         # structure-related arrays - in the full set of dofs
         # Transformed into the reduced set of dofs using the transformation matrix
-        self.M_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
-        self.B_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
-        self.C_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
-        self.W_struc_fullDOF = np.zeros([self.nFullDOF])
+        M_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        B_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        C_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        W_struc_fullDOF = np.zeros([self.nFullDOF])
         
         # hydrostatic arrays - in the reduced set of dofs
         self.C_hydro = np.zeros([self.nDOF,self.nDOF])        # hydrostatic stiffness matrix [N/m, N, N-m]
         self.W_hydro = np.zeros(self.nDOF)                    # buoyancy force/moment vector [N, N-m]  <<<<< not used yet
 
-        self.C_hydro_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
-        self.W_hydro_fullDOF = np.zeros(self.nFullDOF)       
+        C_hydro_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
+        W_hydro_fullDOF = np.zeros(self.nFullDOF)       
 
         # --------------- add in linear hydrodynamic coefficients here if applicable --------------------
         #[as in load them] <<<<<<<<<<<<<<<<<<<<<
@@ -870,9 +871,9 @@ class FOWT():
             W = mem.getWeight(g=g) # Using zeros because mem.cog is about the PRP
 
             # Calculate the mass matrix of the FOWT about the PRP
-            self.W_struc_fullDOF[iFirst:iLast]               += W               # weight vector
-            self.M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += mem.M_struc     # mass/inertia matrix
-            self.C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += mem.C_struc     # part of the hydrostatic stiffness that is due to weight           
+            W_struc_fullDOF[iFirst:iLast]               += W               # weight vector
+            M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += mem.M_struc     # mass/inertia matrix
+            C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += mem.C_struc     # part of the hydrostatic stiffness that is due to weight           
 
             center += mem.nodeList[0].r0[:3] # Update center position to be wrp to the PRP
             m_center_sum += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
@@ -897,8 +898,8 @@ class FOWT():
             Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g)
             
             # add to fowt's mean force vector and stiffness matrix
-            self.W_hydro_fullDOF[iFirst:iLast] += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
-            self.C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
+            W_hydro_fullDOF[iFirst:iLast] += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
+            C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
        
             # convert metrics to be about the PRP (platform reference point)
             r_CB += mem.nodeList[0].r0[:3]
@@ -959,8 +960,8 @@ class FOWT():
                         Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = afmem.getHydrostatics(rho=self.rho_water, g=self.g)
                         
                         # outputs of getHydrostatics should already be about the PRP
-                        self.W_hydro_fullDOF[iFirst:iLast] += Fvec # buoyancy vector
-                        self.C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # hydrostatic stiffness matrix
+                        W_hydro_fullDOF[iFirst:iLast] += Fvec # buoyancy vector
+                        C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # hydrostatic stiffness matrix
 
                         # convert metrics to be about the PRP (platform reference point)
                         r_CB += mem.nodeList[0].r0[:3]
@@ -992,8 +993,8 @@ class FOWT():
             Fvec, Cmat, V_UW, r_CB, AWP, IWP, xWP, yWP = mem.getHydrostatics(rho=self.rho_water, g=self.g)
             
             # add to fowt's mean force vector and stiffness matrix
-            self.W_hydro_fullDOF[iFirst:iLast] += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
-            self.C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
+            W_hydro_fullDOF[iFirst:iLast] += Fvec # translateForce3to6DOF( np.array([0,0, Fz]), mem.rA )  # buoyancy vector
+            C_hydro_fullDOF[iFirst:iLast, iFirst:iLast] += Cmat # translateMatrix6to6DOF(Cmat, mem.rA)                       # hydrostatic stiffness matrix
        
             # convert metrics to be about the PRP (platform reference point)
             r_CB += mem.nodeList[0].r0[:3]
@@ -1022,9 +1023,9 @@ class FOWT():
             
             # now convert everything to be about the RNA reference point and add to global vectors/matrices
             rotor_W, rotor_C_struc = getWeightOfPointMass(rotor.mRNA, rotor.r_CG_rel - rotor.r_RRP_rel, g=g)  # get weight vector and effective stiffness matrix of the rotor
-            self.W_struc_fullDOF[iFirst:iLast] += rotor_W   # weight vector
-            self.M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(Mmat, rotor.r_CG_rel -  rotor.r_RRP_rel)      # mass/inertia matrix
-            self.C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += rotor_C_struc
+            W_struc_fullDOF[iFirst:iLast] += rotor_W   # weight vector
+            M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(Mmat, rotor.r_CG_rel -  rotor.r_RRP_rel)      # mass/inertia matrix
+            C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += rotor_C_struc
             
             m_center_sum += rotor.r_CG_rel*rotor.mRNA
 
@@ -1037,9 +1038,9 @@ class FOWT():
             rRigidBodyNode = self.rigidBodyNode.r0[:3]  # rigid body node's position in the platform reference frame
 
             point_W, point_C_struc = getWeightOfPointMass(pointInertia['m'], pointInertia['r'], g=g)  # get weight vector and effective stiffness matrix of the point inertia.
-            self.W_struc_fullDOF[iFirst:iLast] += point_W
-            self.M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r']-rRigidBodyNode)            
-            self.C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += point_C_struc
+            W_struc_fullDOF[iFirst:iLast] += point_W
+            M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r']-rRigidBodyNode)            
+            C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += point_C_struc
 
             m_center_sum += pointInertia['r']*pointInertia['m']
 
@@ -1050,13 +1051,13 @@ class FOWT():
             m_sub_sum += pointInertia['r']*pointInertia['m']        # product sum of the substructure members and their centers of mass [kg-m]
 
         # ------------------------- Transform quantities above to the reduced set of dofs -----------------------------
-        self.M_struc     = self.T.T @ self.M_struc_fullDOF @ self.T
+        self.M_struc     = self.T.T @ M_struc_fullDOF @ self.T
         self.M_struc_sub = self.T.T @ M_struc_sub_fullDOF  @ self.T
-        self.C_hydro     = self.T.T @ self.C_hydro_fullDOF @ self.T
-        self.C_struc     = self.T.T @ self.C_struc_fullDOF @ self.T
+        self.C_hydro     = self.T.T @ C_hydro_fullDOF @ self.T
+        self.C_struc     = self.T.T @ C_struc_fullDOF @ self.T
         self.C_struc_sub = self.T.T @ C_struc_sub_fullDOF  @ self.T
-        self.W_struc     = self.T.T @ self.W_struc_fullDOF
-        self.W_hydro     = self.T.T @ self.W_hydro_fullDOF
+        self.W_struc     = self.T.T @ W_struc_fullDOF
+        self.W_hydro     = self.T.T @ W_hydro_fullDOF
 
         # Geommetric stiffness due to the variation of the transformation matrix
         C_hydro_geom = np.zeros([self.nDOF,self.nDOF])
@@ -1065,8 +1066,8 @@ class FOWT():
         for i in range(self.nDOF):
             for j in range(self.nDOF):
                 dT = self.dT[:,:,j].T
-                C_hydro_geom[i,j] = -dT[i,:] @ self.W_hydro_fullDOF
-                C_struc_geom[i,j] = -dT[i,:] @ self.W_struc_fullDOF
+                C_hydro_geom[i,j] = -dT[i,:] @ W_hydro_fullDOF
+                C_struc_geom[i,j] = -dT[i,:] @ W_struc_fullDOF
                 C_struc_sub_geom[i,j] = -dT[i,:] @ W_struc_sub_fullDOF
         self.C_hydro += C_hydro_geom
         self.C_struc += C_struc_geom
@@ -1471,13 +1472,16 @@ class FOWT():
         rho = self.rho_water
         g   = self.g
         
-        # --------------------- get constant hydrodynamic values along each member -----------------------------
-
-        self.A_hydro_morison = np.zeros([6,6])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
+        # --------------------- get constant hydrodynamic values along each member -----------------------------        
+        self.A_hydro_morison = np.zeros([self.nDOF, self.nDOF])                # hydrodynamic added mass matrix, from only Morison equation [kg, kg-m, kg-m^2]
+        A_hydro_morison_fullDOF = np.zeros([self.nFullDOF, self.nFullDOF])   # same but in the full set of dofs
 
         # loop through each member
 
         for i,mem in enumerate(self.memberList):
+            # Find the indices of the first and last nodes of the member to fill the _fullDOF matrices
+            iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
+            iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[0].nDOF # Assuming all nodes have the same dofs, namely 6
         
             # get member added mass matrix about PRP (also saves each member's inertial excitation coefficients)
             if mem.MCF:
@@ -1485,17 +1489,18 @@ class FOWT():
             else:
                 k_array = None
 
-            A_hydro_i = mem.calcHydroConstants(r_ref=self.r6[:3], rho=rho, g=g, k_array=k_array)                      
-            self.A_hydro_morison += A_hydro_i  # add to FOWT added mass matrix
+            A_hydro_morison_fullDOF[iFirst:iLast, iFirst:iLast] += mem.calcHydroConstants(rho=rho, g=g, k_array=k_array)
     
         # ----- Get hydrodynamic contributions from any underwater rotors ------
         for i, rot in enumerate(self.rotorList):
+            iFirst =  rot.nodeList[ 0].id      * rot.nodeList[0].nDOF
+            iLast  = (rot.nodeList[-1].id + 1) * rot.nodeList[0].nDOF
             
             # compute rotor hydro added mass/inertia properties
             A_hydro_i, I_hydro_i = rot.calcHydroConstants(rho=rho, g=g)
+            A_hydro_morison_fullDOF[iFirst:iLast, iFirst:iLast] += A_hydro_i
             
-            # make relative to PRP and add to system added mass matrix
-            self.A_hydro_morison += translateMatrix6to6DOF(A_hydro_i, rot.r3-self.r6[:3]) 
+        self.A_hydro_morison = self.T.T @ A_hydro_morison_fullDOF @ self.T  # transform to the reduced set of dofs
     
     
     def getStiffness(self):
@@ -1643,13 +1648,19 @@ class FOWT():
             
         # ----- calculate potential-flow wave excitation force -----
 
-        self.F_BEM = np.zeros([self.nWaves,6,self.nw], dtype=complex)
-        self.F_hydro_iner = np.zeros([self.nWaves, 6, self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
+        self.F_BEM = np.zeros([self.nWaves,self.nDOF,self.nw], dtype=complex)
+        self.F_hydro_iner = np.zeros([self.nWaves, self.nDOF, self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
+        F_BEM_fullDOF = np.zeros([self.nWaves, self.nFullDOF, self.nw],dtype=complex) # Same but in full DOFs
+        F_hydro_iner_fullDOF = np.zeros([self.nWaves, self.nFullDOF, self.nw],dtype=complex) # Same but in full DOFs        
 
         # BEM-based wave excitation force on platform for each wave heading 
         # (will be zero if only using strip theory). Includes wave heading interpolation.
+        # TODO: Work on multibody BEM excitation in the future
+        #       For now, just lumping it at the rigid body node
         if self.potMod or self.potModMaster in [2,3]:
-
+            iFirst =  self.rigidBodyNode.id      * self.rigidBodyNode.nDOF
+            iLast  = (self.rigidBodyNode.id + 1) * self.rigidBodyNode.nDOF
+                        
             for ih in range(self.nWaves):
                 
                 # phase offset due to FOWT position in array
@@ -1702,19 +1713,23 @@ class FOWT():
                 X_BEM_ih[5,:] = X_prime[5,:]
                 
                 # multiply excitation coefficients by wave elevation to get excitation forces and moments for this wave heading
-                self.F_BEM[ih,:,:] = X_BEM_ih * self.zeta[ih,:] * phase_offset
+                F_BEM_fullDOF[ih, iFirst:iLast, :] = X_BEM_ih * self.zeta[ih,:] * phase_offset
 
         # ----- strip-theory wave excitation force -----
         # loop through each member to compute strip-theory contributions
         # This also saves the save wave kinematics over each member.
-        for i,mem in enumerate(memberList):            
-            self.F_hydro_iner += mem.calcHydroExcitation(self.zeta, self.beta, self.w, self.depth, k=self.k, r_ref=self.r6[:3])
-
+        for i,mem in enumerate(memberList):
+            iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
+            iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[-1].nDOF
+            F_hydro_iner_fullDOF[:, iFirst:iLast, :] += mem.calcHydroExcitation(self.zeta, self.beta, self.w, self.depth, k=self.k)
         
         # ----- inertial excitation on rotor(s) -----
         
         for i, rot in enumerate(self.rotorList):
             if rot.r3[2] < 0:  # if submerged
+                # Find the indices of the first and last nodes of the member to fill the _fullDOF matrices
+                iFirst =  rot.nodeList[ 0].id      * rot.nodeList[0].nDOF
+                iLast  = (rot.nodeList[-1].id + 1) * rot.nodeList[0].nDOF # Assuming all nodes have the same dofs, namely 6
 
                 # get wave kinematics spectra given a certain wave spectrum and location
                 # for each wave direction, calculate the hub wave kinematics
@@ -1732,8 +1747,12 @@ class FOWT():
                     f3 = np.matmul( I_hydro[:3,:3], rot.ud[ih,:,i] )  # Forces due to acceleration
                     f6 = translateForce3to6DOF(f3, rot.r3 - self.r6[:3])  # Translate to about PRP (induces some moments)
                     f6[3:] += np.matmul( I_hydro[3:,:3], rot.ud[ih,:,i] )  # Add moments due to acceleration
+                    F_hydro_iner_fullDOF[ih, iFirst:iLast, i] += f6  # add to the full DOF matrix
 
-                    self.F_hydro_iner[ih,:,i] += f6
+        # transform to the reduced set of dofs
+        for ih in range(self.nWaves):
+            self.F_BEM[ih, :, :] = self.T.T @ F_BEM_fullDOF[ih, :, :]
+            self.F_hydro_iner[ih, :, :] = self.T.T @ F_hydro_iner_fullDOF[ih, :, :]            
                 
 
     def calcHydroLinearization(self, Xi):

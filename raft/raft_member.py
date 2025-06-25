@@ -996,15 +996,16 @@ class Member:
             raise ValueError(f'getWeight() only works for rigid members for now, but member {self.name} is of type {self.type}.')
         return W
         
-    def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81, k_array=None):
+    def calcHydroConstants(self, r_ref=None, sum_inertia=False, rho=1025, g=9.81, k_array=None):
         '''Compute the Member's linear strip-theory-hydrodynamics terms, 
         related to drag and added mass, which are also a precursor to 
         excitation. All computed quantities are in global orientations.
         
         Parameters
         ----------
-        r_ref : size-3 vector
+        r_ref : size-3 vector, optional
             Reference point coordinates to compute matrices about [m].
+            Only used for rigid members. For flexible members, each node is its own reference point.
         sum_inertia : boolean, optional
             Flag to calculate and return an overall inertial excitation matrix
             (default False).
@@ -1014,10 +1015,13 @@ class Member:
         A_hydro, I_hydro : 6x6 matrices
             Hydrodynamic added mass and inertial excitation matrices.
         '''
+
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
         
-        # hydrodynamic added mass and excitation matrices from strip theory [kg, kg-m, kg-m^2]
-        A_hydro = np.zeros([6,6])
-        I_hydro = np.zeros([6,6])
+        # hydrodynamic added mass and excitation matrices from strip theory [kg, kg-m, kg-m^2]        
+        A_hydro = np.zeros([self.nDOF, self.nDOF])
+        I_hydro = np.zeros([self.nDOF, self.nDOF])
 
         circ = self.shape=='circular'  # boolean for circular vs. rectangular
         
@@ -1027,6 +1031,17 @@ class Member:
 
         # loop through each node of the member
         for il in range(self.ns):
+            # Get ranges of the matrix corresponding to this node
+            if self.type == 'rigid':
+                iFirst = 0
+                iLast  = 6
+            else:   # flexible
+                iFirst = il*6
+                iLast  = iFirst+6
+
+                # This r_ref is useless now, as self.r[il,:] = self.nodeList[il].r[:3], but doing it this way 
+                # because in the future we want to have different discretizations for structural and hydrodynamic
+                r_ref = self.nodeList[il].r[:3]
 
             # only process hydrodynamics if this node is submerged
             if self.r[il,2] < 0:
@@ -1078,13 +1093,12 @@ class Member:
                     # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
                     self.Amat[il,:,:] = Amat_sides + Amat_end
                     self.a_i[il] = a_i  # signed axial reference area for use in dynamic pressure force
-                    
-                    
+                                        
                     # add to global added mass and inertial excitation matrices
                     # which consider the mean offsets and are relative to the ref in global orientation
-                    A_hydro += translateMatrix3to6DOF(self.Amat[il,:,:], self.r[il,:] - r_ref[:3])    
+                    A_hydro[iFirst:iLast, iFirst:iLast] += translateMatrix3to6DOF(self.Amat[il,:,:], self.r[il,:] - r_ref[:3])    
                     if sum_inertia:
-                        I_hydro += translateMatrix3to6DOF(self.Imat[il,:,:], self.r[il,:] - r_ref[:3])   
+                        I_hydro[iFirst:iLast, iFirst:iLast] += translateMatrix3to6DOF(self.Imat[il,:,:], self.r[il,:] - r_ref[:3])   
 
         if sum_inertia:
             return A_hydro, I_hydro
@@ -1646,7 +1660,7 @@ class Member:
                     self.u[ih,il,:,:], self.ud[ih,il,:,:], self.pDyn[ih,il,:] = getWaveKin(zeta[ih,:], beta[ih], w, k, depth, self.r[il,:], nw, rho=rho, g=g)
 
 
-    def calcHydroExcitation(self, zeta, beta, w, depth, k=None, rho=1025, g=9.81, r_ref=np.zeros(3)):
+    def calcHydroExcitation(self, zeta, beta, w, depth, k=None, rho=1025, g=9.81, r_ref=None):
         '''
         Compute strip-theory wave excitation force (inertial part of Morison's equation).
         Need to call computeWaveKinematics() first to get the wave kinematics at each node.        
@@ -1654,20 +1668,35 @@ class Member:
 
         Parameters
         ----------
-        r_ref: size-3 vector
-            Reference point coordinates to compute hydrodynamic loads [m].
+        r_ref : size-3 vector, optional
+            Reference point coordinates to compute matrices about [m].
+            Only used for rigid members. For flexible members, each node is its own reference point.
         
         Returns
         ----------
         self.F_hydro_iner: [nWaves x 6 x nw] complex array. nWaves: number of wave headings; 6: number of dofs; nw: number of frequencies
         '''
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
+
         self.computeWaveKinematics(zeta, beta, w, depth, k=k, rho=rho, g=g)
 
         nWaves, _, _, nw = self.ud.shape
-        self.F_hydro_iner = np.zeros([nWaves, 6, nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]        
+        self.F_hydro_iner = np.zeros([nWaves, self.nDOF, nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]        
 
         # loop through each node of the member
         for il in range(self.ns):
+            # Get ranges of the matrix corresponding to this node
+            if self.type == 'rigid':
+                iFirst = 0
+                iLast  = 6
+            else:   # flexible
+                iFirst = il*6
+                iLast  = iFirst+6
+
+                # This r_ref is useless now, as self.r[il,:] = self.nodeList[il].r[:3], but doing it this way 
+                # because in the future we want to have different discretizations for structural and hydrodynamic
+                r_ref = self.nodeList[il].r[:3]
 
             # only process hydrodynamics if this node is submerged
             if self.r[il,2] < 0:
@@ -1682,7 +1711,7 @@ class Member:
                             F_exc_iner_temp = np.matmul(Imat, self.ud[ih,il,:,i]) + self.pDyn[ih,il,i]*self.a_i[il]*self.q 
                             
                             # add the excitation complex amplitude for this heading and frequency to the global excitation vector
-                            self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, self.r[il,:] - r_ref) # (about PRP)
+                            self.F_hydro_iner[ih,iFirst:iLast,i] += translateForce3to6DOF(F_exc_iner_temp, self.r[il,:] - r_ref)
         return self.F_hydro_iner
 
 

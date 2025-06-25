@@ -327,7 +327,7 @@ def test_hydrostatics(index_and_member):
 
 def test_hydroConstants(index_and_member):
     index, member = index_and_member
-    A_hydro, I_hydro = member.calcHydroConstants(sum_inertia=True, rho=1025, g=9.81)
+    A_hydro, I_hydro = member.calcHydroConstants(sum_inertia=True, rho=1025, g=9.81, r_ref=np.zeros(3))
     assert_allclose(A_hydro, desired_Ahydro[index], rtol=1e-05, atol=1e-7, verbose=True)
     assert_allclose(I_hydro, desired_Ihydro[index], rtol=1e-05, atol=1e-7, verbose=True)
 

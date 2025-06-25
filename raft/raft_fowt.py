@@ -295,7 +295,7 @@ class FOWT():
         # Each rotor is connected to the top of its corresponding tower by a cantilever joint
         towerList = [m for m in self.memberList if m.part_of == 'tower']
         for ir in range(self.nrotors):
-            self.rotorList.append(Rotor(design['turbine'], self.w, ir))
+            self.rotorList.append(Rotor(design['turbine'], self.w, ir, node_id=len(self.nodeList)))
             self.nodeList += self.rotorList[-1].nodeList  # add the rotor nodes to the node list
             towerTopJoint = self.addJoint({'name': 'tower2rotor', 'type': 'cantilever', 'location': self.rotorList[ir].r_RRP, 'members': []}) # Do not need the members list in the joint data because we will provide the members directly
             
@@ -312,7 +312,8 @@ class FOWT():
         # print(f"Rigid body motions correspond to node located at {self.rigidBodyNode.r0[0:3]} wrp to the PRP.")
 
         # Move this node to be the first node in the list.
-        # TODO: Only doing this now for compatibility with previous code. Remove lines later
+        # TODO: Only doing this now for compatibility with previous code. Remove lines later.
+        # if len(self.joint_data) == 1 and self.joint_data[0]['name'] == 'origin_joint':
         self.nodeList.remove(self.rigidBodyNode)
         self.nodeList.insert(0, self.rigidBodyNode)
         for i, n in enumerate(self.nodeList): # Reset the id of all nodes to be their index in the list. TODO: maybe just assign the ids here instead at node creation. I think I just need to set them before reduceDOF() and computeTransformationMatrix(), but not sure
@@ -528,9 +529,12 @@ class FOWT():
             newNodeA.rigid_link_id = self.rigidLinkList['id'][-1]
             self.nodeList.append(newNodeA)
 
-            # Node B is cantilevered to the member node. We add a new cantilever joint attached to both nodes
-            j_data = {'name': f"joint4rigidLink", 'type': 'cantilever', 'location': newNodeB.r0[0:3].tolist(), 'members': []} # We won't use members for rigid-link joints
-            jointB = self.addJoint(j_data)
+            # Node B is attached to the other node. Use the same joint as node if it already has one, otherwise create a new cantilever joint for the connection
+            if node.joint_id is not None:
+                jointB = [j for j in self.jointList if j['id'] == node.joint_id][0]
+            else:
+                j_data = {'name': f"joint4rigidLink", 'type': 'cantilever', 'location': newNodeB.r0[0:3].tolist(), 'members': []} # We won't use members for rigid-link joints
+                jointB = self.addJoint(j_data)
             newNodeB.joint_id      = jointB['id']
             newNodeB.joint_type    = jointB['type']
             newNodeB.rigid_link_id = self.rigidLinkList['id'][-1]
@@ -592,6 +596,15 @@ class FOWT():
                 for n in node.member.nodeList:
                     if (n.id != node.id) and (n.id not in visited):
                         queue.append(n)
+
+        # Need to visit all end nodes
+        nodes2visit = [n for n in self.nodeList if n.end_node]
+        if len(visited) != len(nodes2visit):
+            # Find nodes that were not visited
+            unvisited_nodes = [n.id for n in nodes2visit if n.id not in visited]
+            raise Exception(f"Could not reach all nodes from the first node. Please check the connectivity of the structure. Unvisited node ids: {unvisited_nodes}")
+
+            
 
         # Get unique dofs of the whole structure
         reducedDOF = []

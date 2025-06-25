@@ -1955,10 +1955,10 @@ class Member:
         # Note that self.K_flexible has dimension (6, 6*nNodesStructure)
         # whereas self.K has dimension (6*nNodesMember, 6*nNodesMember).
         # That's why we need to find the column range that correspond to this member's matrix.
-        col_first = self.nodeList[0].id*self.nodeList[0].nDOF
-        col_last  = (self.nodeList[-1].id+1)*self.nodeList[0].nDOF
-        for i, n in enumerate(self.nodeList):            
-            n.K_flexible[:, col_first:col_last] = self.K[i*nDOF:(i+1)*nDOF, :]
+        # col_first = self.nodeList[0].id*self.nodeList[0].nDOF
+        # col_last  = (self.nodeList[-1].id+1)*self.nodeList[0].nDOF
+        # for i, n in enumerate(self.nodeList):            
+        #     n.K_flexible[:, col_first:col_last] = self.K[i*nDOF:(i+1)*nDOF, :]
 
         return self.K
 

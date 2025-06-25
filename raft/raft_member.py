@@ -779,7 +779,7 @@ class Member:
             self.M_struc = M_aux
         else: 
             # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrp to the member's nodes. 
-            raise ValueError(f'getInertia() only works for rigid members for now, but member {member.name} is of type {self.type}.')
+            raise ValueError(f'getInertia() only works for rigid members for now, but member {self.name} is of type {self.type}.')
 
 
         return mass, center, mshell, mfill, pfill
@@ -966,7 +966,7 @@ class Member:
             # self.nodeList[0].K_hydro = translateMatrix6to6DOF(Cmat, rRP-self.nodeList[0].r[:3])
             self.nodeList[0].K_hydro = Cmat
         else:
-            raise ValueError(f'getHydrostatics() only works for rigid members for now, but member {member.name} is of type {self.type}.')
+            raise ValueError(f'getHydrostatics() only works for rigid members for now, but member {self.name} is of type {self.type}.')
         
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
@@ -993,7 +993,7 @@ class Member:
             self.C_struc = C_aux
         else: 
             # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrp to the member's nodes. 
-            raise ValueError(f'getWeight() only works for rigid members for now, but member {member.name} is of type {self.type}.')
+            raise ValueError(f'getWeight() only works for rigid members for now, but member {self.name} is of type {self.type}.')
         return W
         
     def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81, k_array=None):

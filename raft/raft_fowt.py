@@ -1083,7 +1083,11 @@ class FOWT():
 
         # ----------- process inertia-related totals ----------------
         # TODO: Revisit these summary quantities once we have examples with more than 6 reduced dofs
-        m_all = self.M_struc[0,0]             # total mass of all the members
+        m_all = 0
+        for i,dof in enumerate(self.reducedDOF):
+            if dof[1] == 0: # If this is a translation in the X direction (Global dof 0)
+                m_all += self.M_struc[i,i]
+
         rCG_all = m_center_sum/m_all          # total CG of all the members
         
         self.rCG = rCG_all
@@ -1094,12 +1098,14 @@ class FOWT():
         # get principal moments of inertia (about CG) 
         # note: these are likely only useful in the unrotated frame, i.e.
         # the first time calcStatics is called.
+        # TODO: Not sure about the best way to deal with these when nDOF>6. Maybe Craig-Bampton keeping the first 6 dofs?
+        #       For now, just using the first 6 dofs but knowing that it is wrong for nDOF>6
         
         # the mass matrix of the substructure about the substruc's CM
-        M_sub = translateMatrix6to6DOF(self.M_struc_sub, -self.rCG_sub)  # -rCG_sub due to convention of the function
+        M_sub = translateMatrix6to6DOF(self.M_struc_sub[:6,:6], -self.rCG_sub)  # -rCG_sub due to convention of the function
         
         # overall structure mass matrix about its CM
-        M_all = translateMatrix6to6DOF(self.M_struc, -self.rCG)
+        M_all = translateMatrix6to6DOF(self.M_struc[:6,:6], -self.rCG)
 
         # could check that off-diagonals are approximately zero as an error check
         

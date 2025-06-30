@@ -753,8 +753,8 @@ class FOWT():
         self.rReducedDOF = rReducedDOF
         initial_displacement = np.zeros(self.nDOF)  # Initialize the displacement vector in the reduced dofs
         for i, dof in enumerate(self.reducedDOF):
-            initial_displacement += self.x_ref if dof[1] == 0 else 0 # If this is a translation in the X direction (Global dof 0)
-            initial_displacement += self.y_ref if dof[1] == 1 else 0 # If this is a translation in the Y direction (Global dof 1)
+            initial_displacement[i] += self.x_ref if dof[1] == 0 else 0 # If this is a translation in the X direction (Global dof 0)
+            initial_displacement[i] += self.y_ref if dof[1] == 1 else 0 # If this is a translation in the Y direction (Global dof 1)
         self.Xi0 = self.rReducedDOF - initial_displacement
 
         # Set the position of all nodes

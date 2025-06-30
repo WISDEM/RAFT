@@ -775,10 +775,10 @@ class Member:
         self.rCoG  = rRP + center # coordinates of COG in global coordinates [m]
         
         if self.type == 'rigid':
-            # store the (6,6) matrix given wrp to the reference point
+            # store the (6,6) matrix given wrt the reference point
             self.M_struc = M_aux
         else: 
-            # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrp to the member's nodes. 
+            # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrt the member's nodes. 
             raise ValueError(f'getInertia() only works for rigid members for now, but member {self.name} is of type {self.type}.')
 
 
@@ -989,10 +989,10 @@ class Member:
         W, C_aux = getWeightOfPointMass(self.mass, self.rCoG-rRP, g=g)
 
         if self.type == 'rigid':
-            # store the (6,6) matrix given wrp to the member's node.
+            # store the (6,6) matrix given wrt the member's node.
             self.C_struc = C_aux
         else: 
-            # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrp to the member's nodes. 
+            # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrt the member's nodes. 
             raise ValueError(f'getWeight() only works for rigid members for now, but member {self.name} is of type {self.type}.')
         return W
         
@@ -1554,7 +1554,7 @@ class Member:
 
         Returns:
         D_hydro: (self.nDOF, 1) array
-            Mean current force and moment acting on each node of the member wrp to r_ref [N, N-m]
+            Mean current force and moment acting on each node of the member wrt r_ref [N, N-m]
         '''
         if r_ref is None:
             r_ref = self.nodeList[0].r[:3]

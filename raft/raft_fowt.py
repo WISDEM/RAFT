@@ -309,7 +309,7 @@ class FOWT():
         #       But need to change this, as it wouldn't work if the node is part of a flexible member.
         #       In the future, let the user pick the end node of a member, either rigid or flexible
         self.rigidBodyNode = min(self.nodeList, key=lambda n: np.linalg.norm(n.r0[0:3]))
-        # print(f"Rigid body motions correspond to node located at {self.rigidBodyNode.r0[0:3]} wrp to the PRP.")
+        # print(f"Rigid body motions correspond to node located at {self.rigidBodyNode.r0[0:3]} wrt the PRP.")
 
         # Move this node to be the first node in the list.
         # TODO: Only doing this now for compatibility with previous code. Remove lines later.
@@ -758,7 +758,7 @@ class FOWT():
         self.Xi0 = self.rReducedDOF - initial_displacement
 
         # Set the position of all nodes
-        # rReducedDOF can be interpreted as a displacement in the reduced degrees of freedom, as the r0's of the nodes are wrp to the platform
+        # rReducedDOF can be interpreted as a displacement in the reduced degrees of freedom, as the r0's of the nodes are wrt the platform
         self.setNodesPosition(rReducedDOF)
         self.reduceDOF()  # Recompute the transformation matrix
         self.computeDerivativeTransformationMatrix() # Also compute the derivative of the transformation matrix, which is used to compute the stiffness matrices
@@ -875,7 +875,7 @@ class FOWT():
             M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += mem.M_struc     # mass/inertia matrix
             C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += mem.C_struc     # part of the hydrostatic stiffness that is due to weight           
 
-            center += mem.nodeList[0].r0[:3] # Update center position to be wrp to the PRP
+            center += mem.nodeList[0].r0[:3] # Update center position to be wrt the PRP
             m_center_sum += center*mass     # product sum of the mass and center of mass to find the total center of mass [kg-m]
 
             # Tower calculations

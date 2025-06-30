@@ -1392,6 +1392,8 @@ class FOWT():
     def calcTurbineConstants(self, case, ptfm_pitch=0):
         '''This computes turbine linear terms (excluding hydrodynamic added 
         mass and inertial excitation, which are handled by getHydroConstants).
+        Loads and matrices are wrt to the rotor node location.
+
         
         case
             dictionary of case information
@@ -1403,15 +1405,15 @@ class FOWT():
         turbine_status  = getFromDict(case, 'turbine_status', shape=0, dtype=str, default='operating')
 
         # initialize arrays (can remain zero if aerodynamics are disabled)
-        self.A_aero  = np.zeros([6,6,self.nw,self.nrotors])                      # frequency-dependent aero-servo added mass matrix
-        self.B_aero  = np.zeros([6,6,self.nw,self.nrotors])                      # frequency-dependent aero-servo damping matrix
-        self.f_aero  = np.zeros([6,  self.nw,self.nrotors], dtype=complex)       # dynamice excitation force and moment amplitude spectra
-        self.f_aero0 = np.zeros([6,          self.nrotors])                      # mean aerodynamic forces and moments
+        self.A_aero  = np.zeros([self.nDOF,self.nDOF,self.nw,self.nrotors])                      # frequency-dependent aero-servo added mass matrix
+        self.B_aero  = np.zeros([self.nDOF,self.nDOF,self.nw,self.nrotors])                      # frequency-dependent aero-servo damping matrix
+        self.f_aero  = np.zeros([self.nDOF,  self.nw,self.nrotors], dtype=complex)       # dynamice excitation force and moment amplitude spectra
+        self.f_aero0 = np.zeros([self.nDOF,          self.nrotors])                      # mean aerodynamic forces and moments
         #todo: reorder above so that w is last index <<<
         
-        self.B_gyro  = np.zeros([6,6,self.nrotors])  # rotor gyroscopic damping matrix
+        self.B_gyro  = np.zeros([self.nDOF,self.nDOF,self.nrotors])  # rotor gyroscopic damping matrix
         self.cav = [0]
-        
+       
         if turbine_status == 'operating':
             
             for ir, rot in enumerate(self.rotorList):
@@ -1427,20 +1429,17 @@ class FOWT():
                 if rot.aeroServoMod > 0 and speed > 0.0:
                 
                     # Get mean aero forces and fore-aft coefficients 
-                    # Note: these are about hub coordinate in global orientation.
+                    # Note: these are about the rotor's node in global orientation.
                     f_aero0, f_aero, a_aero, b_aero = rot.calcAero(case, current=current)  # get values about hub
                     
-                    # convert coefficients to platform reference frame and populate tensor slice for this rotor
+                    # Transform quantities to the reduced set of dofs
+                    T = rot.nodeList[0].T # transformation matrix from the reduced set of dofs of the FOWT to the 6 dofs of the rotor node
+                    self.f_aero0[:,ir] = T.T @ f_aero0  # mean forces and moments
                     for iw in range(self.nw):
-                        self.A_aero[:,:,iw,ir] = translateMatrix6to6DOF(a_aero[:,:,iw], rot.r_hub_rel)
-                        self.B_aero[:,:,iw,ir] = translateMatrix6to6DOF(b_aero[:,:,iw], rot.r_hub_rel)
-                    
-                    # convert forces to platform reference frame
-                    self.f_aero0[:,ir] = transformForce(f_aero0, offset=rot.r_hub_rel) # mean forces and moments
-                    
-                    for iw in range(self.nw):
-                        self.f_aero[:,iw,ir] = transformForce(f_aero[:,iw], offset=rot.r_hub_rel) # excitation
-                    
+                        self.A_aero[:,:,iw,ir] = T.T @ a_aero[:,:,iw] @ T
+                        self.B_aero[:,:,iw,ir] = T.T @ b_aero[:,:,iw] @ T
+                        self.f_aero[:,iw,ir]   = T.T @ f_aero[:,iw]  # convert excitation forces to the reduced set of dofs
+
                     # calculate cavitation of the rotor (platform motions should already be accounted for in the CCBlade object after running calcAero)
                     if rot.r3[2] < 0:  # if submerged
                         self.cav = rot.calcCavitation(case)  # TO-DO: wire this to be a result/output, then uncomment <<<
@@ -1454,9 +1453,10 @@ class FOWT():
                     # rotating inertia vector [kg-m^2 * rad/s = N-m-s]
                     IO_rotor = rot.I_drivetrain * Omega_rotor
                     
-                    GyroDampingMatrix = getH(IO_rotor)
+                    GyroDampingMatrix = np.zeros((6, 6))
+                    GyroDampingMatrix[3:, 3:] = getH(IO_rotor)
                     
-                    self.B_gyro[3:, 3:, ir] = GyroDampingMatrix  
+                    self.B_gyro[:, :, ir] = T.T @ GyroDampingMatrix @ T
                     
                     # note, gyroscopic effect is purely rotational so no translation adjustment needed
 

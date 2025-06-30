@@ -13,7 +13,7 @@ from scipy.interpolate import PchipInterpolator
 from scipy.special     import modstruve, iv
 
 
-from raft.helpers import rotationMatrix, getFromDict, rotateMatrix3, rotateMatrix6, RotFrm2Vect
+from raft.helpers import rotationMatrix, getFromDict, rotateMatrix3, rotateMatrix6, RotFrm2Vect, transformForce, translateMatrix6to6DOF
 
 try:
     from ccblade.ccblade import CCBlade, CCAirfoil
@@ -806,9 +806,7 @@ class Rotor:
     def calcAero(self, case, current=False, display=0):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
-        Results are w.r.t. the hub coordinate on the nacelle reference frame (may be yawed), 
-        but written in the global reference frame.
-        Currently returning 6 DOF mean loads, but other terms are just hub fore-aft scalars.
+        Results are w.r.t. the rotor node written in the global reference frame.
         '''
         
         # added mass, damping, excitation, mean force arrays to be filled in (6 DOF)
@@ -1018,9 +1016,16 @@ class Rotor:
         if current:
             self.f[0,:] += self.I_hydro[0,0] * 1j*self.w*self.V_w  # <<< this should have a rotation applied
             breakpoint()
-        """        
+        """
+
+        # Transform to be wrt the rotor node
+        self.f0 = transformForce(self.f0, offset=self.r_hub_rel_RRP)  # force at hub in global frame
+        for iw in range(self.nw):
+            self.a[:,:,iw] = translateMatrix6to6DOF(self.a[:,:,iw], self.r_hub_rel_RRP)
+            self.b[:,:,iw] = translateMatrix6to6DOF(self.b[:,:,iw], self.r_hub_rel_RRP)
+            self.f[:,iw] = transformForce(self.f[:,iw], offset=self.r_hub_rel_RRP) 
         
-        return self.f0, self.f, self.a, self.b #  B_aero, C_aero, F_aero0, F_aero
+        return self.f0, self.f, self.a, self.b
         
         
     def plot(self, ax, r_ptfm=np.array([0,0,0]), azimuth=0, color='k', 

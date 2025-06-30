@@ -1528,7 +1528,7 @@ class Member:
         
         return F
 
-    def calcCurrentLoads(self, depth, speed=0, heading=0, Zref=0, shearExp_water=0.12, rho=1025, g=9.81, r_ref=np.zeros(3)):
+    def calcCurrentLoads(self, depth, speed=0, heading=0, Zref=0, shearExp_water=0.12, rho=1025, g=9.81, r_ref=None):
         '''method to calculate the "static" current loads on each member and save as a current force
         Uses a simple power law relationship to calculate the current velocity as a function of member node depth
         
@@ -1548,19 +1548,34 @@ class Member:
             Water density [kg/m^3]
         g: float
             Gravitational acceleration [m/s^2]
-        r_ref: size-3 vector
-            Reference point coordinates to compute current loads [m].
+        r_ref : size-3 vector, optional
+            Reference point coordinates to compute matrices about [m].
+            Only used for rigid members. For flexible members, each node is its own reference point.
 
         Returns:
-        D_hydro: 6x1 array
-            Mean current force and moment on the member in global coordinates wrp to r_ref [N, N-m]
+        D_hydro: (self.nDOF, 1) array
+            Mean current force and moment acting on each node of the member wrp to r_ref [N, N-m]
         '''
-        D_hydro = np.zeros(6)
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
+
+        D_hydro = np.zeros(self.nDOF)
 
         circ = self.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
 
         # loop through each node of the member
         for il in range(self.ns):
+            # Get ranges of the matrix corresponding to this node
+            if self.type == 'rigid':
+                iFirst = 0
+                iLast  = 6
+            else:   # flexible
+                iFirst = il*6
+                iLast  = iFirst+6
+
+                # This r_ref is useless now, as self.r[il,:] = self.nodeList[il].r[:3], but doing it this way 
+                # because in the future we want to have different discretizations for structural and hydrodynamic
+                r_ref = self.nodeList[il].r[:3]
 
             # only process hydrodynamics if this node is submerged
             if self.r[il,2] < 0:
@@ -1616,7 +1631,7 @@ class Member:
                 # ----- sum forces and add to total mean drag load about PRP ------
                 D = Dq + Dp1 + Dp2 + Dq_End     # sum drag forces at node in member's local orientation frame
 
-                D_hydro += translateForce3to6DOF(D, self.r[il,:] - r_ref)  # sum as forces and moments about PRP
+                D_hydro[iFirst:iLast] += translateForce3to6DOF(D, self.r[il,:] - r_ref)  # sum as forces and moments about PRP
         return D_hydro
 
     def computeWaveKinematics(self, zeta, beta, w, depth, k=None, rho=1025, g=9.81):
@@ -1674,7 +1689,7 @@ class Member:
         
         Returns
         ----------
-        self.F_hydro_iner: [nWaves x 6 x nw] complex array. nWaves: number of wave headings; 6: number of dofs; nw: number of frequencies
+        self.F_hydro_iner: [nWaves x self.nDOF x nw] complex array. nWaves: number of wave headings; self.nDOF: number of dofs; nw: number of frequencies
         '''
         if r_ref is None:
             r_ref = self.nodeList[0].r[:3]

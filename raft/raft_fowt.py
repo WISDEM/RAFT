@@ -1815,7 +1815,8 @@ class FOWT():
         rho = self.rho_water
         g   = self.g
 
-        D_hydro = np.zeros(6)      # create variable to hold the total drag force
+        D_hydro = np.zeros(self.nDOF)      # create variable to hold the total drag force
+        D_hydro_fullDOF = np.zeros(self.nFullDOF)  # same but in full dofs
 
         # extract current variables out of the case dictionary
         speed = getFromDict(case, 'current_speed', shape=0, default=0.0)
@@ -1829,11 +1830,14 @@ class FOWT():
 
         # loop through each member
         for mem in self.memberList:
-            D_hydro += mem.calcCurrentLoads(self.depth, speed=speed, heading=heading, Zref=Zref, shearExp_water=self.shearExp_water, rho=self.rho_water, g=self.g, r_ref=self.r6[:3])
-                    
-        self.D_hydro = D_hydro  # save hydro drag forces/moments to FOWT for later access
+            iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
+            iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[0].nDOF
+            D_hydro_fullDOF[iFirst:iLast] += mem.calcCurrentLoads(self.depth, speed=speed, heading=heading, Zref=Zref, shearExp_water=self.shearExp_water, rho=self.rho_water, g=self.g)
+            
+        # transform to the reduced set of dofs
+        self.D_hydro = self.T.T @ D_hydro_fullDOF
 
-        return D_hydro
+        return self.D_hydro
 
 
     def calcQTF_slenderBody(self, waveHeadInd, Xi0=None, verbose=False, iCase=None, iWT=None):

@@ -330,6 +330,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         self.add_output("platform_displacement", 0.0, desc='Volumetric platform displacement', units='m**3')
         self.add_output("platform_mass", 0.0, units="kg")
         self.add_output("platform_I_total", np.zeros(6), units="kg*m**2")
+        self.add_output("dw_check", val=0, desc="Check for DW config")
         
         self.i_design = 0
         if modeling_opt['save_designs']:
@@ -859,7 +860,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         outputs["platform_I_total"][:3] = np.r_[outputs['properties_roll inertia at subCG'][0],
                                            outputs['properties_pitch inertia at subCG'][0],
                                            outputs['properties_yaw inertia at subCG'][0]]
-
+        outputs['dw_check'] = 1 if all([model.design['turbine'][x] > 0 for x in ['overhang','shaft_tilt','precone']]) else 0
         
 class RAFT_Group(om.Group):
     def initialize(self):

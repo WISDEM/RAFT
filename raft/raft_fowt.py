@@ -1812,11 +1812,6 @@ class FOWT():
     def calcCurrentLoads(self, case):
         '''method to calculate the "static" current loads on each member and save as a current force
         Uses a simple power law relationship to calculate the current velocity as a function of member node depth'''
-
-        rho = self.rho_water
-        g   = self.g
-
-        D_hydro = np.zeros(self.nDOF)      # create variable to hold the total drag force
         D_hydro_fullDOF = np.zeros(self.nFullDOF)  # same but in full dofs
 
         # extract current variables out of the case dictionary
@@ -2483,7 +2478,7 @@ class FOWT():
 
                 mem.setPosition()  # offsets/rotations could be done in this function rather than in mem.plot <<<
 
-                mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, 
+                mem.plot(ax, color=color, 
                         nodes=nodes, station_plot=station_plot, zorder=zorder)
         if plot_frame:
             for mem in self.memberList:
@@ -2527,7 +2522,7 @@ class FOWT():
         # loop through each member and plot it
         for mem in self.memberList:
             mem.setPosition()
-            mem.plot(ax, r_ptfm=self.r6[:3], R_ptfm=R, color=color, plot2d=True, Xuvec=Xuvec, Yuvec=Yuvec)
+            mem.plot(ax, color=color, plot2d=True, Xuvec=Xuvec, Yuvec=Yuvec)
 
         # Plot the rotor(s)
         if plot_rotor == 1:

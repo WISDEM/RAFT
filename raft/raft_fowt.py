@@ -715,7 +715,7 @@ class FOWT():
                     if (n.id != node.parentNode_id) and (n.id not in visited):
                         n.Xi0 = node.Xi0.copy() # Assign the same displacements to the connected nodes
                         if n.joint_type == "ball": # But if ball joint, overried rotation with the node's own rotation
-                            n.Xi0[-3:] = (node.T @ reducedXi0)[-3:]
+                            n.Xi0[-3:] = (n.T @ reducedXi0)[-3:]
                         queue.append(n)
                         visited.add(n.id)
 
@@ -763,9 +763,10 @@ class FOWT():
         self.reduceDOF()  # Recompute the transformation matrix
         self.computeDerivativeTransformationMatrix() # Also compute the derivative of the transformation matrix, which is used to compute the stiffness matrices
         
-        # Compute motions of the PRP as a rigid body transformation from the rigidBodyNode to the PRP
+        # Compute motions of the PRP (the intersection of the tower centerline and the mean waterline)
+        # as a rigid body transformation from the rigidBodyNode to the PRP
         self.r6[0:3] = transformPosition(-self.rigidBodyNode.r0[:3], self.rigidBodyNode.r)
-        self.r6[3:]  = self.rigidBodyNode.r[-3:]
+        self.r6[3:]  = self.rigidBodyNode.r[3:]
         # self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref, 0, 0, 0, 0])
 
         # calculate and save a rotation/orientation matrix

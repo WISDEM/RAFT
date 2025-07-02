@@ -63,6 +63,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
         nconnections = mooring_opt['nconnections']
 
         # turbine inputs
+        self.add_discrete_input('rotor_orientation', val='upwind', desc='Orientation of rotor relative to wind')
+
         self.add_input('turbine_mRNA', val=0.0, units='kg', desc='RNA mass')
         self.add_input('turbine_IxRNA', val=0.0, units='kg*m**2', desc='RNA moment of inertia about local x axis')
         self.add_input('turbine_IrRNA', val=0.0, units='kg*m**2', desc='RNA moment of inertia about local y or z axes')
@@ -328,6 +330,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         self.add_output("platform_displacement", 0.0, desc='Volumetric platform displacement', units='m**3')
         self.add_output("platform_mass", 0.0, units="kg")
         self.add_output("platform_I_total", np.zeros(6), units="kg*m**2")
+        self.add_output("dw_check", val=0, desc="Check for DW config")
         
         self.i_design = 0
         if modeling_opt['save_designs']:
@@ -415,7 +418,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         design['turbine']['IrRNA']         = float(inputs['turbine_IrRNA'][0])
         design['turbine']['xCG_RNA']       = float(inputs['turbine_xCG_RNA'][0])
         design['turbine']['hHub']          = float(inputs['turbine_hHub'][0])
-        design['turbine']['overhang']      = float(inputs['turbine_overhang'][0])
+        design['turbine']['overhang']      = float(inputs['turbine_overhang'][0]) * (-1 if discrete_inputs['rotor_orientation'] == 'upwind' else 1)
         design['turbine']['Fthrust']       = float(inputs['turbine_Fthrust'][0])
         design['turbine']['yaw_stiffness'] = float(inputs['turbine_yaw_stiffness'][0])
         design['turbine']['gear_ratio']    = float(inputs['gear_ratio'][0])
@@ -455,8 +458,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
 
         # Blades and rotors
         design['turbine']['nBlades']    = int(discrete_inputs['nBlades'])
-        design['turbine']['shaft_tilt'] = float(inputs['tilt'][0])
-        design['turbine']['precone']    = float(inputs['precone'][0])
+        design['turbine']['shaft_tilt'] = float(inputs['tilt'][0]) * (-1 if discrete_inputs['rotor_orientation'] == 'upwind' else 1)
+        design['turbine']['precone']    = float(inputs['precone'][0]) * (-1 if discrete_inputs['rotor_orientation'] == 'upwind' else 1)
         design['turbine']['Zhub']       = float(inputs['wind_reference_height'][0])
         design['turbine']['Rhub']       = float(inputs['hub_radius'][0])
         design['turbine']['I_drivetrain']    = float(inputs['rotor_inertia'][0])
@@ -857,7 +860,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         outputs["platform_I_total"][:3] = np.r_[outputs['properties_roll inertia at subCG'][0],
                                            outputs['properties_pitch inertia at subCG'][0],
                                            outputs['properties_yaw inertia at subCG'][0]]
-
+        outputs['dw_check'] = 1 if all([model.design['turbine'][x] > 0 for x in ['overhang','shaft_tilt','precone']]) else 0
         
 class RAFT_Group(om.Group):
     def initialize(self):

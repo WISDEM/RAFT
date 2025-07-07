@@ -574,7 +574,7 @@ class FOWT():
                     node.reducedDOF.append([node.id, i])
                 node.T_aux = np.eye(node.nDOF)
                 node.parentNode_id = node.id
-                visited.add(self.nodeList[0].id)
+                visited.add(node.id)
 
             # Attach the node connected by a rigid link (if it exists)
             rigidConnectedNode = node.getRigidConnectedNode()
@@ -597,15 +597,12 @@ class FOWT():
                     if (n.id != node.id) and (n.id not in visited):
                         queue.append(n)
 
-        # Need to visit all end nodes
-        nodes2visit = [n for n in self.nodeList if n.end_node]
-        if len(visited) != len(nodes2visit):
+        # Check if we visited all nodes
+        if len(visited) != len(self.nodeList):
             # Find nodes that were not visited
-            unvisited_nodes = [n.id for n in nodes2visit if n.id not in visited]
+            unvisited_nodes = [n.id for n in self.nodeList if n.id not in visited]
             raise Exception(f"Could not reach all nodes from the first node. Please check the connectivity of the structure. Unvisited node ids: {unvisited_nodes}")
-
             
-
         # Get unique dofs of the whole structure
         reducedDOF = []
         for n in self.nodeList:

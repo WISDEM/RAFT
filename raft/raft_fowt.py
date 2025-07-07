@@ -641,17 +641,19 @@ class FOWT():
         self.dT = np.zeros((self.nFullDOF, self.nDOF, self.nDOF))
 
         T0 = self.T.copy()  # Store the original transformation matrix
-        # TODO: only do rotational dofs of end nodes?
+        # Only need to do the derivative for rotational dofs and end nodes
+        # Translations and motions of internal nodes do not change the transformation matrix
         for i, dof in enumerate(self.reducedDOF):
-            reducedDisp = np.zeros(self.nDOF)
-            reducedDisp[i] = 1.0
-            self.setNodesPosition(self.rReducedDOF+reducedDisp, linear=True)  # Linearly set the nodes position based on the reduced displacements
-            self.reduceDOF()
-            self.dT[:, :, i] = self.T - T0  # Compute the derivative as the difference between the new and old transformation matrices
-        
-            # Reset the nodes position and transformation matrix to the original state
-            self.setNodesPosition(self.rReducedDOF)
-            self.reduceDOF()
+            if dof[1] > 2 and self.nodeList[dof[0]].end_node:
+                reducedDisp = np.zeros(self.nDOF)
+                reducedDisp[i] = 1.0
+                self.setNodesPosition(self.rReducedDOF+reducedDisp, linear=True)  # Linearly set the nodes position based on the reduced displacements
+                self.reduceDOF()
+                self.dT[:, :, i] = self.T - T0  # Compute the derivative as the difference between the new and old transformation matrices
+            
+                # Reset the nodes position and transformation matrix to the original state
+                self.setNodesPosition(self.rReducedDOF)
+                self.reduceDOF()
 
         return self.dT
 

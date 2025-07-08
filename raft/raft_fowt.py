@@ -792,7 +792,7 @@ class FOWT():
             
         for mem in self.memberList:
             mem.setPosition()
-            mem.computeStiffnessMatrix() # Recompute stiffness matrix at the updated position
+            mem.computeStiffnessMatrix_FE() # Recompute stiffness matrix at the updated position
         
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:

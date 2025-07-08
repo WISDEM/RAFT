@@ -201,6 +201,8 @@ class Member:
         drs    = [0.5*dorsl[0]]        # change in radius (or side half-length pair) over each strip (from node i-1 to node i)        
         dis    = [0.5*dorsl_int[0]]    # internal diameter or side length pair of each strip
         dris   = [0.5*dorsl_int[0]]    # change in internal diameter over each strip (from node i-1 to node i)
+        Dnode_ext = [dorsl[0]]         # external diameter or side length pair at the end nodes (used for structural calculations)
+        Dnode_int = [dorsl_int[0]]     # internal diameter or side length pair at the end nodes (used for structural calculations)
 
         for i in range(1,n):
 
@@ -217,7 +219,8 @@ class Member:
                 m_int = 0.5*(dorsl_int[i] - dorsl_int[i-1])/lstrip  # taper ratio for internal diameter
                 dis  += [dorsl_int[i-1] + dlstrip*2*m_int*(0.5+j) for j in range(ns)]
                 dris += [dlstrip*m_int]*ns
-                
+                Dnode_ext += [dorsl[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]  # external diameter or side length pair at the nodes
+                Dnode_int += [dorsl_int[i-1] + dlstrip*m_int*(0.5+j) for j in range(ns)]  # internal diameter or side length pair at the nodes
                 
             elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions), a single strip for this section
                 dlstrip = 0
@@ -227,6 +230,8 @@ class Member:
                 drs += [0.5*(dorsl[i] - dorsl[i-1])]
                 dis += [0.5*(dorsl_int[i-1] + dorsl_int[i])]
                 dris += [0.5*(dorsl_int[i] - dorsl_int[i-1])]
+                Dnode_ext += [dorsl[i-1]]  # external diameter or side length pair at the end nodes (used for structural calculations)
+                Dnode_int += [dorsl_int[i-1]]  # internal diameter or side length pair at the end nodes (used for structural calculations)
 
         # finish things off with the strip for end B
         dlstrip = 0
@@ -236,6 +241,8 @@ class Member:
         drs += [-0.5*dorsl[-1]]
         dis += [0.5*dorsl_int[-1]]
         dris += [-0.5*dorsl_int[-1]]
+        Dnode_ext += [dorsl[-1]]
+        Dnode_int += [dorsl_int[-1]]
         
         # >>> may want to have a way to not have an end strip for members that intersect things <<<
         
@@ -247,6 +254,8 @@ class Member:
         self.mh  = np.array(m)
         self.dis = np.array(dis)
         self.dris= np.array(dris)
+        self.Dnode_ext = np.array(Dnode_ext)
+        self.Dnode_int = np.array(Dnode_int)
 
         self.r   = np.zeros([self.ns,3])                                 # node positions along member  [m]
         for i in range(self.ns):
@@ -783,9 +792,6 @@ class Member:
 
 
         return mass, center, mshell, mfill, pfill
-
-
-
 
     def getHydrostatics(self, rRP=None, rho=1025, g=9.81):
         '''Calculates member hydrostatic properties, namely buoyancy and stiffness matrix.
@@ -1862,47 +1868,45 @@ class Member:
                     F_hydro_drag[:,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)
         return F_hydro_drag
 
-    def computeStiffnessMatrix(self):
+    def computeStiffnessMatrix_FE(self):
         '''
         Calculate the structural stiffnes matrix of the member (Linear Frame Finite-Element model with Timoshenko beam)
         It is a 6Nnodes x 6Nnodes matrix, where Nnodes is the number of member nodes.
 
         Each element (subdivision of the member between two nodes) provides a 12x12 matrix in the local reference frame,
         with axes p1, p2, q. The matrices of each element are assembled to provide the 6Nnodes x 6Nnodes matrix of the member.
+
+        Returns:
+        ----------
+        self.Kf: 6Nnodes x 6Nnodes array
+            Stiffness matrix of the member in the global reference frame [N/m, N-m/rad]
+            Besides returning the stiffness matrix, it is also stored in self.Ke
                 
         TODO: Implement rectangular elements
         '''
+        self.Kf = np.zeros((self.nDOF, self.nDOF)) # Stiffness matrix of the member
         if self.type != 'beam':
-            self.K = None # No stiffness matrix for non-flexible members
-            return # Only compute stiffness matrix for flexible members
-
+            return self.Kf
+        
         if len(self.nodeList) < 2:
             raise Exception("Flexible member {self.name} must have at least two nodes to compute the stiffness matrix.")
-        Nn = len(self.nodeList)
-        nDOF = self.nodeList[0].nDOF # Number of dofs per node
-        self.K = np.zeros((nDOF*Nn, nDOF*Nn)) # Stiffness matrix of the member
+        nodeDOF = self.nodeList[0].nDOF # Number of dofs per node
 
-        E  = self.E    # Young's modulus    
-        G  = self.G    # Shear modulus
-        nu = E/(2*G)-1 # Poisson's ratio - Assuming isotropic, homogeneous material
-        
         # Only working for circular elements for now
         if self.shape != 'circular':
-            return self.K
+            return self.Kf
+        
+        E  = self.E    # Young's modulus
+        G  = self.G    # Shear modulus
+        nu = E/(2*G)-1 # Poisson's ratio - Assuming isotropic, homogeneous material
 
         for i in range(len(self.nodeList)-1):
             L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
             if L == 0:
                 raise Exception("Element length cannot be zero.")
                        
-            Do_A, Di_A  = (self.ds[i],   self.dis[i])
-            Do_B, Di_B  = (self.ds[i+1], self.dis[i+1])
-            if i==0: # Add drs to have the outer diameter of the node at the ends of the member
-                Do_A += self.drs[i]
-                Di_A += self.dris[i]
-            if i==len(self.nodeList)-2:
-                Do_B -= self.drs[i+1]
-                Di_B -= self.dris[i+1]
+            Do_A, Di_A  = (self.Dnode_ext[i],   self.Dnode_int[i])   # External diameter and internal diameter of the element at node A
+            Do_B, Di_B  = (self.Dnode_ext[i+1], self.Dnode_int[i+1]) # External diameter and internal diameter of the element at node B
 
             Do = 0.5 * (Do_A + Do_B)           # Outer diameter of the element
             Di = 0.5 * (Di_A + Di_B)           # Inner diameter
@@ -1926,7 +1930,7 @@ class Member:
             
             # Fill the 12x12 local stiffness matrix of the element
             # Top left corner - 6x6 matrix of node 1 acting on itself
-            K11 = np.zeros((nDOF, nDOF))
+            K11 = np.zeros((nodeDOF, nodeDOF))
             K11[0,0] = 12*E*Jy/L**3/(1+Ksy)
             K11[1,1] = 12*E*Jx/L**3/(1+Ksx)
             K11[2,2] = E*A/L
@@ -1943,7 +1947,7 @@ class Member:
             K22[1,3] *= -1
 
             # Top right corner
-            K12 = np.zeros((nDOF, nDOF))            
+            K12 = np.zeros((nodeDOF, nodeDOF))
             K12[0,0] = -K11[0,0]
             K12[1,1] = -K11[1,1]
             K12[2,2] = -K11[2,2]
@@ -1985,7 +1989,7 @@ class Member:
             Dc_aux = np.column_stack((xe, ye, ze))
 
             # Make the 12x12 rotation matrix
-            Dc = np.zeros((2*nDOF, 2*nDOF))
+            Dc = np.zeros((2*nodeDOF, 2*nodeDOF))
             Dc[0:3, 0:3]   = Dc_aux
             Dc[3:6, 3:6]   = Dc_aux
             Dc[6:9, 6:9]   = Dc_aux
@@ -1993,18 +1997,127 @@ class Member:
                         
             # Transform the local stiffness matrix to global coordinates
             Ke_global = (Dc @ Ke) @ Dc.T
-            self.K[i*nDOF:(i+2)*nDOF, i*nDOF:(i+2)*nDOF] += Ke_global            
+            self.Kf[i*nodeDOF:(i+2)*nodeDOF, i*nodeDOF:(i+2)*nodeDOF] += Ke_global
+        return self.Kf
 
-        # Store the rows of self.K in the nodes objects.
-        # Note that self.K_flexible has dimension (6, 6*nNodesStructure)
-        # whereas self.K has dimension (6*nNodesMember, 6*nNodesMember).
-        # That's why we need to find the column range that correspond to this member's matrix.
-        # col_first = self.nodeList[0].id*self.nodeList[0].nDOF
-        # col_last  = (self.nodeList[-1].id+1)*self.nodeList[0].nDOF
-        # for i, n in enumerate(self.nodeList):            
-        #     n.K_flexible[:, col_first:col_last] = self.K[i*nDOF:(i+1)*nDOF, :]
+    def computeInertiaMatrix_FE(self):
+        '''
+        Calculate the structural inertia matrix of the member (Linear Frame Finite-Element model with Timoshenko beam)
+        It is a 6Nnodes x 6Nnodes matrix, where Nnodes is the number of member nodes.
+        This function is to be used within self.getInertia().
 
-        return self.K
+        Each element (subdivision of the member between two nodes) provides a 12x12 matrix in the local reference frame,
+        with axes p1, p2, q. The matrices of each element are assembled to provide the 6Nnodes x 6Nnodes matrix of the member.
+                
+        Returns:
+        ----------
+        Me: 6Nnodes x 6Nnodes array
+            Inertia matrix of the member in the local reference frame [kg*m^2]
+
+        TODO: Implement rectangular elements
+        TODO: Call this function in getInertia()
+        '''
+        Mf = np.zeros((self.nDOF, self.nDOF)) # Inertia matrix of a flexible member
+
+        # Only works for flexible members
+        if self.type != 'beam':
+            return Mf
+
+        if len(self.nodeList) < 2:
+            raise Exception("Flexible member {self.name} must have at least two nodes to compute its flexible inertia matrix.")
+        nodeDOF = self.nodeList[0].nDOF # Number of dofs per node
+        
+        # Only working for circular elements for now
+        if self.shape != 'circular':
+            return Me
+
+        for i in range(len(self.nodeList)-1):
+            L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
+            if L == 0:
+                raise Exception("Element length cannot be zero.")
+
+            Do_A, Di_A  = (self.Dnode_ext[i],   self.Dnode_int[i])   # External diameter and internal diameter of the element at node A
+            Do_B, Di_B  = (self.Dnode_ext[i+1], self.Dnode_int[i+1]) # External diameter and internal diameter of the element at node B
+
+            Do = 0.5 * (Do_A + Do_B)           # Outer diameter of the element
+            Di = 0.5 * (Di_A + Di_B)           # Inner diameter
+            A  = np.pi * (Do**2 - Di**2) / 4   # Cross-sectional area
+            Jy = np.pi * (Do**4 - Di**4) / 64  # Polar moment of inertia around y axis
+            Jx = Jy                            # Polar moment of inertia around x axis
+            Jz = Jy + Jx                       # Polar moment of inertia around z axis
+            
+            # Fill the 12x12 local stiffness matrix of the element
+            # Top left corner - 6x6 matrix of node 1 acting on itself
+            M11 = np.zeros((nodeDOF, nodeDOF))
+            M11[0,0] =  13*A*L/35 + 6*Jy/5/L
+            M11[1,1] =  13*A*L/35 + 6*Jx/5/L
+            M11[2,2] =  A*L/3
+            M11[3,3] =  A*L**3/105 + 2*L*Jx/15
+            M11[4,4] =  A*L**3/105 + 2*L*Jy/15
+            M11[5,5] =  Jz*L/3
+            M11[0,4] =  11*A*L**2/210 + Jy/10
+            M11[1,3] = -11*A*L**2/210 - Jx/10
+
+            # Bottom right corner - 6x6 matrix of node 2 acting on itself. 
+            # It's the same as K11, but off-diagonal terms have opposite sign.
+            M22 = M11.copy() 
+            M22[0,4] *= -1
+            M22[1,3] *= -1
+
+            # Top right corner
+            M12 = np.zeros((nodeDOF, nodeDOF))            
+            M12[0,0] =  9*A*L/70 - 6*Jy/5/L
+            M12[1,1] =  9*A*L/70 - 6*Jx/5/L
+            M12[2,2] =  A*L/6
+            M12[3,3] = -A*L**3/140 - L*Jx/30
+            M12[4,4] = -A*L**3/140 - L*Jy/30
+            M12[5,5] =  Jz*L/6
+            M12[0,4] = -13*A*L**2/420 + Jy/10
+            M12[1,3] =  13*A*L**2/420 - Jx/10
+            M12[4,0] =  13*A*L**2/420 - Jy/10
+            M12[3,1] = -13*A*L**2/420 + Jx/10
+
+            # Fill lower triangle of the matrices (they're symmetric)
+            M11 = M11 + M11.T - np.diag(M11.diagonal())
+            M22 = M22 + M22.T - np.diag(M22.diagonal())
+
+            # Assemble the 12x12 matrix
+            Me = np.block([
+                [M11, M12],
+                [M12.T, M22]
+            ])
+            Me *= self.rho_shell
+
+
+            # Make the local reference frame
+            ze = (self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])/L # Vector from node 1 to node 2
+            ze_projected_xy = np.array([ze[0], ze[1], 0])
+
+            # Check if ze is aligned with the global Z axis
+            if np.linalg.norm(ze_projected_xy) == 0:
+                xe = np.array([1, 0, 0])  # Default to global X axis
+                ye = np.array([0, 1, 0])  # Default to global Y axis
+            else:
+                xe = np.cross(ze, [0, 0, 1])  # xe in the horizontal plane
+                xe /= np.linalg.norm(xe)
+
+                ye = np.cross(ze, xe)
+                ye /= np.linalg.norm(ye)
+
+            # Rotation matrix to transform from local to global coordinates
+            Dc_aux = np.column_stack((xe, ye, ze))
+
+            # Make the 12x12 rotation matrix
+            Dc = np.zeros((2*nodeDOF, 2*nodeDOF))
+            Dc[0:3, 0:3]   = Dc_aux
+            Dc[3:6, 3:6]   = Dc_aux
+            Dc[6:9, 6:9]   = Dc_aux
+            Dc[9:12, 9:12] = Dc_aux
+                        
+            # Transform the local stiffness matrix to global coordinates
+            Me_global = (Dc @ Me) @ Dc.T
+            Mf[i*nodeDOF:(i+2)*nodeDOF, i*nodeDOF:(i+2)*nodeDOF] += Me_global
+        return Mf
 
     def getSectionProperties(self, station):
         '''Get member cross sectional area and moments of inertia at a user-

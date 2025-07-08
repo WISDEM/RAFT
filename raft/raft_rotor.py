@@ -830,7 +830,7 @@ class Rotor:
         # >>> should double check signs <<<
         
         # call CCBlade
-        loads, derivs = self.runCCBlade(speed, tilt=turbine_tilt,
+        loads, derivs = self.runCCBlade(speed, tilt=-turbine_tilt,
                                         yaw_misalign=yaw_misalign)
 
         # ----- Process derivatives of interest -----

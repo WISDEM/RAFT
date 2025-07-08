@@ -326,10 +326,11 @@ class FOWT():
         # Move this node to be the first node in the list.
         # TODO: Only doing this now for compatibility with previous code. Remove lines later.
         # if len(self.joint_data) == 1 and self.joint_data[0]['name'] == 'origin_joint':
-        self.nodeList.remove(self.rigidBodyNode)
-        self.nodeList.insert(0, self.rigidBodyNode)
-        for i, n in enumerate(self.nodeList): # Reset the id of all nodes to be their index in the list. TODO: maybe just assign the ids here instead at node creation. I think I just need to set them before reduceDOF() and computeTransformationMatrix(), but not sure
-            n.id = i
+        if self.rigidBodyNode.member is None or self.rigidBodyNode.member.type == 'rigid':
+            self.nodeList.remove(self.rigidBodyNode)
+            self.nodeList.insert(0, self.rigidBodyNode)
+            for i, n in enumerate(self.nodeList): # Reset the id of all nodes to be their index in the list. TODO: maybe just assign the ids here instead at node creation. I think I just need to set them before reduceDOF() and computeTransformationMatrix(), but not sure
+                n.id = i
 
         # Store the list of nodes of the FOWT in each node for reference
         # And initialize the inertia and flexibility stiffness matrices of each node
@@ -565,11 +566,10 @@ class FOWT():
 
         # Reset dofs of all nodes
         for n in self.nodeList:
-            if n.end_node:
-                n.reducedDOF = None
-                n.T = None
-                n.T_aux = None
-                n.parentNode_id = None        
+            n.reducedDOF = None
+            n.T = None
+            n.T_aux = None
+            n.parentNode_id = None
 
         # We will loop all nodes based on the connected nodes        
         queue = []      # Store the nodes that still need to be processed

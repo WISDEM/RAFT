@@ -581,7 +581,7 @@ class Model():
             
             if self.staticsMod == 0:
                 K_hydrostatic.append(fowt.C_struc + fowt.C_hydro)
-                F_undisplaced[fowt.nDOF*i:fowt.nDOF*(i+1)] += fowt.W_struc + fowt.W_hydro
+                F_undisplaced[fowt.nDOF*i:fowt.nDOF*(i+1)] += fowt.W_struc + fowt.W_hydro + fowt.f0_additional
 
                 if display > 1:  print(" F_undisplaced "+"  ".join(["{:+8.2e}"]*6).format(*F_undisplaced[fowt.nDOF*i:fowt.nDOF*(i+1)]))
 
@@ -686,6 +686,7 @@ class Model():
                     fowt.calcStatics()
                     Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += fowt.W_struc  # weight
                     Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += fowt.W_hydro  # buoyancy
+                    Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += fowt.f0_additional # user-specified additional forces from other external sources
                     #breakpoint()
                 else: 
                     raise Exception('Invalid self.staticsMod value')

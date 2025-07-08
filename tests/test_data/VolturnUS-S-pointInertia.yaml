@@ -1088,12 +1088,27 @@ platform:
     df_freq2nd   :  0.008   # [Hz] frequency step for second-order wave forces
     max_freq2nd  :  0.200   # [Hz] maximum frequency for second-order wave forces
 
-    pointInertias: # Optional section
-     - name : point1
-       mass : 1.687e+7
-       moments_of_inertia: [1.105e+10, 1.105e+10, 2.053E+10, 0, 0, 0]
-       location : [0, 0, -14.94]
-
+    additional_effects:
+    # # This is an optional input that allows the user to specify lumped mean loads or lumped inertia properties
+    # # in addition (or instead of) the effects computed elsewhere.
+    # # For example, the user can specify the lumped inertial properties of the whole platform instead of the distributed inertia properties of each member.
+        - type              : mean_load
+          location          : [0.0, 0.0, 0.0]  # [m] coordinates of the point where the load is applied
+          load              : [0.0, 0.0, 0.0, 0.0, 0.0, 0.0]  # [N*m] moment about the x, y, z axes and force in x, y, z directions
+        # - name              : example_of_additional_stiffness # Leaving this here but not implemented yet
+        #   type              : point_stiffness
+        #   location          : [0.0, 0.0, 0.0]  # [m] coordinates of the point where the load is applied
+        #   stiffness_matrix  :   
+        #                     - [1000, 0, 0, 0, 0, 0]
+        #                     - [0, 1000, 0, 0, 0, 0]
+        #                     - [0, 0, 1000, 0, 0, 0]
+        #                     - [0, 0, 0, 500, 0, 0]
+        #                     - [0, 0, 0, 0, 500, 0]
+        #                     - [0, 0, 0, 0, 0, 500]
+        - type              : point_inertia
+          mass              : 1.687e+7 # [kg]
+          moments_of_inertia: [1.105e+10, 1.105e+10, 2.053E+10, 0, 0, 0] # Jxx, Jyy, Jzz, Jxy, Jxz, Jyz [kg*m^2]
+          location          : [0, 0, -14.94] # 
 
     members:   # list all members here
         

@@ -45,6 +45,39 @@ def test_omdao_raft():
 
     prob.run_model()
 
+
+def test_omdao_downwind_raft():
+    this_dir = os.path.dirname(__file__)
+
+    # Load options directly generated in WEIS
+    with open(os.path.join(this_dir,'test_data',weis_options_file)) as file:
+        opt = yaml.load(file, Loader=yaml.FullLoader)
+
+    prob = om.Problem()
+    prob.model = RAFT_Group(modeling_options=opt['modeling_options'],
+                            analysis_options=opt['analysis_options'],
+                            turbine_options=opt['turbine_options'],
+                            mooring_options=opt['mooring_options'],
+                            member_options=opt['member_options'])
+    prob.setup()
+
+    # -------------------------
+    # inputs
+    # -------------------------
+    # Load options directly generated in WEIS
+    with open(os.path.join(this_dir,'test_data',weis_inputs_file)) as file:
+        inputs = yaml.load(file, Loader=yaml.FullLoader)
+
+    for key, val in inputs.items():
+        prob[key] = val
+
+    prob['rotor_orientation'] = 'downwind'  # Set the rotor orientation to downwind
+
+    prob.run_model()
+
+    # check if the model ran successfully in downwind configuration
+    assert prob.model.raft._outputs['dw_check'] == 1
+
 if __name__=="__main__":
     test_omdao_raft()
-
+    test_omdao_downwind_raft()

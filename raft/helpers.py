@@ -1081,7 +1081,48 @@ def getWeightOfPointMass(mass, dR, g=9.81):
 
     return W, C
 
+def getMassAndCenterOfBeam(M, r):
+        ''' Returns the mass and center of gravity of a beam member given its mass matrix M and position vector r.
+        The center of gravity is given in the same coordinate system as the position vector r.
 
+        Parameters
+        ----------
+        M : array(nDOF, nDOF)
+            Mass matrix of the beam member, where nDOF is the number of degrees of freedom (6xNnodes for a 3D beam).
+        r : array(nDOF,)
+            Position vector of the nodes of the beam member, (x, y, z, rotation x, rotation y, rotation z) for each node.            
+            Rotations are not used but need the proper vector size to match the dimensions of M
+        '''
+        # Check if M is a 2D array
+        if not isinstance(M, np.ndarray) or M.ndim != 2:
+            raise ValueError("Mass matrix M must be a 2D array.")
+        
+        # Check if M is square
+        if M.shape[0] != M.shape[1]:
+            raise ValueError("Mass matrix M must be square.")
+
+        # Check if r is a 1D array with the same length as M's rows or columns
+        if not isinstance(r, np.ndarray) or r.ndim != 1 or r.shape[0] != M.shape[0]:
+            raise ValueError("Position vector r must be a 1D array with the same dofs as M.")
+        
+        nDOF = M.shape[0]  # Number of degrees of freedom
+
+        # To get the mass and center of gravity, we apply unit translational acceleration in the X, Y, and Z directions to all nodes (beam moving as a rigid body)
+        X_aux, Y_aux, Z_aux = np.zeros((nDOF)), np.zeros((nDOF)), np.zeros((nDOF))
+        X_aux[::6]  = 1
+        Y_aux[1::6] = 1
+        Z_aux[2::6] = 1
+
+        # The mass is simply the sum of any of the product of M by any _aux displacement vector
+        mass   = np.sum(M @ X_aux)
+
+        # For the COG, we first multiply the translation vector the position of each node to act as weights to the weighted average that results in the COG
+        center_X = np.sum(M @ (r * X_aux)) / mass  if mass != 0 else 0  # center of mass in the X direction [m]
+        center_Y = np.sum(M @ (r * Y_aux)) / mass  if mass != 0 else 0  # center of mass in the Y direction [m]
+        center_Z = np.sum(M @ (r * Z_aux)) / mass  if mass != 0 else 0  # center of mass in the Z direction [m]
+        center = np.array([center_X, center_Y, center_Z])  # center of mass [m]
+
+        return mass, center
 
 # ----- additional helper functions from Joep van der Spek -----                                 
     

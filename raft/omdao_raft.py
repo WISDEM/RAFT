@@ -527,10 +527,10 @@ class RAFT_OMDAO(om.ExplicitComponent):
         additional_effects = []
         for k in range(modeling_opt['floating']['rigid_bodies']['n_bodies']):
             add_eff = {}
-            add_eff['type'] = 'point_inertia'
-            add_eff['location'] = inputs[f"rigid_body_{k}_node"]
-            add_eff['mass'] = float(inputs[f"rigid_body_{k}_mass"][0])
-            add_eff['inertia'] = np.r_[inputs[f"rigid_body_{k}_inertia"],0.0,0.0,0.0]  # RAFT expects 6D inertia vector
+            add_eff['type']                 = 'point_inertia'
+            add_eff['location']             = inputs[f"rigid_body_{k}_node"]
+            add_eff['mass']                 = float(inputs[f"rigid_body_{k}_mass"][0])
+            add_eff['moments_of_inertia']   = np.r_[inputs[f"rigid_body_{k}_inertia"],0.0,0.0,0.0]  # RAFT expects 6D inertia vector
             additional_effects.append(add_eff)
             
         if additional_effects:

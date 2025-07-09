@@ -143,6 +143,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
         self.add_input("mu_air", val=1.81e-5, units="kg/(m*s)", desc="Dynamic viscosity of air")
         self.add_input("shear_exp", val=0.2, desc="Shear exponent of the wind.")
         self.add_input('rated_rotor_speed', val=0.0, units='rpm',  desc='rotor rotation speed at rated')
+
+        for k in range(modeling_opt['floating']['rigid_bodies']['n_bodies']):
+            self.add_input(f"rigid_body_{k}_node", val=np.zeros(3), units="m", desc=f"location of rigid body {k}")
+            self.add_input(f"rigid_body_{k}_mass", val=0.0, units="kg", desc=f"point mass of rigid body {k}")
+            self.add_input(f"rigid_body_{k}_inertia", val=np.zeros(3), units="kg*m**2", desc=f"inertia of rigid body {k}")  
         
         # member inputs
         for i in range(1, nmembers + 1):
@@ -209,8 +214,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 self.add_input(m_name+'CaEnd', val=0.0, desc='End axial added mass coefficient')
             else:
                 self.add_input(m_name+'CdEnd', val=np.zeros(mnpts), desc='End axial drag coefficient')
-                self.add_input(m_name+'CaEnd', val=np.zeros(mnpts), desc='End axial added mass coefficient')
-
+                self.add_input(m_name+'CaEnd', val=np.zeros(mnpts), desc='End axial added mass coefficient')              
+            
             self.add_input(m_name+'rho_shell', val=0.0, units='kg/m**3', desc='Material density')
             # optional
             self.add_input(m_name+'l_fill', val=np.zeros(mnpts_lfill), units='m', desc='Fill heights of ballast in each section')
@@ -505,6 +510,10 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # Platform members
         design['platform'] = {}
         design['platform']['potModMaster'] = int(modeling_opt['potential_model_override'])
+        # potFirstOrder needs to be 1 to read pre-existing WAMIT-like file
+        if design['platform']['potModMaster'] == 3:
+            design['platform']['potFirstOrder'] = 1
+            design['platform']['hydroPath'] = modeling_opt['BEM_dir']
         design['platform']['dlsMax'] = float(modeling_opt['dls_max'])
         design['platform']["intersectMesh"] = intersectMesh
         if intersectMesh==1:
@@ -513,6 +522,20 @@ class RAFT_OMDAO(om.ExplicitComponent):
         else:
             design['platform']['characteristic_length_min'] = 1.0
             design['platform']['characteristic_length_max'] = 3.0
+
+        # Add rigid bodies (add external loads here, too, someday)
+        additional_effects = []
+        for k in range(modeling_opt['floating']['rigid_bodies']['n_bodies']):
+            add_eff = {}
+            add_eff['type'] = 'point_inertia'
+            add_eff['location'] = inputs[f"rigid_body_{k}_node"]
+            add_eff['mass'] = float(inputs[f"rigid_body_{k}_mass"][0])
+            add_eff['inertia'] = np.r_[inputs[f"rigid_body_{k}_inertia"],0.0,0.0,0.0]  # RAFT expects 6D inertia vector
+            additional_effects.append(add_eff)
+            
+        if additional_effects:
+            design['platform']['additional_effects'] = additional_effects
+        
         # lowest BEM freq needs to be just below RAFT min_freq because of interpolation in RAFT
         if float(modeling_opt['min_freq_BEM']) >= modeling_opt['min_freq']:
             modeling_opt['min_freq_BEM'] = modeling_opt['min_freq'] - 1e-7

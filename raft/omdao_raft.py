@@ -826,7 +826,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 # use only first rotor/turbine
                 case_metrics = [cm[0] for cm in results['case_metrics'].values()]
                 stat = np.squeeze(np.array([cm[iout] for cm in case_metrics]))
-                outputs['stats_'+iout][case_mask] = stat
+                if np.any(case_mask):
+                    outputs['stats_'+iout][case_mask] = stat
 
         # Other case outputs
         # for n in ['wind_PSD','wave_PSD']:
@@ -844,13 +845,14 @@ class RAFT_OMDAO(om.ExplicitComponent):
         outputs["yaw_period"] = outputs["rigid_body_periods"][5]
 
         # Compute some aggregate outputs manually
-        outputs['Max_Offset'] = np.sqrt(outputs['stats_surge_max'][case_mask]**2 + outputs['stats_sway_max'][case_mask]**2).max()
-        outputs['heave_avg'] = outputs['stats_heave_avg'][case_mask].mean()
-        outputs['Max_PtfmPitch'] = outputs['stats_pitch_max'][case_mask].max()
-        outputs['Std_PtfmPitch'] = outputs['stats_pitch_std'][case_mask].mean()
-        outputs['max_nac_accel'] = outputs['stats_AxRNA_std'][case_mask].max()
-        outputs['rotor_overspeed'] = (outputs['stats_omega_max'][case_mask].max() - inputs['rated_rotor_speed']) / inputs['rated_rotor_speed']
-        outputs['max_tower_base'] = outputs['stats_Mbase_max'][case_mask].max()
+        if np.any(case_mask):
+            outputs['Max_Offset'] = np.sqrt(outputs['stats_surge_max'][case_mask]**2 + outputs['stats_sway_max'][case_mask]**2).max()
+            outputs['heave_avg'] = outputs['stats_heave_avg'][case_mask].mean()
+            outputs['Max_PtfmPitch'] = outputs['stats_pitch_max'][case_mask].max()
+            outputs['Std_PtfmPitch'] = outputs['stats_pitch_std'][case_mask].mean()
+            outputs['max_nac_accel'] = outputs['stats_AxRNA_std'][case_mask].max()
+            outputs['rotor_overspeed'] = (outputs['stats_omega_max'][case_mask].max() - inputs['rated_rotor_speed']) / inputs['rated_rotor_speed']
+            outputs['max_tower_base'] = outputs['stats_Mbase_max'][case_mask].max()
         
         # Combined outputs for OpenFAST
         outputs['platform_displacement'] = model.fowtList[0].V

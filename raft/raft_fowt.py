@@ -118,10 +118,6 @@ class FOWT():
                     self.pointLoads.append({'f': np.zeros(6), 'r': np.zeros(3)}) # load and position of each point load to be added to the platform
                     self.pointLoads[-1]['f'] = getFromDict(additional_effect, 'load', shape=6, default=np.zeros(6)) # load vector [N, N-m]
                     self.pointLoads[-1]['r'] = getFromDict(additional_effect, 'location', shape=3, default=[0,0,0]) # position where the load is applied [m]
-
-        self.f0_additional = np.zeros([6], dtype=float)
-        for pointLoad in self.pointLoads:
-            self.f0_additional += transformForce(pointLoad['f'], offset=pointLoad['r'])
                                             
         # count number of platform members
         self.nplatmems = 0
@@ -834,7 +830,12 @@ class FOWT():
         self.W_hydro = np.zeros(self.nDOF)                    # buoyancy force/moment vector [N, N-m]  <<<<< not used yet
 
         C_hydro_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
-        W_hydro_fullDOF = np.zeros(self.nFullDOF)       
+        W_hydro_fullDOF = np.zeros(self.nFullDOF)
+
+        # Additional user-defined constant force
+        # self.f0_additional = np.zeros([6], dtype=float)
+        self.f0_additional = np.zeros(self.nFullDOF)  # Initialize the additional force vector in full dofs
+        f0_additional_fullDOF = np.zeros(self.nFullDOF)  # Initialize the additional force vector in full dofs
 
         # --------------- add in linear hydrodynamic coefficients here if applicable --------------------
         #[as in load them] <<<<<<<<<<<<<<<<<<<<<
@@ -1042,25 +1043,32 @@ class FOWT():
             m_center_sum += rotor.r_CG_rel*rotor.mRNA
 
         # ------------------------- include point inertia properties -----------------------------
-        # TODO: For now, adding this inertia to the node that is closest to rigidBodyNode
-        #       In the future, add to nearest node?
         for ip, pointInertia in enumerate(self.pointInertias):
-            iFirst =  self.rigidBodyNode.id      * self.rigidBodyNode.nDOF
-            iLast  = (self.rigidBodyNode.id + 1) * self.rigidBodyNode.nDOF
-            rRigidBodyNode = self.rigidBodyNode.r0[:3]  # rigid body node's position in the platform reference frame
+            # Find node that is nearest to pointInertia['r']        
+            closest_node = min(self.nodeList, key=lambda n: np.linalg.norm(n.r0[:3] - pointInertia['r'])) # using r0 because pointInertia['r'] is in the platform reference frame
+            iFirst =  closest_node.id      * closest_node.nDOF
+            iLast  = (closest_node.id + 1) * closest_node.nDOF
 
-            point_W, point_C_struc = getWeightOfPointMass(pointInertia['m'], pointInertia['r'], g=g)  # get weight vector and effective stiffness matrix of the point inertia.
+            point_W, point_C_struc = getWeightOfPointMass(pointInertia['m'], pointInertia['r']-closest_node.r0[:3], g=g)  # get weight vector and effective stiffness matrix of the point inertia.
             W_struc_fullDOF[iFirst:iLast] += point_W
-            M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r']-rRigidBodyNode)            
+            M_struc_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r']-closest_node.r0[:3])            
             C_struc_fullDOF[iFirst:iLast, iFirst:iLast] += point_C_struc
 
             m_center_sum += pointInertia['r']*pointInertia['m']
 
             self.m_sub += pointInertia['m']
-            M_struc_sub_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r']-rRigidBodyNode)     # mass matrix of the substructure about the PRP
+            M_struc_sub_fullDOF[iFirst:iLast, iFirst:iLast] += translateMatrix6to6DOF(pointInertia['inertia'], pointInertia['r']-closest_node.r0[:3])     # mass matrix of the substructure about the PRP
             C_struc_sub_fullDOF[iFirst:iLast, iFirst:iLast] += point_C_struc
             W_struc_sub_fullDOF[iFirst:iLast]               += point_W               # weight vector of the substructure [N, N-m]
             m_sub_sum += pointInertia['r']*pointInertia['m']        # product sum of the substructure members and their centers of mass [kg-m]
+
+        # ------------------------- include user-specified mean loads -----------------------------
+        for ip, pointLoad in enumerate(self.pointLoads):
+            # Find node that is nearest to pointLoad['r']        
+            closest_node = min(self.nodeList, key=lambda n: np.linalg.norm(n.r0[:3] - pointLoad['r']))
+            iFirst =  closest_node.id      * closest_node.nDOF
+            iLast  = (closest_node.id + 1) * closest_node.nDOF
+            f0_additional_fullDOF[iFirst:iLast] += transformForce(pointLoad['f'], offset=pointLoad['r']-closest_node.r0[:3])  # add the user-specified mean load to the additional force vector
 
         # ------------------------- Transform quantities above to the reduced set of dofs -----------------------------
         self.M_struc     = self.T.T @ M_struc_fullDOF @ self.T
@@ -1070,6 +1078,7 @@ class FOWT():
         self.C_struc_sub = self.T.T @ C_struc_sub_fullDOF  @ self.T
         self.W_struc     = self.T.T @ W_struc_fullDOF
         self.W_hydro     = self.T.T @ W_hydro_fullDOF
+        self.f0_additional = self.T.T @ f0_additional_fullDOF
 
         # Geommetric stiffness due to the variation of the transformation matrix
         C_hydro_geom = np.zeros([self.nDOF,self.nDOF])
@@ -1095,7 +1104,8 @@ class FOWT():
 
 
         # ----------- process inertia-related totals ----------------
-        # TODO: Revisit these summary quantities once we have examples with more than 6 reduced dofs
+        # TODO: Revisit these summary quantities once we have examples with more than 6 reduced dofs.
+        #       Would need to sum all (i,j) that correspond to surge motions (coupling between surge motions of two nodes).
         m_all = 0
         for i,dof in enumerate(self.reducedDOF):
             if dof[1] == 0: # If this is a translation in the X direction (Global dof 0)

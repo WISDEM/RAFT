@@ -1114,12 +1114,12 @@ def getMassAndCenterOfBeam(M, r):
         Z_aux[2::6] = 1
 
         # The mass is simply the sum of any of the product of M by any _aux displacement vector
-        mass   = np.sum(M @ X_aux)
+        mass   = np.sum((M @ X_aux)*X_aux)
 
         # For the COG, we first multiply the translation vector the position of each node to act as weights to the weighted average that results in the COG
-        center_X = np.sum(M @ (r * X_aux)) / mass  if mass != 0 else 0  # center of mass in the X direction [m]
-        center_Y = np.sum(M @ (r * Y_aux)) / mass  if mass != 0 else 0  # center of mass in the Y direction [m]
-        center_Z = np.sum(M @ (r * Z_aux)) / mass  if mass != 0 else 0  # center of mass in the Z direction [m]
+        center_X = np.sum(M @ (r * X_aux) * X_aux) / mass  if mass != 0 else 0  # center of mass in the X direction [m]
+        center_Y = np.sum(M @ (r * Y_aux) * Y_aux) / mass  if mass != 0 else 0  # center of mass in the Y direction [m]
+        center_Z = np.sum(M @ (r * Z_aux) * Z_aux) / mass  if mass != 0 else 0  # center of mass in the Z direction [m]
         center = np.array([center_X, center_Y, center_Z])  # center of mass [m]
 
         return mass, center

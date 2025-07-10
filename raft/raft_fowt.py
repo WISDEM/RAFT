@@ -1104,19 +1104,14 @@ class FOWT():
 
 
         # ----------- process inertia-related totals ----------------
-        # TODO: Revisit these summary quantities once we have examples with more than 6 reduced dofs.
-        #       Would need to sum all (i,j) that correspond to surge motions (coupling between surge motions of two nodes).
-        m_all = 0
-        for i,dof in enumerate(self.reducedDOF):
-            if dof[1] == 0: # If this is a translation in the X direction (Global dof 0)
-                m_all += self.M_struc[i,i]
-
-        rCG_all = m_center_sum/m_all          # total CG of all the members
-        
+        # To get the mass, we apply an unit translational acceleration in the X direction. This makes the whole FOWT translate as a single rigid body
+        Xhelper = np.array([1 if dof[1] == 0 else 0 for dof in self.reducedDOF])
+        m_all = sum((self.M_struc @ Xhelper) * Xhelper)  # Do an element-wise multiplication by Xhelper to remove couplings with other dofs
+                
+        # Should we compute this in a similar way as the helper function getMassAndCenterOfBeam()?
+        rCG_all = m_center_sum/m_all          # total CG of all the members        
         self.rCG = rCG_all
-        self.rCG_sub = m_sub_sum/self.m_sub   # solve for just the substructure mass and CG
-        
-        
+        self.rCG_sub = m_sub_sum/self.m_sub   # solve for just the substructure mass and CG                
   
         # get principal moments of inertia (about CG) 
         # note: these are likely only useful in the unrotated frame, i.e.

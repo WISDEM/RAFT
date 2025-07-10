@@ -195,14 +195,14 @@ class Member:
 
         
         # start things off with the strip for end A
-        ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
-        dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
-        ds     = [0.5*dorsl[0]]        # mean diameter or side length pair of each strip
-        drs    = [0.5*dorsl[0]]        # change in radius (or side half-length pair) over each strip (from node i-1 to node i)        
-        dis    = [0.5*dorsl_int[0]]    # internal diameter or side length pair of each strip
-        dris   = [0.5*dorsl_int[0]]    # change in internal diameter over each strip (from node i-1 to node i)
-        Dnode_ext = [dorsl[0]]         # external diameter or side length pair at the end nodes (used for structural calculations)
-        Dnode_int = [dorsl_int[0]]     # internal diameter or side length pair at the end nodes (used for structural calculations)
+        ls     = [0.0]                  # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
+        dls    = [0.0]                  # lumped node lengths (end nodes have half the segment length)
+        ds     = [0.5*dorsl[0]]         # mean diameter or side length pair of each strip
+        drs    = [0.5*dorsl[0]]         # change in radius (or side half-length pair) over each strip (from node i-1 to node i)        
+        dis    = [0.5*dorsl_int[0]]     # internal diameter or side length pair of each strip
+        dris   = [0.5*dorsl_int[0]]     # change in internal diameter over each strip (from node i-1 to node i)
+        dorsl_node_ext = [dorsl[0]]     # external diameter or side length pair at the end nodes (used for structural calculations)
+        dorsl_node_int = [dorsl_int[0]] # internal diameter or side length pair at the end nodes (used for structural calculations)
 
         for i in range(1,n):
 
@@ -219,8 +219,8 @@ class Member:
                 m_int = 0.5*(dorsl_int[i] - dorsl_int[i-1])/lstrip  # taper ratio for internal diameter
                 dis  += [dorsl_int[i-1] + dlstrip*2*m_int*(0.5+j) for j in range(ns)]
                 dris += [dlstrip*m_int]*ns
-                Dnode_ext += [dorsl[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]  # external diameter or side length pair at the nodes
-                Dnode_int += [dorsl_int[i-1] + dlstrip*m_int*(0.5+j) for j in range(ns)]  # internal diameter or side length pair at the nodes
+                dorsl_node_ext += [dorsl[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]  # external diameter or side length pair at the nodes
+                dorsl_node_int += [dorsl_int[i-1] + dlstrip*m_int*(0.5+j) for j in range(ns)]  # internal diameter or side length pair at the nodes
                 
             elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions), a single strip for this section
                 dlstrip = 0
@@ -230,8 +230,8 @@ class Member:
                 drs += [0.5*(dorsl[i] - dorsl[i-1])]
                 dis += [0.5*(dorsl_int[i-1] + dorsl_int[i])]
                 dris += [0.5*(dorsl_int[i] - dorsl_int[i-1])]
-                Dnode_ext += [dorsl[i-1]]  # external diameter or side length pair at the end nodes (used for structural calculations)
-                Dnode_int += [dorsl_int[i-1]]  # internal diameter or side length pair at the end nodes (used for structural calculations)
+                dorsl_node_ext += [dorsl[i-1]]  # external diameter or side length pair at the end nodes (used for structural calculations)
+                dorsl_node_int += [dorsl_int[i-1]]  # internal diameter or side length pair at the end nodes (used for structural calculations)
 
         # finish things off with the strip for end B
         dlstrip = 0
@@ -241,8 +241,8 @@ class Member:
         drs += [-0.5*dorsl[-1]]
         dis += [0.5*dorsl_int[-1]]
         dris += [-0.5*dorsl_int[-1]]
-        Dnode_ext += [dorsl[-1]]
-        Dnode_int += [dorsl_int[-1]]
+        dorsl_node_ext += [dorsl[-1]]
+        dorsl_node_int += [dorsl_int[-1]]
         
         # >>> may want to have a way to not have an end strip for members that intersect things <<<
         
@@ -254,8 +254,8 @@ class Member:
         self.mh  = np.array(m)
         self.dis = np.array(dis)
         self.dris= np.array(dris)
-        self.Dnode_ext = np.array(Dnode_ext)
-        self.Dnode_int = np.array(Dnode_int)
+        self.dorsl_node_ext = np.array(dorsl_node_ext)
+        self.dorsl_node_int = np.array(dorsl_node_int)
 
         self.r   = np.zeros([self.ns,3])                                 # node positions along member  [m]
         for i in range(self.ns):
@@ -298,10 +298,6 @@ class Member:
         self.Bmat = np.zeros([self.ns,3,3])
         self.Imat = np.zeros([self.ns,3,3])
         self.Imat_MCF = np.zeros([self.ns,3,3, nw], dtype=complex)
-
-        # Internal stiffness matrix of the member. For flexible members only
-        # TODO: Not the best place. Should be located in the same place where the inertia matrix is computed
-        # self.computeStiffnessMatrix()
 
 
     def setPosition(self):
@@ -816,7 +812,7 @@ class Member:
         matrix with respect to the members' nodes. This can be different than rRP.
          
         TODO: Still need to implement flexible members here
-        TODO: For now, Fvec is simply the weight acting on the vertical direction. Split this into force along the member and at ends
+        TODO: For now, Fvec is simply the buoyancy acting on the vertical direction. Split this into force along the member and at ends
 
         Parameters
         ----------
@@ -1896,8 +1892,6 @@ class Member:
         self.Kf: 6Nnodes x 6Nnodes array
             Stiffness matrix of the member in the global reference frame [N/m, N-m/rad]
             Besides returning the stiffness matrix, it is also stored in self.Ke
-                
-        TODO: Implement rectangular elements
         '''
         self.Kf = np.zeros((self.nDOF, self.nDOF)) # Stiffness matrix of the member
         if self.type != 'beam':
@@ -1907,10 +1901,6 @@ class Member:
             raise Exception("Flexible member {self.name} must have at least two nodes to compute the stiffness matrix.")
         nodeDOF = self.nodeList[0].nDOF # Number of dofs per node
 
-        # Only working for circular elements for now
-        if self.shape != 'circular':
-            return self.Kf
-        
         E  = self.E    # Young's modulus
         G  = self.G    # Shear modulus
         nu = E/(2*G)-1 # Poisson's ratio - Assuming isotropic, homogeneous material
@@ -1919,25 +1909,60 @@ class Member:
             L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
             if L == 0:
                 raise Exception("Element length cannot be zero.")
-                       
-            Do_A, Di_A  = (self.Dnode_ext[i],   self.Dnode_int[i])   # External diameter and internal diameter of the element at node A
-            Do_B, Di_B  = (self.Dnode_ext[i+1], self.Dnode_int[i+1]) # External diameter and internal diameter of the element at node B
+            
+            if self.shape == 'circular':
+                Do_A, Di_A  = (self.dorsl_node_ext[i],   self.dorsl_node_int[i])   # External diameter and internal diameter of the element at node A
+                Do_B, Di_B  = (self.dorsl_node_ext[i+1], self.dorsl_node_int[i+1]) # External diameter and internal diameter of the element at node B
 
-            Do = 0.5 * (Do_A + Do_B)           # Outer diameter of the element
-            Di = 0.5 * (Di_A + Di_B)           # Inner diameter
-            A  = np.pi * (Do**2 - Di**2) / 4   # Cross-sectional area
-            Jy = np.pi * (Do**4 - Di**4) / 64  # Polar moment of inertia around y axis
-            Jx = Jy                            # Polar moment of inertia around x axis
-            Jz = Jy + Jx                       # Polar moment of inertia around z axis
+                Do      = 0.5 * (Do_A + Do_B)          # Outer diameter of the element
+                Di      = 0.5 * (Di_A + Di_B)          # Inner diameter
+                A       = np.pi * (Do**2 - Di**2) / 4  # Cross-sectional area
+                Jp1     = np.pi * (Do**4 - Di**4) / 64 # Moment of inertia around p1 axis
+                Jp2     = Jp1                          # Moment of inertia around p2 axis                
+                Jt      = Jp2 + Jp1                    # Torsion coefficient, around q axis
+                
+                # Terms for shear correction
+                kp1_num = 6*(1+nu)**2 * (1+(Di/Do)**2)**2 # Terms for shear correction
+                kp1_den = (1+(Di/Do)**2)**2 * (7+14*nu+8*nu**2) + 4 * (Di/Do)**2 * (5+10*nu+4*nu**2)                            
+                kp1 = kp1_num / kp1_den
+                kp2 = kp1
 
-            # Terms for shear correction
-            kax_num = 6*(1+nu)**2 * (1+(Di/Do)**2)**2
-            kax_den = (1+(Di/Do)**2)**2 * (7+14*nu+8*nu**2) + 4 * (Di/Do)**2 * (5+10*nu+4*nu**2)
-            kax = kax_num / kax_den
-            kay = kax
+            elif self.shape == 'rectangular':
+                # Lengths of the rectangular cross section. First component is normal to p1, second is normal to p2
+                Wo_A, Wi_A  = (self.dorsl_node_ext[i]  , self.dorsl_node_int[i]  ) # External and internal sides of the element at node A (2-element list)
+                Wo_B, Wi_B  = (self.dorsl_node_ext[i+1], self.dorsl_node_int[i+1]) # External and internal sides of the element at node B
 
-            Ksx = 12*E*Jy / (G*kax*A*L**2)
-            Ksy = 12*E*Jx / (G*kay*A*L**2)
+                Wo  = 0.5 * (Wo_A + Wo_B)                    # Outer sides of the element
+                Wi  = 0.5 * (Wi_A + Wi_B)                    # Inner sides
+                A   = (Wo[0]*Wo[1] - Wi[0]*Wi[1])            # Cross-sectional area
+                Jp1 = (Wo[0]**3*Wo[1] - Wi[0]**3*Wi[1]) / 12 # Moment of inertia around p1 axis
+                Jp2 = (Wo[0]*Wo[1]**3 - Wi[0]*Wi[1]**3) / 12 # Moment of inertia around p2 axis
+                                
+                # Expressions for torsion coefficient taken from Young and Budynas, Roark's Formulas for stress and strain
+                # Expressions for shear correction factor taken from Cowper 1966. The shear coefficient in Timoshenko's beam theory
+                if Wi[0] == 0 or Wi[1] == 0: # If solid rectangular section
+                    # Get larger and smaller dimensions
+                    a, b = max(Wo), min(Wo)
+                    Jt = a*b**3/16 * ( 16/3 - 3.36*(b/a)*(1-b**4/a**4/12) )
+
+                    kp1 = 10*(1+nu)/(12+11*nu)
+                    kp2 = kp1
+
+                else: # Expression for thin-walled rectangular sections. Will provide bad estimates for intermediate wall thickness
+                    t0 = (Wo[0]-Wi[0])/2
+                    t1 = (Wo[1]-Wi[1])/2
+                    Jt = 2*t0*t1 * (Wo[0]-t0)**2 * (Wo[1]-t1)**2 / (Wo[0]*t0 + Wo[1]*t1 - t0**2 - t1**2)
+
+                    m = Wi[0]*t1/Wo[1]/t0
+                    n = Wi[0]/Wo[1]
+                    kp1 = 10*(1+nu)*(1+3*m)**2 / ( 12+72*m+150*m**2+90*m**3 + nu*(11+66*m+135*m**2+90*m**3) + 10*n**2*((3+nu)*m+3*m**2))
+
+                    m = Wi[1]*t0/Wo[0]/t1
+                    n = Wi[1]/Wo[0]
+                    kp2 = 10*(1+nu)*(1+3*m)**2 / ( 12+72*m+150*m**2+90*m**3 + nu*(11+66*m+135*m**2+90*m**3) + 10*n**2*((3+nu)*m+3*m**2))
+
+            Ksx = 12*E*Jp2 / (G*kp1*A*L**2)
+            Ksy = 12*E*Jp1 / (G*kp2*A*L**2)
 
             # # For Euler-Bernoulli beam - Using this to debug for now
             # Ksx*=0
@@ -1946,14 +1971,14 @@ class Member:
             # Fill the 12x12 local stiffness matrix of the element
             # Top left corner - 6x6 matrix of node 1 acting on itself
             K11 = np.zeros((nodeDOF, nodeDOF))
-            K11[0,0] = 12*E*Jy/L**3/(1+Ksy)
-            K11[1,1] = 12*E*Jx/L**3/(1+Ksx)
+            K11[0,0] = 12*E*Jp2/L**3/(1+Ksy)
+            K11[1,1] = 12*E*Jp1/L**3/(1+Ksx)
             K11[2,2] = E*A/L
-            K11[3,3] = (4+Ksx)*E*Jx/L/(1+Ksx)
-            K11[4,4] = (4+Ksy)*E*Jy/L/(1+Ksy)
-            K11[5,5] = G*Jz/L
-            K11[0,4] = 6*E*Jy/L**2/(1+Ksy)
-            K11[1,3] = -6*E*Jx/L**2/(1+Ksx)
+            K11[3,3] = (4+Ksx)*E*Jp1/L/(1+Ksx)
+            K11[4,4] = (4+Ksy)*E*Jp2/L/(1+Ksy)
+            K11[5,5] = G*Jt/L
+            K11[0,4] = 6*E*Jp2/L**2/(1+Ksy)
+            K11[1,3] = -6*E*Jp1/L**2/(1+Ksx)
 
             # Bottom right corner - 6x6 matrix of node 2 acting on itself. 
             # It's the same as K11, but off-diagonal terms have opposite sign.
@@ -1966,8 +1991,8 @@ class Member:
             K12[0,0] = -K11[0,0]
             K12[1,1] = -K11[1,1]
             K12[2,2] = -K11[2,2]
-            K12[3,3] = (2-Ksx)*E*Jx/L/(1+Ksx) # This term uses 2-Ksx instead of 4+Ksx and doesn't have a sign change
-            K12[4,4] = (2-Ksy)*E*Jy/L/(1+Ksy) # Same
+            K12[3,3] = (2-Ksx)*E*Jp1/L/(1+Ksx) # This term uses 2-Ksx instead of 4+Ksx and doesn't have a sign change
+            K12[4,4] = (2-Ksy)*E*Jp2/L/(1+Ksy) # Same
             K12[5,5] = -K11[5,5]
             K12[0,4] =  K11[0,4]
             K12[1,3] =  K11[1,3]
@@ -1984,24 +2009,30 @@ class Member:
                 [K12.T, K22]      # Bottom row: K12.T and K22
             ])
 
+            # Make the local reference frame - Just a copy from setPosition()
+            # Not using member's p1, p2, and q for now because they do not account for member flexibility yet
+            q = (self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])/L # Vector from node A to node B
 
-            # Make the local reference frame
-            ze = (self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])/L # Vector from node 1 to node 2
-            ze_projected_xy = np.array([ze[0], ze[1], 0])
+            beta = np.arctan2(q[1],q[0])                                # member incline heading from x axis
+            phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])         # member incline angle from vertical
 
-            # Check if ze is aligned with the global Z axis
-            if np.linalg.norm(ze_projected_xy) == 0:
-                xe = np.array([1, 0, 0])  # Default to global X axis
-                ye = np.array([0, 1, 0])  # Default to global Y axis
-            else:
-                xe = np.cross(ze, [0, 0, 1])  # xe in the horizontal plane
-                xe /= np.linalg.norm(xe)
+            # trig terms for Euler angles rotation based on beta, phi, and gamma
+            s1 = np.sin(beta)
+            c1 = np.cos(beta)
+            s2 = np.sin(phi)
+            c2 = np.cos(phi)
+            s3 = np.sin(np.deg2rad(self.gamma))
+            c3 = np.cos(np.deg2rad(self.gamma))
 
-                ye = np.cross(ze, xe)
-                ye /= np.linalg.norm(ye)
+            R = np.array([[ c1*c2*c3-s1*s3, -c3*s1-c1*c2*s3,  c1*s2],
+                        [ c1*s3+c2*c3*s1,  c1*c3-c2*s1*s3,  s1*s2],
+                        [   -c3*s2      ,      s2*s3     ,    c2 ]])  #Z1Y2Z3 from https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
+
+            p1 = np.matmul( R, [1,0,0] )               # unit vector that is in the 'beta' plane if gamma is zero
+            p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
 
             # Rotation matrix to transform from local to global coordinates
-            Dc_aux = np.column_stack((xe, ye, ze))
+            Dc_aux = np.column_stack((p1, p2, q))
 
             # Make the 12x12 rotation matrix
             Dc = np.zeros((2*nodeDOF, 2*nodeDOF))
@@ -2042,36 +2073,44 @@ class Member:
             raise Exception("Flexible member {self.name} must have at least two nodes to compute its flexible inertia matrix.")
         nodeDOF = self.nodeList[0].nDOF # Number of dofs per node
         
-        # Only working for circular elements for now
-        if self.shape != 'circular':
-            return Mf
-
         for i in range(len(self.nodeList)-1):
             L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
             if L == 0:
                 raise Exception("Element length cannot be zero.")
 
-            Do_A, Di_A  = (self.Dnode_ext[i],   self.Dnode_int[i])   # External diameter and internal diameter of the element at node A
-            Do_B, Di_B  = (self.Dnode_ext[i+1], self.Dnode_int[i+1]) # External diameter and internal diameter of the element at node B
+            if self.shape == 'circular':
+                Do_A, Di_A  = (self.dorsl_node_ext[i],   self.dorsl_node_int[i])   # External diameter and internal diameter of the element at node A
+                Do_B, Di_B  = (self.dorsl_node_ext[i+1], self.dorsl_node_int[i+1]) # External diameter and internal diameter of the element at node B
 
-            Do = 0.5 * (Do_A + Do_B)           # Outer diameter of the element
-            Di = 0.5 * (Di_A + Di_B)           # Inner diameter
-            A  = np.pi * (Do**2 - Di**2) / 4   # Cross-sectional area
-            Jy = np.pi * (Do**4 - Di**4) / 64  # Polar moment of inertia around y axis
-            Jx = Jy                            # Polar moment of inertia around x axis
-            Jz = Jy + Jx                       # Polar moment of inertia around z axis
-            
+                Do      = 0.5 * (Do_A + Do_B)          # Outer diameter of the element
+                Di      = 0.5 * (Di_A + Di_B)          # Inner diameter
+                A       = np.pi * (Do**2 - Di**2) / 4  # Cross-sectional area
+                Jp1     = np.pi * (Do**4 - Di**4) / 64 # Moment of inertia around p1 axis
+                Jp2     = Jp1                          # Moment of inertia around p2 axis                
+            elif self.shape == 'rectangular':
+                # Lengths of the rectangular cross section. First component is normal to p1, second is normal to p2
+                Wo_A, Wi_A  = (self.dorsl_node_ext[i]  , self.dorsl_node_int[i]  ) # External and internal sides of the element at node A (2-element list)
+                Wo_B, Wi_B  = (self.dorsl_node_ext[i+1], self.dorsl_node_int[i+1]) # External and internal sides of the element at node B
+
+                Wo  = 0.5 * (Wo_A + Wo_B)                    # Outer sides of the element
+                Wi  = 0.5 * (Wi_A + Wi_B)                    # Inner sides
+                A   = (Wo[0]*Wo[1] - Wi[0]*Wi[1])            # Cross-sectional area
+                Jp1 = (Wo[0]**3*Wo[1] - Wi[0]**3*Wi[1]) / 12 # Moment of inertia around p1 axis
+                Jp2 = (Wo[0]*Wo[1]**3 - Wi[0]*Wi[1]**3) / 12 # Moment of inertia around p2 axis            
+            Jz  = Jp2 + Jp1                                  # Polar moment of inertia around z axis
+
+
             # Fill the 12x12 local stiffness matrix of the element
             # Top left corner - 6x6 matrix of node 1 acting on itself
             M11 = np.zeros((nodeDOF, nodeDOF))
-            M11[0,0] =  13*A*L/35 + 6*Jy/5/L
-            M11[1,1] =  13*A*L/35 + 6*Jx/5/L
+            M11[0,0] =  13*A*L/35 + 6*Jp2/5/L
+            M11[1,1] =  13*A*L/35 + 6*Jp1/5/L
             M11[2,2] =  A*L/3
-            M11[3,3] =  A*L**3/105 + 2*L*Jx/15
-            M11[4,4] =  A*L**3/105 + 2*L*Jy/15
+            M11[3,3] =  A*L**3/105 + 2*L*Jp1/15
+            M11[4,4] =  A*L**3/105 + 2*L*Jp2/15
             M11[5,5] =  Jz*L/3
-            M11[0,4] =  11*A*L**2/210 + Jy/10
-            M11[1,3] = -11*A*L**2/210 - Jx/10
+            M11[0,4] =  11*A*L**2/210 + Jp2/10
+            M11[1,3] = -11*A*L**2/210 - Jp1/10
 
             # Bottom right corner - 6x6 matrix of node 2 acting on itself. 
             # It's the same as K11, but off-diagonal terms have opposite sign.
@@ -2081,16 +2120,16 @@ class Member:
 
             # Top right corner
             M12 = np.zeros((nodeDOF, nodeDOF))            
-            M12[0,0] =  9*A*L/70 - 6*Jy/5/L
-            M12[1,1] =  9*A*L/70 - 6*Jx/5/L
+            M12[0,0] =  9*A*L/70 - 6*Jp2/5/L
+            M12[1,1] =  9*A*L/70 - 6*Jp1/5/L
             M12[2,2] =  A*L/6
-            M12[3,3] = -A*L**3/140 - L*Jx/30
-            M12[4,4] = -A*L**3/140 - L*Jy/30
+            M12[3,3] = -A*L**3/140 - L*Jp1/30
+            M12[4,4] = -A*L**3/140 - L*Jp2/30
             M12[5,5] =  Jz*L/6
-            M12[0,4] = -13*A*L**2/420 + Jy/10
-            M12[1,3] =  13*A*L**2/420 - Jx/10
-            M12[4,0] =  13*A*L**2/420 - Jy/10
-            M12[3,1] = -13*A*L**2/420 + Jx/10
+            M12[0,4] = -13*A*L**2/420 + Jp2/10
+            M12[1,3] =  13*A*L**2/420 - Jp1/10
+            M12[4,0] =  13*A*L**2/420 - Jp2/10
+            M12[3,1] = -13*A*L**2/420 + Jp1/10
 
             # Fill lower triangle of the matrices (they're symmetric)
             M11 = M11 + M11.T - np.diag(M11.diagonal())
@@ -2104,24 +2143,31 @@ class Member:
             Me *= self.rho_shell
 
 
-            # Make the local reference frame
-            ze = (self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])/L # Vector from node 1 to node 2
-            ze_projected_xy = np.array([ze[0], ze[1], 0])
+            # Make the local reference frame - Just a copy from setPosition()
+            # Not using member's p1, p2, and q for now because they do not account for member flexibility yet
+            q = (self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])/L # Vector from node A to node B
 
-            # Check if ze is aligned with the global Z axis
-            if np.linalg.norm(ze_projected_xy) == 0:
-                xe = np.array([1, 0, 0])  # Default to global X axis
-                ye = np.array([0, 1, 0])  # Default to global Y axis
-            else:
-                xe = np.cross(ze, [0, 0, 1])  # xe in the horizontal plane
-                xe /= np.linalg.norm(xe)
+            beta = np.arctan2(q[1],q[0])                                # member incline heading from x axis
+            phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])         # member incline angle from vertical
 
-                ye = np.cross(ze, xe)
-                ye /= np.linalg.norm(ye)
+            # trig terms for Euler angles rotation based on beta, phi, and gamma
+            s1 = np.sin(beta)
+            c1 = np.cos(beta)
+            s2 = np.sin(phi)
+            c2 = np.cos(phi)
+            s3 = np.sin(np.deg2rad(self.gamma))
+            c3 = np.cos(np.deg2rad(self.gamma))
+
+            R = np.array([[ c1*c2*c3-s1*s3, -c3*s1-c1*c2*s3,  c1*s2],
+                        [ c1*s3+c2*c3*s1,  c1*c3-c2*s1*s3,  s1*s2],
+                        [   -c3*s2      ,      s2*s3     ,    c2 ]])  #Z1Y2Z3 from https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
+
+            p1 = np.matmul( R, [1,0,0] )               # unit vector that is in the 'beta' plane if gamma is zero
+            p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
 
             # Rotation matrix to transform from local to global coordinates
-            Dc_aux = np.column_stack((xe, ye, ze))
-
+            Dc_aux = np.column_stack((p1, p2, q))
+            
             # Make the 12x12 rotation matrix
             Dc = np.zeros((2*nodeDOF, 2*nodeDOF))
             Dc[0:3, 0:3]   = Dc_aux

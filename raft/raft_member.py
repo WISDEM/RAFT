@@ -626,16 +626,27 @@ class Member:
                 
                         # Add to station totals
                         mass += mass_node
-                        v_fill += v_fill_node                        
+                        v_fill += v_fill_node
+
+                        # Add to the node variables that will be used in getWeight()
+                        self.m_ballast[inode] += mass_node
+                        self.center_ballast[inode, :] += center*mass_node  # center of mass of
 
                 # add/append terms. No need to do mass_center because it was already done
                 self.vfill.append(v_fill)                   # list of ballast volumes in each submember [m^3]
                 mfill.append(mass)                          # list of ballast masses in each submember [kg]
                 pfill.append(rho_fill)                      # list of ballast densities in each submember [kg/m^3]
 
+            # self.center_ballast is currently storing center*mass_node. Need to divide by mass_node
+            for inode in range(len(self.nodeList)):
+                if self.m_ballast[inode] > 0:
+                    self.center_ballast[inode, :] /= self.m_ballast[inode]
+
 
         # ------- Inertia due to end caps/bulkeads ---------
         self.m_cap_list = []
+        self.m_cap      = np.zeros(len(self.nodeList))       # cap mass at each node - saving to use in getWeight later
+        self.center_cap = np.zeros((len(self.nodeList), 3))  # center of mass of the cap that is lumped at each node
         # Loop through each cap or bulkhead
         for i in range(len(self.cap_stations)):
 
@@ -785,11 +796,18 @@ class Member:
                 # Find the node that is the closest to the cap
                 closest_node = min(self.nodeList, key=lambda n: np.linalg.norm(n.r[:3] - center_cap))
                 listIDs = [node.id for node in self.nodeList]
-                inode = listIDs.index(closest_node.id)
+                inode = listIDs.index(closest_node.id) # Need the index of the node in member.nodeList
                 self.M_struc[inode*6:(inode+1)*6, inode*6:(inode+1)*6] += translateMatrix6to6DOF(Mmat, center_cap-closest_node.r[:3]) # mass matrix of the member about the RP
+                self.m_cap[inode] += m_cap
+                self.center_cap[inode, :] += center_cap*m_cap  # center of mass of the cap that is lumped at this node
 
         self.mshell = mshell
         self.mfill  = mfill
+
+        # self.center_cap is currently storing center*mass_node. Need to divide by mass_node
+        for inode in range(len(self.nodeList)):
+            if self.m_cap[inode] > 0:
+                self.center_cap[inode, :] /= self.m_cap[inode]
 
         if self.type == 'rigid':
             mass = self.M_struc[0,0]                                    # total mass of the entire member [kg]
@@ -1002,15 +1020,44 @@ class Member:
             If not provided, we use the first node of the member
         '''
         if rRP is None:
-            rRP = self.nodeList[0].r[:3]
-        W, C_aux = getWeightOfPointMass(self.mass, self.rCoG-rRP, g=g)
+            rRP = self.nodeList[0].r[:3]        
 
         if self.type == 'rigid':
             # store the (6,6) matrix given wrt the member's node.
-            self.C_struc = C_aux
-        else: 
-            # For a flexible member, the member's inertia matrix is a (6*nMemberNodes, 6*nMemberNodes) matrix wrt the member's nodes. 
-            raise ValueError(f'getWeight() only works for rigid members for now, but member {self.name} is of type {self.type}.')
+            W, self.C_struc = getWeightOfPointMass(self.mass, self.rCoG-rRP, g=g)
+        
+        else:
+            W = np.zeros(self.nDOF)
+
+            # Shell
+            for i in range(len(self.nodeList)-1): # Looping elements
+                L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
+                if L == 0:
+                    raise Exception("Element length cannot be zero.")
+                if self.shape == 'circular':
+                    Do      = 0.5 * (self.dorsl_node_ext[i] + self.dorsl_node_ext[i+1])          # Outer diameter of the element
+                    Di      = 0.5 * (self.dorsl_node_int[i] + self.dorsl_node_int[i+1])          # Inner diameter
+                    A       = np.pi * (Do**2 - Di**2) / 4  # Cross-sectional area       
+                elif self.shape == 'rectangular':
+                    Lo  = 0.5 * (self.dorsl_node_ext[i] + self.dorsl_node_ext[i+1])                    # Outer sides of the element
+                    Li  = 0.5 * (self.dorsl_node_int[i] + self.dorsl_node_int[i+1])                    # Inner sides
+                    A   = (Lo[0]*Lo[1] - Li[0]*Li[1])            # Cross-sectional area
+
+                # Rotation matrix to transform from local to global coordinates
+                Dc = np.column_stack((self.p1, self.p2, self.q))
+
+                W[i*6:(i+1)*6]     += self.rho_shell * A * g * np.array([0, 0, -L/2, -L**2/12*Dc[1,2],  L**2/12*Dc[0,2], 0])  # Weight vector in global coordinates
+                W[(i+1)*6:(i+2)*6] += self.rho_shell * A * g * np.array([0, 0, -L/2,  L**2/12*Dc[1,2], -L**2/12*Dc[0,2], 0])
+
+            # Ballast and cap/bulkhead contribution - Lumping at each node (see self.getInertia())
+            for i in range(len(self.nodeList)): # Looping nodes
+                f = self.m_ballast[i] * g * np.array([0, 0, -1, 0, 0, 0])
+                W[i*6:(i+1)*6] += transformForce(f, offset=self.center_ballast[i]-self.nodeList[i].r[:3])  # Weight vector in global coordinates
+
+                f = self.m_cap[i] * g * np.array([0, 0, -1, 0, 0, 0])
+                W[i*6:(i+1)*6] += transformForce(f, offset=self.center_cap[i]-self.nodeList[i].r[:3])
+
+            self.C_struc = np.zeros([self.nDOF, self.nDOF])
         return W
         
     def calcHydroConstants(self, r_ref=None, sum_inertia=False, rho=1025, g=9.81, k_array=None):

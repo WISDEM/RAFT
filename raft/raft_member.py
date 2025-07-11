@@ -1971,14 +1971,14 @@ class Member:
             # Fill the 12x12 local stiffness matrix of the element
             # Top left corner - 6x6 matrix of node 1 acting on itself
             K11 = np.zeros((nodeDOF, nodeDOF))
-            K11[0,0] = 12*E*Jp2/L**3/(1+Ksy)
-            K11[1,1] = 12*E*Jp1/L**3/(1+Ksx)
+            K11[0,0] = 12*E*Jp2/L**3/(1+Ksx)
+            K11[1,1] = 12*E*Jp1/L**3/(1+Ksy)
             K11[2,2] = E*A/L
-            K11[3,3] = (4+Ksx)*E*Jp1/L/(1+Ksx)
-            K11[4,4] = (4+Ksy)*E*Jp2/L/(1+Ksy)
+            K11[3,3] = (4+Ksy)*E*Jp1/L/(1+Ksy)
+            K11[4,4] = (4+Ksx)*E*Jp2/L/(1+Ksx)
             K11[5,5] = G*Jt/L
-            K11[0,4] = 6*E*Jp2/L**2/(1+Ksy)
-            K11[1,3] = -6*E*Jp1/L**2/(1+Ksx)
+            K11[0,4] = 6*E*Jp2/L**2/(1+Ksx)
+            K11[1,3] = -6*E*Jp1/L**2/(1+Ksy)
 
             # Bottom right corner - 6x6 matrix of node 2 acting on itself. 
             # It's the same as K11, but off-diagonal terms have opposite sign.
@@ -1991,8 +1991,8 @@ class Member:
             K12[0,0] = -K11[0,0]
             K12[1,1] = -K11[1,1]
             K12[2,2] = -K11[2,2]
-            K12[3,3] = (2-Ksx)*E*Jp1/L/(1+Ksx) # This term uses 2-Ksx instead of 4+Ksx and doesn't have a sign change
-            K12[4,4] = (2-Ksy)*E*Jp2/L/(1+Ksy) # Same
+            K12[3,3] = (2-Ksy)*E*Jp1/L/(1+Ksy) # This term uses 2-Ksx instead of 4+Ksx and doesn't have a sign change
+            K12[4,4] = (2-Ksx)*E*Jp2/L/(1+Ksx) # Same
             K12[5,5] = -K11[5,5]
             K12[0,4] =  K11[0,4]
             K12[1,3] =  K11[1,3]
@@ -2009,30 +2009,9 @@ class Member:
                 [K12.T, K22]      # Bottom row: K12.T and K22
             ])
 
-            # Make the local reference frame - Just a copy from setPosition()
-            # Not using member's p1, p2, and q for now because they do not account for member flexibility yet
-            q = (self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])/L # Vector from node A to node B
-
-            beta = np.arctan2(q[1],q[0])                                # member incline heading from x axis
-            phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])         # member incline angle from vertical
-
-            # trig terms for Euler angles rotation based on beta, phi, and gamma
-            s1 = np.sin(beta)
-            c1 = np.cos(beta)
-            s2 = np.sin(phi)
-            c2 = np.cos(phi)
-            s3 = np.sin(np.deg2rad(self.gamma))
-            c3 = np.cos(np.deg2rad(self.gamma))
-
-            R = np.array([[ c1*c2*c3-s1*s3, -c3*s1-c1*c2*s3,  c1*s2],
-                        [ c1*s3+c2*c3*s1,  c1*c3-c2*s1*s3,  s1*s2],
-                        [   -c3*s2      ,      s2*s3     ,    c2 ]])  #Z1Y2Z3 from https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
-
-            p1 = np.matmul( R, [1,0,0] )               # unit vector that is in the 'beta' plane if gamma is zero
-            p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
-
             # Rotation matrix to transform from local to global coordinates
-            Dc_aux = np.column_stack((p1, p2, q))
+            # TODO: p1, p2 and q do not account for elastic deformations yet
+            Dc_aux = np.column_stack((self.p1, self.p2, self.q))
 
             # Make the 12x12 rotation matrix
             Dc = np.zeros((2*nodeDOF, 2*nodeDOF))
@@ -2058,10 +2037,7 @@ class Member:
         Returns:
         ----------
         Me: 6Nnodes x 6Nnodes array
-            Inertia matrix of the member in the local reference frame [kg*m^2]
-
-        TODO: Implement rectangular elements
-        TODO: Call this function in getInertia()
+            Inertia matrix of the member in the local reference frame [kg*m^2]        
         '''
         Mf = np.zeros((self.nDOF, self.nDOF)) # Inertia matrix of a flexible member
 
@@ -2142,31 +2118,9 @@ class Member:
             ])
             Me *= self.rho_shell
 
-
-            # Make the local reference frame - Just a copy from setPosition()
-            # Not using member's p1, p2, and q for now because they do not account for member flexibility yet
-            q = (self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])/L # Vector from node A to node B
-
-            beta = np.arctan2(q[1],q[0])                                # member incline heading from x axis
-            phi  = np.arctan2(np.sqrt(q[0]**2 + q[1]**2), q[2])         # member incline angle from vertical
-
-            # trig terms for Euler angles rotation based on beta, phi, and gamma
-            s1 = np.sin(beta)
-            c1 = np.cos(beta)
-            s2 = np.sin(phi)
-            c2 = np.cos(phi)
-            s3 = np.sin(np.deg2rad(self.gamma))
-            c3 = np.cos(np.deg2rad(self.gamma))
-
-            R = np.array([[ c1*c2*c3-s1*s3, -c3*s1-c1*c2*s3,  c1*s2],
-                        [ c1*s3+c2*c3*s1,  c1*c3-c2*s1*s3,  s1*s2],
-                        [   -c3*s2      ,      s2*s3     ,    c2 ]])  #Z1Y2Z3 from https://en.wikipedia.org/wiki/Euler_angles#Rotation_matrix
-
-            p1 = np.matmul( R, [1,0,0] )               # unit vector that is in the 'beta' plane if gamma is zero
-            p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
-
             # Rotation matrix to transform from local to global coordinates
-            Dc_aux = np.column_stack((p1, p2, q))
+            # TODO: p1, p2 and q do not account for elastic deformations yet
+            Dc_aux = np.column_stack((self.p1, self.p2, self.q))
             
             # Make the 12x12 rotation matrix
             Dc = np.zeros((2*nodeDOF, 2*nodeDOF))

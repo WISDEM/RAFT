@@ -816,7 +816,8 @@ class FOWT():
         self.M_struc = np.zeros([self.nDOF,self.nDOF])        # structure/static mass/inertia matrix [kg, kg-m, kg-m^2]
         self.B_struc = np.zeros([self.nDOF,self.nDOF])        # structure damping matrix [N-s/m, N-s, N-s-m] (may not be used)
         self.C_struc = np.zeros([self.nDOF,self.nDOF])        # structure effective stiffness matrix [N/m, N, N-m]        
-        self.W_struc = np.zeros([self.nDOF])                  # static weight vector [N, N-m]        
+        self.W_struc = np.zeros([self.nDOF])                  # static weight vector [N, N-m]
+        self.C_elast = np.zeros([self.nDOF,self.nDOF])        # structure elastic stiffness matrix [N/m, N, N-m]
 
         # structure-related arrays - in the full set of dofs
         # Transformed into the reduced set of dofs using the transformation matrix
@@ -824,6 +825,7 @@ class FOWT():
         B_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
         C_struc_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
         W_struc_fullDOF = np.zeros([self.nFullDOF])
+        C_elast_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])
         
         # hydrostatic arrays - in the reduced set of dofs
         self.C_hydro = np.zeros([self.nDOF,self.nDOF])        # hydrostatic stiffness matrix [N/m, N, N-m]
@@ -875,6 +877,8 @@ class FOWT():
 
             # calculate member's orientation information (stored in the member and used in later steps)
             mem.setPosition()  # <<< is this redundant, assume fowt.setPosition has been called?
+
+            C_elast_fullDOF[iFirst:iLast, iFirst:iLast] += mem.computeStiffnessMatrix_FE()
             
             # note: quantities in the following section are relative to the PRP (but with global direcions)
 
@@ -1076,6 +1080,7 @@ class FOWT():
         self.C_hydro     = self.T.T @ C_hydro_fullDOF @ self.T
         self.C_struc     = self.T.T @ C_struc_fullDOF @ self.T
         self.C_struc_sub = self.T.T @ C_struc_sub_fullDOF  @ self.T
+        self.C_elast     = self.T.T @ C_elast_fullDOF @ self.T
         self.W_struc     = self.T.T @ W_struc_fullDOF
         self.W_hydro     = self.T.T @ W_hydro_fullDOF
         self.f0_additional = self.T.T @ f0_additional_fullDOF
@@ -1101,7 +1106,7 @@ class FOWT():
         self.C_hydro     = (self.C_hydro + self.C_hydro.T) / 2
         self.C_struc     = (self.C_struc + self.C_struc.T) / 2
         self.C_struc_sub = (self.C_struc_sub + self.C_struc_sub.T) / 2
-
+        self.C_elast     = (self.C_elast + self.C_elast.T) / 2
 
         # ----------- process inertia-related totals ----------------
         # To get the mass, we apply an unit translational acceleration in the X direction. This makes the whole FOWT translate as a single rigid body

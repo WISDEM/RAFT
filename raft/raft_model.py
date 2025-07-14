@@ -725,6 +725,8 @@ class Model():
                 if self.ms:
                     Fnet[fowt.nDOF*i:fowt.nDOF*i+6] += self.ms.bodyList[i].getForces(lines_only=True)     # array-level mooring forces
                 
+                # Elastic forces
+                Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += -np.matmul(fowt.C_elast, Xi0)  # elastic forces (e.g. from flexible mooring lines)
             
             # note that the above also calculates many stiffnes terms that are used in step_func_equil
             
@@ -767,12 +769,15 @@ class Model():
             
             # get stiffness of each fowt (hydrostatics, individual mooring, etc.)
             for i, fowt in enumerate(self.fowtList):
-                K_fowt = np.zeros([fowt.nDOF,fowt.nDOF])
+                K_fowt = np.zeros([fowt.nDOF,fowt.nDOF])                
 
                 if self.staticsMod == 0:
                     K_fowt += K_hydrostatic[i]
                 else:
-                    K_fowt += fowt.C_struc + fowt.C_hydro
+                    K_fowt += fowt.C_struc + fowt.C_hydro                
+
+                # Elasticity due to flexible members
+                K_fowt += fowt.C_elast
                 
                 if fowt.ms:
                     if fowt.ms:

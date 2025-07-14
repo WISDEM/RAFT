@@ -542,9 +542,14 @@ class Member:
             # For flexible elements, we lump the ballast inertia as a 6x6 inertia matrix for each node
             # We lump the contribution of half the length to the next node, and half the length to the previous node                    
             nodes_s = np.array([np.linalg.norm(n.r - self.nodeList[0].r) for n in self.nodeList])  # Distance of each node to the start of the member. Used to find the nodes that are part of each station/submember
+
+            # Saving quantities that we will use in member.getWeight() later
+            self.mass_ballast_node   = np.zeros(len(self.nodeList))       # ballast mass at each node
+            self.center_ballast_node = np.zeros((len(self.nodeList), 3))  # center of mass of the ballast that is lumped at each node
+
             
             # Get distance to previous and next nodes
-            dist_p = np.diff(nodes_s, prepend=0)  # distance to previous node
+            dist_p = np.diff(nodes_s, prepend=0)           # distance to previous node
             dist_n = np.diff(nodes_s, append=nodes_s[-1])  # distance to next node
 
             for i in range(1,len(self.stations)):
@@ -630,18 +635,18 @@ class Member:
                         v_fill += v_fill_node
 
                         # Add to the node variables that will be used in getWeight()
-                        self.m_ballast[inode] += mass_node
-                        self.center_ballast[inode, :] += center*mass_node  # center of mass of
+                        self.mass_ballast_node[inode] += mass_node
+                        self.center_ballast_node[inode, :] += center*mass_node  # center of mass of
 
                 # add/append terms. No need to do mass_center because it was already done
                 self.vfill.append(v_fill)                   # list of ballast volumes in each submember [m^3]
                 mfill.append(mass)                          # list of ballast masses in each submember [kg]
                 pfill.append(rho_fill)                      # list of ballast densities in each submember [kg/m^3]
 
-            # self.center_ballast is currently storing center*mass_node. Need to divide by mass_node
+            # self.center_ballast_node is currently storing center*mass_node. Need to divide by mass_node
             for inode in range(len(self.nodeList)):
-                if self.m_ballast[inode] > 0:
-                    self.center_ballast[inode, :] /= self.m_ballast[inode]
+                if self.mass_ballast_node[inode] > 0:
+                    self.center_ballast_node[inode, :] /= self.mass_ballast_node[inode]
 
 
         # ------- Inertia due to end caps/bulkeads ---------
@@ -1021,7 +1026,8 @@ class Member:
             If not provided, we use the first node of the member
         '''
         if rRP is None:
-            rRP = self.nodeList[0].r[:3]        
+            rRP = self.nodeList[0].r[:3]
+        self.C_struc = np.zeros([self.nDOF,self.nDOF])  # initialize the stiffness matrix
 
         if self.type == 'rigid':
             # store the (6,6) matrix given wrt the member's node.
@@ -1029,9 +1035,13 @@ class Member:
         
         else:
             W = np.zeros(self.nDOF)
-
-            # Shell
-            for i in range(len(self.nodeList)-1): # Looping elements
+            
+            mass_node = np.zeros(len(self.nodeList))  # mass corresponding to each node - for the 'hydrostatic' stiffness term associated to weight
+            center_mass_node = np.zeros((len(self.nodeList), 3))  # center of mass corresponding to each node - for the 'hydrostatic' stiffness term associated to weight
+            m_center_sum = np.zeros((len(self.nodeList), 3))  # Auxiliar variable that stores the product of mass and center of mass for each node
+            
+            # Looping elements to get the mass of the shell
+            for i in range(len(self.nodeList)-1): 
                 L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
                 if L == 0:
                     raise Exception("Element length cannot be zero.")
@@ -1050,15 +1060,53 @@ class Member:
                 W[i*6:(i+1)*6]     += self.rho_shell * A * g * np.array([0, 0, -L/2, -L**2/12*Dc[1,2],  L**2/12*Dc[0,2], 0])  # Weight vector in global coordinates
                 W[(i+1)*6:(i+2)*6] += self.rho_shell * A * g * np.array([0, 0, -L/2,  L**2/12*Dc[1,2], -L**2/12*Dc[0,2], 0])
 
+                # Get mass and CG corresponding to each node
+                mass_node[i]    += self.rho_shell * A * L/2  # half the mass of the element
+                mass_node[i+1]  += self.rho_shell * A * L/2  # half the mass of the element
+                m_center_sum[i, :]   += self.rho_shell * A * L/2 * (self.nodeList[i].r[:3] + L/4 * self.q)
+                m_center_sum[i+1, :] += self.rho_shell * A * L/2 * (self.nodeList[i+1].r[:3] - L/4 * self.q)
+                
+
             # Ballast and cap/bulkhead contribution - Lumping at each node (see self.getInertia())
             for i in range(len(self.nodeList)): # Looping nodes
-                f = self.m_ballast[i] * g * np.array([0, 0, -1, 0, 0, 0])
-                W[i*6:(i+1)*6] += transformForce(f, offset=self.center_ballast[i]-self.nodeList[i].r[:3])  # Weight vector in global coordinates
+                f = self.mass_ballast_node[i] * g * np.array([0, 0, -1, 0, 0, 0])
+                W[i*6:(i+1)*6] += transformForce(f, offset=self.center_ballast_node[i]-self.nodeList[i].r[:3])  # Weight vector in global coordinates
 
                 f = self.m_cap[i] * g * np.array([0, 0, -1, 0, 0, 0])
                 W[i*6:(i+1)*6] += transformForce(f, offset=self.center_cap[i]-self.nodeList[i].r[:3])
 
-            self.C_struc = np.zeros([self.nDOF, self.nDOF])
+                # Add ballast and cap mass to the node's mass
+                mass_node[i]       += self.m_cap[i] + self.mass_ballast_node[i]
+                m_center_sum[i, :] += self.mass_ballast_node[i]*self.center_ballast_node[i] + self.m_cap[i] * self.center_cap[i]
+
+                # Calculate the center of mass for each node
+                center_mass_node[i, :] = m_center_sum[i, :] / mass_node[i] if mass_node[i] > 0 else np.zeros(3)
+
+            # Hydrostatic stiffness matrix due to member weight
+            for i in range(len(self.nodeList)):
+                # Own stiffness, i.e. hydrostatic stiffness of the node around itself as if it were a separate body
+                W_own, C_own = getWeightOfPointMass(mass_node[i], center_mass_node[i,:]-self.nodeList[i].r[:3], g=g)
+
+                # Geommetric stiffness, i.e. the component that is due to the internal force acting at each extremity of the node's zone of influence
+                # Since weight is always along the global z-axis, we only need to consider the z component of the part of the internal force that is due to weight only
+                W_after  = np.sum(W[2 + (i+1)*6 : : 6]) # Weight due to all nodes after node i
+                W_before = -W_after - W_own[2]
+                
+                # Get boundaries of the node's zone of influence. Relative position wrt the node
+                r_before, r_after = np.zeros(3), np.zeros(3)  # Initialize to zero vectors
+                if i != 0:
+                    r_before = (self.nodeList[i].r[:3] + self.nodeList[i-1].r[:3])/2 - self.nodeList[i].r[:3]
+                if i != len(self.nodeList)-1:
+                    r_after  = (self.nodeList[i].r[:3] + self.nodeList[i+1].r[:3])/2 - self.nodeList[i].r[:3]
+
+                C_geom = np.zeros((6, 6))
+                C_geom[3,3] =  W_after * r_after[2] + W_before * r_before[2]  # roll
+                C_geom[4,4] =  W_after * r_after[2] + W_before * r_before[2]  # pitch
+                C_geom[3,5] = -W_after * r_after[0] - W_before * r_before[0]  # roll moment due to yaw motion
+                C_geom[4,5] = -W_after * r_after[1] - W_before * r_before[1]  # pitch moment due to yaw motion
+
+                self.C_struc[i*6:(i+1)*6, i*6:(i+1)*6] = C_own + C_geom  # Add the own stiffness and the geometric stiffness to the node's stiffness matrix
+
         return W
         
     def calcHydroConstants(self, r_ref=None, sum_inertia=False, rho=1025, g=9.81, k_array=None):

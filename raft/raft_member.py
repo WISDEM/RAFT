@@ -219,8 +219,9 @@ class Member:
                 m_int = 0.5*(dorsl_int[i] - dorsl_int[i-1])/lstrip  # taper ratio for internal diameter
                 dis  += [dorsl_int[i-1] + dlstrip*2*m_int*(0.5+j) for j in range(ns)]
                 dris += [dlstrip*m_int]*ns
-                dorsl_node_ext += [dorsl[i-1] + dlstrip*m*(0.5+j) for j in range(ns)]  # external diameter or side length pair at the nodes
-                dorsl_node_int += [dorsl_int[i-1] + dlstrip*m_int*(0.5+j) for j in range(ns)]  # internal diameter or side length pair at the nodes
+
+                dorsl_node_ext += [dorsl[i-1] + dlstrip*2*m*(0.5+j) for j in range(ns)]  # external diameter or side length pair at the nodes
+                dorsl_node_int += [dorsl_int[i-1] + dlstrip*2*m_int*(0.5+j) for j in range(ns)]  # internal diameter or side length pair at the nodes
                 
             elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions), a single strip for this section
                 dlstrip = 0

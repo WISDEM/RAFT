@@ -312,10 +312,8 @@ class FOWT():
 
         
         # Define a node to be used as a reference for rigid body motions
-        # TODO: For now, using the node that is the closest to (0,0,0) for compatibility with previous code,
-        #       as the equations of motion are still solved by lumping everything at (0,0,0).
-        #       But need to change this, as it wouldn't work if the node is part of a flexible member.
-        #       In the future, let the user pick the end node of a member, either rigid or flexible
+        # TODO: For now, using the node that is the closest to (0,0,0).
+        #       In the future, let the user pick a node
         self.rigidBodyNode = min(self.nodeList, key=lambda n: np.linalg.norm(n.r0[0:3]))
         # print(f"Rigid body motions correspond to node located at {self.rigidBodyNode.r0[0:3]} wrt the PRP.")
 
@@ -1075,16 +1073,17 @@ class FOWT():
             f0_additional_fullDOF[iFirst:iLast] += transformForce(pointLoad['f'], offset=pointLoad['r']-closest_node.r0[:3])  # add the user-specified mean load to the additional force vector
 
         # ------------------------- Transform quantities above to the reduced set of dofs -----------------------------
-        self.M_struc     = self.T.T @ M_struc_fullDOF @ self.T
-        self.M_struc_sub = self.T.T @ M_struc_sub_fullDOF  @ self.T
-        self.C_hydro     = self.T.T @ C_hydro_fullDOF @ self.T
-        self.C_struc     = self.T.T @ C_struc_fullDOF @ self.T
-        self.C_struc_sub = self.T.T @ C_struc_sub_fullDOF  @ self.T
-        self.C_elast     = self.T.T @ C_elast_fullDOF @ self.T
-        self.W_struc     = self.T.T @ W_struc_fullDOF
-        self.W_hydro     = self.T.T @ W_hydro_fullDOF
+        self.M_struc       = self.T.T @ M_struc_fullDOF @ self.T
+        self.M_struc_sub   = self.T.T @ M_struc_sub_fullDOF  @ self.T
+        self.C_hydro       = self.T.T @ C_hydro_fullDOF @ self.T
+        self.C_struc       = self.T.T @ C_struc_fullDOF @ self.T
+        self.C_struc_sub   = self.T.T @ C_struc_sub_fullDOF  @ self.T
+        self.C_elast       = self.T.T @ C_elast_fullDOF @ self.T
+        self.W_struc       = self.T.T @ W_struc_fullDOF
+        self.W_hydro       = self.T.T @ W_hydro_fullDOF
         self.f0_additional = self.T.T @ f0_additional_fullDOF
 
+        # ------------------------- Geometric stiffness -----------------------------
         # Geommetric stiffness due to the variation of the transformation matrix
         C_hydro_geom = np.zeros([self.nDOF,self.nDOF])
         C_struc_geom = np.zeros([self.nDOF,self.nDOF])
@@ -1098,6 +1097,63 @@ class FOWT():
         self.C_hydro += C_hydro_geom
         self.C_struc += C_struc_geom
         self.C_struc_sub += C_struc_sub_geom
+
+        # Geometric stiffness of flexible members (due to internal loads)
+        # Following the approach from Lee et al, 2024, 'On the correction of hydrostatic stiffness for discrete-module-based hydroelasticity analysis of vertically arrayed modules'
+        # doi.org/10.1016/j.engstruct.2024.118710
+        def _compute_geom_stiffness(nodeRange, force):
+            """
+            Internal helper to compute geometric stiffness for flexible members
+            """
+            # Get force acting on each node of the flexible member
+            Wnodes = np.zeros([len(nodeRange), nodeRange[0].nDOF])
+            for inode, node in enumerate(nodeRange):
+                # Wnodes[inode, :] = node.T @ force # From a previous version where we were getting the force in the full dofs, but I wasn't sure if it was right
+                Wnodes[inode, :] = force[inode*node.nDOF:(inode+1)*node.nDOF]
+
+            # Compute geometric stiffness by assuming that the body is in equilibrium to get the internal forces
+            K_geom = np.zeros([6*len(nodeRange),6*len(nodeRange)])  # Initialize geometric stiffness matrix for the member
+            for inode, node in enumerate(nodeRange):
+                W_after  = np.sum(Wnodes[inode+1:, :], axis=0)
+                # W_before = np.sum(Wnodes[:inode, :], axis=0)
+                W_before = -W_after - Wnodes[inode, :]
+
+                r_before, r_after = np.zeros(3), np.zeros(3)
+                if inode != 0: 
+                    r_before = (nodeRange[inode].r[:3] + nodeRange[inode-1].r[:3])/2 - nodeRange[inode].r[:3]
+
+                if inode != len(nodeRange)-1:
+                    r_after  = (nodeRange[inode].r[:3] + nodeRange[inode+1].r[:3])/2 - nodeRange[inode].r[:3]
+
+                K_node = np.zeros([6, 6])
+                K_node[3, 3] = (W_after[2] * r_after[2] + W_before[2] * r_before[2]) + (W_after[1] * r_after[1] + W_before[1] * r_before[1])
+                K_node[4, 4] = (W_after[2] * r_after[2] + W_before[2] * r_before[2]) + (W_after[0] * r_after[0] + W_before[0] * r_before[0])
+                K_node[5, 5] = (W_after[1] * r_after[1] + W_before[1] * r_before[1]) + (W_after[0] * r_after[0] + W_before[0] * r_before[0])
+                K_node[3, 4] = -W_after[1] * r_after[0] - W_before[1] * r_before[0]
+                K_node[3, 5] = -W_after[2] * r_after[0] - W_before[2] * r_before[0]
+                K_node[4, 5] = -W_after[2] * r_after[1] - W_before[2] * r_before[1]
+                K_node[4, 3] = -W_after[0] * r_after[1] - W_before[0] * r_before[1]
+                K_node[5, 4] = -W_after[0] * r_after[2] - W_before[0] * r_before[2]
+                K_node[5, 3] = -W_after[1] * r_after[2] - W_before[1] * r_before[2]
+
+                K_geom[inode*node.nDOF:(inode+1)*node.nDOF, inode*node.nDOF:(inode+1)*node.nDOF] = K_node
+                
+            return K_geom
+
+        for mem in memberList:
+            if mem.type == 'beam':
+                # Find the range of reducedDOF that correspond to nodes of this member
+                # Like in other parts of the code, we're assuming that nodes of flexible members are contiguous
+                dof_idx_range = [i for i, dof in enumerate(self.reducedDOF) if mem.nodeList[0].id <= dof[0] <= mem.nodeList[-1].id]
+                iFirstDOF, iLastDOF = dof_idx_range[0], dof_idx_range[-1] + 1  # +1 because the last index is exclusive in Python
+
+                # Not all nodes of the member may be in the reducedDOF set (could be attached to some other node), so we need to find the actual node range
+                iFirstNode, iLastNode = self.reducedDOF[dof_idx_range[0]][0], self.reducedDOF[dof_idx_range[-1]][0] + 1
+                nodeRange = self.nodeList[iFirstNode:iLastNode]  # Get the actual nodes of the member in the reduced set
+
+                self.C_struc[iFirstDOF:iLastDOF, iFirstDOF:iLastDOF] += _compute_geom_stiffness(nodeRange, self.W_struc[iFirstDOF:iLastDOF] + self.f0_additional[iFirstDOF:iLastDOF])
+                self.C_hydro[iFirstDOF:iLastDOF, iFirstDOF:iLastDOF] += _compute_geom_stiffness(nodeRange, self.W_hydro[iFirstDOF:iLastDOF])
+
 
         # Make the matrices symmetric. They should be, as the _fullDOF matrices are symmetric, but the matrix products
         # above can introduce numerical errors because some elements are usually many orders of magnitude larger than others.
@@ -1528,10 +1584,11 @@ class FOWT():
     def getStiffness(self):
         '''Sums up all the stiffness effects on a FOWT.'''
         
-        C_tot = np.zeros([6,6])       # total stiffness matrix [N/m, N, N-m]
+        C_tot = np.zeros([self.nDOF, self.nDOF])       # total stiffness matrix [N/m, N, N-m]
         
         # add in mooring stiffness from MoorPy system
-        C_tot += self.C_moor
+        # TODO: Lumping at first 6dofs for now
+        C_tot[:6,:6] += self.C_moor
         # add any additional yaw stiffness that isn't included in the MoorPy 
         # model (e.g. if a bridle isn't modeled)
         C_tot[5,5] += self.yawstiff # TODO: Remove this now that we have additional_effects?
@@ -1539,12 +1596,11 @@ class FOWT():
         if self.body:
             C_tot += self.body.getStiffness()  # in future should make an analytic body function for this
 
-        C_tot += self.C_struc + self.C_hydro   # stiffness
+        C_tot += self.C_struc + self.C_hydro + self.C_elast  # stiffness
         
         return C_tot
     
-    
-    def solveEigen(self, display=0):
+    def solveEigen(self, display=0, outPath=None):
         '''Compute the natural frequencies and mode shapes of the FOWT.
         This considers the FOWT and any attached mooring lines, but it
         does not account for coupling with other FOWTs as could occur
@@ -1553,16 +1609,19 @@ class FOWT():
         
         Returns
         -------
-        fns : array
-            List of natural frequencies [Hz].
+        wns : array
+            List of natural frequencies [rad/s].
         modes : 2D array
             List of mode shapes (eigenvectors) corresponding to the natural 
             frequencies.
         '''
 
         # Total mass and added mass matrix [kg, kg-m, kg-m^2]
-        M_tot = self.M_struc + self.A_hydro_morison + self.A_BEM[:,:,0]   # Mass. Using BEM added mass at w=0 because it is closer to the expected natural frequencies than w=inf
+        M_tot = self.M_struc + self.A_hydro_morison   # Mass
         C_tot = self.getStiffness()  # stiffness
+
+        # TODO: Lumping added mass from BEM at the first dofs. Should treat this properly in the multi-dof solution later
+        M_tot[:6,:6] += self.A_BEM[:,:,0]  #Using BEM added mass at w=0 because it is closer to the expected natural frequencies than w=inf
 
         # check viability of matrices
         message=''
@@ -1575,37 +1634,55 @@ class FOWT():
         if len(message) > 0:
             raise RuntimeError('System matrices computed by RAFT have one or more small or negative diagonals: '+message)
 
-        # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
-        eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
+        # For rigid FOWTs, using the old method for now
+        if self.nDOF == 6:
+            # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
+            eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
 
-        if any(eigenvals <= 0.0):
-            raise RuntimeError("Error: zero or negative system eigenvalues detected.")
+            if any(eigenvals <= 0.0):
+                raise RuntimeError("Error: zero or negative system eigenvalues detected.")
 
-        # sort to normal DOF order based on which DOF is largest in each eigenvector
-        ind_list = []
-        for i in range(5,-1, -1):
-            vec = np.abs(eigenvectors[i,:])  # look at each row (DOF) at a time (use reverse order to pick out rotational DOFs first)
+            # sort to normal DOF order based on which DOF is largest in each eigenvector
+            ind_list = []
+            for i in range(5,-1, -1):
+                vec = np.abs(eigenvectors[i,:])  # look at each row (DOF) at a time (use reverse order to pick out rotational DOFs first)
 
-            for j in range(6):               # now do another loop in case the index was claimed previously
+                for j in range(6):               # now do another loop in case the index was claimed previously
 
-                ind = np.argmax(vec)         # find the index of the vector with the largest value of the current DOF
+                    ind = np.argmax(vec)         # find the index of the vector with the largest value of the current DOF
 
-                if ind in ind_list:          # if a previous vector claimed this DOF, set it to zero in this vector so that we look at the other vectors
-                    vec[ind] = 0.0
-                else:
-                    ind_list.append(ind)     # if it hasn't been claimed before, assign this vector to the DOF
-                    break
+                    if ind in ind_list:          # if a previous vector claimed this DOF, set it to zero in this vector so that we look at the other vectors
+                        vec[ind] = 0.0
+                    else:
+                        ind_list.append(ind)     # if it hasn't been claimed before, assign this vector to the DOF
+                        break
 
-        ind_list.reverse()   # reverse the index list since we made it in reverse order
+            ind_list.reverse()   # reverse the index list since we made it in reverse order
 
-        fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
-        modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
+            fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
+            modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
         
+        else:
+            # from scipy.linalg import eigh
+            # eigenvals, eigenvectors = eigh(C_tot, M_tot)
+            eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))
+
+            # Sort in ascending order of eigenvals
+            sorted_indices = np.argsort(eigenvals)
+            eigenvals = eigenvals[sorted_indices]
+            eigenvectors = eigenvectors[:, sorted_indices]
+
+            fns = np.sqrt(eigenvals)/2.0/np.pi
+            modes = eigenvectors
+        
+        if isinstance(outPath, str):
+            self.write_modes_json(outPath, fns, modes)
+
         if display > 0:
             print("")
             print("--------- Natural frequencies and mode shapes -------------")
             print("Mode        1         2         3         4         5         6")
-            print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
+            print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns[:6]]))
             print("")
             for i in range(6):
                 print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(6)]))
@@ -2676,3 +2753,187 @@ class FOWT():
         ax.set_zlim(mid_z - max_range/2, mid_z + max_range/2)
         
         return ax
+
+    def write_modes_json(self, filename, fns, modes):
+        """
+        Write eigenmodes and frequencies to a JSON file for visualization in viz3Danim (https://github.com/ebranlard/viz3Danim).
+
+        Parameters
+        ----------
+        filename : str
+            Output JSON file path.
+        fns : (nDOF,) array
+            Natural frequencies [Hz].
+        modes : (nDOF, nDOF) array
+            Mode shapes (eigenvectors)
+        """
+
+        import numpy as np
+
+        # Helper formatting functions
+        def fmt(x, width=12, prec=6):
+            return f"{x: {width}.{prec}E}"
+
+        def fmt_list(lst, width=12, prec=6):
+            return "[" + ",".join(fmt(x, width, prec) for x in lst) + "]"
+
+
+        # Nodes: list of [x, y, z] for each node
+        # Connectivity: list of [start_node_idx, end_node_idx] for each element
+        # elem_props: list of dicts with properties for each element
+        # TODO: viz3Danim only supports cylinders for now. Need to implement rectangular member later
+        nodes = [list(np.array(n.r[:3], dtype=float)) for n in self.nodeList]
+        connectivity = []
+        elem_props = []
+        virtual_node_map = {}  # using this to plot rigid members. Could I use setPosition() instead? But would need to reset to previous position later
+        real_node_count = len(self.nodeList)
+
+        for mem in self.memberList:
+            if mem.type == 'rigid':
+                # Loop stations and append virtual nodes for plotting only
+                for i in range(mem.r.shape[0] - 1):
+                    rA = mem.r[i, :]
+                    rB = mem.r[i + 1, :]
+
+                    if i == 0:
+                        n1 = mem.nodeList[0].id
+                    else:
+                        nodes.append(rA[:3])
+                        n1 = len(nodes) - 1
+                        # Map virtual node to real node and offset
+                        virtual_node_map[n1] = (mem.nodeList[0].id, rA[:3] - mem.nodeList[0].r[:3])
+
+                    # Same but for the other end, which is never part of the original node list
+                    nodes.append(rB[:3])
+                    n2 = len(nodes) - 1
+                    virtual_node_map[n2] = (mem.nodeList[0].id, rB[:3] - mem.nodeList[0].r[:3])
+
+                    connectivity.append([n1, n2])
+
+                    if mem.shape == 'circular':
+                        diameter = 0.5 * (mem.dorsl_node_ext[i] + mem.dorsl_node_ext[i + 1])
+                    else:
+                        side0 = 0.5 * (mem.dorsl_node_ext[i][0] + mem.dorsl_node_ext[i + 1][0])
+                        side1 = 0.5 * (mem.dorsl_node_ext[i][1] + mem.dorsl_node_ext[i + 1][1])
+                        diameter = max(side0, side1)
+                    elem_props.append({
+                        "shape": 'cylinder',
+                        "type": 1,
+                        "Diam": diameter
+                    })
+
+            if mem.type == 'beam':
+                for i in range(len(mem.nodeList) - 1):
+                    n1 = mem.nodeList[i].id
+                    n2 = mem.nodeList[i + 1].id
+                    connectivity.append([n1, n2])
+
+                    if mem.shape == 'circular':
+                        diameter = 0.5 * (mem.dorsl_node_ext[i] + mem.dorsl_node_ext[i + 1])
+                    else:
+                        side0 = 0.5 * (mem.dorsl_node_ext[i][0] + mem.dorsl_node_ext[i + 1][0])
+                        side1 = 0.5 * (mem.dorsl_node_ext[i][1] + mem.dorsl_node_ext[i + 1][1])
+                        diameter = max(side0, side1)
+                    elem_props.append({
+                        "shape": 'cylinder',
+                        "type": 1,
+                        "Diam": diameter
+                    })
+
+        # # Rigid links
+        # for i_rl in range(len(self.rigidLinkList['id'])):
+        #     n1 = self.rigidLinkList['node1'][i_rl]
+        #     n2 = self.rigidLinkList['node2'][i_rl]
+        #     connectivity.append([n1.id, n2.id])
+        #     elem_props.append({
+        #         "shape": 'cylinder',
+        #         "type": 3,
+        #         "Diam": 1 # Dummy diameter, as it seems that rigid links do not use the diameter that is provided
+        #     })
+
+        # Modes: list of dicts with name, frequency, omega, Displ
+        modes_list = []
+        n_modes = modes.shape[1]
+        for i in range(n_modes):
+            mode_full = self.T @ modes[:, i]  # Get displacements in full dofs
+
+            displ = []
+            for idx, node_xyz in enumerate(nodes):
+                if idx < real_node_count:
+                    # Real node: use mode_full
+                    n = self.nodeList[idx]
+                    base = n.id * n.nDOF
+                    displ.append([
+                        float(mode_full[base + 0]),
+                        float(mode_full[base + 1]),
+                        float(mode_full[base + 2])
+                    ])
+                else:
+                    # Virtual node: compute from associated real node
+                    real_node_id, offset = virtual_node_map[idx]
+                    n = self.nodeList[real_node_id]
+                    base = n.id * n.nDOF
+                    t = np.array([
+                        float(mode_full[base + 0]),
+                        float(mode_full[base + 1]),
+                        float(mode_full[base + 2])
+                    ])
+                    rot = np.array([
+                        float(mode_full[base + 3]),
+                        float(mode_full[base + 4]),
+                        float(mode_full[base + 5])
+                    ])
+                    disp_virtual = t + np.cross(rot, offset)
+                    displ.append(list(disp_virtual))
+            modes_list.append({
+                "name": f"FEM{i+1}",
+                "frequency": float(fns[i]),
+                "omega": float(fns[i] * 2 * np.pi),
+                "Displ": displ
+            })
+
+        # Write to file
+        with open(filename, "w") as f:
+            f.write('{\n')
+            f.write(f'"writer": "RAFT",\n')
+            f.write(f'"fileKind": "Modes",\n')
+            f.write(f'"groundLevel": {fmt(self.depth)},\n')
+
+            # Connectivity
+            f.write('"Connectivity": [')
+            for i, conn in enumerate(connectivity):
+                f.write(f"[{conn[0]},{conn[1]}]")
+                if i < len(connectivity) - 1:
+                    f.write(",")
+            f.write("],\n")
+
+            # Nodes
+            f.write('"Nodes": [')
+            for i, node in enumerate(nodes):
+                f.write(fmt_list(node))
+                if i < len(nodes) - 1:
+                    f.write(",")
+            f.write("],\n")
+
+            # ElemProps
+            f.write('"ElemProps": [\n')
+            for i, ep in enumerate(elem_props):
+                f.write(f'  {{"shape": "cylinder", "type": {ep["type"]}, "Diam": {fmt(ep["Diam"], width=8, prec=4)}}}')
+                if i < len(elem_props) - 1:
+                    f.write(",\n")
+            f.write("],\n")
+
+            # Modes
+            f.write('"Modes": [\n')
+            for i, mode in enumerate(modes_list):
+                f.write(f'  {{"name": "{mode["name"]}", "frequency": {fmt(mode["frequency"])}, "omega": {fmt(mode["omega"])}, "Displ": [')
+                for j, disp in enumerate(mode["Displ"]):
+                    f.write(fmt_list(disp))
+                    if j < len(mode["Displ"]) - 1:
+                        f.write(",")
+                f.write("]}")
+                if i < len(modes_list) - 1:
+                    f.write(",\n")
+            f.write("]\n")
+            f.write('}\n')
+

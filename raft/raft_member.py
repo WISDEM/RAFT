@@ -850,8 +850,8 @@ class Member:
         pi = np.pi
 
         # initialize some values that will be returned
-        Fvec = np.zeros(6)              # this will get added to by each segment of the member
-        Cmat = np.zeros([6,6])          # this will get added to by each segment of the member
+        Fvec = np.zeros(self.nDOF)              # this will get added to by each segment of the member
+        Cmat = np.zeros([self.nDOF,self.nDOF])          # this will get added to by each segment of the member
         V_UW = 0                        # this will get added to by each segment of the member
         r_centerV = np.zeros(3)         # center of buoyancy times volumen total - will get added to by each segment
         # these will only get changed once, if there is a portion crossing the water plane
@@ -863,155 +863,151 @@ class Member:
 
         # loop through each member segment, and treat each segment like how we used to treat each member
         n = len(self.stations)
-
-        for i in range(1,n):     # starting at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
-
-            # end locations of this segment
-            rA = self.rA + self.q*self.stations[i-1]
-            rB = self.rA + self.q*self.stations[i  ]
-
-            # partially submerged case
-            if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
-
-                # angles
-                beta = np.arctan2(self.q[1],self.q[0])  # member incline heading from x axis
-                phi  = np.arctan2(np.sqrt(self.q[0]**2 + self.q[1]**2), self.q[2])  # member incline angle from vertical
-
-                # precalculate trig functions
-                cosPhi=np.cos(phi)
-                sinPhi=np.sin(phi)
-                tanPhi=np.tan(phi)
-                cosBeta=np.cos(beta)
-                sinBeta=np.sin(beta)
-                tanBeta=sinBeta/cosBeta
-
-                # -------------------- buoyancy and waterplane area properties ------------------------
-
-                xWP = intrp(0, rA[2], rB[2], rA[0], rB[0])                     # x coordinate where member axis cross the waterplane [m]
-                yWP = intrp(0, rA[2], rB[2], rA[1], rB[1])                     # y coordinate where member axis cross the waterplane [m]
-                if self.shape=='circular':
-                    dWP = intrp(0, rA[2], rB[2], self.d[i], self.d[i-1])       # diameter of member where its axis crosses the waterplane [m]
-                    AWP = (np.pi/4)*dWP**2                                     # waterplane area of member [m^2]
-                    IWP = (np.pi/64)*dWP**4                                    # waterplane moment of inertia [m^4] approximates as a circle
-                    IxWP = IWP                                                 # MoI of circular waterplane is the same all around
-                    IyWP = IWP                                                 # MoI of circular waterplane is the same all around
-                elif self.shape=='rectangular':
-                    slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
-                    AWP = slWP[0]*slWP[1]                                      # waterplane area of rectangular member [m^2]
-                    IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
-                    IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
-                    I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
-                    T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
-                    I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as RP
-                    IxWP = I_rot[0,0]
-                    IyWP = I_rot[1,1]
-
-                LWP = abs(rA[2]/cosPhi)                   # get length of segment along member axis that is underwater [m]
-
-                # Assumption: the areas and MoI of the waterplane are as if the member were completely vertical, i.e. it doesn't account for phi
-                # This can be fixed later on if needed. We're using this assumption since the fix wouldn't significantly affect the outputs
-
-                # Total enclosed underwater volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
-                if self.shape=='circular':
-                    V_UWi, hc = FrustumVCV(self.d[i-1], dWP, LWP)
-                elif self.shape=='rectangular':
-                    V_UWi, hc = FrustumVCV(self.sl[i-1], slWP, LWP)
-
-                r_center = rA + self.q*hc          # coordinates of center of volume of this segment in the global frame [m]
-
-
-                # >>>> question: should this function be able to use displaced/rotated values? <<<<
-
-                # ------------- get hydrostatic derivatives ----------------
-
-                # derivatives from global to local
-                dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
-                dPhi_dThy  =  cosBeta
-                dFz_dz   = -rho*g*AWP /cosPhi
-
-                # note: below calculations are based on untapered case, but
-                # temporarily approximated for taper by using dWP (diameter at water plane crossing) <<< this is rough
-
-                # buoyancy force and moment about end A
-                Fz = rho*g* V_UWi
-                M = 0
-                if self.shape=='circular': # Need to find the equivalent of this for the rectangular case
-                    M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
-                Mx = M*dPhi_dThx
-                My = M*dPhi_dThy
-
-                Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), rA-rRP)
-                Fvec[3] += Mx                # moment about x axis [N-m]
-                Fvec[4] += My                # moment about y axis [N-m]
-
-                # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
-                xWP -= rRP[0]  # x coordinate of waterplane relative to RP [m]
-                yWP -= rRP[1] 
-                Cmat[2,2] += -dFz_dz
-                Cmat[2,3] += rho*g*(      -AWP*yWP    )
-                Cmat[2,4] += rho*g*(       AWP*xWP    )
-                Cmat[3,2] += rho*g*(      -AWP*yWP    )
-                Cmat[3,3] += rho*g*(IxWP + AWP*yWP**2 )
-                Cmat[3,4] += rho*g*(       AWP*xWP*yWP)
-                Cmat[4,2] += rho*g*(       AWP*xWP    )
-                Cmat[4,3] += rho*g*(       AWP*xWP*yWP)
-                Cmat[4,4] += rho*g*(IyWP + AWP*xWP**2 )
-
-                r_center -= rRP  # center of volume relative to RP [m]
-                Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
-                Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
-                Cmat[3,5] += -rho*g*V_UWi * r_center[0]
-                Cmat[4,5] += -rho*g*V_UWi * r_center[1]
-
-                V_UW += V_UWi
-                r_centerV += r_center*V_UWi
-
-
-            # fully submerged case
-            elif rA[2] <= 0 and rB[2] <= 0:
-
-                # displaced volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
-                if self.shape=='circular':
-                    V_UWi, hc = FrustumVCV(self.d[i-1], self.d[i], self.stations[i]-self.stations[i-1])
-                elif self.shape=='rectangular':
-                    V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.stations[i]-self.stations[i-1])
-
-                r_center = rA + self.q*hc             # center of volume of this segment relative to RP [m]
-
-                # buoyancy force (and moment) vector
-                Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center-rRP)
-
-                # hydrostatic stiffness matrix
-                r_center -= rRP
-                Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
-                Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
-                Cmat[3,5] += -rho*g*V_UWi * r_center[0]
-                Cmat[4,5] += -rho*g*V_UWi * r_center[1]
-
-                V_UW += V_UWi
-                r_centerV += r_center*V_UWi
-
-            else: # if the members are fully above the surface
-
-                pass
-
-        if V_UW > 0:
-            r_center = r_centerV/V_UW    # calculate overall member center of buoyancy
-        else:
-            r_center = np.zeros(3)       # temporary fix for out-of-water members
-        
-        self.V = V_UW  # store submerged volume
-
-        # Assign the hydrostatic stiffness matrix to the node object
         if self.type == 'rigid':
-            # self.nodeList[0].K_hydro = translateMatrix6to6DOF(Cmat, rRP-self.nodeList[0].r[:3])
+            for i in range(1,n):     # starting at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
+
+                # end locations of this segment
+                rA = self.rA + self.q*self.stations[i-1]
+                rB = self.rA + self.q*self.stations[i  ]
+
+                # partially submerged case
+                if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
+
+                    # angles
+                    beta = np.arctan2(self.q[1],self.q[0])  # member incline heading from x axis
+                    phi  = np.arctan2(np.sqrt(self.q[0]**2 + self.q[1]**2), self.q[2])  # member incline angle from vertical
+
+                    # precalculate trig functions
+                    cosPhi=np.cos(phi)
+                    sinPhi=np.sin(phi)
+                    tanPhi=np.tan(phi)
+                    cosBeta=np.cos(beta)
+                    sinBeta=np.sin(beta)
+                    tanBeta=sinBeta/cosBeta
+
+                    # -------------------- buoyancy and waterplane area properties ------------------------
+
+                    xWP = intrp(0, rA[2], rB[2], rA[0], rB[0])                     # x coordinate where member axis cross the waterplane [m]
+                    yWP = intrp(0, rA[2], rB[2], rA[1], rB[1])                     # y coordinate where member axis cross the waterplane [m]
+                    if self.shape=='circular':
+                        dWP = intrp(0, rA[2], rB[2], self.d[i], self.d[i-1])       # diameter of member where its axis crosses the waterplane [m]
+                        AWP = (np.pi/4)*dWP**2                                     # waterplane area of member [m^2]
+                        IWP = (np.pi/64)*dWP**4                                    # waterplane moment of inertia [m^4] approximates as a circle
+                        IxWP = IWP                                                 # MoI of circular waterplane is the same all around
+                        IyWP = IWP                                                 # MoI of circular waterplane is the same all around
+                    elif self.shape=='rectangular':
+                        slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
+                        AWP = slWP[0]*slWP[1]                                      # waterplane area of rectangular member [m^2]
+                        IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
+                        IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+                        I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
+                        T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
+                        I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as RP
+                        IxWP = I_rot[0,0]
+                        IyWP = I_rot[1,1]
+
+                    LWP = abs(rA[2]/cosPhi)                   # get length of segment along member axis that is underwater [m]
+
+                    # Assumption: the areas and MoI of the waterplane are as if the member were completely vertical, i.e. it doesn't account for phi
+                    # This can be fixed later on if needed. We're using this assumption since the fix wouldn't significantly affect the outputs
+
+                    # Total enclosed underwater volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
+                    if self.shape=='circular':
+                        V_UWi, hc = FrustumVCV(self.d[i-1], dWP, LWP)
+                    elif self.shape=='rectangular':
+                        V_UWi, hc = FrustumVCV(self.sl[i-1], slWP, LWP)
+
+                    r_center = rA + self.q*hc          # coordinates of center of volume of this segment in the global frame [m]
+
+
+                    # >>>> question: should this function be able to use displaced/rotated values? <<<<
+
+                    # ------------- get hydrostatic derivatives ----------------
+
+                    # derivatives from global to local
+                    dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
+                    dPhi_dThy  =  cosBeta
+                    dFz_dz   = -rho*g*AWP /cosPhi
+
+                    # note: below calculations are based on untapered case, but
+                    # temporarily approximated for taper by using dWP (diameter at water plane crossing) <<< this is rough
+
+                    # buoyancy force and moment about end A
+                    Fz = rho*g* V_UWi
+                    M = 0
+                    if self.shape=='circular': # Need to find the equivalent of this for the rectangular case
+                        M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+                    Mx = M*dPhi_dThx
+                    My = M*dPhi_dThy
+
+                    Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), rA-rRP)
+                    Fvec[3] += Mx                # moment about x axis [N-m]
+                    Fvec[4] += My                # moment about y axis [N-m]
+
+                    # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
+                    xWP -= rRP[0]  # x coordinate of waterplane relative to RP [m]
+                    yWP -= rRP[1] 
+                    Cmat[2,2] += -dFz_dz
+                    Cmat[2,3] += rho*g*(      -AWP*yWP    )
+                    Cmat[2,4] += rho*g*(       AWP*xWP    )
+                    Cmat[3,2] += rho*g*(      -AWP*yWP    )
+                    Cmat[3,3] += rho*g*(IxWP + AWP*yWP**2 )
+                    Cmat[3,4] += rho*g*(       AWP*xWP*yWP)
+                    Cmat[4,2] += rho*g*(       AWP*xWP    )
+                    Cmat[4,3] += rho*g*(       AWP*xWP*yWP)
+                    Cmat[4,4] += rho*g*(IyWP + AWP*xWP**2 )
+
+                    r_center -= rRP  # center of volume relative to RP [m]
+                    Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
+                    Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
+                    Cmat[3,5] += -rho*g*V_UWi * r_center[0]
+                    Cmat[4,5] += -rho*g*V_UWi * r_center[1]
+
+                    V_UW += V_UWi
+                    r_centerV += r_center*V_UWi
+
+
+                # fully submerged case
+                elif rA[2] <= 0 and rB[2] <= 0:
+
+                    # displaced volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
+                    if self.shape=='circular':
+                        V_UWi, hc = FrustumVCV(self.d[i-1], self.d[i], self.stations[i]-self.stations[i-1])
+                    elif self.shape=='rectangular':
+                        V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.stations[i]-self.stations[i-1])
+
+                    r_center = rA + self.q*hc             # center of volume of this segment relative to RP [m]
+
+                    # buoyancy force (and moment) vector
+                    Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center-rRP)
+
+                    # hydrostatic stiffness matrix
+                    r_center -= rRP
+                    Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
+                    Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
+                    Cmat[3,5] += -rho*g*V_UWi * r_center[0]
+                    Cmat[4,5] += -rho*g*V_UWi * r_center[1]
+
+                    V_UW += V_UWi
+                    r_centerV += r_center*V_UWi
+
+                else: # if the members are fully above the surface
+
+                    pass
+
+            if V_UW > 0:
+                r_center = r_centerV/V_UW    # calculate overall member center of buoyancy
+            else:
+                r_center = np.zeros(3)       # temporary fix for out-of-water members
+            
+            self.V = V_UW  # store submerged volume
             self.nodeList[0].K_hydro = Cmat
         else:
-            raise ValueError(f'getHydrostatics() only works for rigid members for now, but member {self.name} is of type {self.type}.')
-        
+            dbg = 1
+            r_center = np.zeros(3)
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
-    def getWeight(self, rRP=None, g=9.81):
+    def getWeight(self, rRP=None, g=9.81, include_geom_stiffness=False):
         '''Returns member weight relative to the reference point in the global orientation directions.
 
         Also updates the member's stiffness matrix, self.C_struc, which is a (self.nDOF, self.nDOF),
@@ -1024,6 +1020,11 @@ class Member:
         rRP : float array, optional
             Coordinates of the reference point which the moment of inertia matrix will be calculated relative to. [m]
             If not provided, we use the first node of the member
+        include_geom_stiffness : bool, optional
+            Whether to include geometric stiffness in the calculation of the stiffness matrix of flexible members. 
+            Does not affect rigid members.
+            Default is False because this component is included separately in fowt.calcStatics() to account for 
+            other weights that might be applied to the flexible member (e.g. RNA atop of the tower)
         '''
         if rRP is None:
             rRP = self.nodeList[0].r[:3]
@@ -1089,23 +1090,25 @@ class Member:
 
                 # Geommetric stiffness, i.e. the component that is due to the internal force acting at each extremity of the node's zone of influence
                 # Since weight is always along the global z-axis, we only need to consider the z component of the part of the internal force that is due to weight only
-                W_after  = np.sum(W[2 + (i+1)*6 : : 6]) # Weight due to all nodes after node i
-                W_before = -W_after - W_own[2]
-                
-                # Get boundaries of the node's zone of influence. Relative position wrt the node
-                r_before, r_after = np.zeros(3), np.zeros(3)  # Initialize to zero vectors
-                if i != 0:
-                    r_before = (self.nodeList[i].r[:3] + self.nodeList[i-1].r[:3])/2 - self.nodeList[i].r[:3]
-                if i != len(self.nodeList)-1:
-                    r_after  = (self.nodeList[i].r[:3] + self.nodeList[i+1].r[:3])/2 - self.nodeList[i].r[:3]
+                C_geom = np.zeros((6, 6))  # Initialize geometric stiffness matrix
+                if include_geom_stiffness:
+                    W_after  = np.sum(W[2 + (i+1)*6 : : 6]) # Weight due to all nodes after node i
+                    W_before = -W_after - W_own[2]
+                    
+                    # Get boundaries of the node's zone of influence. Relative position wrt the node
+                    r_before, r_after = np.zeros(3), np.zeros(3)  # Initialize to zero vectors
+                    if i != 0:
+                        r_before = (self.nodeList[i].r[:3] + self.nodeList[i-1].r[:3])/2 - self.nodeList[i].r[:3]
+                    if i != len(self.nodeList)-1:
+                        r_after  = (self.nodeList[i].r[:3] + self.nodeList[i+1].r[:3])/2 - self.nodeList[i].r[:3]
 
-                C_geom = np.zeros((6, 6))
-                C_geom[3,3] =  W_after * r_after[2] + W_before * r_before[2]  # roll
-                C_geom[4,4] =  W_after * r_after[2] + W_before * r_before[2]  # pitch
-                C_geom[3,5] = -W_after * r_after[0] - W_before * r_before[0]  # roll moment due to yaw motion
-                C_geom[4,5] = -W_after * r_after[1] - W_before * r_before[1]  # pitch moment due to yaw motion
+                    C_geom = np.zeros((6, 6))
+                    C_geom[3,3] =  W_after * r_after[2] + W_before * r_before[2]  # roll
+                    C_geom[4,4] =  W_after * r_after[2] + W_before * r_before[2]  # pitch
+                    C_geom[3,5] = -W_after * r_after[0] - W_before * r_before[0]  # roll moment due to yaw motion
+                    C_geom[4,5] = -W_after * r_after[1] - W_before * r_before[1]  # pitch moment due to yaw motion
 
-                self.C_struc[i*6:(i+1)*6, i*6:(i+1)*6] = C_own + C_geom  # Add the own stiffness and the geometric stiffness to the node's stiffness matrix
+                self.C_struc[i*6:(i+1)*6, i*6:(i+1)*6] = C_own + C_geom
 
         return W
         
@@ -2145,6 +2148,8 @@ class Member:
             raise Exception("Flexible member {self.name} must have at least two nodes to compute its flexible inertia matrix.")
         nodeDOF = self.nodeList[0].nDOF # Number of dofs per node
         
+        dbg_frustrum = 0
+        dbg_m = 0
         for i in range(len(self.nodeList)-1):
             L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
             if L == 0:
@@ -2229,12 +2234,14 @@ class Member:
             Me_global = (Dc @ Me) @ Dc.T
             Mf[i*nodeDOF:(i+2)*nodeDOF, i*nodeDOF:(i+2)*nodeDOF] += Me_global
 
-            # For debugging
-            # V_outer, hco = FrustumVCV(Do_A, Do_B, L)    # volume and center of volume of solid frustum with outer diameters [m^3] [m]
-            # V_inner, hci = FrustumVCV(Di_A, Di_B, L)  # volume and center of volume of solid frustum with inner diameters [m^3] [m] 
-            # v_shell = V_outer-V_inner
-            # dbg_frustrum += v_shell*self.rho_shell
-            # dbg_m += self.rho_shell*A*L
+            # # For debugging
+            if self.shape == 'circular':
+                V_outer, hco = FrustumVCV(Do_A, Do_B, L)    # volume and center of volume of solid frustum with outer diameters [m^3] [m]
+                V_inner, hci = FrustumVCV(Di_A, Di_B, L)  # volume and center of volume of solid frustum with inner diameters [m^3] [m] 
+                v_shell = V_outer-V_inner
+                dbg_frustrum += v_shell*self.rho_shell
+                dbg_m += self.rho_shell*A*L
+                dbg=1
 
         return Mf
 

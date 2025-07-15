@@ -970,7 +970,7 @@ class FOWT():
         C_tot += self.C_moor
         # add any additional yaw stiffness that isn't included in the MoorPy 
         # model (e.g. if a bridle isn't modeled)
-        C_tot[5,5] += self.yawstiff
+        C_tot[5,5] += self.yawstiff # TODO: Remove this now that we have additional_effects?
         # add system-level stiffness effect if it exists...
         if self.body:
             C_tot += self.body.getStiffness()  # in future should make an analytic body function for this
@@ -997,7 +997,7 @@ class FOWT():
         '''
 
         # Total mass and added mass matrix [kg, kg-m, kg-m^2]
-        M_tot = self.M_struc + self.A_hydro_morison   # mass  (BEM option not supported yet)
+        M_tot = self.M_struc + self.A_hydro_morison + self.A_BEM[:,:,0]   # Mass. Using BEM added mass at w=0 because it is closer to the expected natural frequencies than w=inf
         C_tot = self.getStiffness()  # stiffness
 
         # check viability of matrices

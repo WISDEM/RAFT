@@ -190,7 +190,14 @@ class Member:
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
         dorsl     = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair
-        dorsl_int = list(self.d-2*self.t) if self.shape=='circular' else list(self.sl-2*self.t) # Same but for internal diameter
+
+        # Same but for internal diameter
+        # We make sure internal diameter is not negative. In that case, consider a solid cross-section (dorsl_int=0)
+        if self.shape == 'circular':
+            dorsl_int = [max(0, v) for v in (self.d - 2*self.t)]
+        else:
+            dorsl_int = [np.maximum(0, v) for v in (self.sl - 2*self.t)]
+
         dlsMax = getFromDict(mi, 'dlsMax', shape=0, default=5)
 
         

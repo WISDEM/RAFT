@@ -873,7 +873,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             outputs['heave_avg'] = outputs['stats_heave_avg'][case_mask].mean()
             outputs['Max_PtfmPitch'] = outputs['stats_pitch_max'][case_mask].max()
             outputs['Std_PtfmPitch'] = outputs['stats_pitch_std'][case_mask].mean()
-            outputs['max_nac_accel'] = outputs['stats_AxRNA_std'][case_mask].max()
+            outputs['max_nac_accel'] = outputs['stats_AxRNA_max'][case_mask].max()
             outputs['rotor_overspeed'] = (outputs['stats_omega_max'][case_mask].max() - inputs['rated_rotor_speed']) / inputs['rated_rotor_speed']
             outputs['max_tower_base'] = outputs['stats_Mbase_max'][case_mask].max()
         

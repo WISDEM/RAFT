@@ -370,8 +370,8 @@ class FOWT():
             self.ms = None
             self.moorMod = 0
         
-        self.F_moor0 = np.zeros(6)     # mean mooring forces in a given scenario
-        self.C_moor = np.zeros([6,6])  # mooring stiffness matrix in a given scenario
+        self.F_moor0 = np.zeros(self.nDOF)     # mean mooring forces in a given scenario
+        self.C_moor = np.zeros([self.nDOF,self.nDOF])  # mooring stiffness matrix in a given scenario
 
         if 'yaw_stiffness' in design['platform']:
             self.yawstiff = design['platform']['yaw_stiffness']       # If you're modeling OC3 spar, for example, import the manual yaw stiffness needed by the bridle config
@@ -389,10 +389,10 @@ class FOWT():
 
         # initialize BEM arrays, whether or not a BEM solver is used
         # __, __, nWaveHeadings = getUniqueCaseHeadings(design['cases']['keys'], design['cases']['data'])  # identify how many wave headings need to be preprocessed
-        self.A_BEM = np.zeros([6,6,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
-        self.B_BEM = np.zeros([6,6,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
-        #self.X_BEM = np.zeros([self.nWaves, 6, self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
-        #self.F_BEM = np.zeros([self.nWaves, 6, self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
+        self.A_BEM = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=float)                 # hydrodynamic added mass matrix [kg, kg-m, kg-m^2]
+        self.B_BEM = np.zeros([self.nDOF,self.nDOF,self.nw], dtype=float)                 # wave radiation drag matrix [kg, kg-m, kg-m^2]
+        #self.X_BEM = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex)               # linaer wave excitation force/moment coefficients vector [N, N-m]
+        #self.F_BEM = np.zeros([self.nWaves, self.nDOF, self.nw], dtype=complex)               # linaer wave excitation force/moment complex amplitudes vector [N, N-m]
         # <<< TODO: Set maximum of amount of headingsm for X_BEM and F_BEM and use interpolation of hydrodynamics. Or not?
 
         # First-order linear hydro input file options (preexisting files option)
@@ -797,9 +797,10 @@ class FOWT():
                 self.ms.updateSystemDynamicMatrices()
                 _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
 
-            self.C_moor = C_moor
-            self.F_moor0 = self.ms.bodyList[0].getForces(lines_only=True)
-        
+            # For now, we will just lump the mooring forces and stiffness at the first 6 dofs
+            self.C_moor[:6, :6]  = translateMatrix6to6DOF(C_moor, self.ms.bodyList[0].r6[:3] - self.nodeList[self.reducedDOF[0][0]].r[:3]) # This isn't right because this matrix translation doesn't account for the geometric stiffness
+            self.F_moor0[:6] = transformForce(self.ms.bodyList[0].getForces(lines_only=True), offset=self.ms.bodyList[0].r6[:3] - self.nodeList[self.reducedDOF[0][0]].r[:3])
+
 
     def calcStatics(self):
         '''Computes the static properties of the FOWT in terms of mass and hydrostatic-related
@@ -1405,17 +1406,19 @@ class FOWT():
     def readHydro(self):
         '''Read preexisting WAMIT-style .1 and .3 files and use as the FOWT's
         added mass, damping, and excitation matrices. This is as an alternative 
-        to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.'''
-        import pyhams.pyhams as ph
+        to PyHAMS or strip theory, and is done when potFirstOrder == 1/True.
         
+        We still need to work on multibody BEM excitation in the future
+        For now, just lumping it at the first 6 reduced dofs of the structure
+        '''
+        import pyhams.pyhams as ph
+               
         # read the preexisting WAMIT-style output files
         addedMass, damping, w1 = ph.read_wamit1(self.hydroPath+'.1', TFlag=True)  # first two entries in frequency dimension are expected to be zero-frequency then infinite frequency
         M, P, R, I, w3, heads  = ph.read_wamit3(self.hydroPath+'.3', TFlag=True)
         # The Tflag means that the first column is in units of periods, not frequencies, and therefore the first set (-1) becomes zero-frequency and the second set is infinite
 
         # process and sort headings and sort frequencies
-        R_unsorted = R.copy()
-        I_unsorted = I.copy()
         self.BEM_headings = np.array(heads)%(360)  # save headings in range of 0-360 [deg]            # interpole to the frequencies RAFT is using        
         sorted_indices = np.argsort(self.BEM_headings)
         self.BEM_headings = self.BEM_headings[sorted_indices]
@@ -1433,29 +1436,32 @@ class FOWT():
         # note: fEx tensors are sized according to [nHeadings, 6 DOFs, frequencies]
         
         # copy results over to the FOWT's coefficient arrays
-        self.A_BEM = self.rho_water * addedMassInterp
-        self.B_BEM = self.w * self.rho_water * dampingInterp                                 
-        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)      
-        
-        # transform excitation coefficients so that DOFs are always relative to incident wave heading rather than global frame
-        self.X_BEM = np.zeros_like(X_BEM_temp)     
+        # For now, we will just lump at the first 6 dofs. Assuming coefficients computed wrt (0,0,0)
+        for iw in range(self.nw):
+            self.A_BEM[:6, :6, iw] = translateMatrix6to6DOF(             self.rho_water * addedMassInterp[:,:,iw], -self.nodeList[self.reducedDOF[0][0]].r0[:3])
+            self.B_BEM[:6, :6, iw] = translateMatrix6to6DOF(self.w[iw] * self.rho_water *   dampingInterp[:,:,iw], -self.nodeList[self.reducedDOF[0][0]].r0[:3])
 
         # Transform excitation coefficients so that DOFs are always 
         # relative to incident wave heading rather than global frame,
         # for accurate magnitudes when interpolating between directions.
-        self.X_BEM = np.zeros_like(X_BEM_temp)
-        
+        X_BEM_temp = self.rho_water * self.g * (fExRealInterp + 1j*fExImagInterp)
+        X_BEM      = np.zeros_like(X_BEM_temp)
+        self.X_BEM = np.zeros((X_BEM_temp.shape[0], self.nDOF, X_BEM_temp.shape[2]), dtype=complex)
+
         for ih in range(len(self.BEM_headings)):
             sin_heading = np.sin(np.radians(self.BEM_headings[ih]))
             cos_heading = np.cos(np.radians(self.BEM_headings[ih]))
             
-            self.X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
-            self.X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]
-            self.X_BEM[ih,2,:] = X_BEM_temp[ih,2,:]
-            self.X_BEM[ih,3,:] =  cos_heading * X_BEM_temp[ih,3,:] + sin_heading * X_BEM_temp[ih,4,:]
-            self.X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
-            self.X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
+            X_BEM[ih,0,:] =  cos_heading * X_BEM_temp[ih,0,:] + sin_heading * X_BEM_temp[ih,1,:]
+            X_BEM[ih,1,:] = -sin_heading * X_BEM_temp[ih,0,:] + cos_heading * X_BEM_temp[ih,1,:]
+            X_BEM[ih,2,:] = X_BEM_temp[ih,2,:]
+            X_BEM[ih,3,:] =  cos_heading * X_BEM_temp[ih,3,:] + sin_heading * X_BEM_temp[ih,4,:]
+            X_BEM[ih,4,:] = -sin_heading * X_BEM_temp[ih,3,:] + cos_heading * X_BEM_temp[ih,4,:]
+            X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
             
+            for iw in range(self.nw):
+                self.X_BEM[ih, :6, iw] = transformForce(X_BEM[ih,:,iw], offset= -self.nodeList[self.reducedDOF[0][0]].r[:3])
+
         # HAMS results error checks  >>> any more we should have? <<<
         if np.isnan(self.A_BEM).any():
             raise Exception("NaN values detected in HAMS calculations for added mass. Check the geometry.")
@@ -1587,8 +1593,7 @@ class FOWT():
         C_tot = np.zeros([self.nDOF, self.nDOF])       # total stiffness matrix [N/m, N, N-m]
         
         # add in mooring stiffness from MoorPy system
-        # TODO: Lumping at first 6dofs for now
-        C_tot[:6,:6] += self.C_moor
+        C_tot += self.C_moor
         # add any additional yaw stiffness that isn't included in the MoorPy 
         # model (e.g. if a bridle isn't modeled)
         C_tot[5,5] += self.yawstiff # TODO: Remove this now that we have additional_effects?
@@ -1617,11 +1622,8 @@ class FOWT():
         '''
 
         # Total mass and added mass matrix [kg, kg-m, kg-m^2]
-        M_tot = self.M_struc + self.A_hydro_morison   # Mass
+        M_tot = self.M_struc + self.A_hydro_morison + self.A_BEM[:,:,0]   # Mass. Using BEM added mass at w=0 because it is closer to the expected natural frequencies than w=inf
         C_tot = self.getStiffness()  # stiffness
-
-        # TODO: Lumping added mass from BEM at the first dofs. Should treat this properly in the multi-dof solution later
-        M_tot[:6,:6] += self.A_BEM[:,:,0]  #Using BEM added mass at w=0 because it is closer to the expected natural frequencies than w=inf
 
         # check viability of matrices
         message=''
@@ -1749,17 +1751,12 @@ class FOWT():
 
         self.F_BEM = np.zeros([self.nWaves,self.nDOF,self.nw], dtype=complex)
         self.F_hydro_iner = np.zeros([self.nWaves, self.nDOF, self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
-        F_BEM_fullDOF = np.zeros([self.nWaves, self.nFullDOF, self.nw],dtype=complex) # Same but in full DOFs
         F_hydro_iner_fullDOF = np.zeros([self.nWaves, self.nFullDOF, self.nw],dtype=complex) # Same but in full DOFs        
 
         # BEM-based wave excitation force on platform for each wave heading 
         # (will be zero if only using strip theory). Includes wave heading interpolation.
-        # TODO: Work on multibody BEM excitation in the future
-        #       For now, just lumping it at the rigid body node
-        if self.potMod or self.potModMaster in [2,3]:
-            iFirst =  self.rigidBodyNode.id      * self.rigidBodyNode.nDOF
-            iLast  = (self.rigidBodyNode.id + 1) * self.rigidBodyNode.nDOF
-                        
+        # TODO: currently lumping at the first 6dofs. Should implement multi-body solution in the future
+        if self.potMod or self.potModMaster in [2,3]:                       
             for ih in range(self.nWaves):
                 
                 # phase offset due to FOWT position in array
@@ -1812,7 +1809,7 @@ class FOWT():
                 X_BEM_ih[5,:] = X_prime[5,:]
                 
                 # multiply excitation coefficients by wave elevation to get excitation forces and moments for this wave heading
-                F_BEM_fullDOF[ih, iFirst:iLast, :] = X_BEM_ih * self.zeta[ih,:] * phase_offset
+                self.F_BEM[ih, :6, :] = X_BEM_ih * self.zeta[ih,:] * phase_offset
 
         # ----- strip-theory wave excitation force -----
         # loop through each member to compute strip-theory contributions
@@ -1850,7 +1847,6 @@ class FOWT():
 
         # transform to the reduced set of dofs
         for ih in range(self.nWaves):
-            self.F_BEM[ih, :, :] = self.T.T @ F_BEM_fullDOF[ih, :, :]
             self.F_hydro_iner[ih, :, :] = self.T.T @ F_hydro_iner_fullDOF[ih, :, :]            
                 
 

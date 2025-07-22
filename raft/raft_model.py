@@ -722,10 +722,10 @@ class Model():
                 
                 # mooring forces (includes if currents were updated above)
                 # TODO: Lumping mooring forces into the first 6 DOFs for now
-                Fnet[fowt.nDOF*i:fowt.nDOF*i+6] += fowt.F_moor0 # fowt.ms.bodyList[0].getForces(lines_only=True)  # individual mooring forces
+                Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += fowt.F_moor0 # fowt.ms.bodyList[0].getForces(lines_only=True)  # individual mooring forces
                 if self.ms:
-                    Fnet[fowt.nDOF*i:fowt.nDOF*i+6] += self.ms.bodyList[i].getForces(lines_only=True)     # array-level mooring forces
-                
+                    Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += self.ms.bodyList[i].getForces(lines_only=True)     # array-level mooring forces
+
                 # Elastic forces
                 Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += -np.matmul(fowt.C_elast, Xi0)  # elastic forces (e.g. from flexible mooring lines)
             
@@ -788,7 +788,7 @@ class Model():
                         elif fowt.moorMod == 1:
                             fowt.ms.updateSystemDynamicMatrices()
                             _, _, _, Kmoor_fowt = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
-                    K_fowt[:6, :6] += Kmoor_fowt # TODO: lumping mooring stiffness into the first 6 DOFs for now
+                    K_fowt[:6, :6] += translateMatrix6to6DOF(Kmoor_fowt, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3]) # TODO: lumping mooring stiffness into the first 6 DOFs for now
 
                 K[fowt.nDOF*i:fowt.nDOF*(i+1), fowt.nDOF*i:fowt.nDOF*(i+1)] += K_fowt
 

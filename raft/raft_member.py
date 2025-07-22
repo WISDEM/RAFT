@@ -553,7 +553,6 @@ class Member:
             # Saving quantities that we will use in member.getWeight() later
             self.mass_ballast_node   = np.zeros(len(self.nodeList))       # ballast mass at each node
             self.center_ballast_node = np.zeros((len(self.nodeList), 3))  # center of mass of the ballast that is lumped at each node
-
             
             # Get distance to previous and next nodes
             dist_p = np.diff(nodes_s, prepend=0)           # distance to previous node
@@ -595,8 +594,8 @@ class Member:
                             dB_station = self.d[i] - 2*self.t[i]           # inner diameter of the upper station end [m]
                                                     
                             # Interpolated diameters of the ends of the ballast portion that will be assigned to this node
-                            dA_node = (dB_station-dA_station)*(s_lower/l) + dA_station
-                            dB_node = (dB_station-dA_station)*(s_upper/l) + dA_station                            
+                            dA_node = (dB_station-dA_station)*((s_lower-self.stations[i-1])/l) + dA_station
+                            dB_node = (dB_station-dA_station)*((s_upper-self.stations[i-1])/l) + dA_station
 
                             # MASS AND CENTER OF GRAVITY
                             v_fill_node, hc_node = FrustumVCV(dA_node, dB_node, l_fill_node)
@@ -615,8 +614,8 @@ class Member:
                             slB_station = self.sl[i] - 2*self.t[i]
 
                             # Interpolated side lengths of the ends of the ballast portion that will be assigned to this node
-                            slA_node = (slB_station-slA_station)*(s_lower/l) + slA_station
-                            slB_node = (slB_station-slA_station)*(s_upper/l) + slA_station
+                            slA_node = (slB_station-slA_station)*((s_lower-self.stations[i-1])/l) + slA_station
+                            slB_node = (slB_station-slA_station)*((s_upper-self.stations[i-1])/l) + slA_station
 
                             # MASS AND CENTER OF GRAVITY
                             v_fill_node, hc_node = FrustumVCV(slA_node, slB_node, l_fill_node)
@@ -842,8 +841,11 @@ class Member:
         Also updates the member's inertia matrix, self.K_hydro, which is a (self.nDOF, self.nDOF)
         matrix with respect to the members' nodes. This can be different than rRP.
          
-        TODO: Still need to implement flexible members here
-        TODO: For now, Fvec is simply the buoyancy acting on the vertical direction. Split this into force along the member and at ends
+        TODO: For now, Fvec is simply the buoyancy force, i.e. a force acting on the vertical direction.
+              Split this into force along the member and at ends. For example, horizontal pontoons should 
+              have axial components at each end that cancel out but which are important for internal loads.
+
+        TODO: Just like self.getInertia(), this method has a lot of repetition. Try to reformulate it later.
 
         Parameters
         ----------
@@ -867,6 +869,17 @@ class Member:
         xWP = 0
         yWP = 0
 
+        # angles
+        beta = np.arctan2(self.q[1],self.q[0])  # member incline heading from x axis
+        phi  = np.arctan2(np.sqrt(self.q[0]**2 + self.q[1]**2), self.q[2])  # member incline angle from vertical
+
+        # precalculate trig functions
+        cosPhi=np.cos(phi)
+        sinPhi=np.sin(phi)
+        tanPhi=np.tan(phi)
+        cosBeta=np.cos(beta)
+        sinBeta=np.sin(beta)
+        tanBeta=sinBeta/cosBeta
 
         # loop through each member segment, and treat each segment like how we used to treat each member
         n = len(self.stations)
@@ -879,18 +892,6 @@ class Member:
 
                 # partially submerged case
                 if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
-
-                    # angles
-                    beta = np.arctan2(self.q[1],self.q[0])  # member incline heading from x axis
-                    phi  = np.arctan2(np.sqrt(self.q[0]**2 + self.q[1]**2), self.q[2])  # member incline angle from vertical
-
-                    # precalculate trig functions
-                    cosPhi=np.cos(phi)
-                    sinPhi=np.sin(phi)
-                    tanPhi=np.tan(phi)
-                    cosBeta=np.cos(beta)
-                    sinBeta=np.sin(beta)
-                    tanBeta=sinBeta/cosBeta
 
                     # -------------------- buoyancy and waterplane area properties ------------------------
 
@@ -964,11 +965,11 @@ class Member:
                     Cmat[4,3] += rho*g*(       AWP*xWP*yWP)
                     Cmat[4,4] += rho*g*(IyWP + AWP*xWP**2 )
 
-                    r_center -= rRP  # center of volume relative to RP [m]
-                    Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
-                    Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
-                    Cmat[3,5] += -rho*g*V_UWi * r_center[0]
-                    Cmat[4,5] += -rho*g*V_UWi * r_center[1]
+                    r_rel = r_center - rRP  # center of volume relative to RP [m]
+                    Cmat[3,3] +=  rho*g*V_UWi * r_rel[2]
+                    Cmat[4,4] +=  rho*g*V_UWi * r_rel[2]
+                    Cmat[3,5] += -rho*g*V_UWi * r_rel[0]
+                    Cmat[4,5] += -rho*g*V_UWi * r_rel[1]
 
                     V_UW += V_UWi
                     r_centerV += r_center*V_UWi
@@ -984,34 +985,173 @@ class Member:
                         V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.stations[i]-self.stations[i-1])
 
                     r_center = rA + self.q*hc             # center of volume of this segment relative to RP [m]
+                    r_rel = r_center - rRP
 
                     # buoyancy force (and moment) vector
-                    Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center-rRP)
+                    Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_rel)
 
-                    # hydrostatic stiffness matrix
-                    r_center -= rRP
-                    Cmat[3,3] +=  rho*g*V_UWi * r_center[2]
-                    Cmat[4,4] +=  rho*g*V_UWi * r_center[2]
-                    Cmat[3,5] += -rho*g*V_UWi * r_center[0]
-                    Cmat[4,5] += -rho*g*V_UWi * r_center[1]
+                    # hydrostatic stiffness matrix                    
+                    Cmat[3,3] +=  rho*g*V_UWi * r_rel[2]
+                    Cmat[4,4] +=  rho*g*V_UWi * r_rel[2]
+                    Cmat[3,5] += -rho*g*V_UWi * r_rel[0]
+                    Cmat[4,5] += -rho*g*V_UWi * r_rel[1]
 
                     V_UW += V_UWi
                     r_centerV += r_center*V_UWi
-
-                else: # if the members are fully above the surface
-
-                    pass
-
-            if V_UW > 0:
-                r_center = r_centerV/V_UW    # calculate overall member center of buoyancy
-            else:
-                r_center = np.zeros(3)       # temporary fix for out-of-water members
             
-            self.V = V_UW  # store submerged volume
-            self.nodeList[0].K_hydro = Cmat
+        # For flexible members, for each node we lump the contribution of half the length to the next node, 
+        # and half the length to the previous node (same idea as for self.getInertia).
+        # It is the same as treating each of these lengths as individual submembers. This is not strictly correct,
+        # as those submembers wouldn't be closed, and we might improve this in the future. 
+        # See Lee et al, 2024, 'On the correction of hydrostatic stiffness for discrete-module-based hydroelasticity analysis of vertically arrayed modules' doi.org/10.1016/j.engstruct.2024.118710
+        elif self.type == 'beam':
+            Nnodes  = len(self.nodeList)
+            nodes_z = np.array([n.r[2] for n in self.nodeList]) # easier to loop z coordinates with this
+            nodes_r = np.array([n.r[:3] for n in self.nodeList])
+            nodes_s = np.array([np.linalg.norm(r - self.nodeList[0].r[:3]) for r in nodes_r])  # distance along member axis from first node to each node [m]
+
+            # Get distance to previous and next nodes
+            dist_p = np.diff(nodes_s, prepend=0)           # distance to previous node
+            dist_n = np.diff(nodes_s, append=nodes_s[-1])  # distance to next node
+
+            # Find which node is going to receive the hydrostatic terms due to crossing the water line
+            waterline_node = None
+            for i in range(Nnodes-1):
+                if nodes_z[i] * nodes_z[i+1] < 0:
+                    waterline_node = i if abs(nodes_z[i]) < abs(nodes_z[i+1]) else i+1 # Use the node that is closest to z=0
+                    break
+
+            for i in range(1,len(self.stations)):
+                l = self.stations[i]-self.stations[i-1]     # length of the submember [m]
+                if l <= 0:
+                    continue
+                
+                for inode, node in enumerate(self.nodeList):
+                    sA = nodes_s[inode] - dist_p[inode]/2
+                    sA = max(sA, self.stations[i-1])
+
+                    sB = nodes_s[inode] + dist_n[inode]/2
+                    sB = min(sB, self.stations[i])
+
+                    l_node = sB - sA
+                    if l_node <= 0:
+                        # This makes us skip nodes whose submember is outside the station,
+                        # as these submembers would have would have l_node < 0
+                        continue
+                    
+                    if inode == 0:
+                        rA = nodes_r[0]
+                    else:
+                        rA = nodes_r[inode-1] + (nodes_r[inode] - nodes_r[inode-1]) * ((sA - nodes_s[inode-1]) / (nodes_s[inode] - nodes_s[inode-1]))
+
+                    if inode == len(self.nodeList)-1:
+                        rB = nodes_r[-1]
+                    else:
+                        rB = nodes_r[inode] + (nodes_r[inode+1] - nodes_r[inode]) * ((sB - nodes_s[inode]) / (nodes_s[inode+1] - nodes_s[inode]))
+
+                    # Check if submember is fully submerged
+                    if rA[2] < 0 and rB[2] < 0:
+                        if self.shape == 'circular':
+                            dA_station = self.d[i-1]       # outer diameter of the lower station end [m]
+                            dB_station = self.d[i]         # outer diameter of the upper station end [m]
+                            
+                            # Interpolated diameters of the ends of the ballast portion that will be assigned to this node
+                            dA = (dB_station-dA_station)*((sA-self.stations[i-1])/l) + dA_station
+                            dB = (dB_station-dA_station)*((sB-self.stations[i-1])/l) + dA_station
+                            V_sub, hc = FrustumVCV(dA, dB, l_node)
+                        else:
+                            slA_station = self.sl[i-1]
+                            slB_station = self.sl[i]
+                            slA = (slB_station-slA_station)*((sA-self.stations[i-1])/l) + slA_station
+                            slB = (slB_station-slA_station)*((sB-self.stations[i-1])/l) + slA_station
+                            V_sub, hc = FrustumVCV(slA, slB, l_node)
+                        r_center = rA + (rB - rA) * (hc / l_node)
+                        r_rel = r_center - node.r[:3]
+                        Fvec[inode*node.nDOF:(inode+1)*node.nDOF] += translateForce3to6DOF(np.array([0, 0, rho*g*V_sub]), r_rel)
+
+                        # Own stiffness matrix
+                        Cmat[inode*node.nDOF+3, inode*node.nDOF+3] +=  rho*g*V_sub * r_rel[2]
+                        Cmat[inode*node.nDOF+4, inode*node.nDOF+4] +=  rho*g*V_sub * r_rel[2]
+                        Cmat[inode*node.nDOF+3, inode*node.nDOF+5] += -rho*g*V_sub * r_rel[0]
+                        Cmat[inode*node.nDOF+4, inode*node.nDOF+5] += -rho*g*V_sub * r_rel[1]
+                        V_UW += V_sub
+                        r_centerV += r_center * V_sub
+
+                    # Check if submember crosses the waterline
+                    elif rA[2] * rB[2] < 0:
+                        # split submember into submerged and unsubmerged portions
+                        frac = abs(rA[2] / (rA[2] - rB[2])) # z = rA[2] + frac * (rB[2] - rA[2]), thus z=0 -> frac = rA[2] / (rA[2] - rB[2])
+                        rWP = rA + frac * (rB - rA)
+                        sWP = sA + frac * (sB - sA)
+                        wet_length = np.linalg.norm(rWP - rA)
+                        if self.shape == 'circular':
+                            dA_station = self.d[i-1]
+                            dB_station = self.d[i]
+                            dA  = (dB_station-dA_station)*((sA-self.stations[i-1])/l) + dA_station
+                            dWP = (dB_station-dA_station)*((sWP-self.stations[i-1])/l) + dA_station
+                            V_sub, hc = FrustumVCV(dA, dWP, wet_length)
+                        else:
+                            slA_station = self.sl[i-1]
+                            slB_station = self.sl[i]
+                            slA  = (slB_station-slA_station)*((sA-self.stations[i-1])/l) + slA_station
+                            slWP = (slB_station-slA_station)*((sWP-self.stations[i-1])/l) + slA_station
+                            V_sub, hc = FrustumVCV(slA, slWP, wet_length)
+
+                        r_center = rA + (rWP - rA) * (hc / wet_length)
+                        r_rel = r_center - node.r[:3]
+                        Fvec[inode*node.nDOF:(inode+1)*node.nDOF] += translateForce3to6DOF(np.array([0, 0, rho*g*V_sub]), r_rel)
+
+                        # Own stiffness matrix
+                        Cmat[inode*node.nDOF+3, inode*node.nDOF+3] +=  rho*g*V_sub * r_rel[2]
+                        Cmat[inode*node.nDOF+4, inode*node.nDOF+4] +=  rho*g*V_sub * r_rel[2]
+                        Cmat[inode*node.nDOF+3, inode*node.nDOF+5] += -rho*g*V_sub * r_rel[0]
+                        Cmat[inode*node.nDOF+4, inode*node.nDOF+5] += -rho*g*V_sub * r_rel[1]
+                        V_UW += V_sub
+                        r_centerV += r_center * V_sub
+
+                        # Lump waterplane stiffness at this node
+                        if inode == waterline_node:
+                            M = 0
+                            if self.shape == 'circular':
+                                AWP = (np.pi/4)*dWP**2
+                                IWP = (np.pi/64)*dWP**4
+                                IxWP = IWP
+                                IyWP = IWP
+                                M    = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+                            else:
+                                AWP = slWP[0]*slWP[1]
+                                IxWP = (1/12)*slWP[0]*slWP[1]**3
+                                IyWP = (1/12)*slWP[0]**3*slWP[1]
+                                I = np.diag([IxWP, IyWP, 0])
+                                T = self.R.T
+                                I_rot = np.matmul(T.T, np.matmul(I,T))
+                                IxWP = I_rot[0,0]
+                                IyWP = I_rot[1,1]
+
+                            Mx = -sinBeta * M
+                            My = M*cosBeta
+                            Fvec[inode*node.nDOF+3] += Mx # moment about x axis [N-m]
+                            Fvec[inode*node.nDOF+4] += My # moment about y axis [N-m]
+
+                            xWP, yWP = rWP[0] - rRP[0], rWP[1] - rRP[1]
+                            Cmat[inode*node.nDOF+2, inode*node.nDOF+2] += rho*g*AWP/cosPhi
+                            Cmat[inode*node.nDOF+2, inode*node.nDOF+3] += rho*g*(      -AWP*yWP    )
+                            Cmat[inode*node.nDOF+2, inode*node.nDOF+4] += rho*g*(       AWP*xWP    )
+                            Cmat[inode*node.nDOF+3, inode*node.nDOF+2] += rho*g*(      -AWP*yWP    )
+                            Cmat[inode*node.nDOF+3, inode*node.nDOF+3] += rho*g*(IxWP + AWP*yWP**2 )
+                            Cmat[inode*node.nDOF+3, inode*node.nDOF+4] += rho*g*(       AWP*xWP*yWP)
+                            Cmat[inode*node.nDOF+4, inode*node.nDOF+2] += rho*g*(       AWP*xWP    )
+                            Cmat[inode*node.nDOF+4, inode*node.nDOF+3] += rho*g*(       AWP*xWP*yWP)
+                            Cmat[inode*node.nDOF+4, inode*node.nDOF+4] += rho*g*(IyWP + AWP*xWP**2 )    
+                
+        if V_UW > 0:
+            self.rCB = r_center  # store center of buoyancy in global coordinates
+            r_center = r_centerV/V_UW - rRP    # calculate overall member center of buoyancy wrp to RP
         else:
-            dbg = 1
-            r_center = np.zeros(3)
+            self.rCB = np.zeros(3)
+            r_center = np.zeros(3)       # temporary fix for out-of-water members            
+        self.V = V_UW  # store submerged volume                
+
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
     def getWeight(self, rRP=None, g=9.81, include_geom_stiffness=False):
@@ -1019,8 +1159,6 @@ class Member:
 
         Also updates the member's stiffness matrix, self.C_struc, which is a (self.nDOF, self.nDOF),
         matrix with respect to rRP. This terms is usually included in the hydrostatic stiffness matrix in naval architecture
-         
-        TODO: Still need to implement flexible members here
         
         Parameters
         ----------

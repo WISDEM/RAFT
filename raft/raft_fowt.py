@@ -1073,6 +1073,41 @@ class FOWT():
             iLast  = (closest_node.id + 1) * closest_node.nDOF
             f0_additional_fullDOF[iFirst:iLast] += transformForce(pointLoad['f'], offset=pointLoad['r']-closest_node.r0[:3])  # add the user-specified mean load to the additional force vector
 
+        # ----- internal loads at end nodes of flexible members
+        # Used for the geometric stiffness of flexible members.
+        # I think the proper way would be to first compute the internal loads and then compute the geometric stiffness. But this hackish approach seems to work.
+        #
+        # Check if the end nodes of the member are not in the reducedDOF list, in which
+        # case we need to add the contribution of their internal forces to the geometric stiffness        
+        W_internal_endNodes_struc_fullDOF, W_internal_endNodes_hydro_fullDOF = np.zeros(self.nFullDOF), np.zeros(self.nFullDOF)
+        for mem in memberList:            
+            if mem.type == 'beam':
+                includeEndA = (mem.nodeList[0].id not in [dof[0] for dof in self.reducedDOF])
+                includeEndB = (mem.nodeList[-1].id not in [dof[0] for dof in self.reducedDOF])
+                FweightA, FweightB = np.zeros(6), np.zeros(6)
+                FbuoyancyA, FbuoyancyB = np.zeros(6), np.zeros(6)
+                if includeEndA and includeEndB: # In this case, we will just split the loads between nodes (assuming cantilevered both ends)
+                    FweightA, _ = getWeightOfPointMass(mem.mass/2, mem.rCoG-mem.nodeList[ 0].r[:3], g=g)
+                    FweightB, _ = getWeightOfPointMass(mem.mass/2, mem.rCoG-mem.nodeList[-1].r[:3], g=g)
+                    FbuoyancyA  = transformForce(np.array([0,0, self.rho_water*g*mem.V/2]), offset=mem.rCB-mem.nodeList[ 0].r[:3])
+                    FbuoyancyB  = transformForce(np.array([0,0, self.rho_water*g*mem.V/2]), offset=mem.rCB-mem.nodeList[-1].r[:3])
+
+                elif includeEndA:
+                    FweightA, _ = getWeightOfPointMass(mem.mass, mem.rCoG-mem.nodeList[0].r[:3], g=g)
+                    FbuoyancyA  = transformForce(np.array([0,0, self.rho_water*g*mem.V]), offset=mem.rCB-mem.nodeList[0].r[:3])
+
+                elif includeEndB:
+                    FweightB, _ = getWeightOfPointMass(mem.mass, mem.rCoG-mem.nodeList[-1].r[:3], g=g)
+                    FbuoyancyB  = transformForce(np.array([0,0, self.rho_water*g*mem.V]), offset=mem.rCB-mem.nodeList[-1].r[:3])
+
+                iFirstEndA, iLastEndA = mem.nodeList[ 0].id * mem.nodeList[ 0].nDOF, (mem.nodeList[ 0].id + 1) * mem.nodeList[ 0].nDOF
+                iFirstEndB, iLastEndB = mem.nodeList[-1].id * mem.nodeList[-1].nDOF, (mem.nodeList[-1].id + 1) * mem.nodeList[-1].nDOF
+
+                W_internal_endNodes_struc_fullDOF[iFirstEndA:iLastEndA] += FweightA
+                W_internal_endNodes_struc_fullDOF[iFirstEndB:iLastEndB] += FweightB
+                W_internal_endNodes_hydro_fullDOF[iFirstEndA:iLastEndA] += FbuoyancyA
+                W_internal_endNodes_hydro_fullDOF[iFirstEndB:iLastEndB] += FbuoyancyB
+
         # ------------------------- Transform quantities above to the reduced set of dofs -----------------------------
         self.M_struc       = self.T.T @ M_struc_fullDOF @ self.T
         self.M_struc_sub   = self.T.T @ M_struc_sub_fullDOF  @ self.T
@@ -1081,50 +1116,36 @@ class FOWT():
         self.C_struc_sub   = self.T.T @ C_struc_sub_fullDOF  @ self.T
         self.C_elast       = self.T.T @ C_elast_fullDOF @ self.T
         self.W_struc       = self.T.T @ W_struc_fullDOF
-        self.W_hydro       = self.T.T @ W_hydro_fullDOF
+        self.W_hydro       = self.T.T @ W_hydro_fullDOF        
         self.f0_additional = self.T.T @ f0_additional_fullDOF
+        self.W_struc_internal = self.T.T @ W_internal_endNodes_struc_fullDOF
+        self.W_hydro_internal = self.T.T @ W_internal_endNodes_hydro_fullDOF
 
-        # ------------------------- Geometric stiffness -----------------------------
-        # Geommetric stiffness due to the variation of the transformation matrix
-        C_hydro_geom = np.zeros([self.nDOF,self.nDOF])
-        C_struc_geom = np.zeros([self.nDOF,self.nDOF])
-        C_struc_sub_geom = np.zeros([self.nDOF,self.nDOF])
-        for i in range(self.nDOF):
-            for j in range(self.nDOF):
-                dT = self.dT[:,:,j].T
-                C_hydro_geom[i,j] = -dT[i,:] @ W_hydro_fullDOF
-                C_struc_geom[i,j] = -dT[i,:] @ W_struc_fullDOF
-                C_struc_sub_geom[i,j] = -dT[i,:] @ W_struc_sub_fullDOF
-        self.C_hydro += C_hydro_geom
-        self.C_struc += C_struc_geom
-        self.C_struc_sub += C_struc_sub_geom
 
         # Geometric stiffness of flexible members (due to internal loads)
         # Following the approach from Lee et al, 2024, 'On the correction of hydrostatic stiffness for discrete-module-based hydroelasticity analysis of vertically arrayed modules'
-        # doi.org/10.1016/j.engstruct.2024.118710
-        def _compute_geom_stiffness(nodeRange, force):
+        # doi.org/10.1016/j.engstruct.2024.118710        
+        def _compute_geom_stiffness(member, force):
             """
             Internal helper to compute geometric stiffness for flexible members
             """
             # Get force acting on each node of the flexible member
-            Wnodes = np.zeros([len(nodeRange), nodeRange[0].nDOF])
-            for inode, node in enumerate(nodeRange):
-                # Wnodes[inode, :] = node.T @ force # From a previous version where we were getting the force in the full dofs, but I wasn't sure if it was right
-                Wnodes[inode, :] = force[inode*node.nDOF:(inode+1)*node.nDOF]
+            Wnodes = np.zeros([len(member.nodeList), 6])
+            for inode, node in enumerate(member.nodeList):
+                Wnodes[inode, :] = node.T @ force # I'm not sure if we can do this
 
             # Compute geometric stiffness by assuming that the body is in equilibrium to get the internal forces
-            K_geom = np.zeros([6*len(nodeRange),6*len(nodeRange)])  # Initialize geometric stiffness matrix for the member
-            for inode, node in enumerate(nodeRange):
+            K_geom = np.zeros([member.nDOF, member.nDOF])  # Initialize geometric stiffness matrix for the member
+            for inode, node in enumerate(member.nodeList):
                 W_after  = np.sum(Wnodes[inode+1:, :], axis=0)
                 # W_before = np.sum(Wnodes[:inode, :], axis=0)
                 W_before = -W_after - Wnodes[inode, :]
 
                 r_before, r_after = np.zeros(3), np.zeros(3)
-                if inode != 0: 
-                    r_before = (nodeRange[inode].r[:3] + nodeRange[inode-1].r[:3])/2 - nodeRange[inode].r[:3]
-
-                if inode != len(nodeRange)-1:
-                    r_after  = (nodeRange[inode].r[:3] + nodeRange[inode+1].r[:3])/2 - nodeRange[inode].r[:3]
+                if inode != 0:
+                    r_before = (mem.nodeList[inode].r[:3] + mem.nodeList[inode-1].r[:3])/2 - mem.nodeList[inode].r[:3]
+                if inode != len(mem.nodeList)-1:
+                    r_after  = (mem.nodeList[inode].r[:3] + mem.nodeList[inode+1].r[:3])/2 - mem.nodeList[inode].r[:3]
 
                 K_node = np.zeros([6, 6])
                 K_node[3, 3] = (W_after[2] * r_after[2] + W_before[2] * r_before[2]) + (W_after[1] * r_after[1] + W_before[1] * r_before[1])
@@ -1140,20 +1161,31 @@ class FOWT():
                 K_geom[inode*node.nDOF:(inode+1)*node.nDOF, inode*node.nDOF:(inode+1)*node.nDOF] = K_node
                 
             return K_geom
-
-        for mem in memberList:
+        
+        K_geom_struc_fullDOF, K_geom_hydro_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF]), np.zeros([self.nFullDOF,self.nFullDOF])
+        for mem in memberList:            
             if mem.type == 'beam':
-                # Find the range of reducedDOF that correspond to nodes of this member
-                # Like in other parts of the code, we're assuming that nodes of flexible members are contiguous
-                dof_idx_range = [i for i, dof in enumerate(self.reducedDOF) if mem.nodeList[0].id <= dof[0] <= mem.nodeList[-1].id]
-                iFirstDOF, iLastDOF = dof_idx_range[0], dof_idx_range[-1] + 1  # +1 because the last index is exclusive in Python
+                iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
+                iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[0].nDOF
+                K_geom_struc_fullDOF[iFirst:iLast, iFirst:iLast] = _compute_geom_stiffness(mem, self.W_struc+self.W_struc_internal)
+                K_geom_hydro_fullDOF[iFirst:iLast, iFirst:iLast] = _compute_geom_stiffness(mem, self.W_hydro+self.W_hydro_internal)
 
-                # Not all nodes of the member may be in the reducedDOF set (could be attached to some other node), so we need to find the actual node range
-                iFirstNode, iLastNode = self.reducedDOF[dof_idx_range[0]][0], self.reducedDOF[dof_idx_range[-1]][0] + 1
-                nodeRange = self.nodeList[iFirstNode:iLastNode]  # Get the actual nodes of the member in the reduced set
+        self.C_struc += self.T.T @ K_geom_struc_fullDOF @ self.T
+        self.C_hydro += self.T.T @ K_geom_hydro_fullDOF @ self.T
 
-                self.C_struc[iFirstDOF:iLastDOF, iFirstDOF:iLastDOF] += _compute_geom_stiffness(nodeRange, self.W_struc[iFirstDOF:iLastDOF] + self.f0_additional[iFirstDOF:iLastDOF])
-                self.C_hydro[iFirstDOF:iLastDOF, iFirstDOF:iLastDOF] += _compute_geom_stiffness(nodeRange, self.W_hydro[iFirstDOF:iLastDOF])
+        #--- Geommetric stiffness due to the variation of the transformation matrix
+        C_hydro_geom = np.zeros([self.nDOF,self.nDOF])
+        C_struc_geom = np.zeros([self.nDOF,self.nDOF])
+        C_struc_sub_geom = np.zeros([self.nDOF,self.nDOF])
+        for i in range(self.nDOF):
+            for j in range(self.nDOF):
+                dT = self.dT[:,:,j].T
+                C_hydro_geom[i,j] = -dT[i,:] @ (W_hydro_fullDOF + W_internal_endNodes_hydro_fullDOF)
+                C_struc_geom[i,j] = -dT[i,:] @ (W_struc_fullDOF + W_internal_endNodes_struc_fullDOF)
+                C_struc_sub_geom[i,j] = -dT[i,:] @ W_struc_sub_fullDOF
+        self.C_hydro += C_hydro_geom
+        self.C_struc += C_struc_geom
+        self.C_struc_sub += C_struc_sub_geom
 
 
         # Make the matrices symmetric. They should be, as the _fullDOF matrices are symmetric, but the matrix products

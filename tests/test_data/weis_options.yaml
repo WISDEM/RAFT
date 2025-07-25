@@ -127,10 +127,10 @@ turbine_options:
     PC_GS_n: 30
     n_span: 30
     n_aoa: 200
-    n_Re: 3
+    n_Re: 1
     n_tab: 1
     n_pc: 20
-    n_af: 8
+    n_af: 10
     af_used_names: [circular, circular, SNL-FFA-W3-500, FFA-W3-360, FFA-W3-330blend, FFA-W3-301, FFA-W3-270blend, FFA-W3-241, FFA-W3-211, FFA-W3-211]
 mooring_options: {nlines: 3, nline_types: 1, nconnections: 6, mooring_point1_name: line1_anchor, mooring_point1_type: fixed, mooring_point2_name: line2_anchor, mooring_point2_type: fixed, mooring_point3_name: line3_anchor, mooring_point3_type: fixed, mooring_point4_name: line1_vessel, mooring_point4_type: vessel, mooring_point5_name: line2_vessel, mooring_point5_type: vessel, mooring_point6_name: line3_vessel, mooring_point6_type: vessel, mooring_line1_endA: line1_anchor, mooring_line1_endB: line1_vessel, mooring_line1_type: main, mooring_line2_endA: line2_anchor, mooring_line2_endB: line2_vessel, mooring_line2_type: main, mooring_line3_endA: line3_anchor, mooring_line3_endB: line3_vessel, mooring_line3_type: main, mooring_line_type1_name: main}
 member_options:

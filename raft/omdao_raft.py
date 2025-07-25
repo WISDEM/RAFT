@@ -38,7 +38,6 @@ class RAFT_OMDAO(om.ExplicitComponent):
         n_span = turbine_opt['n_span']
         n_aoa = turbine_opt['n_aoa']
         n_Re = turbine_opt['n_Re']
-        n_tab = turbine_opt['n_tab']
         n_pc = turbine_opt['n_pc']
         n_af = turbine_opt['n_af']
         af_used_names = turbine_opt['af_used_names']
@@ -128,13 +127,12 @@ class RAFT_OMDAO(om.ExplicitComponent):
         self.add_input('blade_presweep', val=np.zeros(n_span), units='m', desc='location of blade pitch axis in y-direction of :ref:`blade coordinate system <azimuth_blade_coord>`')
         self.add_input('blade_presweepTip', val=0.0, units='m', desc='location of blade pitch axis in y-direction at the tip (analogous to Rtip)')
         # Airfoils
-        self.add_discrete_input("airfoils_name", val=n_af * [""], desc="1D array of names of airfoils.")
         self.add_input("airfoils_position", val=np.zeros(n_af_span), desc="1D array of the non dimensional positions of the airfoils af_used defined along blade span.")
         self.add_input("airfoils_r_thick", val=np.zeros(n_af), desc="1D array of the relative thicknesses of each airfoil.")
-        self.add_input("airfoils_aoa", val=np.zeros(n_aoa), units="rad", desc="1D array of the angles of attack used to define the polars of the airfoils. All airfoils defined in openmdao share this grid.")
-        self.add_input("airfoils_cl", val=np.zeros((n_af, n_aoa, n_Re, n_tab)), desc="4D array with the lift coefficients of the airfoils. Dimension 0 is along the different airfoils defined in the yaml, dimension 1 is along the angles of attack, dimension 2 is along the Reynolds number, dimension 3 is along the number of tabs, which may describe multiple sets at the same station, for example in presence of a flap.")
-        self.add_input("airfoils_cd", val=np.zeros((n_af, n_aoa, n_Re, n_tab)), desc="4D array with the drag coefficients of the airfoils. Dimension 0 is along the different airfoils defined in the yaml, dimension 1 is along the angles of attack, dimension 2 is along the Reynolds number, dimension 3 is along the number of tabs, which may describe multiple sets at the same station, for example in presence of a flap.")
-        self.add_input("airfoils_cm", val=np.zeros((n_af, n_aoa, n_Re, n_tab)), desc="4D array with the moment coefficients of the airfoils. Dimension 0 is along the different airfoils defined in the yaml, dimension 1 is along the angles of attack, dimension 2 is along the Reynolds number, dimension 3 is along the number of tabs, which may describe multiple sets at the same station, for example in presence of a flap.")
+        self.add_input("airfoils_aoa", val=np.zeros(n_aoa), units="deg", desc="1D array of the angles of attack used to define the polars of the airfoils. All airfoils defined in openmdao share this grid.")
+        self.add_input("airfoils_cl", val=np.zeros((n_af, n_aoa, n_Re)), desc="4D array with the lift coefficients of the airfoils. Dimension 0 is along the different airfoils defined in the yaml, dimension 1 is along the angles of attack, dimension 2 is along the Reynolds number, dimension 3 is along the number of tabs, which may describe multiple sets at the same station, for example in presence of a flap.")
+        self.add_input("airfoils_cd", val=np.zeros((n_af, n_aoa, n_Re)), desc="4D array with the drag coefficients of the airfoils. Dimension 0 is along the different airfoils defined in the yaml, dimension 1 is along the angles of attack, dimension 2 is along the Reynolds number, dimension 3 is along the number of tabs, which may describe multiple sets at the same station, for example in presence of a flap.")
+        self.add_input("airfoils_cm", val=np.zeros((n_af, n_aoa, n_Re)), desc="4D array with the moment coefficients of the airfoils. Dimension 0 is along the different airfoils defined in the yaml, dimension 1 is along the angles of attack, dimension 2 is along the Reynolds number, dimension 3 is along the number of tabs, which may describe multiple sets at the same station, for example in presence of a flap.")
         self.add_input("rotor_powercurve_v", val=np.zeros(n_pc), units="m/s", desc="wind vector")
         self.add_input("rotor_powercurve_omega_rpm", val=np.zeros(n_pc), units="rpm", desc="rotor rotational speed")
         self.add_input("rotor_powercurve_pitch", val=np.zeros(n_pc), units="deg", desc="rotor pitch schedule")
@@ -479,12 +477,12 @@ class RAFT_OMDAO(om.ExplicitComponent):
         n_af = turbine_opt['n_af']
         design['turbine']['airfoils'] = [dict() for m in range(n_af)] #Note: doesn't work [{}]*n_af
         for i in range(n_af):
-            design['turbine']['airfoils'][i]['name'] = discrete_inputs['airfoils_name'][i]
+            design['turbine']['airfoils'][i]['name'] = turbine_opt['af_used_names'][i]
             design['turbine']['airfoils'][i]['relative_thickness'] = float(inputs['airfoils_r_thick'][i])
-            design['turbine']['airfoils'][i]['data'] = np.c_[inputs['airfoils_aoa'] * raft.helpers.rad2deg(1),
-                                                             inputs['airfoils_cl'][i,:,0,0],
-                                                             inputs['airfoils_cd'][i,:,0,0],
-                                                             inputs['airfoils_cm'][i,:,0,0]]
+            design['turbine']['airfoils'][i]['data'] = np.c_[inputs['airfoils_aoa'],
+                                                             inputs['airfoils_cl'][i,:,0],
+                                                             inputs['airfoils_cd'][i,:,0],
+                                                             inputs['airfoils_cm'][i,:,0]]
 
         # Control
         design['turbine']['pitch_control'] = {}

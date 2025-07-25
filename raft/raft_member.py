@@ -1991,7 +1991,7 @@ class Member:
         return self.F_hydro_iner
 
 
-    def calcHydroLinearization(self, w, ih=0, Xi=np.zeros(6), rho=1025, r_ref=np.zeros(3)):
+    def calcHydroLinearization(self, w, ih=0, Xi_nodes=None, rho=1025, r_ref=None):
         '''To be used within the FOWT's dynamics solve iteration method. This calculates the
         amplitude-dependent linearized coefficients, including the system linearized drag damping matrix, 
         of this member.
@@ -2004,35 +2004,54 @@ class Member:
             Wave frequencies [rad/s]
         ih: int
             Index of the wave heading to consider for the drag linearization
-        Xi : size-6 complex array
-            response of the FOWT that this member is attached to - displacement and rotation complex amplitudes [m, rad]
-            TODO: Change this to be the response of the member itself
+        Xi_nodes : (nDOF,) complex array (self.nDOF = 6 * self.nNodes)
+            amplitude of displacement of the STRUCTURAL nodes of this member
         rho: float
             Water density [kg/m^3]
-        r_ref: size-3 vector
-            Reference point coordinates for outputs [m].
+        r_ref : size-3 vector, optional
+            Reference point coordinates to compute matrices about [m].
+            Only used for rigid members. For flexible members, each node is its own reference point.
+            TODO: should we remove this and always compute with respect to member's node, including for the other functions that use r_ref or rRP?
         
         Returns
         ----------
-        B_hydro_drag: 6x6 array
+        B_hydro_drag: nDOF x nDOF array
             Hydrodynamic damping matrix from linearized viscous drag [N-s/m, N-s, N-s-m]
-        F_hydro_drag: 6 x nw complex array
+        F_hydro_drag: nDOF x nw complex array
             Excitation force/moment complex amplitude vector [N, N-m]
 
         This function also updates self.Bmat (size nNodes x 3 x 3) and self.F_exc_drag (size nNodes x 3 x nw)
         '''
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
 
+        # Zero response with size equal to the number of dofs of the member
+        if Xi_nodes is None:
+            Xi_nodes = np.zeros((self.nDOF, len(w)), dtype=complex)
+        
         circ = self.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
         nw = len(w)
-        B_hydro_drag = np.zeros([6,6])             # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
-        F_hydro_drag = np.zeros([6, nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        B_hydro_drag = np.zeros([self.nDOF,self.nDOF])         # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
+        F_hydro_drag = np.zeros([self.nDOF, nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
 
-        # loop through each node of the member
-        for il in range(self.ns):
+        # loop through each hydrodynamic node of the member
+        for il in range(self.ns):            
+            if self.type == 'rigid': 
+                # Indices to fill in the output arrays. Assuming 6-dof nodes. Only one structural node for rigid members.
+                iFirst = 0
+                iLast  = 6
 
-            # get node complex velocity amplitude based on platform motion's and relative position from PRP
-            # node displacement, velocity, and acceleration (each [3 x nw])
-            drnode, vnode, anode = getKinematics(self.r[il,:] - r_ref, Xi, w)
+                # For rigid members, we get the displacement, velocity, and acceleration (each [3 x nw])
+                # of the hydrodynamic nodes based on the response of its single structural node
+                drnode, vnode, _ = getKinematics(self.r[il,:] - self.nodeList[0].r[:3], Xi_nodes, w)
+            else:   
+                iFirst = il*6
+                iLast  = iFirst+6
+
+                # For flexible members, we use the displacement of each structural node
+                drnode = Xi_nodes[iFirst:iFirst+3,:]  # complex displacement amplitude [3 x nw]
+                vnode = drnode * 1j * w[None, :]      # complex velocity amplitude [3 x nw]
+                r_ref = self.nodeList[il].r[:3]
 
             # only process hydrodynamics if this node is submerged
             if self.r[il,2] < 0:
@@ -2093,34 +2112,42 @@ class Member:
                 Bmat_end = Bprime_End*self.qMat                                       #
 
 
-                # ----- sum up side and end damping matrices ------
-                
+                # ----- sum up side and end damping matrices ------                
                 self.Bmat[il,:,:] = Bmat_sides + Bmat_end   # store in Member object to be called later to get drag excitation for each wave heading
-
-                B_hydro_drag += translateMatrix3to6DOF(self.Bmat[il,:,:], self.r[il,:] - r_ref)   # add to global damping matrix for Morison members
+                B_hydro_drag[iFirst:iLast, iFirst:iLast] += translateMatrix3to6DOF(self.Bmat[il,:,:], self.r[il,:] - r_ref)   # add to global damping matrix for Morison members
 
 
                 # ----- calculate wave drag excitation (this may be recalculated later) -----
-
                 for i in range(nw):
-
                     self.F_exc_drag[il,:,i] = np.matmul(self.Bmat[il,:,:], self.u[ih,il,:,i])   # get local 3d drag excitation force complex amplitude for each frequency [3 x nw]
-
-                    F_hydro_drag[:,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)   # add to global excitation vector (frequency dependent)
+                    F_hydro_drag[iFirst:iLast,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)   # add to global excitation vector (frequency dependent)
         
         return B_hydro_drag, F_hydro_drag
 
-    def calcDragExcitation(self, ih, r_ref=np.zeros(3)):
+    def calcDragExcitation(self, ih, r_ref=None):
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
+
         nw = self.u.shape[3]
-        F_hydro_drag = np.zeros([6, nw], dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        F_hydro_drag = np.zeros([self.nDOF, nw], dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
         for il in range(self.ns):  # loop through each node of the member
             if self.r[il,2] < 0:   # only process hydrodynamics if this node is submerged
+                # Get ranges of the matrix corresponding to this node
+                if self.type == 'rigid':
+                    iFirst = 0
+                    iLast  = 6
+                else:   # flexible
+                    iFirst = il*6
+                    iLast  = iFirst+6
+                    r_ref = self.nodeList[il].r[:3]
+
+
                 for i in range(nw):                    
                     # get local 3d drag excitation force complex amplitude for each frequency [3 x nw]
                     self.F_exc_drag[il,:,i] = np.matmul(self.Bmat[il,:,:], self.u[ih,il,:,i])   
                     
                     # add to global excitation vector (frequency dependent)
-                    F_hydro_drag[:,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)
+                    F_hydro_drag[iFirst:iLast,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)
         return F_hydro_drag
 
     def computeStiffnessMatrix_FE(self):

@@ -1890,22 +1890,37 @@ class FOWT():
         Currently hard-coded to only consider the first seastate/heading.
 
         Xi : complex array
-            system response (just for this FOWT) - displacement and rotation complex amplitudes [m, rad]
+            system response (just for this FOWT) - displacement and rotation complex amplitudes 
+            in the reduced dofs of the FOWT [m, rad]
 
         '''
         # The linearized coefficients to be calculated
 
-        B_hydro_drag = np.zeros([6,6])             # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
-
-        F_hydro_drag = np.zeros([6,self.nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        B_hydro_drag = np.zeros([self.nDOF,self.nDOF])             # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
+        F_hydro_drag = np.zeros([self.nDOF,self.nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        B_hydro_drag_fullDOF = np.zeros([self.nFullDOF,self.nFullDOF])  # same but in full dofs
+        F_hydro_drag_fullDOF = np.zeros([self.nFullDOF,self.nw],dtype=complex)
 
         ih = 0  # we will only consider the first sea state in this linearization process
 
         # loop through each member
         for mem in self.memberList:
-            mem_B_hydro_drag, mem_F_hydro_drag = mem.calcHydroLinearization(self.w, ih=ih, Xi=Xi, rho=self.rho_water, r_ref=self.r6[:3])
-            B_hydro_drag += mem_B_hydro_drag  # add to global damping matrix for Morison members
-            F_hydro_drag += mem_F_hydro_drag  # add to global excitation vector (frequency dependent)
+            # Find the indices of the first and last nodes of the member to fill the _fullDOF matrices
+            iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
+            iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[0].nDOF # Assuming all nodes have the same dofs, namely 6
+
+            # Compute the displacements of each structural node
+            Xi_nodes = np.zeros((mem.nDOF, len(self.w)), dtype=complex)
+            for inode, node in enumerate(mem.nodeList):
+                Xi_nodes[inode*node.nDOF:inode*node.nDOF+node.nDOF, :] = node.T @ Xi
+
+            B_hydro_drag_member, F_hydro_drag_member = mem.calcHydroLinearization(self.w, ih=ih, Xi_nodes=Xi_nodes, rho=self.rho_water)
+            B_hydro_drag_fullDOF[iFirst:iLast, iFirst:iLast] = B_hydro_drag_member
+            F_hydro_drag_fullDOF[iFirst:iLast, :] = F_hydro_drag_member
+
+        B_hydro_drag += self.T.T @ B_hydro_drag_fullDOF @ self.T  # add to damping matrix for Morison members in the reduced set of dofs
+        for iw in range(self.nw):
+            F_hydro_drag[:,iw] += self.T.T @ F_hydro_drag_fullDOF[:,iw]  # add to global excitation vector (frequency dependent) in the reduced set of dofs
 
         # save the arrays internally in case there's ever a need for the FOWT to solve it's own latest dynamics or for visualization
         self.B_hydro_drag = B_hydro_drag
@@ -1923,12 +1938,15 @@ class FOWT():
             index of wave case being evaluated here
 
         '''
-
-        F_hydro_drag = np.zeros([6,self.nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
-     
+        F_hydro_drag = np.zeros([self.nDOF,self.nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        F_hydro_drag_fullDOF = np.zeros([self.nFullDOF,self.nw],dtype=complex)
         for mem in self.memberList:   # loop through each member
-            F_hydro_drag += mem.calcDragExcitation(ih, r_ref=self.r6[:3]) 
+            iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
+            iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[0].nDOF
+            F_hydro_drag_fullDOF[iFirst:iLast, :] += mem.calcDragExcitation(ih)
 
+        for iw in range(self.nw):
+            F_hydro_drag[:,iw] += self.T.T @ F_hydro_drag_fullDOF[:,iw]
         self.F_hydro_drag = F_hydro_drag
 
         return F_hydro_drag

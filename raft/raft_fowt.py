@@ -1782,8 +1782,9 @@ class FOWT():
         # ----- calculate potential-flow wave excitation force -----
 
         self.F_BEM = np.zeros([self.nWaves,self.nDOF,self.nw], dtype=complex)
+        self.F_BEM_fullDOF = np.zeros([self.nWaves,self.nFullDOF,self.nw], dtype=complex)
         self.F_hydro_iner = np.zeros([self.nWaves, self.nDOF, self.nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]
-        F_hydro_iner_fullDOF = np.zeros([self.nWaves, self.nFullDOF, self.nw],dtype=complex) # Same but in full DOFs        
+        self.F_hydro_iner_fullDOF = np.zeros([self.nWaves, self.nFullDOF, self.nw],dtype=complex) # Same but in full DOFs        
 
         # BEM-based wave excitation force on platform for each wave heading 
         # (will be zero if only using strip theory). Includes wave heading interpolation.
@@ -1841,7 +1842,7 @@ class FOWT():
                 X_BEM_ih[5,:] = X_prime[5,:]
                 
                 # multiply excitation coefficients by wave elevation to get excitation forces and moments for this wave heading
-                self.F_BEM[ih, :6, :] = X_BEM_ih * self.zeta[ih,:] * phase_offset
+                self.F_BEM_fullDOF[ih, :6, :] = X_BEM_ih * self.zeta[ih,:] * phase_offset
 
         # ----- strip-theory wave excitation force -----
         # loop through each member to compute strip-theory contributions
@@ -1849,7 +1850,7 @@ class FOWT():
         for i,mem in enumerate(memberList):
             iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
             iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[-1].nDOF
-            F_hydro_iner_fullDOF[:, iFirst:iLast, :] += mem.calcHydroExcitation(self.zeta, self.beta, self.w, self.depth, k=self.k)
+            self.F_hydro_iner_fullDOF[:, iFirst:iLast, :] += mem.calcHydroExcitation(self.zeta, self.beta, self.w, self.depth, k=self.k)
         
         # ----- inertial excitation on rotor(s) -----
         
@@ -1875,11 +1876,12 @@ class FOWT():
                     f3 = np.matmul( I_hydro[:3,:3], rot.ud[ih,:,i] )  # Forces due to acceleration
                     f6 = translateForce3to6DOF(f3, rot.r3 - self.r6[:3])  # Translate to about PRP (induces some moments)
                     f6[3:] += np.matmul( I_hydro[3:,:3], rot.ud[ih,:,i] )  # Add moments due to acceleration
-                    F_hydro_iner_fullDOF[ih, iFirst:iLast, i] += f6  # add to the full DOF matrix
+                    self.F_hydro_iner_fullDOF[ih, iFirst:iLast, i] += f6  # add to the full DOF matrix
 
         # transform to the reduced set of dofs
         for ih in range(self.nWaves):
-            self.F_hydro_iner[ih, :, :] = self.T.T @ F_hydro_iner_fullDOF[ih, :, :]            
+            self.F_BEM[ih, :, :] = self.T.T @ self.F_BEM_fullDOF[ih, :, :] 
+            self.F_hydro_iner[ih, :, :] = self.T.T @ self.F_hydro_iner_fullDOF[ih, :, :]            
                 
 
     def calcHydroLinearization(self, Xi):
@@ -1938,18 +1940,17 @@ class FOWT():
             index of wave case being evaluated here
 
         '''
-        F_hydro_drag = np.zeros([self.nDOF,self.nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
-        F_hydro_drag_fullDOF = np.zeros([self.nFullDOF,self.nw],dtype=complex)
+        self.F_hydro_drag = np.zeros([self.nDOF,self.nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        self.F_hydro_drag_fullDOF = np.zeros([self.nFullDOF,self.nw],dtype=complex)
         for mem in self.memberList:   # loop through each member
             iFirst =  mem.nodeList[ 0].id      * mem.nodeList[0].nDOF
             iLast  = (mem.nodeList[-1].id + 1) * mem.nodeList[0].nDOF
-            F_hydro_drag_fullDOF[iFirst:iLast, :] += mem.calcDragExcitation(ih)
+            self.F_hydro_drag_fullDOF[iFirst:iLast, :] += mem.calcDragExcitation(ih)
 
         for iw in range(self.nw):
-            F_hydro_drag[:,iw] += self.T.T @ F_hydro_drag_fullDOF[:,iw]
-        self.F_hydro_drag = F_hydro_drag
+            self.F_hydro_drag[:,iw] += self.T.T @ self.F_hydro_drag_fullDOF[:,iw]
 
-        return F_hydro_drag
+        return self.F_hydro_drag
     
     
     
@@ -2287,53 +2288,61 @@ class FOWT():
         at a different heading). Results are computed by RMS summing across these excitation sources.
         '''
         
-        self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref,0,0,0,0])  # FOWT's mean offset vector [m, rad]
+        # Get motions of the PRP based on the motions of the rigidBodyNode
+        Xi0_PRP = self.r6 - np.array([self.x_ref, self.y_ref,0,0,0,0])  # FOWT's mean offset vector [m, rad]
+        
+        Xi_rigidBodyNode  = self.Xi_fullDOF[:, self.rigidBodyNode.id:self.rigidBodyNode.id+6, :]        
+        Xi_PRP  = np.zeros_like(Xi_rigidBodyNode)
+        for ih in range(Xi_PRP.shape[0]):
+            for iw in range(Xi_PRP.shape[2]):
+                Xi_PRP[ih,:3, iw] = Xi_rigidBodyNode[ih,:3,iw] + SmallRotate(-self.rigidBodyNode.r0, Xi_rigidBodyNode[ih,3:,iw])
+                Xi_PRP[ih,3:, iw] = Xi_rigidBodyNode[ih,3:,iw]
 
         # platform motions
-        results['surge_avg'] = self.Xi0[0]
-        results['surge_std'] = getRMS(self.Xi[:,0,:]) 
-        results['surge_max'] = self.Xi0[0] + 3*results['surge_std']
-        results['surge_min'] = self.Xi0[0] - 3*results['surge_std']
-        results['surge_PSD'] = getPSD(self.Xi[:,0,:], self.dw)
-        results['surge_RA' ] = self.Xi[:,0,:]
+        results['surge_avg'] = Xi0_PRP[0]
+        results['surge_std'] = getRMS(Xi_PRP[:,0,:]) 
+        results['surge_max'] = Xi0_PRP[0] + 3*results['surge_std']
+        results['surge_min'] = Xi0_PRP[0] - 3*results['surge_std']
+        results['surge_PSD'] = getPSD(Xi_PRP[:,0,:], self.dw)
+        results['surge_RA' ] = Xi_PRP[:,0,:]
+
+        results['sway_avg'] = Xi0_PRP[1]
+        results['sway_std'] = getRMS(Xi_PRP[:,1,:])
+        results['sway_max'] = Xi0_PRP[1] + 3*results['sway_std']
+        results['sway_min'] = Xi0_PRP[1] - 3*results['sway_std']
+        results['sway_PSD'] = getPSD(Xi_PRP[:,1,:], self.dw)
+        results['sway_RA' ] = Xi_PRP[:,1,:]
+
+        results['heave_avg'] = Xi0_PRP[2]
+        results['heave_std'] = getRMS(Xi_PRP[:,2,:])
+        results['heave_max'] = Xi0_PRP[2] + 3*results['heave_std']
+        results['heave_min'] = Xi0_PRP[2] - 3*results['heave_std']
+        results['heave_PSD'] = getPSD(Xi_PRP[:,2,:], self.dw)
+        results['heave_RA' ] = Xi_PRP[:,2,:]
         
-        results['sway_avg'] = self.Xi0[1]
-        results['sway_std'] = getRMS(self.Xi[:,1,:])
-        results['sway_max'] = self.Xi0[1] + 3*results['sway_std']
-        results['sway_min'] = self.Xi0[1] - 3*results['sway_std']
-        results['sway_PSD'] = getPSD(self.Xi[:,1,:], self.dw)
-        results['sway_RA' ] = self.Xi[:,1,:]
-        
-        results['heave_avg'] = self.Xi0[2]
-        results['heave_std'] = getRMS(self.Xi[:,2,:])
-        results['heave_max'] = self.Xi0[2] + 3*results['heave_std']
-        results['heave_min'] = self.Xi0[2] - 3*results['heave_std']
-        results['heave_PSD'] = getPSD(self.Xi[:,2,:], self.dw)
-        results['heave_RA' ] = self.Xi[:,2,:]
-        
-        roll_deg = rad2deg(self.Xi[:,3,:])
-        results['roll_avg'] = rad2deg(self.Xi0[3])
+        roll_deg = rad2deg(Xi_PRP[:,3,:])
+        results['roll_avg'] = rad2deg(Xi0_PRP[3])
         results['roll_std'] = getRMS(roll_deg)
-        results['roll_max'] = rad2deg(self.Xi0[3]) + 3*results['roll_std']
-        results['roll_min'] = rad2deg(self.Xi0[3]) - 3*results['roll_std']
+        results['roll_max'] = rad2deg(Xi0_PRP[3]) + 3*results['roll_std']
+        results['roll_min'] = rad2deg(Xi0_PRP[3]) - 3*results['roll_std']
         results['roll_PSD'] = getPSD(roll_deg, self.dw)
-        results['roll_RA' ] = rad2deg(self.Xi[:,3,:])
+        results['roll_RA' ] = rad2deg(Xi_PRP[:,3,:])
         
-        pitch_deg = rad2deg(self.Xi[:,4,:])
-        results['pitch_avg'] = rad2deg(self.Xi0[4])
+        pitch_deg = rad2deg(Xi_PRP[:,4,:])
+        results['pitch_avg'] = rad2deg(Xi0_PRP[4])
         results['pitch_std'] = getRMS(pitch_deg)
-        results['pitch_max'] = rad2deg(self.Xi0[4]) + 3*results['pitch_std']
-        results['pitch_min'] = rad2deg(self.Xi0[4]) - 3*results['pitch_std']
+        results['pitch_max'] = rad2deg(Xi0_PRP[4]) + 3*results['pitch_std']
+        results['pitch_min'] = rad2deg(Xi0_PRP[4]) - 3*results['pitch_std']
         results['pitch_PSD'] = getPSD(pitch_deg, self.dw)
-        results['pitch_RA' ] = rad2deg(self.Xi[:,4,:])
+        results['pitch_RA' ] = rad2deg(Xi_PRP[:,4,:])
         
-        yaw_deg = rad2deg(self.Xi[:,5,:])
-        results['yaw_avg'] = rad2deg(self.Xi0[5])
+        yaw_deg = rad2deg(Xi_PRP[:,5,:])
+        results['yaw_avg'] = rad2deg(Xi0_PRP[5])
         results['yaw_std'] = getRMS(yaw_deg)
-        results['yaw_max'] = rad2deg(self.Xi0[5]) + 3*results['yaw_std']
-        results['yaw_min'] = rad2deg(self.Xi0[5]) - 3*results['yaw_std']
+        results['yaw_max'] = rad2deg(Xi0_PRP[5]) + 3*results['yaw_std']
+        results['yaw_min'] = rad2deg(Xi0_PRP[5]) - 3*results['yaw_std']
         results['yaw_PSD'] = getPSD(yaw_deg, self.dw)
-        results['yaw_RA' ] = rad2deg(self.Xi[:,5,:])
+        results['yaw_RA' ] = rad2deg(Xi_PRP[:,5,:])
         
         # ----- turbine-level mooring outputs (similar code as array-level) -----
         if self.ms:            
@@ -2347,7 +2356,7 @@ class FOWT():
             if self.moorMod == 0:
                 for ih in range(self.nWaves+1):
                     for iw in range(self.nw):
-                        T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
+                        T_moor_amps[ih,:,iw] = np.matmul(J_moor, Xi_PRP[ih,:,iw])   # FFT of mooring tensions # TODO: account for nDOF > 6
 
                 for iT in range(2*nLines):
                     T_moor_psd[iT,:]  = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
@@ -2356,7 +2365,7 @@ class FOWT():
             else:
                 for il, line in enumerate(self.ms.lineList):                    
                     for ih in range(self.nWaves):
-                        RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, [self.Xi[ih,:,:]], self.S[ih,:], [self.r6[:3]]) # Need Xi and r6 within a list
+                        RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, [Xi_PRP[ih,:,:]], self.S[ih,:], [self.r6[:3]]) # Need Xi and r6 within a list
                         T_nodes_amp, _, _, _, _, _, _, _ = line.dynamicSolve(self.w, self.S[ih,:], RAO_A=RAO_A.T, RAO_B=RAO_B.T, depth=self.depth, kbot=0,cbot=0, tol = 0.01, conv_time=False)
 
                         # Tension at the end nodes of the line
@@ -2381,25 +2390,54 @@ class FOWT():
                 results['Tmoor_min'][iT] =  T_moor[iT] - 3*TRMS
                 results['Tmoor_PSD'][iT, :] = (getPSD(T_moor_amps[:,iT,:], self.w[0])) # PSD in N^2/(rad/s)
         
-        # hub fore-aft displacement amplitude and acceleration (used as an approximation in a number of outputs)
-        XiHub = np.zeros([self.Xi.shape[0], self.nrotors, self.nw], dtype=complex)
+        # hub displacement amplitude and acceleration
+        XiHub = np.zeros([self.Xi.shape[0], 6*self.nrotors, self.nw], dtype=complex)
+
         results['AxRNA_std'] = np.zeros(self.nrotors) 
         results['AxRNA_PSD'] = np.zeros([self.nw, self.nrotors]) 
         results['AxRNA_avg'] = np.zeros(self.nrotors)
         results['AxRNA_max'] = np.zeros(self.nrotors)
         results['AxRNA_min'] = np.zeros(self.nrotors)
+
+        results['AyRNA_std'] = np.zeros(self.nrotors) 
+        results['AyRNA_PSD'] = np.zeros([self.nw, self.nrotors]) 
+        results['AyRNA_avg'] = np.zeros(self.nrotors)
+        results['AyRNA_max'] = np.zeros(self.nrotors)
+        results['AyRNA_min'] = np.zeros(self.nrotors)
+
+        results['AzRNA_std'] = np.zeros(self.nrotors) 
+        results['AzRNA_PSD'] = np.zeros([self.nw, self.nrotors]) 
+        results['AzRNA_avg'] = np.zeros(self.nrotors)
+        results['AzRNA_max'] = np.zeros(self.nrotors)
+        results['AzRNA_min'] = np.zeros(self.nrotors)
         
         for ir, rotor in enumerate(self.rotorList):
-            XiHub[:,ir,:] = self.Xi[:,0,:] + rotor.r_rel[2]*self.Xi[:,4,:]  # planar approximation; to improve <<<
-        
-            # nacelle acceleration
-            results['AxRNA_std'][ir] = getRMS(XiHub[:,ir,:]*self.w**2)
-            results['AxRNA_PSD'][:,ir] = (getPSD(XiHub[:,ir,:]*self.w**2, self.dw))
-            results['AxRNA_avg'][ir] = abs(np.sin(self.Xi0[4])*9.81) # @Matt check this! 
-            results['AxRNA_max'][ir] = results['AxRNA_avg'][ir]+3*results['AxRNA_std'][ir]
-            results['AxRNA_min'][ir] = results['AxRNA_avg'][ir]-3*results['AxRNA_std'][ir]
-            
+            XiHub[:,ir*6:(ir+1)*6,:] = self.Xi_fullDOF[:, rotor.nodeList[0].id*6:(rotor.nodeList[0].id+1)*6, :] # get the hub motion
+
+            # nacelle acceleration in the global X direction
+            results['AxRNA_std'][ir]   = getRMS(XiHub[:,ir*6,:]*self.w**2)
+            results['AxRNA_PSD'][:,ir] = getPSD(XiHub[:,ir*6,:]*self.w**2, self.dw)
+            results['AxRNA_avg'][ir]   = abs(np.sin(rotor.nodeList[0].r[4])*self.g) # @Matt check this! 
+            results['AxRNA_max'][ir]   = results['AxRNA_avg'][ir]+3*results['AxRNA_std'][ir]
+            results['AxRNA_min'][ir]   = results['AxRNA_avg'][ir]-3*results['AxRNA_std'][ir]
+
+            # nacelle acceleration in the global Y direction
+            results['AyRNA_std'][ir]   = getRMS(XiHub[:,ir*6+1,:]*self.w**2)
+            results['AyRNA_PSD'][:,ir] = getPSD(XiHub[:,ir*6+1,:]*self.w**2, self.dw)
+            results['AyRNA_avg'][ir]   = abs(np.sin(rotor.nodeList[0].r[3])*self.g)
+            results['AyRNA_max'][ir]   = results['AyRNA_avg'][ir]+3*results['AyRNA_std'][ir]
+            results['AyRNA_min'][ir]   = results['AyRNA_avg'][ir]-3*results['AyRNA_std'][ir]
+
+            # nacelle acceleration in the global Z direction
+            results['AzRNA_std'][ir]   = getRMS(XiHub[:,ir*6+2,:]*self.w**2)
+            results['AzRNA_PSD'][:,ir] = getPSD(XiHub[:,ir*6+2,:]*self.w**2, self.dw)
+            results['AzRNA_avg'][ir]   = abs(self.g)
+            results['AzRNA_max'][ir]   = results['AzRNA_avg'][ir]+3*results['AzRNA_std'][ir]
+            results['AzRNA_min'][ir]   = results['AzRNA_avg'][ir]-3*results['AzRNA_std'][ir]
+
+
         # tower base bending moment  >>> should three-dimensionalize this <<<
+        # TODO: compute this based on joint loads
         m_turbine = np.zeros(len(self.mtower))
         zCG_turbine = np.zeros_like(m_turbine)
         zBase = np.zeros_like(m_turbine)

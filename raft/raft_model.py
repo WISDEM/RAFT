@@ -272,11 +272,14 @@ class Model():
         
         self.results['case_metrics'] = {}
         self.results['mean_offsets'] = []
-
         
         # calculate the system's constant properties
         for fowt in self.fowtList:
-            fowt.setPosition([fowt.x_ref, fowt.y_ref,0,0,0,0])
+            ref_displacement = np.zeros(fowt.nDOF)
+            for idof, dof in enumerate(fowt.reducedDOF):
+                ref_displacement[idof] += fowt.x_ref if dof[1] == 0 else 0 # If this is a translation in the X direction (Global dof 0)
+                ref_displacement[idof] += fowt.y_ref if dof[1] == 1 else 0 # If this is a translation in the Y direction (Global dof 1)
+            fowt.setPosition(ref_displacement)    # zero platform offsets
             fowt.calcStatics()
 
         for i, fowt in enumerate(self.fowtList):
@@ -712,7 +715,7 @@ class Model():
                         Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += np.sum(fowt.f_aero0, axis=1)  # sum mean turbine force across turbines
                         Fnet[fowt.nDOF*i:fowt.nDOF*(i+1)] += fowt.calcCurrentLoads(case)  # current drag force  i.e. fowt.D_hydro
 
-                        # mean drift force
+                        # mean drift force. TODO: make this work with arbirtrary DOFs
                         if hasattr(fowt, 'Fhydro_2nd_mean'):
                             F_meandrift = np.sum(fowt.Fhydro_2nd_mean, axis=0) 
                             Fnet[fowt.nDOF*i:fowt.nDOF*i+6] += F_meandrift 
@@ -944,6 +947,8 @@ class Model():
     def solveDynamics(self, case, tol=0.01, conv_plot=0, RAO_plot=0, display=0):
         '''After all constant parts have been computed, call this to iterate through remaining terms
         until convergence on dynamic response. Note that steady/mean quantities are excluded here.
+
+        TODO: Need to properly account for moorings and second-order wave loads for fowts with more than 6 DOFs.
         '''
         
         iCase = None
@@ -968,9 +973,9 @@ class Model():
         # This is the iterative linearization stage to get individual impedance matrices.
         XiLast_all = []  # list to store the last iteration's response for each turbine
         for i, fowt in enumerate(self.fowtList):
-            i1 = i*6                                              # range of DOFs for the current turbine
-            i2 = i*6+6
-            
+            i1 = i*fowt.nDOF                                              # range of DOFs for the current turbine
+            i2 = (i+1)*fowt.nDOF  # TODO: Assuming all FOWTs have the same number of DOFs. Would need to make this more general for farms with distinct FOWTs
+
             # total FOWT complex response amplitudes (this gets updated each iteration)
             XiLast = np.zeros([fowt.nDOF,self.nw], dtype=complex) + XiStart    # displacement and rotation complex amplitudes [m, rad]
             
@@ -992,19 +997,29 @@ class Model():
             # TODO: Need to iterate the dynamic matrices as well due to the drag force on the moorings
             # We would need to pass the motions of the extremities of the mooring lines within getCoupledDynamicMatrices
             # I think this would be straightforward for lines connecting the fairlead to the anchor, but not sure about cases with buoys
-            M_moor, A_moor, B_moor, C_moor = (np.zeros([6,6]) for _ in range(4))
+            M_moor, A_moor, B_moor, C_moor = (np.zeros([fowt.nDOF, fowt.nDOF]) for _ in range(4))
+            M_moor_6dof, A_moor_6dof, B_moor_6dof, C_moor_6dof = (np.zeros([6, 6]) for _ in range(4)) # Helper matrices
             if not fowt.ms or fowt.moorMod == 0:
                 C_moor = fowt.C_moor
             elif fowt.moorMod == 1:
-                fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
-                M_moor, A_moor, B_moor, C_moor = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
+                fowt.updateMooringDynamicMatrices(XiLast[:6], fowt.S[0,:])
+                M_moor_6dof, A_moor_6dof, B_moor_6dof, C_moor_6dof = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
+
+                # For now, lump at the first 6dofs of the fowt                
+                C_moor = translateMatrix6to6DOF(C_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
             elif fowt.moorMod == 2:
                 C_moor = fowt.C_moor
-                fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
-                M_moor, A_moor, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
+                fowt.updateMooringDynamicMatrices(XiLast[:6], fowt.S[0,:])
+                M_moor_6dof, A_moor_6dof, B_moor_6dof, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
+            
+            if fowt.ms:
+                M_moor[:6,:6] = translateMatrix6to6DOF(M_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
+                A_moor[:6,:6] = translateMatrix6to6DOF(A_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
+                B_moor[:6,:6] = translateMatrix6to6DOF(B_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
 
             # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file.
             # In some cases, they may be very relevant to the motion RMS values, so should be included in the drag linearization process.          
+            # Lumping at the first 6dofs of the FOWT for now
             fowt.Fhydro_2nd = np.zeros([fowt.nWaves, fowt.nDOF, fowt.nw], dtype=complex) 
             fowt.Fhydro_2nd_mean = np.zeros([fowt.nWaves, fowt.nDOF])
             if fowt.potSecOrder==2:
@@ -1040,8 +1055,9 @@ class Model():
                 # Note: Is it worth recomputing the mooring damping matrix at each step? The impact of mooring damping on body dynamics is small, and the motion
                 # RAOs are probably not changing much. Perhaps compute this only once and keep it constant? 
                 if fowt.ms and (fowt.moorMod == 1 or fowt.moorMod == 2):
-                    fowt.updateMooringDynamicMatrices(XiLast, fowt.S[0,:])
-                    _, _, B_moor, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
+                    fowt.updateMooringDynamicMatrices(XiLast[:6, :], fowt.S[0,:])
+                    _, _, B_moor_6dof, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
+                    B_moor[:6,:6] = translateMatrix6to6DOF(B_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
 
                 # calculate the response based on the latest linearized terms
                 Xi = np.zeros([fowt.nDOF,self.nw], dtype=complex)     # displacement and rotation complex amplitudes [m, rad]
@@ -1089,7 +1105,7 @@ class Model():
                             print(f"Resolving for system response in primary wave direction, now with second-order wave loads.")
 
                         # Get the response amplitude operators (RAOs, i.e. motions for unit wave amplitude)
-                        Xi0 = getRAO(Xi[i1:i2, :], fowt.zeta[0,:])
+                        Xi0 = getRAO(Xi[i1:i1+6, :], fowt.zeta[0,:])
                                                 
                         tic = time.perf_counter() # Time the QTF calculation
                         fowt.calcQTF_slenderBody(waveHeadInd=0, Xi0=Xi0, verbose=True, iCase=iCase, iWT=i)
@@ -1137,8 +1153,8 @@ class Model():
         
         # include each FOWT's individual impedance matrix
         for i, fowt in enumerate(self.fowtList):
-            i1 = i*6                                              # range of DOFs for the current turbine
-            i2 = i*6+6
+            i1 = i*fowt.nDOF            # range of DOFs for the current turbine
+            i2 = (i+1)*fowt.nDOF
             Z_sys[i1:i2, i1:i2] += fowt.Z
         
         # include array-level mooring stiffness
@@ -1178,7 +1194,7 @@ class Model():
             F_wave = np.zeros([self.nDOF, self.nw], dtype=complex)  # system wave excitation vector for this wave
         
             for i, fowt in enumerate(self.fowtList):
-                i1, i2 = i*6, i*6+6
+                i1, i2 = i*fowt.nDOF, (i+1)*fowt.nDOF
                 
                 # calculate linear and nonlinear wave excitation for this FOWT and case (consider phasing due to position in array)
                 fowt.calcHydroExcitation(case, memberList=fowt.memberList)
@@ -1195,19 +1211,22 @@ class Model():
             # If we are computing the QTFs internally, we need to consider the motions induced by first-order hydrodynamic forces, which were computed above
             # TODO: Not very nice to keep the same code twice. Maybe we can move it to a function?            
             for i, fowt in enumerate(self.fowtList):
-                i1, i2 = i*6, i*6+6
+                i1, i2 = i*fowt.nDOF, (i+1)*fowt.nDOF
                 if fowt.potSecOrder == 1:
                     # Don't recompute the QTFs for the first wave because it was already done above.
                     # Also, we would end up including second-order motions if we computed it again.
                     if ih > 0: 
-                        Xi0 = getRAO(self.Xi[ih,i1:i2, :], fowt.zeta[ih,:])
+                        Xi0 = getRAO(self.Xi[ih,i1:i1+6, :], fowt.zeta[ih,:])
                         fowt.calcQTF_slenderBody(waveHeadInd=ih, Xi0=Xi0, verbose=True, iCase=iCase, iWT=i)                        
-                        fowt.Fhydro_2nd_mean[ih, :], fowt.Fhydro_2nd[ih, :, :] = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
+                        fowt.F_hydro_2nd_mean, fowt.Fhydro_2nd = fowt.calcHydroForce_2ndOrd(fowt.beta[ih], fowt.S[ih,:])
                 
                     # Recompute the wave excitation forces and consequent motions to include second-order hydrodynamic forces
                     F_wave[i1:i2] = fowt.F_BEM[ih,:,:] + fowt.F_hydro_iner[ih,:,:] + F_linearized + fowt.Fhydro_2nd[ih, :, :]
-                    for iw in range(self.nw):
-                        self.Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+
+            # recompute system response                    
+            for iw in range(self.nw):
+                self.Xi[ih,:,iw] = np.matmul(Zinv[:,:,iw], F_wave[:,iw])
+                # TODO: compute joint loads based on the system of equations in the full dofs
         
         # rotor excitation
         '''
@@ -1220,10 +1239,12 @@ class Model():
             self.Xi[-1,:,iw] = np.matmul(Zinv[:,:,iw], F_rotor[:,iw])
         '''
         
-        # store all the results in the FOWT object 
+        # store all the results in the FOWT object
         for i, fowt in enumerate(self.fowtList):
-            fowt.Xi = self.Xi[:, i*6:i*6+6, :]  # this overwrites the response in the FOWT with what's been calculated
-        
+            fowt.Xi = self.Xi[:, i*fowt.nDOF:(i+1)*fowt.nDOF, :]  # this overwrites the response in the FOWT with what's been calculated
+            fowt.Xi_fullDOF = np.zeros([fowt.nWaves+1, fowt.nFullDOF, self.nw], dtype=complex)  # full DOF response
+            for ih in range(fowt.nWaves+1):
+                fowt.Xi_fullDOF[ih, :, :] = fowt.T @ fowt.Xi[ih, :, :]  # convert to full DOF response
 
         # ------------------------------ preliminary plotting of response ---------------------------------
         

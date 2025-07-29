@@ -2310,18 +2310,16 @@ class Member:
         Me: 6Nnodes x 6Nnodes array
             Inertia matrix of the member in the local reference frame [kg*m^2]        
         '''
-        Mf = np.zeros((self.nDOF, self.nDOF)) # Inertia matrix of a flexible member
+        self.Mf = np.zeros((self.nDOF, self.nDOF)) # Inertia matrix of a flexible member
 
         # Only works for flexible members
         if self.type != 'beam':
-            return Mf
+            return self.Mf
 
         if len(self.nodeList) < 2:
             raise Exception("Flexible member {self.name} must have at least two nodes to compute its flexible inertia matrix.")
         nodeDOF = self.nodeList[0].nDOF # Number of dofs per node
-        
-        dbg_frustrum = 0
-        dbg_m = 0
+
         for i in range(len(self.nodeList)-1):
             L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
             if L == 0:
@@ -2404,18 +2402,9 @@ class Member:
                         
             # Transform the local stiffness matrix to global coordinates
             Me_global = (Dc @ Me) @ Dc.T
-            Mf[i*nodeDOF:(i+2)*nodeDOF, i*nodeDOF:(i+2)*nodeDOF] += Me_global
+            self.Mf[i*nodeDOF:(i+2)*nodeDOF, i*nodeDOF:(i+2)*nodeDOF] += Me_global
 
-            # # For debugging
-            if self.shape == 'circular':
-                V_outer, hco = FrustumVCV(Do_A, Do_B, L)    # volume and center of volume of solid frustum with outer diameters [m^3] [m]
-                V_inner, hci = FrustumVCV(Di_A, Di_B, L)  # volume and center of volume of solid frustum with inner diameters [m^3] [m] 
-                v_shell = V_outer-V_inner
-                dbg_frustrum += v_shell*self.rho_shell
-                dbg_m += self.rho_shell*A*L
-                dbg=1
-
-        return Mf
+        return self.Mf
 
     def getSectionProperties(self, station):
         '''Get member cross sectional area and moments of inertia at a user-

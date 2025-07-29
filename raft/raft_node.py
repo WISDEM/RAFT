@@ -38,8 +38,7 @@ class Node:
             raise Exception(f"Node {node_id} position must be a 3- or 6-component vector, but got {len(r0)} components instead.")
 
         self.r  = self.r0.copy() # Current position and attitude of the node in the global reference frame (current wrp to PRP but updated when updating the FOWT's position)
-        self.Xi0 = np.zeros(self.nDOF) # mean offsets of the node from its reference point [m, rad]
-        self.Xi  = np.zeros([self.nDOF, nw], dtype=complex)  # complex response amplitudes as a function of frequency  [m, rad]        
+        self.Xi0 = np.zeros(self.nDOF) # mean offsets of the node from its reference point [m, rad]        
         self.end_node = end_node              # True if this is an end node of a member, False if this is an internal node of a flexible member
         
         # Things with `None` will be assigned later
@@ -48,6 +47,7 @@ class Node:
         self.parentNode_id = None # ID of the parent node. Assigned when attaching this node to another node.
         self.reducedDOF    = None # Reduced DoFs that are needed to describe this node. This is a subset of the reduced dofs of the whole structure. List of lists with two elements: [node_id, dof_id]. E.g., [[3, 5]] is the rotation around z of node with id equal to 3.
         self.T_aux         = None # Subset of the transformation matrix T. T_aux relates the 6 dofs of this node to a subset of the reduced dofs required to describe this node only.          
+        # self.Xi            = None # complex response amplitudes as a function of frequency  [m, rad]        
 
         self.joint_id      = None
         self.joint_type    = None

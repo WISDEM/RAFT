@@ -2441,8 +2441,8 @@ class FOWT():
             results['AzRNA_min'][ir]   = results['AzRNA_avg'][ir]-3*results['AzRNA_std'][ir]
 
 
-        # tower base bending moment  >>> should three-dimensionalize this <<<
-        # TODO: compute this based on joint loads
+        # tower base bending moment
+        # TODO: should we compute the loads on all joints in solveStatics() and solveDynamics()?
         m_turbine = np.zeros(len(self.mtower))
         zCG_turbine = np.zeros_like(m_turbine)
         zBase = np.zeros_like(m_turbine)
@@ -2455,49 +2455,152 @@ class FOWT():
         M_X_aero       = np.zeros_like(XiHub)
         dynamic_moment = np.zeros_like(XiHub)
         dynamic_moment_RMS = np.zeros(self.nrotors)
-        
-        
+                
         results['Mbase_avg'] = np.zeros(self.nrotors)
         results['Mbase_std'] = np.zeros(self.nrotors)
         results['Mbase_PSD'] = np.zeros([self.nw, self.nrotors])
         results['Mbase_max'] = np.zeros(self.nrotors)
         results['Mbase_min'] = np.zeros(self.nrotors)
-        
+
+        results['FbaseX_avg'] = np.zeros(self.nrotors)
+        results['FbaseX_std'] = np.zeros(self.nrotors)
+        results['FbaseX_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['FbaseX_max'] = np.zeros(self.nrotors)
+        results['FbaseX_min'] = np.zeros(self.nrotors)
+
+        results['FbaseY_avg'] = np.zeros(self.nrotors)
+        results['FbaseY_std'] = np.zeros(self.nrotors)
+        results['FbaseY_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['FbaseY_max'] = np.zeros(self.nrotors)
+        results['FbaseY_min'] = np.zeros(self.nrotors)
+
+        results['FbaseZ_avg'] = np.zeros(self.nrotors)
+        results['FbaseZ_std'] = np.zeros(self.nrotors)
+        results['FbaseZ_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['FbaseZ_max'] = np.zeros(self.nrotors)
+        results['FbaseZ_min'] = np.zeros(self.nrotors)
+
+        results['MbaseX_avg'] = np.zeros(self.nrotors)
+        results['MbaseX_std'] = np.zeros(self.nrotors)
+        results['MbaseX_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['MbaseX_max'] = np.zeros(self.nrotors)
+        results['MbaseX_min'] = np.zeros(self.nrotors)
+
+        results['MbaseY_avg'] = np.zeros(self.nrotors)
+        results['MbaseY_std'] = np.zeros(self.nrotors)
+        results['MbaseY_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['MbaseY_max'] = np.zeros(self.nrotors)
+        results['MbaseY_min'] = np.zeros(self.nrotors)
+
+        results['MbaseZ_avg'] = np.zeros(self.nrotors)
+        results['MbaseZ_std'] = np.zeros(self.nrotors)
+        results['MbaseZ_PSD'] = np.zeros([self.nw, self.nrotors])
+        results['MbaseZ_max'] = np.zeros(self.nrotors)
+        results['MbaseZ_min'] = np.zeros(self.nrotors)                                        
+
         for ir, rotor in enumerate(self.rotorList):
-            # mass and moment arm >>> should three-dimensionalize <<<
             mem_tower = self.memberList[self.nplatmems+ir]
-            m_turbine[ir] = self.mtower[ir] + rotor.mRNA  # total masses of each turbine
-            zCG_turbine[ir] = (self.rCG_tow[ir][2]*self.mtower[ir]                 # CoG of each turbine
-                                + rotor.r_rel[2]*rotor.mRNA)/m_turbine[ir]
-            zBase[ir] = mem_tower.rA[2]                  # tower base elevation [m]
-            hArm[ir] = zCG_turbine[ir] - zBase[ir]                                 # vertical distance from tower base to turbine CG [m]
 
-            aCG_turbine[:,ir,:] = -self.w**2 *( self.Xi[:,0,:] + zCG_turbine[ir]*self.Xi[:,4,:] )  # fore-aft acceleration of turbine CG
+            # For now, using same method as before for rigid towers
+            if mem_tower.type == 'rigid':
+                m_turbine[ir] = self.mtower[ir] + rotor.mRNA  # total masses of each turbine
+                zCG_turbine[ir] = (self.rCG_tow[ir][2]*self.mtower[ir]                 # CoG of each turbine
+                                    + rotor.r_rel[2]*rotor.mRNA)/m_turbine[ir]
+                zBase[ir] = mem_tower.rA[2]                  # tower base elevation [m]
+                hArm[ir] = zCG_turbine[ir] - zBase[ir]                                 # vertical distance from tower base to turbine CG [m]
 
-            # turbine pitch moment of inertia about CG [kg-m^2]
-            ICG_turbine[ir] = (translateMatrix6to6DOF(mem_tower.M_struc, mem_tower.nodeList[0].r0[:3] - [0,0, zCG_turbine[ir]])[4,4] # tower MOI about turbine CG
-                        + rotor.mRNA*(rotor.r_rel[2]-zCG_turbine[ir])**2 + rotor.IrRNA)  # RNA MOI with parallel axis theorem
-            # moment components and summation (all complex amplitudes)
-            M_I[:,ir,:] = -m_turbine[ir]*aCG_turbine[:,ir,:]*hArm[ir] - ICG_turbine[ir]*(-self.w**2 *self.Xi[:,4,:] ) # tower base inertial reaction moment
-            M_w[:,ir,:] =  m_turbine[ir]*self.g * hArm[ir]*self.Xi[:,4]                                    # tower base weight moment
+                aCG_turbine[:,ir,:] = -self.w**2 *( self.Xi[:,0,:] + zCG_turbine[ir]*self.Xi[:,4,:] )  # fore-aft acceleration of turbine CG
+
+                # turbine pitch moment of inertia about CG [kg-m^2]
+                ICG_turbine[ir] = (translateMatrix6to6DOF(mem_tower.M_struc, mem_tower.nodeList[0].r0[:3] - [0,0, zCG_turbine[ir]])[4,4] # tower MOI about turbine CG
+                            + rotor.mRNA*(rotor.r_rel[2]-zCG_turbine[ir])**2 + rotor.IrRNA)  # RNA MOI with parallel axis theorem
+                # moment components and summation (all complex amplitudes)
+                M_I[:,ir,:] = -m_turbine[ir]*aCG_turbine[:,ir,:]*hArm[ir] - ICG_turbine[ir]*(-self.w**2 *self.Xi[:,4,:] ) # tower base inertial reaction moment
+                M_w[:,ir,:] =  m_turbine[ir]*self.g * hArm[ir]*self.Xi[:,4]                                    # tower base weight moment
+                
+                M_F_aero = 0.0 # <<<<self.f_aero[0,:]*(self.hHub - zBase)  # tower base moment from turbulent wind excitation  <<<<<<<<<<<<<
+                
+                M_X_aero[:,ir,:] = -(-self.w**2 *self.A_aero[0,0,:,ir]                                 # tower base aero reaction moment
+                            + 1j*self.w *self.B_aero[0,0,:,ir] )*(rotor.r_rel[2] - zBase[ir])**2 *self.Xi[:,4,:]        
+                dynamic_moment[:,ir,:] = M_I[:,ir,:] + M_w[:,ir,:] + M_F_aero + M_X_aero[:,ir,:]       # total tower base fore-aft bending moment [N-m]
+                dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
+
+                # fill in metrics
+                # mean moment from weight and thrust
+                results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) 
+                            + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )
+                results['Mbase_std'][ir] = dynamic_moment_RMS[ir]
+                results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
+                results['Mbase_max'][ir] = results['Mbase_avg'][ir]+3*results['Mbase_std'][ir]
+                results['Mbase_min'][ir] = results['Mbase_avg'][ir]-3*results['Mbase_std'][ir]
+                #results['Mbase_DEL'][iCase]                
             
-            M_F_aero = 0.0 # <<<<self.f_aero[0,:]*(self.hHub - zBase)  # tower base moment from turbulent wind excitation  <<<<<<<<<<<<<
-            
-            M_X_aero[:,ir,:] = -(-self.w**2 *self.A_aero[0,0,:,ir]                                 # tower base aero reaction moment
-                        + 1j*self.w *self.B_aero[0,0,:,ir] )*(rotor.r_rel[2] - zBase[ir])**2 *self.Xi[:,4,:]        
-            dynamic_moment[:,ir,:] = M_I[:,ir,:] + M_w[:,ir,:] + M_F_aero + M_X_aero[:,ir,:]       # total tower base fore-aft bending moment [N-m]
-            dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
+            # For a flexible tower, we compute the internal loads using the finite-element stiffness matrix
+            else:
+                # Get displacements of the internal nodes
+                Xi0_internal = np.concatenate([n.Xi0 for n in mem_tower.nodeList])   # mean displacements of the internal nodes. Stored at node level
+                iFirst, iLast = mem_tower.nodeList[0].id, mem_tower.nodeList[-1].id  # index range of the nodes of the tower
+                Xi_internal = self.Xi_fullDOF[:, iFirst*6:(iLast+1)*6, :]            # dynamic displacements of the internal nodes
 
-            # fill in metrics
-            # mean moment from weight and thrust
-            results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) 
-                          + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )
-            results['Mbase_std'][ir] = dynamic_moment_RMS[ir]
-            results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
-            results['Mbase_max'][ir] = results['Mbase_avg'][ir]+3*results['Mbase_std'][ir]
-            results['Mbase_min'][ir] = results['Mbase_avg'][ir]-3*results['Mbase_std'][ir]
-            #results['Mbase_DEL'][iCase]
-        
+                # Internal loads acting on each node
+                Fi0_internal = -mem_tower.Kf @ Xi0_internal  # static (mean) loads. K @ X gives the static load acting on the nodes, whereas -K @ X gives the internal reaction
+                Fi_internal  = np.zeros_like(Xi_internal)    # dynamic loads
+                for ih in range(self.nWaves+1):
+                    Fi_internal[ih, :, :] = -mem_tower.Kf @ Xi_internal[ih, :, :]
+
+                # Find which tower end is the base node
+                if mem_tower.nodeList[0].r0[2] <= mem_tower.nodeList[-1].r0[2]:
+                    Fi0_base = Fi0_internal[0:6]      # base node is the first node
+                    Fi_base  = Fi_internal[:, 0:6, :] # base node is the first
+                else:
+                    Fi0_base = Fi0_internal[-6:]      # base node is the last node
+                    Fi_base  = Fi_internal[:, -6:, :] # base node is the last
+
+                # Fill in metrics
+                results['FbaseX_avg'][ir]    = Fi0_base[0]
+                results['FbaseX_std'][ir]    = getRMS(Fi_base[:, 0, :])
+                results['FbaseX_PSD'][:, ir] = getPSD(Fi_base[:, 0, :], self.dw)
+                results['FbaseX_max'][ir]    = results['FbaseX_avg'][ir] + 3 * results['FbaseX_std'][ir]
+                results['FbaseX_min'][ir]    = results['FbaseX_avg'][ir] - 3 * results['FbaseX_std'][ir]
+
+                results['FbaseY_avg'][ir]    = Fi0_base[1]
+                results['FbaseY_std'][ir]    = getRMS(Fi_base[:, 1, :])
+                results['FbaseY_PSD'][:, ir] = getPSD(Fi_base[:, 1, :], self.dw)
+                results['FbaseY_max'][ir]    = results['FbaseY_avg'][ir] + 3 * results['FbaseY_std'][ir]
+                results['FbaseY_min'][ir]    = results['FbaseY_avg'][ir] - 3 * results['FbaseY_std'][ir]
+
+                results['FbaseZ_avg'][ir]    = Fi0_base[2]
+                results['FbaseZ_std'][ir]    = getRMS(Fi_base[:, 2, :])
+                results['FbaseZ_PSD'][:, ir] = getPSD(Fi_base[:, 2, :], self.dw)
+                results['FbaseZ_max'][ir]    = results['FbaseZ_avg'][ir] + 3 * results['FbaseZ_std'][ir]
+                results['FbaseZ_min'][ir]    = results['FbaseZ_avg'][ir] - 3 * results['FbaseZ_std'][ir]
+
+                results['MbaseX_avg'][ir]    = Fi0_base[3]
+                results['MbaseX_std'][ir]    = getRMS(Fi_base[:, 3, :])
+                results['MbaseX_PSD'][:, ir] = getPSD(Fi_base[:, 3, :], self.dw)
+                results['MbaseX_max'][ir]    = results['MbaseX_avg'][ir] + 3 * results['MbaseX_std'][ir]
+                results['MbaseX_min'][ir]    = results['MbaseX_avg'][ir] - 3 * results['MbaseX_std'][ir]
+
+                results['MbaseY_avg'][ir]    = Fi0_base[4]
+                results['MbaseY_std'][ir]    = getRMS(Fi_base[:, 4, :])
+                results['MbaseY_PSD'][:, ir] = getPSD(Fi_base[:, 4, :], self.dw)
+                results['MbaseY_max'][ir]    = results['MbaseY_avg'][ir] + 3 * results['MbaseY_std'][ir]
+                results['MbaseY_min'][ir]    = results['MbaseY_avg'][ir] - 3 * results['MbaseY_std'][ir]
+
+                results['MbaseZ_avg'][ir]    = Fi0_base[5]
+                results['MbaseZ_std'][ir]    = getRMS(Fi_base[:, 5, :])
+                results['MbaseZ_PSD'][:, ir] = getPSD(Fi_base[:, 5, :], self.dw)
+                results['MbaseZ_max'][ir]    = results['MbaseZ_avg'][ir] + 3 * results['MbaseZ_std'][ir]
+                results['MbaseZ_min'][ir]    = results['MbaseZ_avg'][ir] - 3 * results['MbaseZ_std'][ir]
+
+                # For backwards capability, also save MBase_ for now
+                results['Mbase_avg'][ir]   = results['MbaseY_avg'][ir]  # tower base fore-aft bending moment
+                results['Mbase_std'][ir]   = results['MbaseY_std'][ir]
+                results['Mbase_PSD'][:,ir] = results['MbaseY_PSD'][:,ir]
+                results['Mbase_max'][ir]   = results['MbaseY_max'][ir]
+                results['Mbase_min'][ir]   = results['MbaseY_min'][ir]
+
+
         # wave PSD for reference
         results['wave_PSD'] = getPSD(self.zeta, self.dw)        # wave elevation spectrum
 

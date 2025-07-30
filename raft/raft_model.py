@@ -1032,7 +1032,7 @@ class Model():
             # sum up all linear (non-varying) matrices up front, including potential summation across multiple rotors
             M_lin.append( M_turb + fowt.M_struc[:,:,None] + fowt.A_BEM + fowt.A_hydro_morison[:,:,None]        + M_moor[:,:,None] + A_moor[:,:,None] ) # mass
             B_lin.append( B_turb + fowt.B_struc[:,:,None] + fowt.B_BEM + np.sum(fowt.B_gyro, axis=2)[:,:,None]) # damping
-            C_lin.append(          fowt.C_struc                          + fowt.C_hydro                        + C_moor ) # stiffness
+            C_lin.append(          fowt.C_struc                        + fowt.C_hydro                          + C_moor + fowt.C_elast) # stiffness
             F_lin.append( fowt.F_BEM[0,:,:] + fowt.F_hydro_iner[0,:,:] + fowt.Fhydro_2nd[0, :, :]) # consider only excitation from the primary sea state in the load case for now
 
             # start fixed point iteration loop for dynamics of the individual FOWT
@@ -1335,7 +1335,7 @@ class Model():
             self.results['properties']['buoyancy (pgV)'] = fowt.rho_water*fowt.g*fowt.V
             self.results['properties']['center of buoyancy'] = fowt.rCB
             self.results['properties']['C hydrostatic'] = fowt.C_hydro
-            self.results['properties']['C system'] = fowt.C_struc + fowt.C_hydro + self.C_moor0
+            self.results['properties']['C system'] = fowt.C_struc + fowt.C_hydro + self.C_moor0 + fowt.C_elast
             
             # unloaded equilibrium <<< 
             

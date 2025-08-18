@@ -1404,7 +1404,7 @@ class FOWT():
         for row in data:
             indw1, = np.where(self.w1_2nd==row[0]) # index for first frequency
             indw2, = np.where(self.w2_2nd==row[1]) # index for second frequency
-            indhead, = np.where(self.heads_2nd==row[2]) # index for heading
+            indhead, = np.where(self.heads_2nd==deg2rad(row[2])) # index for heading
             indDOF = round(row[4]-1) # index for degree of freedom. Needs to be an int. -1 is due to being from 1 to 6 in the input file
 
             # Factor for dimensionalization (except for wave amplitudes, which are assumed unitary for QTFs)
@@ -1473,8 +1473,8 @@ class FOWT():
         if len(self.heads_2nd)==1: # If there is only one heading, no need to interpolate. The warnings above already tell the user if the required heading is out of range.
             qtf_interpBeta = self.qtf[:,:,0,:]
         else:
-            qtf_interpBetaRe = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:].real))(beta)
-            qtf_interpBetaIm = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:].imag))(beta)
+            qtf_interpBetaRe = interp1d(self.heads_2nd, self.qtf.real, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:].real, self.qtf[:,:,-1,:].real))(beta)
+            qtf_interpBetaIm = interp1d(self.heads_2nd, self.qtf.imag, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:].imag, self.qtf[:,:,-1,:].imag))(beta)
             qtf_interpBeta   = qtf_interpBetaRe + 1j*qtf_interpBetaIm
 
         # Compute force spectrum with QTF resolution and then interpolate to the frequency vector of the input wave spectrum

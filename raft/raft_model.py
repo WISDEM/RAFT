@@ -1233,7 +1233,7 @@ class Model():
         F_rotor = np.zeros([self.nDOF, self.nw], dtype=complex)
         
         for i, fowt in enumerate(self.fowtList):
-            F_rotor[i*6:i*6+6] = np.sum(fowt.F_aero, axis=2)
+            F_rotor[i*6:i*6+6] = np.sum(fowt.f_aero, axis=2)
             
         for iw in range(self.nw):
             self.Xi[-1,:,iw] = np.matmul(Zinv[:,:,iw], F_rotor[:,iw])

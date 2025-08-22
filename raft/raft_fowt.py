@@ -257,6 +257,7 @@ class FOWT():
             for heading in headings:
                 self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust, part_of='platform', first_node_id=len(self.nodeList)))
                 self.nodeList += self.memberList[-1].nodeList                
+                self.memberList[-1].headings = headings # Storing a copy of headings at each member to use it in model.adjustBallast
         
         # add tower(s) and nacelle(s) to member list if applicable
         if 'turbine' in design:

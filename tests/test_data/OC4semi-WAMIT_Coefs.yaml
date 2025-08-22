@@ -3,8 +3,8 @@ name: 5MW with OC4-DeepCWind semi-sub
 
 
 settings:                   # global Settings
-    min_freq     :  0.00025   #  [Hz]       lowest frequency to consider, also the frequency bin width 
-    max_freq     :  0.25    #  [Hz]       highest frequency to consider
+    min_freq     :  0.005    #  [Hz]       lowest frequency to consider, also the frequency bin width     
+    max_freq     :  0.20    #  [Hz]       highest frequency to consider
     XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
     nIter        :  10      # sets how many iterations to perform in Model.solveDynamics()
     

@@ -776,9 +776,9 @@ class FOWT():
         
         # Compute motions of the PRP (the intersection of the tower centerline and the mean waterline)
         # as a rigid body transformation from the rigidBodyNode to the PRP
-        self.r6[0:3] = transformPosition(-self.rigidBodyNode.r0[:3], self.rigidBodyNode.r)
-        self.r6[3:]  = self.rigidBodyNode.r[3:]
-        # self.Xi0 = self.r6 - np.array([self.x_ref, self.y_ref, 0, 0, 0, 0])
+        rotMat   = rotationMatrix(*self.rigidBodyNode.Xi0[-3:])
+        self.r6 = self.rigidBodyNode.r.copy()
+        self.r6[:3] += rotMat @ (-self.rigidBodyNode.r0[:3])
 
         # calculate and save a rotation/orientation matrix
         self.Rmat = rotationMatrix(*self.r6[3:])  # rotation matrix for fowt orientation
@@ -1703,8 +1703,6 @@ class FOWT():
             modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
         
         else:
-            # from scipy.linalg import eigh
-            # eigenvals, eigenvectors = eigh(C_tot, M_tot)
             eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))
 
             # Sort in ascending order of eigenvals
@@ -2001,6 +1999,7 @@ class FOWT():
         # TODO: I think a lot of the calculations below should be moved to the member class
         # TODO: Add references to the equations in our paper once it's published
         # TODO: Using waveHeadInd is useful within the software, but perhaps it would be also useful to have an option to specify the wave heading?
+        # Big TODO: This doesn't work with flexible/multibody FOWTs yet
 
         # In case the body is fixed
         if Xi0 is None:
@@ -2010,6 +2009,12 @@ class FOWT():
         beta = self.beta[waveHeadInd]
         self.heads_2nd = [beta] # Need this one to print the QTF
         whead = f"{np.degrees(beta)%360:.2f}".replace('.', 'p') # String with heading in range of 0-360 [deg] for output files
+        
+        # Initialize qtf that will be used by the solver
+        self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)  # Need this fourth dimension for conformity with the case where the QTFs are read from a file
+        if self.nDOF > 6:
+            print("Function calcQTF_slenderBody() is not implemented for flexible/multibody FOWTs yet. Considering null qtf matrices for now.")
+            return
 
         # Resample Xi0, which is input in the same frequency as the first-order loads, to the frequencies of the 2nd order hydrodynamic forces.
         # We don't use the same frequencies as the 1st order loads, self.w, for the QTFs because it would be too expensive.
@@ -2037,22 +2042,19 @@ class FOWT():
         # First-order forces, which are used to compute Pinkster's IV term
         # They are taken as F_1stOrder = Mass * Acceleration_1stOrder
         F1st = np.zeros([self.nDOF, len(self.w1_2nd)], dtype=complex)
-        F1st[0:3,:] = self.M_struc[0,0] * (-self.w1_2nd**2 * Xi[0:3,:])
-        F1st[3:6,:] = np.matmul(self.M_struc[3:,3:], (-self.w1_2nd**2 * Xi[3:,:]))
-          
-        # Initialize qtf that will actually be used by the solver
-        self.qtf = np.zeros([len(self.w1_2nd), len(self.w2_2nd), 1, self.nDOF], dtype=complex)  # Need this fourth dimension for conformity with the case where the QTFs are read from a file
+        F1st = np.matmul(self.M_struc, (-self.w1_2nd**2 * Xi))
 
         if verbose:
             print(f" Computing QTF for heading {beta:.2f}")
 
         # We start with the force component due to rotation of first-order wave forces (force component IV from Pinkster (1979)).
         # This component depends on the forces on the whole body, hence it is outside of the member loop below.
+        # TODO: Need to change this for multibody/flexible FOWTs
         for i1 in range(len(self.w1_2nd)):
             for i2 in range(i1, len(self.w2_2nd)):
                 if self.w2_2nd[i2] < self.w1_2nd[i1]: # We don't need to fill the whole matrix, only the upper triangle
                         continue
-                F_rotN = np.zeros(6, dtype='complex')    
+                F_rotN = np.zeros(self.nDOF, dtype='complex')
                 F_rotN[0:3] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[0:3,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[0:3,i1]))
                 F_rotN[3: ] = 0.25 * (np.cross(Xi[3:,i1], np.conj(F1st[3: ,i2])) + np.cross(np.conj(Xi[3:,i2]), F1st[3: ,i1]))
                 self.qtf[i1,i2,waveHeadInd,:] = F_rotN
@@ -2529,7 +2531,7 @@ class FOWT():
                 # fill in metrics
                 # mean moment from weight and thrust
                 results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) 
-                            + transformForce(self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )
+                            + transformForce(self.rotorList[0].nodeList[0].T@self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )
                 results['Mbase_std'][ir] = dynamic_moment_RMS[ir]
                 results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
                 results['Mbase_max'][ir] = results['Mbase_avg'][ir]+3*results['Mbase_std'][ir]

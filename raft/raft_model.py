@@ -433,7 +433,7 @@ class Model():
                 self.T_moor_amps = T_moor_amps  # save for future processing!
     
 
-    def solveEigen(self, display=0):
+    def solveEigen(self, display=0, outPath=None):
         '''Compute the natural frequencies and mode shapes of the floating 
         system. When there is a single FOWT, this should give the same result
         as FOWT.solveEigen.
@@ -453,11 +453,11 @@ class Model():
         
         # include each FOWT's individual mass and stiffness
         for i, fowt in enumerate(self.fowtList):
-            i1 = i*6                                              # range of DOFs for the current turbine
-            i2 = i*6+6
+            i1 = i*fowt.nDOF                                              # range of DOFs for the current turbine
+            i2 = (i+1)*fowt.nDOF
             
             M_tot[i1:i2, i1:i2] += fowt.M_struc + fowt.A_hydro_morison + fowt.A_BEM[:,:,0] # Mass. Using BEM added mass at w=0 because it is closer to the expected natural frequencies than w=inf
-            C_tot[i1:i2, i1:i2] += fowt.C_struc + fowt.C_hydro + fowt.C_moor
+            C_tot[i1:i2, i1:i2] += fowt.C_struc + fowt.C_hydro + fowt.C_moor + fowt.C_elast
             
             # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
             # TODO: Remove this now that we have additional_effects?
@@ -465,6 +465,9 @@ class Model():
             
         # include array-level mooring stiffness
         if self.ms:
+            if all(f.nDOF == 6 for f in self.fowtList) == False:
+                raise Exception('Currently, array-level mooring eigen analysis only supported for fully rigid FOWTs (6 DOFs).')
+
             if self.moorMod == 0 or self.moorMod == 2:
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
             elif self.moorMod == 1:
@@ -484,40 +487,56 @@ class Model():
         if len(message) > 0:
             raise RuntimeError('System matrices computed by RAFT have one or more small or negative diagonals: '+message)
 
-        # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
-        eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
-
-        if any(eigenvals <= 0.0):
-            raise RuntimeError("Error: zero or negative system eigenvalues detected.")
-
+        # For rigid FOWTs, using the old method for now
         # sort to normal DOF order based on which DOF is largest in each eigenvector
-        ind_list = []
-        for i in range(self.nDOF-1,-1, -1):
-            vec = np.abs(eigenvectors[i,:])  # look at each row (DOF) at a time (use reverse order to pick out rotational DOFs first)
+        if all(f.nDOF == 6 for f in self.fowtList):
+            # calculate natural frequencies (using eigen analysis to get proper values for pitch and roll - otherwise would need to base about CG if using diagonal entries only)
+            eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))   # <<< need to sort this out so it gives desired modes, some are currently a bit messy
 
-            for j in range(self.nDOF):       # now do another loop in case the index was claimed previously
+            if any(eigenvals <= 0.0):
+                raise RuntimeError("Error: zero or negative system eigenvalues detected.")
 
-                ind = np.argmax(vec)         # find the index of the vector with the largest value of the current DOF
+            ind_list = []
+            for i in range(self.nDOF-1,-1, -1):
+                vec = np.abs(eigenvectors[i,:])  # look at each row (DOF) at a time (use reverse order to pick out rotational DOFs first)
 
-                if ind in ind_list:          # if a previous vector claimed this DOF, set it to zero in this vector so that we look at the other vectors
-                    vec[ind] = 0.0
-                else:
-                    ind_list.append(ind)     # if it hasn't been claimed before, assign this vector to the DOF
-                    break
+                for j in range(self.nDOF):       # now do another loop in case the index was claimed previously
 
-        ind_list.reverse()   # reverse the index list since we made it in reverse order
+                    ind = np.argmax(vec)         # find the index of the vector with the largest value of the current DOF
 
-        fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
-        modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
+                    if ind in ind_list:          # if a previous vector claimed this DOF, set it to zero in this vector so that we look at the other vectors
+                        vec[ind] = 0.0
+                    else:
+                        ind_list.append(ind)     # if it hasn't been claimed before, assign this vector to the DOF
+                        break
+
+            ind_list.reverse()   # reverse the index list since we made it in reverse order
+
+            fns = np.sqrt(eigenvals[ind_list])/2.0/np.pi   # apply sorting to eigenvalues and convert to natural frequency in Hz
+            modes = eigenvectors[:,ind_list]               # apply sorting to eigenvectors
+
+        else: 
+            eigenvals, eigenvectors = np.linalg.eig(np.linalg.solve(M_tot, C_tot))
+
+            # Sort in ascending order of eigenvals
+            sorted_indices = np.argsort(eigenvals)
+            eigenvals = eigenvals[sorted_indices]
+            eigenvectors = eigenvectors[:, sorted_indices]
+
+            fns = np.sqrt(eigenvals)/2.0/np.pi
+            modes = eigenvectors            
+
+        if isinstance(outPath, str):
+            self.write_modes_json(outPath, fns, modes)
 
         if display > 0: 
             print("")
             print("--------- Natural frequencies and mode shapes -------------")
-            print("Mode   "+"".join([f"{i+10:3d}"  for i in range(self.nDOF)]))
-            print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns]))
+            print("Mode   "+"".join([f"{i+10:3d}"  for i in range(6)]))
+            print("Fn (Hz)"+"".join([f"{fn:10.4f}" for fn in fns[:6]]))
             print("")
-            for i in range(self.nDOF):
-                print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(self.nDOF)]))
+            for i in range(6):
+                print(f"DOF {i+1}  "+"".join([f"{modes[i,j]:10.4f}" for j in range(6)]))
             print("-----------------------------------------------------------")
 
         # store results
@@ -606,7 +625,7 @@ class Model():
                 # This is not strictly correct, as we would need to compute the QTFs for the combinations between wave headings, but this is a starting point
                 if hasattr(fowt, 'Fhydro_2nd_mean'):
                     F_meandrift = np.sum(fowt.Fhydro_2nd_mean, axis=0)
-                    F_env_constant[fowt.nDOF*i:fowt.nDOF*i+6] += F_meandrift # TODO: Lumping the mean drift forces into the first 6 DOFs for now
+                    F_env_constant[fowt.nDOF*i:fowt.nDOF*(i+1)] += F_meandrift
 
                 if display > 1:  print(" F_env_constant"+"  ".join(["{:+8.2e}"]*6).format(*F_env_constant[fowt.nDOF*i:fowt.nDOF*(i+1)]))
 

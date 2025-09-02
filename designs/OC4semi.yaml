@@ -1030,7 +1030,7 @@ turbine:
 
     tower:  # (could remove some entries that don't apply for the tower)
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
-        type      :  1                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [ 0, 0,   10]             # [m]    end A coordinates
         rB        :  [ 0, 0, 87.6]             # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular

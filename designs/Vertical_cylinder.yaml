@@ -29,7 +29,7 @@ platform:
     members:   # list all members here
         
       - name      :  vertical_cylinder             # [-]    an identifier (no longer has to be number)       
-        type      :  2                             # [-]    
+        type      :  rigid                         # [-]    
         rA        :  [0,0,-1]                      # [m]    end A coordinates
         rB        :  [0,0,1]                   # [m]    and B coordinates
         shape     :  circ                          # [-]    circular or rectangular

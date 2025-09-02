@@ -431,7 +431,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # Tower
         design['turbine']['tower'] = {}
         design['turbine']['tower']['name'] = 'tower'
-        design['turbine']['tower']['type'] = 1
+        design['turbine']['tower']['type'] = 'rigid'
         design['turbine']['tower']['rA'] = inputs['turbine_tower_rA']
         design['turbine']['tower']['rB'] = inputs['turbine_tower_rB']
         # RAFT always wants rA below rB, this needs to be flipped for MHKs
@@ -563,7 +563,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             extensionA = np.linalg.norm(rA_0-rA)
             extensionB = np.linalg.norm(rB_0-rB)
             design['platform']['members'][i]['name'] = m_name
-            design['platform']['members'][i]['type'] = i + 2
+            design['platform']['members'][i]['type'] = 'rigid'
             design['platform']['members'][i]['rA'] = rA
             design['platform']['members'][i]['rB'] = rB
             design['platform']['members'][i]['extensionA'] = extensionA

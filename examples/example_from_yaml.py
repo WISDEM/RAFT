@@ -27,7 +27,7 @@ def run_example(plot_flag = False):
         model.plotResponses()
 
         # Visualize the system in its most recently evaluated mean offset position
-        model.plot()
+        model.plot(plot_frame=True) # flag plot_frame is used to plot the structural nodes and rigid links that are part of the structure. The default is False
 
         plt.show()
 

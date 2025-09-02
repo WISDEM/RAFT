@@ -141,7 +141,9 @@ Modeling Settings
         max_freq     :  0.40    #  [Hz]       highest frequency to consider
         XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
         nIter        :  10      # sets how many iterations to perform in Model.solveDynamics()
-
+        staticsMod   :   0      # sets hydrostatic stiffness approach in Model.solveStaticss (0) constant stiffness matrix or (1) nonlinear 
+        forcingMod   :   0      # sets forcing approach in Model.solveStatics: (0) constant or (1) updated each time
+    
 Site Characteristics
 ^^^^^^^^^^^^^^^^^^^^
 

@@ -46,6 +46,12 @@ jobs:
               run: |
                   pip install -e .
 
+            - name: Overwrite MoorPy if on dev branch
+              run: |
+                  if [ "${{ github.ref }}" == "refs/heads/dev" ]; then
+                    pip install git+https://github.com/NREL/MoorPy@dev
+                  fi
+
             - name: Example run
               run: |
                   cd examples

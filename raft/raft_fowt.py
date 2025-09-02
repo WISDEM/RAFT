@@ -10,6 +10,7 @@ from raft.helpers import *
 from raft.raft_member import Member
 from raft.raft_rotor import Rotor
 import moorpy as mp
+from moorpy.helpers import lines2ss
 
 # Attempt to import pygmsh and meshmagick with warnings if not installed
 try:
@@ -219,6 +220,7 @@ class FOWT():
 
             self.ms = mp.System()
             self.ms.parseYAML(design['mooring'])
+            self.moorMod = getFromDict(design['mooring'], 'moorMod', default=0, dtype=int)
             self.ms_tol = getFromDict(design['mooring'], 'tol', dtype=float, default=0.05)  # mooring system tolerance for solving equilibrium
             
             # ensure proper setup with one coupled Body tied to this FOWT
@@ -240,6 +242,7 @@ class FOWT():
 
         else:
             self.ms = None
+            self.moorMod = 0
         
         self.F_moor0 = np.zeros(6)     # mean mooring forces in a given scenario
         self.C_moor = np.zeros([6,6])  # mooring stiffness matrix in a given scenario
@@ -337,7 +340,13 @@ class FOWT():
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
             self.ms.solveEquilibrium(tol=self.ms_tol)
-            self.C_moor = self.ms.getCoupledStiffnessA()
+            if self.moorMod == 0 or self.moorMod == 2:
+                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
+            elif self.moorMod == 1:
+                self.ms.updateSystemDynamicMatrices()
+                _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
+
+            self.C_moor = C_moor
             self.F_moor0 = self.ms.bodyList[0].getForces(lines_only=True)
         
 
@@ -1074,7 +1083,7 @@ class FOWT():
         
         
         self.beta = deg2rad(case['wave_heading'])   # array of wave headings. Input in [deg], but the code uses [rad]
-        self.zeta = np.zeros([self.nWaves,self.nw], dtype=complex)
+        self.zeta = np.zeros([self.nWaves,self.nw])
 
         # make wave spectrum for each heading
         self.S = np.zeros([self.nWaves,self.nw])
@@ -1543,6 +1552,15 @@ class FOWT():
 
         return f_mean, f
 
+    def updateMooringDynamicMatrices(self, Xi, S):
+        '''Update matrices from mooring dynamics
+        Inputs
+        Xi: 6 x Nfreq array with the motion amplitudes of the fowt
+        S:  1 x Nfreq array with the wave spectrum
+        '''
+        for line in self.ms.lineList:
+            RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, [Xi], S, [self.r6[:3]]) # Need Xi and r6 within a list
+            line.updateLumpedMass(self.w, S, self.depth, kbot=0, cbot=0, RAO_A=RAO_A.T, RAO_B=RAO_B.T) # Need to transpose RAO_fl so that it is in the right shape (nFreq x 3)
 
     def saveTurbineOutputs(self, results, case):
         '''Calculate and store output metrics of the FOWT response at the current load case.
@@ -1601,23 +1619,46 @@ class FOWT():
         results['yaw_RA' ] = rad2deg(self.Xi[:,5,:])
         
         # ----- turbine-level mooring outputs (similar code as array-level) -----
-        if self.ms:
+        if self.ms:            
+            self.ms = lines2ss(self.ms) # convert composite lines to subsystem
             nLines = len(self.ms.lineList)
-            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each excitation source and line end
+            T_moor_amps = np.zeros([self.nWaves+1, 2*nLines, self.nw], dtype=complex)  # mooring tension amplitudes for each wave component and each line end
+            T_moor_psd  = np.zeros([2*nLines, self.nw], dtype=float)
+            T_moor_std  = np.zeros([2*nLines], dtype=float)
             C_moor, J_moor = self.ms.getCoupledStiffness(lines_only=True, tensions=True) # get stiffness matrix and tension jacobian matrix
-            T_moor = self.ms.getTensions()  # get line end mean tensions
+            T_moor = self.ms.getTensions()  # get line end mean tensions                        
+            if self.moorMod == 0:
+                for ih in range(self.nWaves+1):
+                    for iw in range(self.nw):
+                        T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
+
+                for iT in range(2*nLines):
+                    T_moor_psd[iT,:]  = getPSD(T_moor_amps[:,iT,:], self.w[0]) # PSD in N^2/(rad/s)
+                    T_moor_std[iT] = getRMS(T_moor_amps[:,iT,:])
             
-            for ih in range(self.nWaves+1):
-                for iw in range(self.nw):
-                    T_moor_amps[ih,:,iw] = np.matmul(J_moor, self.Xi[ih,:,iw])   # FFT of mooring tensions
-        
+            else:
+                for il, line in enumerate(self.ms.lineList):                    
+                    for ih in range(self.nWaves):
+                        RAO_A, RAO_B = getLineEndsRAO(line, self.ms, self.w, [self.Xi[ih,:,:]], self.S[ih,:], [self.r6[:3]]) # Need Xi and r6 within a list
+                        T_nodes_amp, _, _, _, _, _, _, _ = line.dynamicSolve(self.w, self.S[ih,:], RAO_A=RAO_A.T, RAO_B=RAO_B.T, depth=self.depth, kbot=0,cbot=0, tol = 0.01, conv_time=False)
+
+                        # Tension at the end nodes of the line
+                        T_moor_amps[ih, il, :] += T_nodes_amp[:,0]
+                        T_moor_amps[ih, il+nLines,:] += T_nodes_amp[:,-1]
+
+                # Compute PSD and std from the different wave component
+                for iT in range(2*nLines):
+                    T_moor_psd[iT,:] = getPSD(T_moor_amps[:,iT,:], self.w[1]-self.w[0])       
+                    T_moor_std[iT] = getRMS(T_moor_amps[:,iT,:])
+
+                
             results['Tmoor_avg'] = T_moor
             results['Tmoor_std'] = np.zeros(2*nLines)
             results['Tmoor_max'] = np.zeros(2*nLines)
             results['Tmoor_min'] = np.zeros(2*nLines)
             results['Tmoor_PSD'] = np.zeros([ 2*nLines, self.nw])
             for iT in range(2*nLines):
-                TRMS = getRMS(T_moor_amps[:,iT,:]) # estimated mooring line RMS tension [N]
+                TRMS = T_moor_std[iT]
                 results['Tmoor_std'][iT] = TRMS
                 results['Tmoor_max'][iT] =  T_moor[iT] + 3*TRMS
                 results['Tmoor_min'][iT] =  T_moor[iT] - 3*TRMS

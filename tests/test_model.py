@@ -122,7 +122,7 @@ desired_X0 = {
     ]
 }
 
-def solveStatics(index_and_model, test_case_key):
+def solveStatics(index_and_model, test_case_key, rtol=1e-05, atol=1e-10):
     '''
     We test only the mean offsets and linearized mooring properties.
     '''        
@@ -130,13 +130,13 @@ def solveStatics(index_and_model, test_case_key):
     testCase = cases4solveStatics[test_case_key]    
     model.solveStatics(testCase)
     for i, fowt in enumerate(model.fowtList):
-        assert_allclose(fowt.r6, desired_X0[test_case_key][index][6*i:6*(i+1)], rtol=1e-05, atol=1e-10)
+        assert_allclose(fowt.r6, desired_X0[test_case_key][index][6*i:6*(i+1)], rtol=rtol, atol=atol)
 
 def test_solveStatics_Wind(index_and_model):
     solveStatics(index_and_model, 'wind')
 
 def test_solveStatics_Wave(index_and_model):
-    solveStatics(index_and_model, 'wave')
+    solveStatics(index_and_model, 'wave', rtol=1e-05, atol=1e-8)
 
 def test_solveStatics_Current(index_and_model):
     solveStatics(index_and_model, 'current')

@@ -2417,8 +2417,9 @@ class Member:
         return A, I
 
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[], color='k', nodes=0, 
-             station_plot=[], plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):
+             station_plot=[], plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2, plot_frame=False, frame_opts={}):
         '''Draws the member on the passed axes, and optional platform offset and rotation matrix
+        If plot_frame is True, also plots the frame structure (structural nodes and beam elements) using the parameters in  frame_opts.
         
         Parameters
         ----------
@@ -2516,20 +2517,29 @@ class Member:
             if nodes > 0:
                 ax.scatter(self.r[:,0], self.r[:,1], self.r[:,2])
         
+        # plot the frame structure if asked
+        if plot_frame:
+            # Set defaults for frame_opts keys if not present
+            frame_defaults = {
+                'colorMember': 'k',
+                'linewidth': 2,
+                'colorNode': 'default', # Default is to use 'k for end nodes and 'b' for inner nodes
+                'size': 5,
+                'marker': 'o',
+                'markerfacecolor': 'default',
+                'writeID': False
+            }
+            
+            # Use default options if not provided
+            for k, v in frame_defaults.items():
+                frame_opts.setdefault(k, v)
+
+            # Plot the frame structure
+            for i, node in enumerate(self.nodeList):
+                ax = node.plot(ax, color=frame_opts['colorNode'], size=frame_opts['size'], marker=frame_opts['marker'], markerfacecolor=frame_opts['markerfacecolor'], writeID=frame_opts['writeID'])
+                if i < len(self.nodeList)-1:
+                    x1, y1, z1 = node.r[0], node.r[1], node.r[2]
+                    x2, y2, z2 = self.nodeList[i+1].r[0], self.nodeList[i+1].r[1], self.nodeList[i+1].r[2]
+                    ax.plot([x1, x2], [y1, y2], [z1, z2], color=frame_opts['colorMember'], linewidth=frame_opts['linewidth'])
+
         return linebit
-
-    # TODO: Reformulate this function. Make it part of plot with some options
-    def plot_structFrame(self, ax=None, colorMember='k', linewidth=2, colorNode='default', size=5, marker='o', markerfacecolor='default', writeID=False):
-        if ax is None:
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-
-        for i, node in enumerate(self.nodeList):
-            ax = node.plot(ax, color=colorNode, size=size, marker=marker, markerfacecolor=markerfacecolor, writeID=writeID)
-
-            if i < len(self.nodeList)-1:
-                # Plot the element between two nodes
-                x1, y1, z1 = node.r[0], node.r[1], node.r[2]
-                x2, y2, z2 = self.nodeList[i+1].r[0], self.nodeList[i+1].r[1], self.nodeList[i+1].r[2]
-                ax.plot([x1, x2], [y1, y2], [z1, z2], color=colorMember, linewidth=linewidth)        
-        return ax

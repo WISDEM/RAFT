@@ -2744,7 +2744,7 @@ class FOWT():
     
     def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], 
              airfoils=False, zorder=2, plot_fowt=True, plot_ms=True, 
-             shadow=True, plot_frame=False, mp_args={}):
+             shadow=True, plot_frame=False, mp_args={}, frame_opts={}, plot_joints=False):
         '''plots the FOWT...'''
 
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
@@ -2771,25 +2771,60 @@ class FOWT():
 
                 mem.setPosition()  # offsets/rotations could be done in this function rather than in mem.plot <<<
 
-                mem.plot(ax, color=color, 
-                        nodes=nodes, station_plot=station_plot, zorder=zorder)
+                mem.plot(ax, color=color, nodes=nodes, station_plot=station_plot, zorder=zorder, plot_frame=plot_frame, frame_opts=frame_opts)
+
         if plot_frame:
-            for mem in self.memberList:
-                mem.plot_structFrame(ax, colorMember=color, colorNode='default', marker='.', markerfacecolor='default', writeID=False)
-            for joint in self.jointList:
-                color = 'green' if joint['type'] == 'ball' else 'red'
-                ax.scatter(joint['r'][0], joint['r'][1], joint['r'][2], marker='o', facecolors='None')
             for i_rl in range(len(self.rigidLinkList['id'])):
                 nodeA = self.rigidLinkList['node1'][i_rl]
                 nodeB = self.rigidLinkList['node2'][i_rl]
-                ax.plot([nodeA.X[0], nodeB.X[0]], [nodeA.X[1], nodeB.X[1]], [nodeA.X[2], nodeB.X[2]], color='gray')
-                ax.scatter(nodeA.X[0], nodeA.X[1], nodeA.X[2], color='gray', facecolors='None')
-                ax.scatter(nodeB.X[0], nodeB.X[1], nodeB.X[2], color='gray', facecolors='None')
+                ax.plot([nodeA.r[0], nodeB.r[0]], [nodeA.r[1], nodeB.r[1]], [nodeA.r[2], nodeB.r[2]], color='k')
+                ax.scatter(nodeA.r[0], nodeA.r[1], nodeA.r[2], color='k', facecolors='None')
+                ax.scatter(nodeB.r[0], nodeB.r[1], nodeB.r[2], color='k', facecolors='None')
 
+        # TODO: joint position is currently not updated with the rest of the model, so this is only useful to when plotting the model at its undisplaced position
+        if plot_joints:
+            for joint in self.jointList:
+                color = 'green' if joint['type'] == 'ball' else 'red'
+                ax.scatter(joint['r'][0], joint['r'][1], joint['r'][2], color=color, marker='o', facecolors='None')
 
-        # in future should consider ability to animate mode shapes and also to animate response at each frequency
-        # including hydro excitation vectors stored in each member
+        # The code below makes the plot look nicer if plotting the FOWT without its mooring system 
+        if not plot_ms:
+            # Set equal aspect ratio
+            ax.set_box_aspect([1, 1, 1])  # Aspect ratio is 1:1:1
 
+            # --- Ensure equal axis limits ---
+            # Gather all points
+            xs, ys, zs = [], [], []
+            for member in self.memberList:
+                for n in member.nodeList:
+                    xs.append(n.r[0])
+                    ys.append(n.r[1])
+                    zs.append(n.r[2])
+            for rotor in self.rotorList:
+                for n in rotor.nodeList:
+                    xs.append(n.r[0])
+                    ys.append(n.r[1])
+                    zs.append(n.r[2])
+            for i_rl in range(len(self.rigidLinkList['id'])):
+                nodeA = self.rigidLinkList['node1'][i_rl]
+                nodeB = self.rigidLinkList['node2'][i_rl]
+                xs += [nodeA.r[0], nodeB.r[0]]
+                ys += [nodeA.r[1], nodeB.r[1]]
+                zs += [nodeA.r[2], nodeB.r[2]]
+
+            # Compute limits
+            xlim = [np.min(xs), np.max(xs)]
+            ylim = [np.min(ys), np.max(ys)]
+            zlim = [np.min(zs), np.max(zs)]
+            max_range = max(np.ptp(xlim), np.ptp(ylim), np.ptp(zlim))
+            mid_x = np.mean(xlim)
+            mid_y = np.mean(ylim)
+            mid_z = np.mean(zlim)
+
+            ax.set_xlim(mid_x - max_range/2, mid_x + max_range/2)
+            ax.set_ylim(mid_y - max_range/2, mid_y + max_range/2)
+            ax.set_zlim(mid_z - max_range/2, mid_z + max_range/2)
+        
 
     def plot2d(self, ax, color=None, plot_rotor=1, 
         Xuvec=[1,0,0], Yuvec=[0,0,1]):
@@ -2850,104 +2885,6 @@ class FOWT():
                 Xs2d = np.matmul(Xuvec, P2)
                 Ys2d = np.matmul(Yuvec, P2)
                 ax.plot(Xs2d, Ys2d, color=color, lw=1.0)
-
-    '''
-    Temporary functions that I'm using for testing right now. Might be converted to permanent functions
-    '''
-    def computeReducedLoadVector(self):
-        # self.F = np.zeros(len(self.reducedDOF))
-        # for node in self.nodeList:
-        #     self.F += node.T.T @ node.F 
-        # return self.F
-        self.F = self.T.T @ self.Ffull
-        return self.F
-    
-    def computeReducedStiffnessMatrix(self):
-        # self.K = np.zeros((len(self.reducedDOF), len(self.reducedDOF)))
-        # for node in self.nodeList:
-        #     self.K += node.T.T @ node.K @ node.T
-        # return self.K
-        self.K = self.T.T @ self.Kfull @ self.T
-        return self.K
-
-    def assignLoadToNodes(self, F):
-        if len(F) != len(self.nodeList):
-            raise Exception("Number of loads (forces and moments) must be equal to the number of nodes.")
-        for i, node in enumerate(self.nodeList):
-            node.assignLoadToNode(F[i])        
-
-    def assignStiffnessToNodes(self, K):
-        if len(K) != len(self.nodeList):
-            raise Exception("Number of stiffness matrices must be equal to the number of nodes.")                
-        for i, node in enumerate(self.nodeList):
-            node.K_hydro = K[i]
-
-    # Compute the load vector and stiffness matrix of the whole structure (6*Nnodes system of equations)
-    def evaluateLoadVector(self):
-        self.Ffull = np.zeros([len(self.nodeList)*self.nodeList[0].nDOF])
-        for i, node in enumerate(self.nodeList):
-            self.Ffull[i*node.nDOF:(i+1)*node.nDOF] = node.F
-        return self.Ffull
-
-    def plot_temp(self, ax=None, colorMember='k', linewidth=2, colorNode='default', size=15, marker='o', markerfacecolor='default', writeID=False):
-        if ax is None:
-            fig = plt.figure()
-            ax = fig.add_subplot(111, projection='3d')
-        for rotor in self.rotorList:
-            rotor.plot(ax, color=colorMember)
-            for n in rotor.nodeList:
-                n.plot(ax)
-        for member in self.memberList:
-            member.plot_structFrame(ax, colorMember=colorMember, linewidth=linewidth, colorNode=colorNode, size=size, marker=marker, markerfacecolor=markerfacecolor, writeID=writeID)
-            member.plot(ax)
-        for joint in self.jointList:
-            color = 'green' if joint['type'] == 'ball' else 'red'
-            ax.scatter(joint['r'][0], joint['r'][1], joint['r'][2], color=color, s=2*size, marker='o', facecolors='None')
-        for i_rl in range(len(self.rigidLinkList['id'])):
-            nodeA = self.rigidLinkList['node1'][i_rl]
-            nodeB = self.rigidLinkList['node2'][i_rl]
-            ax.plot([nodeA.r[0], nodeB.r[0]], [nodeA.r[1], nodeB.r[1]], [nodeA.r[2], nodeB.r[2]], color='k', linewidth=linewidth)
-            ax.scatter(nodeA.r[0], nodeA.r[1], nodeA.r[2], color='k', s=0.5*size, marker=marker, facecolors='None')
-            ax.scatter(nodeB.r[0], nodeB.r[1], nodeB.r[2], color='k', s=0.5*size, marker=marker, facecolors='None')
-
-        # Set equal aspect ratio
-        ax.set_box_aspect([1, 1, 1])  # Aspect ratio is 1:1:1
-
-
-        # --- Ensure equal axis limits ---
-        # Gather all points
-        xs, ys, zs = [], [], []
-        for member in self.memberList:
-            for n in member.nodeList:
-                xs.append(n.r[0])
-                ys.append(n.r[1])
-                zs.append(n.r[2])
-        for rotor in self.rotorList:
-            for n in rotor.nodeList:
-                xs.append(n.r[0])
-                ys.append(n.r[1])
-                zs.append(n.r[2])
-        for i_rl in range(len(self.rigidLinkList['id'])):
-            nodeA = self.rigidLinkList['node1'][i_rl]
-            nodeB = self.rigidLinkList['node2'][i_rl]
-            xs += [nodeA.r[0], nodeB.r[0]]
-            ys += [nodeA.r[1], nodeB.r[1]]
-            zs += [nodeA.r[2], nodeB.r[2]]
-
-        # Compute limits
-        xlim = [np.min(xs), np.max(xs)]
-        ylim = [np.min(ys), np.max(ys)]
-        zlim = [np.min(zs), np.max(zs)]
-        max_range = max(np.ptp(xlim), np.ptp(ylim), np.ptp(zlim))
-        mid_x = np.mean(xlim)
-        mid_y = np.mean(ylim)
-        mid_z = np.mean(zlim)
-
-        ax.set_xlim(mid_x - max_range/2, mid_x + max_range/2)
-        ax.set_ylim(mid_y - max_range/2, mid_y + max_range/2)
-        ax.set_zlim(mid_z - max_range/2, mid_z + max_range/2)
-        
-        return ax
 
     def write_modes_json(self, filename, fns, modes):
         """

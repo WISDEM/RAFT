@@ -80,22 +80,35 @@ class FOWT():
         self.r6 = np.zeros(6)   # mean position/orientation in absolute/array coordinates [m,rad]
 
         # Platform lumped inertias
-        self.pointInertias = []        
-        if 'pointInertias' in design['platform']:
-            nPoints = len(design['platform']['pointInertias'])            
-            for ip, pointInertia in enumerate(design['platform']['pointInertias']):
-                self.pointInertias.append({'m': 0, 'inertia': np.zeros([6, 6]), 'r': np.zeros([3,])}) # mass, inertia, and position of each point mass to be added to the platform
-                pointMass = getFromDict(pointInertia, 'mass', shape=0, default=0) # mass of the substructure [kg]
-                self.pointInertias[-1]['m'] = pointMass
-                auxInertia = getFromDict(pointInertia, 'moments_of_inertia', shape=6, default=[0,0,0]) # moments of inertia of the substructure [kg*m^2] - specified in the order Jxx, Jyy, Jzz, Jxy, Jxz, Jyz
-                self.pointInertias[-1]['inertia'] = np.array([[pointMass, 0, 0, 0, 0, 0],
-                                                              [0, pointMass, 0, 0, 0, 0],
-                                                              [0, 0, pointMass, 0, 0, 0],
-                                                              [0, 0, 0, auxInertia[0], auxInertia[3], auxInertia[4]],
-                                                              [0, 0, 0, auxInertia[3], auxInertia[1], auxInertia[5]],
-                                                              [0, 0, 0, auxInertia[4], auxInertia[5], auxInertia[2]]])
-                self.pointInertias[-1]['r'] = getFromDict(pointInertia, 'location', shape=3, default=[0,0,0])
-                        
+        self.pointInertias = []
+        self.pointLoads    = []
+        if 'additional_effects' in design['platform']:
+            for ie, additional_effect in enumerate(design['platform']['additional_effects']):
+                if 'type' not in additional_effect:
+                    raise Exception(f"Additional effect {ie} in platform design must have a 'type' field.")
+
+                if additional_effect['type'] == 'point_inertia':
+                    self.pointInertias.append({'m': 0, 'inertia': np.zeros([6, 6]), 'r': np.zeros([3,])}) # mass, inertia, and position of each point mass to be added to the platform
+                    pointMass = getFromDict(additional_effect, 'mass', shape=0, default=0) # mass of the substructure [kg]
+                    auxInertia = getFromDict(additional_effect, 'moments_of_inertia', shape=6, default=[0,0,0]) # moments of inertia of the substructure [kg*m^2] - specified in the order Jxx, Jyy, Jzz, Jxy, Jxz, Jyz
+
+                    self.pointInertias[-1]['m'] = pointMass                    
+                    self.pointInertias[-1]['inertia'] = np.array([[pointMass, 0, 0, 0, 0, 0],
+                                                                [0, pointMass, 0, 0, 0, 0],
+                                                                [0, 0, pointMass, 0, 0, 0],
+                                                                [0, 0, 0, auxInertia[0], auxInertia[3], auxInertia[4]],
+                                                                [0, 0, 0, auxInertia[3], auxInertia[1], auxInertia[5]],
+                                                                [0, 0, 0, auxInertia[4], auxInertia[5], auxInertia[2]]])
+                    self.pointInertias[-1]['r'] = getFromDict(additional_effect, 'location', shape=3, default=[0,0,0])
+                elif additional_effect['type'] == 'mean_load':
+                    self.pointLoads.append({'f': np.zeros(6), 'r': np.zeros(3)}) # load and position of each point load to be added to the platform
+                    self.pointLoads[-1]['f'] = getFromDict(additional_effect, 'load', shape=6, default=np.zeros(6)) # load vector [N, N-m]
+                    self.pointLoads[-1]['r'] = getFromDict(additional_effect, 'location', shape=3, default=[0,0,0]) # position where the load is applied [m]
+
+        self.f0_additional = np.zeros([6], dtype=float)
+        for pointLoad in self.pointLoads:
+            self.f0_additional += transformForce(pointLoad['f'], offset=pointLoad['r'])
+                                            
         # count number of platform members
         self.nplatmems = 0
         for platmem in design['platform']['members']:
@@ -186,6 +199,7 @@ class FOWT():
 
             for heading in headings:
                 self.memberList.append(Member(mi, self.nw, heading=heading+heading_adjust, part_of='platform'))
+                self.memberList[-1].headings = headings # Storing a copy of headings at each member to use it in model.adjustBallast
         
         
         # add tower(s) and nacelle(s) to member list if applicable
@@ -957,7 +971,7 @@ class FOWT():
         C_tot += self.C_moor
         # add any additional yaw stiffness that isn't included in the MoorPy 
         # model (e.g. if a bridle isn't modeled)
-        C_tot[5,5] += self.yawstiff
+        C_tot[5,5] += self.yawstiff # TODO: Remove this now that we have additional_effects?
         # add system-level stiffness effect if it exists...
         if self.body:
             C_tot += self.body.getStiffness()  # in future should make an analytic body function for this
@@ -984,7 +998,7 @@ class FOWT():
         '''
 
         # Total mass and added mass matrix [kg, kg-m, kg-m^2]
-        M_tot = self.M_struc + self.A_hydro_morison   # mass  (BEM option not supported yet)
+        M_tot = self.M_struc + self.A_hydro_morison + self.A_BEM[:,:,0]   # Mass. Using BEM added mass at w=0 because it is closer to the expected natural frequencies than w=inf
         C_tot = self.getStiffness()  # stiffness
 
         # check viability of matrices
@@ -1391,7 +1405,7 @@ class FOWT():
         for row in data:
             indw1, = np.where(self.w1_2nd==row[0]) # index for first frequency
             indw2, = np.where(self.w2_2nd==row[1]) # index for second frequency
-            indhead, = np.where(self.heads_2nd==row[2]) # index for heading
+            indhead, = np.where(self.heads_2nd==deg2rad(row[2])) # index for heading
             indDOF = round(row[4]-1) # index for degree of freedom. Needs to be an int. -1 is due to being from 1 to 6 in the input file
 
             # Factor for dimensionalization (except for wave amplitudes, which are assumed unitary for QTFs)
@@ -1460,8 +1474,8 @@ class FOWT():
         if len(self.heads_2nd)==1: # If there is only one heading, no need to interpolate. The warnings above already tell the user if the required heading is out of range.
             qtf_interpBeta = self.qtf[:,:,0,:]
         else:
-            qtf_interpBetaRe = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:].real))(beta)
-            qtf_interpBetaIm = interp1d(self.heads_2nd, self.qtf, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:], self.qtf[:,:,-1,:].imag))(beta)
+            qtf_interpBetaRe = interp1d(self.heads_2nd, self.qtf.real, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:].real, self.qtf[:,:,-1,:].real))(beta)
+            qtf_interpBetaIm = interp1d(self.heads_2nd, self.qtf.imag, assume_sorted=True, axis=2, bounds_error=False, fill_value=(self.qtf[:,:,0,:].imag, self.qtf[:,:,-1,:].imag))(beta)
             qtf_interpBeta   = qtf_interpBetaRe + 1j*qtf_interpBetaIm
 
         # Compute force spectrum with QTF resolution and then interpolate to the frequency vector of the input wave spectrum

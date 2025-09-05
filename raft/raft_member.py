@@ -57,6 +57,7 @@ class Member:
         self.l = np.linalg.norm(rAB)  # member length [m]
     
         # heading feature for rotation members about the z axis (used for rotated patterns)
+        self.heading = heading
         if heading != 0.0:
             self.rA0 = applyHeadingToPoint(self.rA0, heading)
             self.rB0 = applyHeadingToPoint(self.rB0, heading)

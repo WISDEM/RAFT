@@ -415,10 +415,11 @@ class Model():
             i1 = i*6                                              # range of DOFs for the current turbine
             i2 = i*6+6
             
-            M_tot[i1:i2, i1:i2] += fowt.M_struc + fowt.A_hydro_morison + fowt.A_BEM[:,:,0] # Mass. Using added mass at w=0 because it is closer to the expected natural frequencies than w=inf
+            M_tot[i1:i2, i1:i2] += fowt.M_struc + fowt.A_hydro_morison + fowt.A_BEM[:,:,0] # Mass. Using BEM added mass at w=0 because it is closer to the expected natural frequencies than w=inf
             C_tot[i1:i2, i1:i2] += fowt.C_struc + fowt.C_hydro + fowt.C_moor
             
             # add any additional yaw stiffness that isn't included in the MoorPy model (e.g. if a bridle isn't modeled)
+            # TODO: Remove this now that we have additional_effects?
             C_tot[i1+5, i1+5] += fowt.yawstiff
             
         # include array-level mooring stiffness
@@ -535,7 +536,7 @@ class Model():
             
             if statics_mod == 0:
                 K_hydrostatic.append(fowt.C_struc + fowt.C_hydro)
-                F_undisplaced[6*i:6*i+6           ] += fowt.W_struc + fowt.W_hydro
+                F_undisplaced[6*i:6*i+6           ] += fowt.W_struc + fowt.W_hydro + fowt.f0_additional
                 
                 if display > 1:  print(" F_undisplaced "+"  ".join(["{:+8.2e}"]*6).format(*F_undisplaced[6*i:6*i+6]))
 
@@ -626,6 +627,7 @@ class Model():
                     fowt.calcStatics()
                     Fnet[6*i:6*i+6] += fowt.W_struc  # weight
                     Fnet[6*i:6*i+6] += fowt.W_hydro  # buoyancy
+                    Fnet[6*i:6*i+6] += fowt.f0_additional # user-specified additional forces from other external sources
                     #breakpoint()
                 else: 
                     raise Exception('Invalid statics_mod value')
@@ -1093,7 +1095,7 @@ class Model():
         F_rotor = np.zeros([self.nDOF, self.nw], dtype=complex)
         
         for i, fowt in enumerate(self.fowtList):
-            F_rotor[i*6:i*6+6] = np.sum(fowt.F_aero, axis=2)
+            F_rotor[i*6:i*6+6] = np.sum(fowt.f_aero, axis=2)
             
         for iw in range(self.nw):
             self.Xi[-1,:,iw] = np.matmul(Zinv[:,:,iw], F_rotor[:,iw])
@@ -1456,7 +1458,8 @@ class Model():
         if display==1: print(mass, dmass, heave)
         
         # loop through each member and adjust the l_fill of each to match the volume needed to balance the mass
-        for i,member in enumerate(fowt.memberList):
+        for i,member in enumerate([m for m in fowt.memberList if m.part_of == 'platform']):
+
             if display==1: print('-------',i,member.rA)
             # organize the headings to work for this specific function
             if np.isscalar(member.headings):
@@ -1484,6 +1487,9 @@ class Model():
                         mdvol = dvol/len(headings)                          # the volume required per repeated member
                         err = 1e5                                           # initialize the error for the l_fill solver
                         l_fill = l_fills[j]                                 # set the current l_fill value
+                        if l_fill <= 0:                                     # if there's no ballasdt in this section, skip it
+                            continue
+
                         #l = member.stations[j+1]-member.stations[j]         # set the length of the submember with ballast
                         l = member.l        # assume that the sub-member fill level (specified in 'l_fills[j]') can reach the entire height of the member
                         if display==1: print(dvol, mdvol, l_fill, l)
@@ -1495,7 +1501,7 @@ class Model():
                             V0 = FrustumVCV(dAi, dBi_fill, l_fill, rtn=1)
                             
                             # adjust the l_fill value of the submember by l_fill_adj until the new ballast volume settles on V0+mdvol
-                            while abs(err) > 0.01*V0:
+                            while abs(err) > 0.001*V0:
                                 if l_fill >= l and mdvol < 0:       # if l_fill is more than the given submember length and volume needs to decrease
                                     l_fill += -l_fill_adj
                                 elif l_fill >= l and mdvol > 0:     # if l_fill is more than the given submember length and volume needs to increase

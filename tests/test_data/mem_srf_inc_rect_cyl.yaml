@@ -5,7 +5,7 @@ comments: Used to perform some tests on member class functionality. This file sh
 
 members:   # list all members here
   - name      :  cylinder                    # [-]    an identifier (no longer has to be number)       
-    type      :  2                           # [-]    
+    type      :  rigid                       # [-]    
     dlsMax    :  0.1                         # maximum node splitting section amount for platform members; can't be 0
     rA        :  [-12.500,  4.3301, -15.00]  # [m]    end A coordinates
     rB        :  [  9.375, -3.2476,  11.25]  # [m]    and B coordinates

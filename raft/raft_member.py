@@ -3,6 +3,7 @@
 import numpy as np
 
 from raft.helpers import *
+from raft.raft_node import Node
 
 from moorpy.helpers import transformPosition
 from scipy.special import jn, yn, jv, kn, hankel1
@@ -13,7 +14,7 @@ from scipy.special import jn, yn, jv, kn, hankel1
 #  used during the model's operation.
 class Member:
 
-    def __init__(self, mi, nw, BEM=[], heading=0, part_of='platform'):
+    def __init__(self, mi, nw, BEM=[], heading=0, part_of='platform', first_node_id=0):
         '''Initialize a Member. For now, this function accepts a space-delimited string with all member properties.
 
         PARAMETERS
@@ -28,8 +29,9 @@ class Member:
             member. Used for member arrangements or FOWT heading offsets [deg].
         part_of : str, optional
             String identifying the subcomponent of the FOWT that this member is part of (platform, tower, nacelle, ...)
+        first_node_id : int, optional
+            The ID of the first node of this member. Rigid members have a single node, while flexible members have multiple nodes. TODO: What if we use the ID of the member instead? And create the node id based on it, like memberid_# 
         '''
-
         # overall member parameters
         self.id       = int(1)                                       # set the ID value of the member
         self.name     = str(mi['name'])
@@ -46,7 +48,18 @@ class Member:
             #self.rA0 = np.array(mi['rB'], dtype=np.double)
             #self.rB0 = np.array(mi['rA'], dtype=np.double)
 
-        shape      = str(mi['shape'])                                # the shape of the cross section of the member as a string (the first letter should be c or r)
+        shape = str(mi['shape']) # the shape of the cross section of the member as a string (the first letter should be c or r)
+
+        if self.type == 'beam':
+            if np.all(self.rA0 == self.rB0):
+                raise Exception(f"Member {self.name} has the same start and end points. Please specify a flexible element with non-zero length element.")
+
+            if 'E' not in mi:
+                raise ValueError(f"Member {self.name} of type {self.type} requires Young's modulus (E) to be specified in the input.")
+            if 'G' not in mi:
+                raise ValueError(f"Member {self.name} of type {self.type} requires Shear modulus (G) to be specified in the input.")
+            self.E  = np.array(mi['E'], dtype=np.double)  # Young's modulus
+            self.G  = np.array(mi['G'], dtype=np.double)  # Shear modulus
 
         self.potMod = getFromDict(mi, 'potMod', dtype=bool, default=False)     # hard coding BEM analysis enabled for now <<<< need to move this to the member YAML input instead <<<
         self.MCF    = getFromDict(mi, 'MCF', dtype=bool, default=False) # Flag to use MacCamy-Fuchs correction or not
@@ -57,6 +70,7 @@ class Member:
         self.l = np.linalg.norm(rAB)  # member length [m]
     
         # heading feature for rotation members about the z axis (used for rotated patterns)
+        self.heading = heading
         if heading != 0.0:
             self.rA0 = applyHeadingToPoint(self.rA0, heading)
             self.rB0 = applyHeadingToPoint(self.rB0, heading)
@@ -107,6 +121,8 @@ class Member:
         self.t         = getFromDict(mi, 't', shape=n, default=0)  # shell thickness at each station [m]
         self.rho_shell = getFromDict(mi, 'rho_shell', shape=0, default=8500.) # shell mass density [kg/m^3]
         
+        if self.type != 'rigid' and any(self.t <= 0):
+            raise ValueError(f"Member {self.name} of type {self.type} requires positive shell thicknesses (t) at all stations. Please check the input.")
         
         # ----- ballast inputs (for each section between stations) -----
         
@@ -174,15 +190,27 @@ class Member:
         # ----- Strip theory discretization -----
 
         # discretize into strips with a node at the midpoint of each strip (flat surfaces have dl=0)
-        dorsl  = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair
+        dorsl     = list(self.d) if self.shape=='circular' else list(self.sl)   # get a variable that is either diameter or side length pair
+
+        # Same but for internal diameter
+        # We make sure internal diameter is not negative. In that case, consider a solid cross-section (dorsl_int=0)
+        if self.shape == 'circular':
+            dorsl_int = [max(0, v) for v in (self.d - 2*self.t)]
+        else:
+            dorsl_int = [np.maximum(0, v) for v in (self.sl - 2*self.t)]
+
         dlsMax = getFromDict(mi, 'dlsMax', shape=0, default=5)
 
         
         # start things off with the strip for end A
-        ls     = [0.0]                 # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
-        dls    = [0.0]                 # lumped node lengths (end nodes have half the segment length)
-        ds     = [0.5*dorsl[0]]       # mean diameter or side length pair of each strip
-        drs    = [0.5*dorsl[0]]       # change in radius (or side half-length pair) over each strip (from node i-1 to node i)
+        ls     = [0.0]                  # list of lengths along member axis where a node is located <<< should these be midpoints instead of ends???
+        dls    = [0.0]                  # lumped node lengths (end nodes have half the segment length)
+        ds     = [0.5*dorsl[0]]         # mean diameter or side length pair of each strip
+        drs    = [0.5*dorsl[0]]         # change in radius (or side half-length pair) over each strip (from node i-1 to node i)        
+        dis    = [0.5*dorsl_int[0]]     # internal diameter or side length pair of each strip
+        dris   = [0.5*dorsl_int[0]]     # change in internal diameter over each strip (from node i-1 to node i)
+        dorsl_node_ext = [dorsl[0]]     # external diameter or side length pair at the end nodes (used for structural calculations)
+        dorsl_node_int = [dorsl_int[0]] # internal diameter or side length pair at the end nodes (used for structural calculations)
 
         for i in range(1,n):
 
@@ -191,11 +219,17 @@ class Member:
             if lstrip > 0.0:
                 ns= int(np.ceil( (lstrip) / dlsMax ))             # number of strips to split this segment into
                 dlstrip = lstrip/ns
-                m   = 0.5*(dorsl[i] - dorsl[i-1])/lstrip          # taper ratio
-                ls  += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
-                dls += [dlstrip]*ns
-                ds  += [dorsl[i-1] + dlstrip*2*m*(0.5+j) for j in range(ns)]
-                drs += [dlstrip*m]*ns
+                m    = 0.5*(dorsl[i] - dorsl[i-1])/lstrip          # taper ratio
+                ls   += [self.stations[i-1] + dlstrip*(0.5+j) for j in range(ns)] # add node locations
+                dls  += [dlstrip]*ns
+                ds   += [dorsl[i-1] + dlstrip*2*m*(0.5+j) for j in range(ns)]
+                drs  += [dlstrip*m]*ns
+                m_int = 0.5*(dorsl_int[i] - dorsl_int[i-1])/lstrip  # taper ratio for internal diameter
+                dis  += [dorsl_int[i-1] + dlstrip*2*m_int*(0.5+j) for j in range(ns)]
+                dris += [dlstrip*m_int]*ns
+
+                dorsl_node_ext += [dorsl[i-1] + dlstrip*2*m*(0.5+j) for j in range(ns)]  # external diameter or side length pair at the nodes
+                dorsl_node_int += [dorsl_int[i-1] + dlstrip*2*m_int*(0.5+j) for j in range(ns)]  # internal diameter or side length pair at the nodes
                 
             elif lstrip == 0.0:                                      # flat plate case (ends, and any flat transitions), a single strip for this section
                 dlstrip = 0
@@ -203,6 +237,10 @@ class Member:
                 dls += [dlstrip]
                 ds  += [0.5*(dorsl[i-1] + dorsl[i])]               # set diameter as midpoint diameter
                 drs += [0.5*(dorsl[i] - dorsl[i-1])]
+                dis += [0.5*(dorsl_int[i-1] + dorsl_int[i])]
+                dris += [0.5*(dorsl_int[i] - dorsl_int[i-1])]
+                dorsl_node_ext += [dorsl[i-1]]  # external diameter or side length pair at the end nodes (used for structural calculations)
+                dorsl_node_int += [dorsl_int[i-1]]  # internal diameter or side length pair at the end nodes (used for structural calculations)
 
         # finish things off with the strip for end B
         dlstrip = 0
@@ -210,19 +248,43 @@ class Member:
         dls += [0.0]
         ds  += [0.5*dorsl[-1]]
         drs += [-0.5*dorsl[-1]]
+        dis += [0.5*dorsl_int[-1]]
+        dris += [-0.5*dorsl_int[-1]]
+        dorsl_node_ext += [dorsl[-1]]
+        dorsl_node_int += [dorsl_int[-1]]
         
         # >>> may want to have a way to not have an end strip for members that intersect things <<<
         
-        self.ns  = len(ls)                                           # number of hydrodynamic strip theory nodes per member
+        self.ns  = len(ls)                                           # number of nodes per member
         self.ls  = np.array(ls, dtype=float)                          # node locations along member axis
         self.dls = np.array(dls)
         self.ds  = np.array(ds)
         self.drs = np.array(drs)
         self.mh  = np.array(m)
+        self.dis = np.array(dis)
+        self.dris= np.array(dris)
+        self.dorsl_node_ext = np.array(dorsl_node_ext)
+        self.dorsl_node_int = np.array(dorsl_node_int)
 
-        self.r   = np.zeros([self.ns,3])                             # undisplaced node positions along member  [m]
+        self.r   = np.zeros([self.ns,3])                                 # node positions along member  [m]
         for i in range(self.ns):
-            self.r[i,:] = self.rA0 + (ls[i]/self.l)*rAB              # locations of hydrodynamics nodes (will later be displaced) [m]
+            self.r[i,:] = self.rA0 + (ls[i]/self.l)*(self.rB0-self.rA0)  # locations of hydrodynamics nodes [m]
+
+        # Create a list of structural nodes
+        # For rigid members, only 1 node. For flexible members, a list of nodes coinciding with the hydrodynamic loads.
+        # TODO: In the future, we might want to have different discretizations for the hydro and structural calculations.
+        self.nodeList = []
+        node_id = first_node_id # ID of the first node of this member
+        if self.type == 'rigid':
+            self.nodeList.append(Node(node_id, self.rA0, nw, member=self, end_node=True))
+        elif self.type == 'beam':
+            for i in range(self.ns):
+                end_node = True if (i == 0 or i == self.ns-1) else False
+                self.nodeList.append(Node(node_id, self.r[i,:], nw, member=self, end_node=end_node))
+                node_id += 1
+        else:
+            raise Exception(f"Member type {self.type} not supported.")
+        self.nDOF = self.nodeList[0].nDOF * len(self.nodeList) # number of degrees of freedom of this member
         
         # ----- initialize arrays used later for hydro calculations -----
         self.a_i       = np.zeros([self.ns])            # signed axial area vector that dynamic pressure will act on [m2]
@@ -247,16 +309,16 @@ class Member:
         self.Imat_MCF = np.zeros([self.ns,3,3, nw], dtype=complex)
 
 
-    def setPosition(self, r6=np.zeros(6)):
-        '''Calculates member pose -- node positions and vectors q, p1, and p2 
+    def setPosition(self):
+        '''Calculates member pose -- hydrodynamic node positions and vectors q, p1, and p2 
         as well as member orientation matrix R based on the end positions and 
-        twist angle gamma along with any mean displacements and rotations.
+        twist angle gamma along with any mean displacements and rotations of the structural nodes.
+
+        The position of structural nodes must be set at FOWT level before calling this function.
         
-        Parameters
-        ----------
-        r6 : array, optional
-            Absolute position/orientation of FOWT to which member is attached.
-            
+        TODO: For now, we are assuming that the deformations of flexible members are small,
+              such that q, p1, p2 and etc are approximately the same across the whole member.
+              Need to change that later.
         '''
         # formerly calcOrientation
 
@@ -280,7 +342,12 @@ class Member:
 
         p1 = np.matmul( R, [1,0,0] )               # unit vector that is in the 'beta' plane if gamma is zero
         p2 = np.cross( q, p1 )                     # unit vector orthogonal to both p1 and q
-        
+                
+        # update member-end position
+        # Use the position of the first node, which has to be set before calling this function            
+        r6 = self.nodeList[0].r
+        self.rA = self.nodeList[0].r[0:3] # position of the first node (end A) [m]
+
         # apply any platform offset and rotation to the values already obtained
         R_platform = rotationMatrix(*r6[3:])  # rotation matrix for the platform roll, pitch, yaw
     
@@ -289,13 +356,14 @@ class Member:
         p1 = np.matmul(R_platform, p1)
         p2 = np.matmul(R_platform, p2)
         
-        self.rA = transformPosition(self.rA0, r6)
-        self.rB = transformPosition(self.rB0, r6)
-               
-        # update node positions
-        rAB = self.rB - self.rA
-        for i in range(self.ns):
-            self.r[i,:] = self.rA + (self.ls[i]/self.l)*rAB              # locations of hydrodynamics nodes (will later be displaced) [m]
+        if self.type == 'rigid':
+            self.rB = self.rA + self.l*q
+            for i in range(self.ns):
+                self.r[i,:] = self.rA + (self.ls[i]/self.l) * (self.rB - self.rA) # locations of hydrodynamics nodes (will later be displaced) [m]
+        else:                        
+            self.rB = self.nodeList[-1].r[0:3]
+            for i in range(self.ns):
+                self.r[i,:] = self.nodeList[i].r[0:3]
 
         # save direction vectors and matrices
         self.R  = R
@@ -306,258 +374,292 @@ class Member:
         # matrices of vector multiplied by vector transposed, used in computing force components
         self.qMat  = VecVecTrans(self.q)
         self.p1Mat = VecVecTrans(self.p1)
-        self.p2Mat = VecVecTrans(self.p2)                 
+        self.p2Mat = VecVecTrans(self.p2)
 
 
-    def getInertia(self, rPRP=np.zeros(3)):
-        '''Calculates member inertia properties: mass, center of mass, moments of inertia.
-        Properties are calculated relative to the platform reference point (PRP) in the
-        global orientation directions.
+    def getInertia(self, rRP=None):
+        '''Returns member inertia properties: mass, center of mass, moments of inertia.
+        Properties are calculated relative to the RP in the global orientation directions.
+
+        Also updates the member's inertia matrix, self.M_struc, which is a (self.nDOF, self.nDOF),
+        matrix with respect to RP
+
+        TODO: There is a lot of code repetition in this method. After things are working and we have
+              tests with multibody and flexible members, reformulate this method. Maybe split into smaller functions.              
         
         Parameters
         ----------
-        rPRP : float array
-            Coordinates of the platform reference point (the first three entries of fowt.Xi0),
-            which the moment of inertia matrix will be calculated relative to. [m]
+        rRP : float array, optional
+            Coordinates of the reference point which the moment of inertia matrix will be calculated relative to. [m]
+            If not provided, we use the first node of the member
         '''
+        if rRP is None:
+            rRP = self.nodeList[0].r[:3]
 
-        # Moment of Inertia Helper Functions (to move to helper file) <<<
+        if self.type not in ['rigid', 'beam']:
+            raise NotImplementedError(f"Member type {self.type} not supported")
+
+
+        # ------- member inertial calculations ---------        
+        mass_center = 0                                   # total sum of mass the center of mass of the member [kg-m]
+        mshell = 0                                        # total mass of the shell material only of the member [kg]
+        self.vfill = []                                   # list of ballast volumes in each submember [m^3] - stored in the object for later access
+        mfill = []                                        # list of ballast masses in each submember [kg]
+        pfill = []                                        # list of ballast densities in each submember [kg]        
+        self.M_struc = np.zeros([self.nDOF,self.nDOF])    # member mass/inertia matrix [kg, kg-m, kg-m^2]
         
-        def FrustumMOI(dA, dB, H, p):
-            '''returns the radial and axial moments of inertia of a potentially tapered circular member about the end node.
-            Previously used equations found in a HydroDyn paper, now it uses newly derived ones. Ask Stein for reference if needed'''
-            if H==0:        # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
-                I_rad = 0                                                   # radial MoI about end node [kg-m^2]
-                I_ax = 0                                                    # axial MoI about axial axis [kg-m^2]
-            else:
-                if dA==dB:  # if it's a cylinder
-                    r1 = dA/2                                               # bottom radius [m]
-                    r2 = dB/2                                               # top radius [m]
-                    I_rad = (1/12)*(p*H*np.pi*r1**2)*(3*r1**2 + 4*H**2)     # radial MoI about end node [kg-m^2]
-                    I_ax = (1/2)*p*np.pi*H*r1**4                            # axial MoI about axial axis [kg-m^2]
-                else:       # if it's a tapered cylinder (frustum)
-                    r1 = dA/2                                               # bottom radius [m]
-                    r2 = dB/2                                               # top radius [m]
-                    I_rad = (1/20)*p*np.pi*H*(r2**5 - r1**5)/(r2 - r1) + (1/30)*p*np.pi*H**3*(r1**2 + 3*r1*r2 + 6*r2**2) # radial MoI about end node [kg-m^2]
-                    I_ax = (1/10)*p*np.pi*H*(r2**5-r1**5)/(r2-r1)           # axial MoI about axial axis [kg-m^2]
+        # ------- Inertia due to shell and ballast  --------- 
+        if self.type == 'rigid':
+            for i in range(1,len(self.stations)):                            # start at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
 
-            return I_rad, I_ax
-
-        def RectangularFrustumMOI(La, Wa, Lb, Wb, H, p):
-            '''returns the moments of inertia about the end node of a cuboid that can be tapered.
-            - Inputs the lengths and widths at the top and bottom of the cuboid, as well as the height and material density.
-            - L is the side length along the local x-direction, W is the side length along the local y-direction.
-            - Does not work for members that are not symmetrical about the axial axis.
-            - Works for cases when it is a perfect cuboid, a truncated pyramid, and a truncated triangular prism
-            - Equations derived by hand, ask Stein for reference if needed'''
-
-            if H==0: # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
-                Ixx = 0                                         # MoI around the local x-axis about the end node [kg-m^2]
-                Iyy = 0                                         # MoI around the local y-axis about the end node [kg-m^2]
-                Izz = 0                                         # MoI around the local z-axis about the axial axis [kg-m^2]
-            else:
-                if La==Lb and Wa==Wb: # if it's a cuboid
-                    L = La                                      # length of the cuboid (La=Lb) [m]
-                    W = Wa                                      # width of the cuboid (Wa=Wb) [m]
-                    M = p*L*W*H                                 # mass of the cuboid [kg]
-
-                    Ixx = (1/12)*M*(W**2 + 4*H**2)              # MoI around the local x-axis about the end node [kg-m^2]
-                    Iyy = (1/12)*M*(L**2 + 4*H**2)              # MoI around the local y-axis about the end node [kg-m^2]
-                    Izz = (1/12)*M*(L**2 + W**2)                # MoI around the local z-axis about the axial axis [kg-m^2]
-
-                elif La!=Lb and Wa!=Wb: # if it's a truncated pyramid for both side lengths
-
-                    x2 = (1/12)*p* ( (Lb-La)**3*H*(Wb/5 + Wa/20) + (Lb-La)**2*La*H*(3*Wb/4 + Wa/4) + \
-                                     (Lb-La)*La**2*H*(Wb + Wa/2) + La**3*H*(Wb/2 + Wa/2) )
-
-                    y2 = (1/12)*p* ( (Wb-Wa)**3*H*(Lb/5 + La/20) + (Wb-Wa)**2*Wa*H*(3*Lb/4 + La/4) + \
-                                     (Wb-Wa)*Wa**2*H*(Lb + La/2) + Wa**3*H*(Lb/2 + La/2) )
-
-                    z2 = p*( Wb*Lb/5 + Wa*Lb/20 + La*Wb/20 + Wa*La*(1/30) ) * H**3
-
-                    Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
-                    Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
-                    Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
-
-                elif La==Lb and Wa!=Wb: # if it's a truncated triangular prism where only the lengths are the same on top and bottom
-                    L = La                                      # length of the truncated triangular prism [m]
-
-                    x2 = (1/24)*p*(L**3)*H*(Wb+Wa)
-                    y2 = (1/48)*p*L*H*( Wb**3 + Wa*Wb**2 + Wa**2*Wb + Wa**3 )
-                    z2 = (1/12)*p*L*(H**3)*( 3*Wb + Wa )
-
-                    Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
-                    Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
-                    Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
-
-                elif La!=Lb and Wa==Wb: # if it's a truncated triangular prism where only the widths are the same on top and bottom
-                    W = Wa                                      # width of the truncated triangular prism [m]
-
-                    x2 = (1/48)*p*W*H*( Lb**3 + La*Lb**2 + La**2*Lb + La**3 )
-                    y2 = (1/24)*p*(W**3)*H*(Lb+La)
-                    z2 = (1/12)*p*W*(H**3)*( 3*Lb + La )
-
-                    Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
-                    Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
-                    Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
-
-                else:
-                    raise ValueError('You either have inconsistent inputs, or you are trying to calculate the MoI of a member that is not supported')
-
-            return Ixx, Iyy, Izz
-
-
-
-        # ------- member inertial calculations ---------
-        
-        mass_center = 0                                 # total sum of mass the center of mass of the member [kg-m]
-        mshell = 0                                      # total mass of the shell material only of the member [kg]
-        self.vfill = []                                 # list of ballast volumes in each submember [m^3] - stored in the object for later access
-        mfill = []                                      # list of ballast masses in each submember [kg]
-        pfill = []                                      # list of ballast densities in each submember [kg]
-        self.M_struc = np.zeros([6,6])                  # member mass/inertia matrix [kg, kg-m, kg-m^2]
-
-        # loop through each sub-member
-        for i in range(1,len(self.stations)):                            # start at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
-
-            # initialize common variables
-            l = self.stations[i]-self.stations[i-1]     # length of the submember [m]
-            if l==0.0:
+                # initialize common variables
+                l = self.stations[i]-self.stations[i-1]     # length of the submember [m]
                 mass = 0
                 center = np.zeros(3)
                 m_shell = 0
                 v_fill = 0
                 m_fill = 0
                 rho_fill = 0
-            else:
-                # if the following variables are input as scalars, keep them that way, if they're vectors, take the [i-1]th value
-                rho_shell = self.rho_shell              # density of the shell material [kg/m^3]
-                if np.isscalar(self.l_fill):            # set up l_fill and rho_fill based on whether it's scalar or not
-                    l_fill = self.l_fill
-                else:
-                    l_fill = self.l_fill[i-1]
-                if np.isscalar(self.rho_fill):
-                    rho_fill = self.rho_fill
-                else:
-                    rho_fill = self.rho_fill[i-1]
-    
+                if l > 0:
+                    # if the following variables are input as scalars, keep them that way, if they're vectors, take the [i-1]th value
+                    rho_shell = self.rho_shell              # density of the shell material [kg/m^3]
+                    if np.isscalar(self.l_fill):            # set up l_fill and rho_fill based on whether it's scalar or not
+                        l_fill = self.l_fill
+                    else:
+                        l_fill = self.l_fill[i-1]
+
+                    if np.isscalar(self.rho_fill):
+                        rho_fill = self.rho_fill
+                    else:
+                        rho_fill = self.rho_fill[i-1]                    
+                            
+                    if self.shape=='circular':
+                        # MASS AND CENTER OF GRAVITY
+                        dA = self.d[i-1]                        # outer diameter of the lower node [m]
+                        dB = self.d[i]                          # outer diameter of the upper node [m]
+                        dAi = self.d[i-1] - 2*self.t[i-1]       # inner diameter of the lower node [m]
+                        dBi = self.d[i] - 2*self.t[i]           # inner diameter of the upper node [m]
+                        
+                        V_outer, hco = FrustumVCV(dA, dB, l)    # volume and center of volume of solid frustum with outer diameters [m^3] [m]
+                        V_inner, hci = FrustumVCV(dAi, dBi, l)  # volume and center of volume of solid frustum with inner diameters [m^3] [m] 
+                        v_shell = V_outer-V_inner               # volume of hollow frustum with shell thickness [m^3]
+                        m_shell = v_shell*rho_shell             # mass of hollow frustum [kg]
+                        
+                        hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0.0  # center of volume of hollow frustum with shell thickness [m]                        
+
+                        dBi_fill = (dBi-dAi)*(l_fill/l) + dAi   # interpolated inner diameter of frustum that ballast is filled to [m] 
+                        v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, l_fill)         # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
+                        m_fill = v_fill*rho_fill                # mass of the ballast in the submember [kg]                        
+
+                        # <<< The ballast is calculated as if it starts at the same end as the shell, however, if the end of the sub-member has an end cap,
+                        # then the ballast sits on top of the end cap. Depending on the thickness of the end cap, this can affect m_fill, hc_fill, and MoI_fill >>>>>                                     
+
+                        mass = m_shell + m_fill                 # total mass of the submember [kg]
+                        hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass!=0 else 0.0      # total center of mass of the submember from the submember's rA location [m]
+
+                        # MOMENT OF INERTIA
+                        I_rad_end_outer, I_ax_outer = FrustumMOI(dA, dB, l, rho_shell)          # radial and axial MoI about the end of the solid outer frustum [kg-m^2]
+                        I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, l, rho_shell)        # radial and axial MoI about the end of the imaginary solid inner frustum [kg-m^2]
+                        I_rad_end_shell = I_rad_end_outer-I_rad_end_inner                       # radial MoI about the end of the frustum shell through superposition [kg-m^2]
+                        I_ax_shell = I_ax_outer - I_ax_inner                                    # axial MoI of the shell through superposition [kg-m^2]
+                        
+                        I_rad_end_fill, I_ax_fill = FrustumMOI(dAi, dBi_fill, l_fill, rho_fill) # radial and axial MoI about the end of the solid inner ballast frustum [kg-m^2]
+                        
+                        I_rad_end = I_rad_end_shell + I_rad_end_fill                            # radial MoI about the end of the submember [kg-m^2]
+                        I_rad = I_rad_end - mass*hc**2                                          # radial MoI about the CoG of the submember through the parallel axis theorem [kg-m^2]
+                        
+                        I_ax = I_ax_shell + I_ax_fill                                           # axial MoI of the submember about the total CoG (= about the end also bc axial)
+
+                        Ixx = I_rad                             # circular, so the radial MoI is about the x and y axes
+                        Iyy = I_rad                             # circular, so the radial MoI is about the x and y axes
+                        Izz = I_ax                              # circular, so the axial MoI is about the z axis                        
+                    
+                    elif self.shape=='rectangular':
+                        # MASS AND CENTER OF GRAVITY
+                        slA = self.sl[i-1]                          # outer side lengths of the lower node, of length 2 [m]
+                        slB = self.sl[i]                            # outer side lengths of the upper node, of length 2 [m]
+                        slAi = self.sl[i-1] - 2*self.t[i-1]         # inner side lengths of the lower node, of length 2 [m]
+                        slBi = self.sl[i] - 2*self.t[i]             # inner side lengths of the upper node, of length 2 [m]
+                        
+                        V_outer, hco = FrustumVCV(slA, slB, l)      # volume and center of volume of solid frustum with outer side lengths [m^3] [m]
+                        V_inner, hci = FrustumVCV(slAi, slBi, l)    # volume and center of volume of solid frustum with inner side lengths [m^3] [m]
+                        v_shell = V_outer-V_inner                   # volume of hollow frustum with shell thickness [m^3]
+                        m_shell = v_shell*rho_shell                 # mass of hollow frustum [kg]
+                        
+                        hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0.0  # center of volume of the hollow frustum with shell thickness [m]
+
+                        slBi_fill = (slBi-slAi)*(l_fill/l) + slAi   # interpolated side lengths of frustum that ballast is filled to [m]
+                        v_fill, hc_fill = FrustumVCV(slAi, slBi_fill, l_fill)   # volume and center of volume of inner frustum that ballast occupies [m^3]
+                        m_fill = v_fill*rho_fill                    # mass of ballast in the submember [kg]
+                        
+                        mass = m_shell + m_fill                     # total mass of the submember [kg]
+                        hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass !=0 else 0.0     # total center of mass of the submember from the submember's rA location [m]
+                                                                                            
+                        # MOMENT OF INERTIA
+                        # MoI about each axis at the bottom end node of the solid outer truncated pyramid [kg-m^2]
+                        Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA[0], slA[1], slB[0], slB[1], l, rho_shell)
+                        # MoI about each axis at the bottom end node of the solid imaginary inner truncated pyramid [kg-m^2]
+                        Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi[0], slAi[1], slBi[0], slBi[1], l, rho_shell)
+                        # MoI about each axis at the bottom end node of the shell using superposition [kg-m^2]
+                        Ixx_end_shell = Ixx_end_outer - Ixx_end_inner
+                        Iyy_end_shell = Iyy_end_outer - Iyy_end_inner
+                        Izz_end_shell = Izz_end_outer - Izz_end_inner
+
+                        # MoI about each axis at the bottom end node of the solid inner ballast truncated pyramid [kg-m^2]
+                        Ixx_end_fill, Iyy_end_fill, Izz_end_fill = RectangularFrustumMOI(slAi[0], slAi[1], slBi_fill[0], slBi_fill[1], l_fill, rho_fill)                        
+                        
+                        # total MoI of each axis at the center of gravity of the member using the parallel axis theorem [kg-m^2]
+                        Ixx_end = Ixx_end_shell + Ixx_end_fill
+                        Ixx = Ixx_end - mass*hc**2
+                        Iyy_end = Iyy_end_shell + Iyy_end_fill
+                        Iyy = Iyy_end - mass*hc**2
+                        
+                        Izz_end = Izz_end_shell + Izz_end_fill
+                        Izz = Izz_end       # the total MoI of the member about the z-axis is the same at any point along the z-axis
+
+                    # center of mass of the submember (note: some of above could streamlined out of the if/else)
+                    center = self.rA + self.q*(self.stations[i-1] + hc)      # center of mass of the submember in global coordinates [m]
                 
-                if self.shape=='circular':
-                    # MASS AND CENTER OF GRAVITY
-                    dA = self.d[i-1]                        # outer diameter of the lower node [m]
-                    dB = self.d[i]                          # outer diameter of the upper node [m]
-                    dAi = self.d[i-1] - 2*self.t[i-1]       # inner diameter of the lower node [m]
-                    dBi = self.d[i] - 2*self.t[i]           # inner diameter of the upper node [m]
-                    
-                    V_outer, hco = FrustumVCV(dA, dB, l)    # volume and center of volume of solid frustum with outer diameters [m^3] [m]
-                    V_inner, hci = FrustumVCV(dAi, dBi, l)  # volume and center of volume of solid frustum with inner diameters [m^3] [m] 
-                    v_shell = V_outer-V_inner               # volume of hollow frustum with shell thickness [m^3]
-                    m_shell = v_shell*rho_shell             # mass of hollow frustum [kg]
-                    
-                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0.0  # center of volume of hollow frustum with shell thickness [m]
-                         
-                    dBi_fill = (dBi-dAi)*(l_fill/l) + dAi   # interpolated inner diameter of frustum that ballast is filled to [m] 
-                    v_fill, hc_fill = FrustumVCV(dAi, dBi_fill, l_fill)         # volume and center of volume of solid inner frustum that ballast occupies [m^3] [m]
-                    m_fill = v_fill*rho_fill                # mass of the ballast in the submember [kg]
-                    
-                    # <<< The ballast is calculated as if it starts at the same end as the shell, however, if the end of the sub-member has an end cap,
-                    # then the ballast sits on top of the end cap. Depending on the thickness of the end cap, this can affect m_fill, hc_fill, and MoI_fill >>>>>
-                    
-                    mass = m_shell + m_fill                 # total mass of the submember [kg]
-                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass!=0 else 0.0      # total center of mass of the submember from the submember's rA location [m]
-                    
-                    
-                    # MOMENT OF INERTIA
-                    I_rad_end_outer, I_ax_outer = FrustumMOI(dA, dB, l, rho_shell)          # radial and axial MoI about the end of the solid outer frustum [kg-m^2]
-                    I_rad_end_inner, I_ax_inner = FrustumMOI(dAi, dBi, l, rho_shell)        # radial and axial MoI about the end of the imaginary solid inner frustum [kg-m^2]
-                    I_rad_end_shell = I_rad_end_outer-I_rad_end_inner                       # radial MoI about the end of the frustum shell through superposition [kg-m^2]
-                    I_ax_shell = I_ax_outer - I_ax_inner                                    # axial MoI of the shell through superposition [kg-m^2]
-                    
-                    I_rad_end_fill, I_ax_fill = FrustumMOI(dAi, dBi_fill, l_fill, rho_fill) # radial and axial MoI about the end of the solid inner ballast frustum [kg-m^2]
-                    
-                    I_rad_end = I_rad_end_shell + I_rad_end_fill                            # radial MoI about the end of the submember [kg-m^2]
-                    I_rad = I_rad_end - mass*hc**2                                          # radial MoI about the CoG of the submember through the parallel axis theorem [kg-m^2]
-                    
-                    I_ax = I_ax_shell + I_ax_fill                                           # axial MoI of the submember about the total CoG (= about the end also bc axial)
-    
-                    Ixx = I_rad                             # circular, so the radial MoI is about the x and y axes
-                    Iyy = I_rad                             # circular, so the radial MoI is about the x and y axes
-                    Izz = I_ax                              # circular, so the axial MoI is about the z axis
-                    
-                
-                elif self.shape=='rectangular':
-                    # MASS AND CENTER OF GRAVITY
-                    slA = self.sl[i-1]                          # outer side lengths of the lower node, of length 2 [m]
-                    slB = self.sl[i]                            # outer side lengths of the upper node, of length 2 [m]
-                    slAi = self.sl[i-1] - 2*self.t[i-1]         # inner side lengths of the lower node, of length 2 [m]
-                    slBi = self.sl[i] - 2*self.t[i]             # inner side lengths of the upper node, of length 2 [m]
-                    
-                    V_outer, hco = FrustumVCV(slA, slB, l)      # volume and center of volume of solid frustum with outer side lengths [m^3] [m]
-                    V_inner, hci = FrustumVCV(slAi, slBi, l)    # volume and center of volume of solid frustum with inner side lengths [m^3] [m]
-                    v_shell = V_outer-V_inner                   # volume of hollow frustum with shell thickness [m^3]
-                    m_shell = v_shell*rho_shell                 # mass of hollow frustum [kg]
-                    
-                    hc_shell = ((hco*V_outer)-(hci*V_inner))/(V_outer-V_inner) if V_outer-V_inner!=0 else 0.0  # center of volume of the hollow frustum with shell thickness [m]
-                                        
-                    slBi_fill = (slBi-slAi)*(l_fill/l) + slAi   # interpolated side lengths of frustum that ballast is filled to [m]
-                    v_fill, hc_fill = FrustumVCV(slAi, slBi_fill, l_fill)   # volume and center of volume of inner frustum that ballast occupies [m^3]
-                    m_fill = v_fill*rho_fill                    # mass of ballast in the submember [kg]
-                    
-                    mass = m_shell + m_fill                     # total mass of the submember [kg]
-                    hc = ((hc_fill*m_fill) + (hc_shell*m_shell))/mass if mass !=0 else 0.0     # total center of mass of the submember from the submember's rA location [m]
-                    
-                    
-                    # MOMENT OF INERTIA
-                    # MoI about each axis at the bottom end node of the solid outer truncated pyramid [kg-m^2]
-                    Ixx_end_outer, Iyy_end_outer, Izz_end_outer = RectangularFrustumMOI(slA[0], slA[1], slB[0], slB[1], l, rho_shell)
-                    # MoI about each axis at the bottom end node of the solid imaginary inner truncated pyramid [kg-m^2]
-                    Ixx_end_inner, Iyy_end_inner, Izz_end_inner = RectangularFrustumMOI(slAi[0], slAi[1], slBi[0], slBi[1], l, rho_shell)
-                    # MoI about each axis at the bottom end node of the shell using superposition [kg-m^2]
-                    Ixx_end_shell = Ixx_end_outer - Ixx_end_inner
-                    Iyy_end_shell = Iyy_end_outer - Iyy_end_inner
-                    Izz_end_shell = Izz_end_outer - Izz_end_inner
-                    
-                    # MoI about each axis at the bottom end node of the solid inner ballast truncated pyramid [kg-m^2]
-                    Ixx_end_fill, Iyy_end_fill, Izz_end_fill = RectangularFrustumMOI(slAi[0], slAi[1], slBi_fill[0], slBi_fill[1], l_fill, rho_fill)
-                    
-                    # total MoI of each axis at the center of gravity of the member using the parallel axis theorem [kg-m^2]
-                    Ixx_end = Ixx_end_shell + Ixx_end_fill
-                    Ixx = Ixx_end - mass*hc**2
-                    Iyy_end = Iyy_end_shell + Iyy_end_fill
-                    Iyy = Iyy_end - mass*hc**2
-                    
-                    Izz_end = Izz_end_shell + Izz_end_fill
-                    Izz = Izz_end       # the total MoI of the member about the z-axis is the same at any point along the z-axis
+                # add/append terms
+                mass_center += mass*center                  # total sum of mass the center of mass of the member [kg-m]
+                mshell += m_shell                           # total mass of the shell material only of the member [kg]
+                self.vfill.append(v_fill)                        # list of ballast volumes in each submember [m^3]
+                mfill.append(m_fill)                        # list of ballast masses in each submember [kg]
+                pfill.append(rho_fill)                     # list of ballast densities in each submember [kg/m^3]
 
-                # center of mass of the submember from the PRP in global orientation (note: some of above could streamlined out of the if/else)
-                center = self.rA + self.q*(self.stations[i-1] + hc) - rPRP      # center of mass of the submember relative to the PRP [m]
+                # create a local submember mass matrix
+                Mmat = np.diag([mass, mass, mass, 0, 0, 0]) # submember's mass matrix without MoI tensor
+                # create the local submember MoI tensor in the correct directions
+                I = np.diag([Ixx, Iyy, Izz])                # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
+                T = self.R.T                                # transformation matrix to unrotate the member's local axes. Transposed because rotating axes.
+                I_rot = np.matmul(T.T, np.matmul(I,T))      # MoI about the member's local CG with axes in same direction as global axes. [I'] = [T][I][T]^T -> [T]^T[I'][T] = [I]
 
-            # add/append terms
-            mass_center += mass*center                  # total sum of mass the center of mass of the member [kg-m]
-            mshell += m_shell                           # total mass of the shell material only of the member [kg]
-            self.vfill.append(v_fill)                        # list of ballast volumes in each submember [m^3]
-            mfill.append(m_fill)                        # list of ballast masses in each submember [kg]
-            pfill.append(rho_fill)                     # list of ballast densities in each submember [kg]
-            
-            # create a local submember mass matrix
-            Mmat = np.diag([mass, mass, mass, 0, 0, 0]) # submember's mass matrix without MoI tensor
-            # create the local submember MoI tensor in the correct directions
-            I = np.diag([Ixx, Iyy, Izz])                # MoI matrix about the member's local CG. 0's on off diagonals because of symmetry
-            T = self.R.T                                # transformation matrix to unrotate the member's local axes. Transposed because rotating axes.
-            I_rot = np.matmul(T.T, np.matmul(I,T))      # MoI about the member's local CG with axes in same direction as global axes. [I'] = [T][I][T]^T -> [T]^T[I'][T] = [I]
+                Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
 
-            Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
-
-            # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
-            self.M_struc += translateMatrix6to6DOF(Mmat, center) # mass matrix of the member about the PRP
-
-
-            # end of submember for loop
-
+                # translate this submember's local inertia matrix to the RP and add it to the total member's M_struc matrix
+                self.M_struc += translateMatrix6to6DOF(Mmat, center - rRP) # mass matrix of the member about the RP
         
-        # END CAPS/BULKHEADS
-        # --------- Add the inertia properties of any end caps ---------
+        elif self.type == 'beam':
+            # The inertia of the shell is given by a finite-element beam mass matrix
+            self.M_struc = self.computeInertiaMatrix_FE()  # compute the inertia matrix for a flexible member using the finite element method                    
+            mass, center = getMassAndCenterOfBeam(self.M_struc, np.hstack([node.r for node in self.nodeList])) # Last entry includes rotations to keep the right size of the vector, but rotations will be multiplied by 0 in getMassAndCenterOfBeam
+
+            mshell += mass
+            mass_center += mass*center
+            
+            # For flexible elements, we lump the ballast inertia as a 6x6 inertia matrix for each node
+            # We lump the contribution of half the length to the next node, and half the length to the previous node                    
+            nodes_s = np.array([np.linalg.norm(n.r - self.nodeList[0].r) for n in self.nodeList])  # Distance of each node to the start of the member. Used to find the nodes that are part of each station/submember
+
+            # Saving quantities that we will use in member.getWeight() later
+            self.mass_ballast_node   = np.zeros(len(self.nodeList))       # ballast mass at each node
+            self.center_ballast_node = np.zeros((len(self.nodeList), 3))  # center of mass of the ballast that is lumped at each node
+            
+            # Get distance to previous and next nodes
+            dist_p = np.diff(nodes_s, prepend=0)           # distance to previous node
+            dist_n = np.diff(nodes_s, append=nodes_s[-1])  # distance to next node
+
+            for i in range(1,len(self.stations)):
+                l = self.stations[i]-self.stations[i-1]     # length of the submember [m]
+                
+                mass     = 0
+                v_fill   = 0
+                rho_fill = 0
+
+                if l > 0:
+                    if np.isscalar(self.l_fill):            # set up l_fill and rho_fill based on whether it's scalar or not
+                        l_fill = self.l_fill
+                    else:
+                        l_fill = self.l_fill[i-1]                    
+
+                    if np.isscalar(self.rho_fill):
+                        rho_fill = self.rho_fill
+                    else:
+                        rho_fill = self.rho_fill[i-1]
+                    
+                    # Only loop nodes whose range (node position +- half distances) is within the ballast length
+                    idx_nodes_ballasted = [inode for inode in range(len(self.nodeList)) if (nodes_s[inode]+dist_n[inode]/2 >= self.stations[i-1]) or (nodes_s[inode]-dist_p[inode]/2 <= self.stations[i-1]+l_fill)]
+                    for inode in idx_nodes_ballasted:
+                        s_lower = nodes_s[inode] - dist_p[inode]/2 # curvilinear coordinate of the lower end of the ballast portion assigned to this node
+                        s_lower = s_lower if s_lower > self.stations[i-1] else self.stations[i-1] 
+
+                        s_upper = nodes_s[inode] + dist_n[inode]/2
+                        s_upper = s_upper if s_upper < (self.stations[i-1]+l_fill) else (self.stations[i-1]+l_fill)  # use the ballasted length if it's shorter than the half-distance to the next node
+                        l_fill_node = s_upper-s_lower  # length of the ballast portion assigned to this node [m]
+
+                        if l_fill_node <= 0:  # if the ballast portion assigned to this node is zero, skip it
+                            continue
+
+                        if self.shape=='circular':
+                            dA_station = self.d[i-1] - 2*self.t[i-1]       # inner diameter of the lower station end [m]
+                            dB_station = self.d[i] - 2*self.t[i]           # inner diameter of the upper station end [m]
+                                                    
+                            # Interpolated diameters of the ends of the ballast portion that will be assigned to this node
+                            dA_node = (dB_station-dA_station)*((s_lower-self.stations[i-1])/l) + dA_station
+                            dB_node = (dB_station-dA_station)*((s_upper-self.stations[i-1])/l) + dA_station
+
+                            # MASS AND CENTER OF GRAVITY
+                            v_fill_node, hc_node = FrustumVCV(dA_node, dB_node, l_fill_node)
+                            mass_node = v_fill_node*rho_fill
+
+                            # MOMENT OF INERTIA
+                            I_rad_end, I_ax = FrustumMOI(dA_node, dB_node, l_fill_node, rho_fill)
+                            I_rad = I_rad_end - mass_node*hc_node**2
+                            
+                            Ixx = I_rad                             # circular, so the radial MoI is about the x and y axes
+                            Iyy = I_rad                             # circular, so the radial MoI is about the x and y axes
+                            Izz = I_ax                              # circular, so the axial MoI is about the z
+
+                        elif self.shape=='rectangular':
+                            slA_station = self.sl[i-1] - 2*self.t[i-1]
+                            slB_station = self.sl[i] - 2*self.t[i]
+
+                            # Interpolated side lengths of the ends of the ballast portion that will be assigned to this node
+                            slA_node = (slB_station-slA_station)*((s_lower-self.stations[i-1])/l) + slA_station
+                            slB_node = (slB_station-slA_station)*((s_upper-self.stations[i-1])/l) + slA_station
+
+                            # MASS AND CENTER OF GRAVITY
+                            v_fill_node, hc_node = FrustumVCV(slA_node, slB_node, l_fill_node)
+                            mass_node = v_fill_node*rho_fill
+
+                            # MOMENT OF INERTIA
+                            Ixx_end, Iyy_end, Izz_end = RectangularFrustumMOI(slA_node[0], slA_node[1], slB_node[0], slB_node[1], l_fill_node, rho_fill)
+                            Ixx = Ixx_end - mass_node*hc_node**2
+                            Iyy = Iyy_end - mass_node*hc_node**2
+                            Izz = Izz_end       # the total MoI of the member about the z                        
+                        
+                        Mmat = np.diag([mass_node, mass_node, mass_node, 0, 0, 0]) # submember's mass matrix without MoI tensor
+                        I = np.diag([Ixx, Iyy, Izz])
+                        T = self.R.T
+                        I_rot = np.matmul(T.T, np.matmul(I,T))
+                        Mmat[3:,3:] = I_rot
+                        
+                        center = self.rA + self.q*(s_lower + hc_node)  # center of mass of this ballast portion        
+                        self.M_struc[inode*6:(inode+1)*6, inode*6:(inode+1)*6] += translateMatrix6to6DOF(Mmat, center-self.nodeList[inode].r[:3])
+                
+                        # Add to station totals
+                        mass += mass_node
+                        v_fill += v_fill_node
+
+                        # Add to the node variables that will be used in getWeight()
+                        self.mass_ballast_node[inode] += mass_node
+                        self.center_ballast_node[inode, :] += center*mass_node  # center of mass of
+
+                # add/append terms. No need to do mass_center because it was already done
+                self.vfill.append(v_fill)                   # list of ballast volumes in each submember [m^3]
+                mfill.append(mass)                          # list of ballast masses in each submember [kg]
+                pfill.append(rho_fill)                      # list of ballast densities in each submember [kg/m^3]
+
+            # self.center_ballast_node is currently storing center*mass_node. Need to divide by mass_node
+            for inode in range(len(self.nodeList)):
+                if self.mass_ballast_node[inode] > 0:
+                    self.center_ballast_node[inode, :] /= self.mass_ballast_node[inode]
+
+
+        # ------- Inertia due to end caps/bulkeads ---------
         self.m_cap_list = []
+        self.m_cap      = np.zeros(len(self.nodeList))       # cap mass at each node - saving to use in getWeight later
+        self.center_cap = np.zeros((len(self.nodeList), 3))  # center of mass of the cap that is lumped at each node
         # Loop through each cap or bulkhead
         for i in range(len(self.cap_stations)):
 
@@ -619,8 +721,6 @@ class Member:
                 Iyy = I_rad
                 Izz = I_ax
 
-
-
             elif self.shape=='rectangular':
                 sl_hole = self.cap_d_in[i,:]
                 sl = self.sl - 2*self.t
@@ -677,8 +777,8 @@ class Member:
                 Izz = Izz_end
 
 
-            # get centerpoint of cap relative to PRP
-            pos_cap = self.rA + self.q*L - rPRP                 # position of the referenced cap station from the PRP
+            # get centerpoint of cap relative to RP
+            pos_cap = self.rA + self.q*L    # position of the referenced cap station in global coordinates
             if L==self.stations[0]:         # if it's a bottom end cap, the position is at the bottom of the end cap
                 center_cap = pos_cap + self.q*hc_cap            # and the CG of the cap is at hc from the bottom, so this is the simple case
             elif L==self.stations[-1]:      # if it's a top end cap, the position is at the top of the end cap
@@ -702,37 +802,66 @@ class Member:
 
             Mmat[3:,3:] = I_rot     # mass and inertia matrix about the submember's CG in unrotated, but translated local frame
 
-            # translate this submember's local inertia matrix to the PRP and add it to the total member's M_struc matrix
-            self.M_struc += translateMatrix6to6DOF(Mmat, center_cap) # mass matrix of the member about the PRP
+            # translate this submember's local inertia matrix to the RP and add it to the total member's M_struc matrix
+            if self.type == 'rigid':
+                self.M_struc += translateMatrix6to6DOF(Mmat, center_cap - rRP)
+            elif self.type == 'beam':
+                # Find the node that is the closest to the cap
+                closest_node = min(self.nodeList, key=lambda n: np.linalg.norm(n.r[:3] - center_cap))
+                listIDs = [node.id for node in self.nodeList]
+                inode = listIDs.index(closest_node.id) # Need the index of the node in member.nodeList
+                self.M_struc[inode*6:(inode+1)*6, inode*6:(inode+1)*6] += translateMatrix6to6DOF(Mmat, center_cap-closest_node.r[:3]) # mass matrix of the member about the RP
+                self.m_cap[inode] += m_cap
+                self.center_cap[inode, :] += center_cap*m_cap  # center of mass of the cap that is lumped at this node
 
         self.mshell = mshell
         self.mfill  = mfill
-        mass = self.M_struc[0,0]        # total mass of the entire member [kg]
-        center = mass_center/mass if mass!=0 else np.zeros(3)       # total center of mass of the entire member from the PRP [m]
 
+        # self.center_cap is currently storing center*mass_node. Need to divide by mass_node
+        for inode in range(len(self.nodeList)):
+            if self.m_cap[inode] > 0:
+                self.center_cap[inode, :] /= self.m_cap[inode]
+
+        if self.type == 'rigid':
+            mass = self.M_struc[0,0]                                    # total mass of the entire member [kg]
+            center = mass_center/mass if mass!=0 else np.zeros(3)       # total center of mass of the entire member from the RP [m]
+        elif self.type == 'beam':
+            mass, center = getMassAndCenterOfBeam(self.M_struc, np.hstack([node.r for node in self.nodeList]))  # get the mass and center of mass of the beam
+                
+        self.mass   = mass
+        self.rCoG   = center # coordinates of COG in global coordinates [m]
+
+        center = center - rRP # Return center wrt the reference point
 
         return mass, center, mshell, mfill, pfill
 
-
-
-
-    def getHydrostatics(self, rPRP=np.zeros(3), rho=1025, g=9.81):
+    def getHydrostatics(self, rRP=None, rho=1025, g=9.81):
         '''Calculates member hydrostatic properties, namely buoyancy and stiffness matrix.
-        Properties are calculated relative to the platform reference point (PRP) in the
-        global orientation directions.
+        Properties are calculated relative to the reference point in the global orientation directions.
         
+        Also updates the member's inertia matrix, self.K_hydro, which is a (self.nDOF, self.nDOF)
+        matrix with respect to the members' nodes. This can be different than rRP.
+         
+        TODO: For now, Fvec is simply the buoyancy force, i.e. a force acting on the vertical direction.
+              Split this into force along the member and at ends. For example, horizontal pontoons should 
+              have axial components at each end that cancel out but which are important for internal loads.
+
+        TODO: Just like self.getInertia(), this method has a lot of repetition. Try to reformulate it later.
+
         Parameters
         ----------
-        rPRP : float array
-            Coordinates of the platform reference point (the first three entries of fowt.Xi0),
-            which the moment of inertia matrix will be calculated relative to. [m]
+        rRP : float array, optional
+            Coordinates of the reference point which the moment of inertia matrix will be calculated relative to. [m]
+            If not provided, we use the first node of the member
         '''
+        if rRP is None:
+            rRP = self.nodeList[0].r[:3]
     
         pi = np.pi
 
         # initialize some values that will be returned
-        Fvec = np.zeros(6)              # this will get added to by each segment of the member
-        Cmat = np.zeros([6,6])          # this will get added to by each segment of the member
+        Fvec = np.zeros(self.nDOF)              # this will get added to by each segment of the member
+        Cmat = np.zeros([self.nDOF,self.nDOF])          # this will get added to by each segment of the member
         V_UW = 0                        # this will get added to by each segment of the member
         r_centerV = np.zeros(3)         # center of buoyancy times volumen total - will get added to by each segment
         # these will only get changed once, if there is a portion crossing the water plane
@@ -741,155 +870,404 @@ class Member:
         xWP = 0
         yWP = 0
 
+        # angles
+        beta = np.arctan2(self.q[1],self.q[0])  # member incline heading from x axis
+        phi  = np.arctan2(np.sqrt(self.q[0]**2 + self.q[1]**2), self.q[2])  # member incline angle from vertical
+
+        # precalculate trig functions
+        cosPhi=np.cos(phi)
+        sinPhi=np.sin(phi)
+        tanPhi=np.tan(phi)
+        cosBeta=np.cos(beta)
+        sinBeta=np.sin(beta)
+        tanBeta=sinBeta/cosBeta
 
         # loop through each member segment, and treat each segment like how we used to treat each member
         n = len(self.stations)
+        if self.type == 'rigid':
+            for i in range(1,n):     # starting at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
 
-        for i in range(1,n):     # starting at 1 rather than 0 because we're looking at the sections (from station i-1 to i)
+                # end locations of this segment
+                rA = self.rA + self.q*self.stations[i-1]
+                rB = self.rA + self.q*self.stations[i  ]
 
-            # calculate end locations for this segment relative to the point on 
-            # the waterplane directly above the PRP in unrotated directions (rHS_ref)
-            rHS_ref = np.array([rPRP[0], rPRP[1], 0])
-            rA = self.rA + self.q*self.stations[i-1] - rHS_ref
-            rB = self.rA + self.q*self.stations[i  ] - rHS_ref
+                # partially submerged case
+                if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
 
-            # partially submerged case
-            if rA[2]*rB[2] <= 0:    # if member crosses (or touches) water plane
+                    # -------------------- buoyancy and waterplane area properties ------------------------
 
-                # angles
-                beta = np.arctan2(self.q[1],self.q[0])  # member incline heading from x axis
-                phi  = np.arctan2(np.sqrt(self.q[0]**2 + self.q[1]**2), self.q[2])  # member incline angle from vertical
+                    xWP = intrp(0, rA[2], rB[2], rA[0], rB[0])                     # x coordinate where member axis cross the waterplane [m]
+                    yWP = intrp(0, rA[2], rB[2], rA[1], rB[1])                     # y coordinate where member axis cross the waterplane [m]
+                    if self.shape=='circular':
+                        dWP = intrp(0, rA[2], rB[2], self.d[i], self.d[i-1])       # diameter of member where its axis crosses the waterplane [m]
+                        AWP = (np.pi/4)*dWP**2                                     # waterplane area of member [m^2]
+                        IWP = (np.pi/64)*dWP**4                                    # waterplane moment of inertia [m^4] approximates as a circle
+                        IxWP = IWP                                                 # MoI of circular waterplane is the same all around
+                        IyWP = IWP                                                 # MoI of circular waterplane is the same all around
+                    elif self.shape=='rectangular':
+                        slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
+                        AWP = slWP[0]*slWP[1]                                      # waterplane area of rectangular member [m^2]
+                        IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
+                        IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
+                        I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
+                        T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
+                        I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as RP
+                        IxWP = I_rot[0,0]
+                        IyWP = I_rot[1,1]
 
-                # precalculate trig functions
-                cosPhi=np.cos(phi)
-                sinPhi=np.sin(phi)
-                tanPhi=np.tan(phi)
-                cosBeta=np.cos(beta)
-                sinBeta=np.sin(beta)
-                tanBeta=sinBeta/cosBeta
+                    LWP = abs(rA[2]/cosPhi)                   # get length of segment along member axis that is underwater [m]
 
-                # -------------------- buoyancy and waterplane area properties ------------------------
+                    # Assumption: the areas and MoI of the waterplane are as if the member were completely vertical, i.e. it doesn't account for phi
+                    # This can be fixed later on if needed. We're using this assumption since the fix wouldn't significantly affect the outputs
 
-                xWP = intrp(0, rA[2], rB[2], rA[0], rB[0])                     # x coordinate where member axis cross the waterplane [m]
-                yWP = intrp(0, rA[2], rB[2], rA[1], rB[1])                     # y coordinate where member axis cross the waterplane [m]
-                if self.shape=='circular':
-                    dWP = intrp(0, rA[2], rB[2], self.d[i], self.d[i-1])       # diameter of member where its axis crosses the waterplane [m]
-                    AWP = (np.pi/4)*dWP**2                                     # waterplane area of member [m^2]
-                    IWP = (np.pi/64)*dWP**4                                    # waterplane moment of inertia [m^4] approximates as a circle
-                    IxWP = IWP                                                 # MoI of circular waterplane is the same all around
-                    IyWP = IWP                                                 # MoI of circular waterplane is the same all around
-                elif self.shape=='rectangular':
-                    slWP = intrp(0, rA[2], rB[2], self.sl[i], self.sl[i-1])    # side lengths of member where its axis crosses the waterplane [m]
-                    AWP = slWP[0]*slWP[1]                                      # waterplane area of rectangular member [m^2]
-                    IxWP = (1/12)*slWP[0]*slWP[1]**3                           # waterplane MoI [m^4] about the member's LOCAL x-axis, not the global x-axis
-                    IyWP = (1/12)*slWP[0]**3*slWP[1]                           # waterplane MoI [m^4] about the member's LOCAL y-axis, not the global y-axis
-                    I = np.diag([IxWP, IyWP, 0])                               # area moment of inertia tensor
-                    T = self.R.T                                               # the transformation matrix to unrotate the member's local axes
-                    I_rot = np.matmul(T.T, np.matmul(I,T))                     # area moment of inertia tensor where MoI axes are now in the same direction as PRP
-                    IxWP = I_rot[0,0]
-                    IyWP = I_rot[1,1]
+                    # Total enclosed underwater volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
+                    if self.shape=='circular':
+                        V_UWi, hc = FrustumVCV(self.d[i-1], dWP, LWP)
+                    elif self.shape=='rectangular':
+                        V_UWi, hc = FrustumVCV(self.sl[i-1], slWP, LWP)
 
-                LWP = abs(rA[2]/cosPhi)                   # get length of segment along member axis that is underwater [m]
-
-                # Assumption: the areas and MoI of the waterplane are as if the member were completely vertical, i.e. it doesn't account for phi
-                # This can be fixed later on if needed. We're using this assumption since the fix wouldn't significantly affect the outputs
-
-                # Total enclosed underwater volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
-                if self.shape=='circular':
-                    V_UWi, hc = FrustumVCV(self.d[i-1], dWP, LWP)
-                elif self.shape=='rectangular':
-                    V_UWi, hc = FrustumVCV(self.sl[i-1], slWP, LWP)
-
-                r_center = rA + self.q*hc          # absolute coordinates of center of volume of this segment [m]
+                    r_center = rA + self.q*hc          # coordinates of center of volume of this segment in the global frame [m]
 
 
-                # >>>> question: should this function be able to use displaced/rotated values? <<<<
+                    # >>>> question: should this function be able to use displaced/rotated values? <<<<
 
-                # ------------- get hydrostatic derivatives ----------------
+                    # ------------- get hydrostatic derivatives ----------------
 
-                # derivatives from global to local
-                dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
-                dPhi_dThy  =  cosBeta
-                dFz_dz   = -rho*g*AWP /cosPhi
+                    # derivatives from global to local
+                    dPhi_dThx  = -sinBeta                     # \frac{d\phi}{d\theta_x} = \sin\beta
+                    dPhi_dThy  =  cosBeta
+                    dFz_dz   = -rho*g*AWP /cosPhi
 
-                # note: below calculations are based on untapered case, but
-                # temporarily approximated for taper by using dWP (diameter at water plane crossing) <<< this is rough
+                    # note: below calculations are based on untapered case, but
+                    # temporarily approximated for taper by using dWP (diameter at water plane crossing) <<< this is rough
 
-                # buoyancy force and moment about end A
-                Fz = rho*g* V_UWi
-                M = 0
-                if self.shape=='circular': # Need to find the equivalent of this for the rectangular case
-                    M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
-                Mx = M*dPhi_dThx
-                My = M*dPhi_dThy
+                    # buoyancy force and moment about end A
+                    Fz = rho*g* V_UWi
+                    M = 0
+                    if self.shape=='circular': # Need to find the equivalent of this for the rectangular case
+                        M  = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+                    Mx = M*dPhi_dThx
+                    My = M*dPhi_dThy
 
-                Fvec[2] += Fz                           # vertical buoyancy force [N]
-                Fvec[3] += Mx + Fz*rA[1]                # moment about x axis [N-m]
-                Fvec[4] += My - Fz*rA[0]                # moment about y axis [N-m]
+                    Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), rA-rRP)
+                    Fvec[3] += Mx                # moment about x axis [N-m]
+                    Fvec[4] += My                # moment about y axis [N-m]
+
+                    # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
+                    xWP -= rRP[0]  # x coordinate of waterplane relative to RP [m]
+                    yWP -= rRP[1] 
+                    Cmat[2,2] += -dFz_dz
+                    Cmat[2,3] += rho*g*(      -AWP*yWP    )
+                    Cmat[2,4] += rho*g*(       AWP*xWP    )
+                    Cmat[3,2] += rho*g*(      -AWP*yWP    )
+                    Cmat[3,3] += rho*g*(IxWP + AWP*yWP**2 )
+                    Cmat[3,4] += rho*g*(       AWP*xWP*yWP)
+                    Cmat[4,2] += rho*g*(       AWP*xWP    )
+                    Cmat[4,3] += rho*g*(       AWP*xWP*yWP)
+                    Cmat[4,4] += rho*g*(IyWP + AWP*xWP**2 )
+
+                    r_rel = r_center - rRP  # center of volume relative to RP [m]
+                    Cmat[3,3] +=  rho*g*V_UWi * r_rel[2]
+                    Cmat[4,4] +=  rho*g*V_UWi * r_rel[2]
+                    Cmat[3,5] += -rho*g*V_UWi * r_rel[0]
+                    Cmat[4,5] += -rho*g*V_UWi * r_rel[1]
+
+                    V_UW += V_UWi
+                    r_centerV += r_center*V_UWi
 
 
-                # normal approach to hydrostatic stiffness, using this temporarily until above fancier approach is verified
-                Cmat[2,2] += -dFz_dz
-                Cmat[2,3] += rho*g*(     -AWP*yWP    )
-                Cmat[2,4] += rho*g*(      AWP*xWP    )
-                Cmat[3,2] += rho*g*(     -AWP*yWP    )
-                Cmat[3,3] += rho*g*(IxWP + AWP*yWP**2 )
-                Cmat[3,4] += rho*g*(      AWP*xWP*yWP)
-                Cmat[4,2] += rho*g*(      AWP*xWP    )
-                Cmat[4,3] += rho*g*(      AWP*xWP*yWP)
-                Cmat[4,4] += rho*g*(IyWP + AWP*xWP**2 )
+                # fully submerged case
+                elif rA[2] <= 0 and rB[2] <= 0:
 
-                Cmat[3,3] += rho*g*V_UWi * r_center[2]
-                Cmat[4,4] += rho*g*V_UWi * r_center[2]
+                    # displaced volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
+                    if self.shape=='circular':
+                        V_UWi, hc = FrustumVCV(self.d[i-1], self.d[i], self.stations[i]-self.stations[i-1])
+                    elif self.shape=='rectangular':
+                        V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.stations[i]-self.stations[i-1])
 
-                V_UW += V_UWi
-                r_centerV += r_center*V_UWi
+                    r_center = rA + self.q*hc             # center of volume of this segment relative to RP [m]
+                    r_rel = r_center - rRP
 
+                    # buoyancy force (and moment) vector
+                    Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_rel)
 
-            # fully submerged case
-            elif rA[2] <= 0 and rB[2] <= 0:
+                    # hydrostatic stiffness matrix                    
+                    Cmat[3,3] +=  rho*g*V_UWi * r_rel[2]
+                    Cmat[4,4] +=  rho*g*V_UWi * r_rel[2]
+                    Cmat[3,5] += -rho*g*V_UWi * r_rel[0]
+                    Cmat[4,5] += -rho*g*V_UWi * r_rel[1]
 
-                # displaced volume [m^3] and distance along axis from end A to center of buoyancy of member [m]
-                if self.shape=='circular':
-                    V_UWi, hc = FrustumVCV(self.d[i-1], self.d[i], self.stations[i]-self.stations[i-1])
-                elif self.shape=='rectangular':
-                    V_UWi, hc = FrustumVCV(self.sl[i-1], self.sl[i], self.stations[i]-self.stations[i-1])
+                    V_UW += V_UWi
+                    r_centerV += r_center*V_UWi
+            
+        # For flexible members, for each node we lump the contribution of half the length to the next node, 
+        # and half the length to the previous node (same idea as for self.getInertia).
+        # It is the same as treating each of these lengths as individual submembers. This is not strictly correct,
+        # as those submembers wouldn't be closed, and we might improve this in the future. 
+        # See Lee et al, 2024, 'On the correction of hydrostatic stiffness for discrete-module-based hydroelasticity analysis of vertically arrayed modules' doi.org/10.1016/j.engstruct.2024.118710
+        elif self.type == 'beam':
+            Nnodes  = len(self.nodeList)
+            nodes_z = np.array([n.r[2] for n in self.nodeList]) # easier to loop z coordinates with this
+            nodes_r = np.array([n.r[:3] for n in self.nodeList])
+            nodes_s = np.array([np.linalg.norm(r - self.nodeList[0].r[:3]) for r in nodes_r])  # distance along member axis from first node to each node [m]
 
-                r_center = rA + self.q*hc             # center of volume of this segment relative to PRP [m]
+            # Get distance to previous and next nodes
+            dist_p = np.diff(nodes_s, prepend=0)           # distance to previous node
+            dist_n = np.diff(nodes_s, append=nodes_s[-1])  # distance to next node
 
-                # buoyancy force (and moment) vector
-                Fvec += translateForce3to6DOF(np.array([0, 0, rho*g*V_UWi]), r_center)
+            # Find which node is going to receive the hydrostatic terms due to crossing the water line
+            waterline_node = None
+            for i in range(Nnodes-1):
+                if nodes_z[i] * nodes_z[i+1] < 0:
+                    waterline_node = i if abs(nodes_z[i]) < abs(nodes_z[i+1]) else i+1 # Use the node that is closest to z=0
+                    break
 
-                # hydrostatic stiffness matrix (about end A)
-                Cmat[3,3] += rho*g*V_UWi * r_center[2]
-                Cmat[4,4] += rho*g*V_UWi * r_center[2]
+            for i in range(1,len(self.stations)):
+                l = self.stations[i]-self.stations[i-1]     # length of the submember [m]
+                if l <= 0:
+                    continue
+                
+                for inode, node in enumerate(self.nodeList):
+                    sA = nodes_s[inode] - dist_p[inode]/2
+                    sA = max(sA, self.stations[i-1])
 
-                V_UW += V_UWi
-                r_centerV += r_center*V_UWi
+                    sB = nodes_s[inode] + dist_n[inode]/2
+                    sB = min(sB, self.stations[i])
 
-            else: # if the members are fully above the surface
+                    l_node = sB - sA
+                    if l_node <= 0:
+                        # This makes us skip nodes whose submember is outside the station,
+                        # as these submembers would have would have l_node < 0
+                        continue
+                    
+                    if inode == 0:
+                        rA = nodes_r[0]
+                    else:
+                        rA = nodes_r[inode-1] + (nodes_r[inode] - nodes_r[inode-1]) * ((sA - nodes_s[inode-1]) / (nodes_s[inode] - nodes_s[inode-1]))
 
-                pass
+                    if inode == len(self.nodeList)-1:
+                        rB = nodes_r[-1]
+                    else:
+                        rB = nodes_r[inode] + (nodes_r[inode+1] - nodes_r[inode]) * ((sB - nodes_s[inode]) / (nodes_s[inode+1] - nodes_s[inode]))
 
+                    # Check if submember is fully submerged
+                    if rA[2] < 0 and rB[2] < 0:
+                        if self.shape == 'circular':
+                            dA_station = self.d[i-1]       # outer diameter of the lower station end [m]
+                            dB_station = self.d[i]         # outer diameter of the upper station end [m]
+                            
+                            # Interpolated diameters of the ends of the ballast portion that will be assigned to this node
+                            dA = (dB_station-dA_station)*((sA-self.stations[i-1])/l) + dA_station
+                            dB = (dB_station-dA_station)*((sB-self.stations[i-1])/l) + dA_station
+                            V_sub, hc = FrustumVCV(dA, dB, l_node)
+                        else:
+                            slA_station = self.sl[i-1]
+                            slB_station = self.sl[i]
+                            slA = (slB_station-slA_station)*((sA-self.stations[i-1])/l) + slA_station
+                            slB = (slB_station-slA_station)*((sB-self.stations[i-1])/l) + slA_station
+                            V_sub, hc = FrustumVCV(slA, slB, l_node)
+                        r_center = rA + (rB - rA) * (hc / l_node)
+                        r_rel = r_center - node.r[:3]
+                        Fvec[inode*node.nDOF:(inode+1)*node.nDOF] += translateForce3to6DOF(np.array([0, 0, rho*g*V_sub]), r_rel)
+
+                        # Own stiffness matrix
+                        Cmat[inode*node.nDOF+3, inode*node.nDOF+3] +=  rho*g*V_sub * r_rel[2]
+                        Cmat[inode*node.nDOF+4, inode*node.nDOF+4] +=  rho*g*V_sub * r_rel[2]
+                        Cmat[inode*node.nDOF+3, inode*node.nDOF+5] += -rho*g*V_sub * r_rel[0]
+                        Cmat[inode*node.nDOF+4, inode*node.nDOF+5] += -rho*g*V_sub * r_rel[1]
+                        V_UW += V_sub
+                        r_centerV += r_center * V_sub
+
+                    # Check if submember crosses the waterline
+                    elif rA[2] * rB[2] < 0:
+                        # split submember into submerged and unsubmerged portions
+                        frac = abs(rA[2] / (rA[2] - rB[2])) # z = rA[2] + frac * (rB[2] - rA[2]), thus z=0 -> frac = rA[2] / (rA[2] - rB[2])
+                        rWP = rA + frac * (rB - rA)
+                        sWP = sA + frac * (sB - sA)
+                        wet_length = np.linalg.norm(rWP - rA)
+                        if self.shape == 'circular':
+                            dA_station = self.d[i-1]
+                            dB_station = self.d[i]
+                            dA  = (dB_station-dA_station)*((sA-self.stations[i-1])/l) + dA_station
+                            dWP = (dB_station-dA_station)*((sWP-self.stations[i-1])/l) + dA_station
+                            V_sub, hc = FrustumVCV(dA, dWP, wet_length)
+                        else:
+                            slA_station = self.sl[i-1]
+                            slB_station = self.sl[i]
+                            slA  = (slB_station-slA_station)*((sA-self.stations[i-1])/l) + slA_station
+                            slWP = (slB_station-slA_station)*((sWP-self.stations[i-1])/l) + slA_station
+                            V_sub, hc = FrustumVCV(slA, slWP, wet_length)
+
+                        r_center = rA + (rWP - rA) * (hc / wet_length)
+                        r_rel = r_center - node.r[:3]
+                        Fvec[inode*node.nDOF:(inode+1)*node.nDOF] += translateForce3to6DOF(np.array([0, 0, rho*g*V_sub]), r_rel)
+
+                        # Own stiffness matrix
+                        Cmat[inode*node.nDOF+3, inode*node.nDOF+3] +=  rho*g*V_sub * r_rel[2]
+                        Cmat[inode*node.nDOF+4, inode*node.nDOF+4] +=  rho*g*V_sub * r_rel[2]
+                        Cmat[inode*node.nDOF+3, inode*node.nDOF+5] += -rho*g*V_sub * r_rel[0]
+                        Cmat[inode*node.nDOF+4, inode*node.nDOF+5] += -rho*g*V_sub * r_rel[1]
+                        V_UW += V_sub
+                        r_centerV += r_center * V_sub
+
+                        # Lump waterplane stiffness at this node
+                        if inode == waterline_node:
+                            M = 0
+                            if self.shape == 'circular':
+                                AWP = (np.pi/4)*dWP**2
+                                IWP = (np.pi/64)*dWP**4
+                                IxWP = IWP
+                                IyWP = IWP
+                                M    = -rho*g*pi*( dWP**2/32*(2.0 + tanPhi**2) + 0.5*(rA[2]/cosPhi)**2)*sinPhi  # moment about axis of incline
+                            else:
+                                AWP = slWP[0]*slWP[1]
+                                IxWP = (1/12)*slWP[0]*slWP[1]**3
+                                IyWP = (1/12)*slWP[0]**3*slWP[1]
+                                I = np.diag([IxWP, IyWP, 0])
+                                T = self.R.T
+                                I_rot = np.matmul(T.T, np.matmul(I,T))
+                                IxWP = I_rot[0,0]
+                                IyWP = I_rot[1,1]
+
+                            Mx = -sinBeta * M
+                            My = M*cosBeta
+                            Fvec[inode*node.nDOF+3] += Mx # moment about x axis [N-m]
+                            Fvec[inode*node.nDOF+4] += My # moment about y axis [N-m]
+
+                            xWP, yWP = rWP[0] - rRP[0], rWP[1] - rRP[1]
+                            Cmat[inode*node.nDOF+2, inode*node.nDOF+2] += rho*g*AWP/cosPhi
+                            Cmat[inode*node.nDOF+2, inode*node.nDOF+3] += rho*g*(      -AWP*yWP    )
+                            Cmat[inode*node.nDOF+2, inode*node.nDOF+4] += rho*g*(       AWP*xWP    )
+                            Cmat[inode*node.nDOF+3, inode*node.nDOF+2] += rho*g*(      -AWP*yWP    )
+                            Cmat[inode*node.nDOF+3, inode*node.nDOF+3] += rho*g*(IxWP + AWP*yWP**2 )
+                            Cmat[inode*node.nDOF+3, inode*node.nDOF+4] += rho*g*(       AWP*xWP*yWP)
+                            Cmat[inode*node.nDOF+4, inode*node.nDOF+2] += rho*g*(       AWP*xWP    )
+                            Cmat[inode*node.nDOF+4, inode*node.nDOF+3] += rho*g*(       AWP*xWP*yWP)
+                            Cmat[inode*node.nDOF+4, inode*node.nDOF+4] += rho*g*(IyWP + AWP*xWP**2 )    
+                
         if V_UW > 0:
-            r_center = r_centerV/V_UW    # calculate overall member center of buoyancy
+            self.rCB = r_center  # store center of buoyancy in global coordinates
+            r_center = r_centerV/V_UW - rRP    # calculate overall member center of buoyancy wrp to RP
         else:
-            r_center = np.zeros(3)       # temporary fix for out-of-water members
-        
-        self.V = V_UW  # store submerged volume
-        
+            self.rCB = np.zeros(3)
+            r_center = np.zeros(3)       # temporary fix for out-of-water members            
+        self.V = V_UW  # store submerged volume                
+
         return Fvec, Cmat, V_UW, r_center, AWP, IWP, xWP, yWP
 
+    def getWeight(self, rRP=None, g=9.81, include_geom_stiffness=False):
+        '''Returns member weight relative to the reference point in the global orientation directions.
 
-    def calcHydroConstants(self, r_ref=np.zeros(3), sum_inertia=False, rho=1025, g=9.81, k_array=None):
+        Also updates the member's stiffness matrix, self.C_struc, which is a (self.nDOF, self.nDOF),
+        matrix with respect to rRP. This terms is usually included in the hydrostatic stiffness matrix in naval architecture
+        
+        Parameters
+        ----------
+        rRP : float array, optional
+            Coordinates of the reference point which the moment of inertia matrix will be calculated relative to. [m]
+            If not provided, we use the first node of the member
+        include_geom_stiffness : bool, optional
+            Whether to include geometric stiffness in the calculation of the stiffness matrix of flexible members. 
+            Does not affect rigid members.
+            Default is False because this component is included separately in fowt.calcStatics() to account for 
+            other weights that might be applied to the flexible member (e.g. RNA atop of the tower)
+        '''
+        if rRP is None:
+            rRP = self.nodeList[0].r[:3]
+        self.C_struc = np.zeros([self.nDOF,self.nDOF])  # initialize the stiffness matrix
+
+        if self.type == 'rigid':
+            # store the (6,6) matrix given wrt the member's node.
+            W, self.C_struc = getWeightOfPointMass(self.mass, self.rCoG-rRP, g=g)
+        
+        else:
+            W = np.zeros(self.nDOF)
+            
+            mass_node = np.zeros(len(self.nodeList))  # mass corresponding to each node - for the 'hydrostatic' stiffness term associated to weight
+            center_mass_node = np.zeros((len(self.nodeList), 3))  # center of mass corresponding to each node - for the 'hydrostatic' stiffness term associated to weight
+            m_center_sum = np.zeros((len(self.nodeList), 3))  # Auxiliar variable that stores the product of mass and center of mass for each node
+            
+            # Looping elements to get the mass of the shell
+            for i in range(len(self.nodeList)-1): 
+                L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
+                if L == 0:
+                    raise Exception("Element length cannot be zero.")
+                if self.shape == 'circular':
+                    Do      = 0.5 * (self.dorsl_node_ext[i] + self.dorsl_node_ext[i+1])          # Outer diameter of the element
+                    Di      = 0.5 * (self.dorsl_node_int[i] + self.dorsl_node_int[i+1])          # Inner diameter
+                    A       = np.pi * (Do**2 - Di**2) / 4  # Cross-sectional area       
+                elif self.shape == 'rectangular':
+                    Lo  = 0.5 * (self.dorsl_node_ext[i] + self.dorsl_node_ext[i+1])                    # Outer sides of the element
+                    Li  = 0.5 * (self.dorsl_node_int[i] + self.dorsl_node_int[i+1])                    # Inner sides
+                    A   = (Lo[0]*Lo[1] - Li[0]*Li[1])            # Cross-sectional area
+
+                # Rotation matrix to transform from local to global coordinates
+                Dc = np.column_stack((self.p1, self.p2, self.q))
+
+                W[i*6:(i+1)*6]     += self.rho_shell * A * g * np.array([0, 0, -L/2, -L**2/12*Dc[1,2],  L**2/12*Dc[0,2], 0])  # Weight vector in global coordinates
+                W[(i+1)*6:(i+2)*6] += self.rho_shell * A * g * np.array([0, 0, -L/2,  L**2/12*Dc[1,2], -L**2/12*Dc[0,2], 0])
+
+                # Get mass and CG corresponding to each node
+                mass_node[i]    += self.rho_shell * A * L/2  # half the mass of the element
+                mass_node[i+1]  += self.rho_shell * A * L/2  # half the mass of the element
+                m_center_sum[i, :]   += self.rho_shell * A * L/2 * (self.nodeList[i].r[:3] + L/4 * self.q)
+                m_center_sum[i+1, :] += self.rho_shell * A * L/2 * (self.nodeList[i+1].r[:3] - L/4 * self.q)
+                
+
+            # Ballast and cap/bulkhead contribution - Lumping at each node (see self.getInertia())
+            for i in range(len(self.nodeList)): # Looping nodes
+                f = self.mass_ballast_node[i] * g * np.array([0, 0, -1, 0, 0, 0])
+                W[i*6:(i+1)*6] += transformForce(f, offset=self.center_ballast_node[i]-self.nodeList[i].r[:3])  # Weight vector in global coordinates
+
+                f = self.m_cap[i] * g * np.array([0, 0, -1, 0, 0, 0])
+                W[i*6:(i+1)*6] += transformForce(f, offset=self.center_cap[i]-self.nodeList[i].r[:3])
+
+                # Add ballast and cap mass to the node's mass
+                mass_node[i]       += self.m_cap[i] + self.mass_ballast_node[i]
+                m_center_sum[i, :] += self.mass_ballast_node[i]*self.center_ballast_node[i] + self.m_cap[i] * self.center_cap[i]
+
+                # Calculate the center of mass for each node
+                center_mass_node[i, :] = m_center_sum[i, :] / mass_node[i] if mass_node[i] > 0 else np.zeros(3)
+
+            # Hydrostatic stiffness matrix due to member weight
+            for i in range(len(self.nodeList)):
+                # Own stiffness, i.e. hydrostatic stiffness of the node around itself as if it were a separate body
+                W_own, C_own = getWeightOfPointMass(mass_node[i], center_mass_node[i,:]-self.nodeList[i].r[:3], g=g)
+
+                # Geommetric stiffness, i.e. the component that is due to the internal force acting at each extremity of the node's zone of influence
+                # Since weight is always along the global z-axis, we only need to consider the z component of the part of the internal force that is due to weight only
+                C_geom = np.zeros((6, 6))  # Initialize geometric stiffness matrix
+                if include_geom_stiffness:
+                    W_after  = np.sum(W[2 + (i+1)*6 : : 6]) # Weight due to all nodes after node i
+                    W_before = -W_after - W_own[2]
+                    
+                    # Get boundaries of the node's zone of influence. Relative position wrt the node
+                    r_before, r_after = np.zeros(3), np.zeros(3)  # Initialize to zero vectors
+                    if i != 0:
+                        r_before = (self.nodeList[i].r[:3] + self.nodeList[i-1].r[:3])/2 - self.nodeList[i].r[:3]
+                    if i != len(self.nodeList)-1:
+                        r_after  = (self.nodeList[i].r[:3] + self.nodeList[i+1].r[:3])/2 - self.nodeList[i].r[:3]
+
+                    C_geom = np.zeros((6, 6))
+                    C_geom[3,3] =  W_after * r_after[2] + W_before * r_before[2]  # roll
+                    C_geom[4,4] =  W_after * r_after[2] + W_before * r_before[2]  # pitch
+                    C_geom[3,5] = -W_after * r_after[0] - W_before * r_before[0]  # roll moment due to yaw motion
+                    C_geom[4,5] = -W_after * r_after[1] - W_before * r_before[1]  # pitch moment due to yaw motion
+
+                self.C_struc[i*6:(i+1)*6, i*6:(i+1)*6] = C_own + C_geom
+
+        return W
+        
+    def calcHydroConstants(self, r_ref=None, sum_inertia=False, rho=1025, g=9.81, k_array=None):
         '''Compute the Member's linear strip-theory-hydrodynamics terms, 
         related to drag and added mass, which are also a precursor to 
         excitation. All computed quantities are in global orientations.
         
         Parameters
         ----------
-        r_ref : size-3 vector
+        r_ref : size-3 vector, optional
             Reference point coordinates to compute matrices about [m].
+            Only used for rigid members. For flexible members, each node is its own reference point.
         sum_inertia : boolean, optional
             Flag to calculate and return an overall inertial excitation matrix
             (default False).
@@ -899,10 +1277,13 @@ class Member:
         A_hydro, I_hydro : 6x6 matrices
             Hydrodynamic added mass and inertial excitation matrices.
         '''
+
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
         
-        # hydrodynamic added mass and excitation matrices from strip theory [kg, kg-m, kg-m^2]
-        A_hydro = np.zeros([6,6])
-        I_hydro = np.zeros([6,6])
+        # hydrodynamic added mass and excitation matrices from strip theory [kg, kg-m, kg-m^2]        
+        A_hydro = np.zeros([self.nDOF, self.nDOF])
+        I_hydro = np.zeros([self.nDOF, self.nDOF])
 
         circ = self.shape=='circular'  # boolean for circular vs. rectangular
         
@@ -912,6 +1293,17 @@ class Member:
 
         # loop through each node of the member
         for il in range(self.ns):
+            # Get ranges of the matrix corresponding to this node
+            if self.type == 'rigid':
+                iFirst = 0
+                iLast  = 6
+            else:   # flexible
+                iFirst = il*6
+                iLast  = iFirst+6
+
+                # This r_ref is useless now, as self.r[il,:] = self.nodeList[il].r[:3], but doing it this way 
+                # because in the future we want to have different discretizations for structural and hydrodynamic
+                r_ref = self.nodeList[il].r[:3]
 
             # only process hydrodynamics if this node is submerged
             if self.r[il,2] < 0:
@@ -963,13 +1355,12 @@ class Member:
                     # ----- sum up side and end added mass and inertial excitation coefficient matrices ------
                     self.Amat[il,:,:] = Amat_sides + Amat_end
                     self.a_i[il] = a_i  # signed axial reference area for use in dynamic pressure force
-                    
-                    
+                                        
                     # add to global added mass and inertial excitation matrices
                     # which consider the mean offsets and are relative to the ref in global orientation
-                    A_hydro += translateMatrix3to6DOF(self.Amat[il,:,:], self.r[il,:] - r_ref[:3])    
+                    A_hydro[iFirst:iLast, iFirst:iLast] += translateMatrix3to6DOF(self.Amat[il,:,:], self.r[il,:] - r_ref[:3])    
                     if sum_inertia:
-                        I_hydro += translateMatrix3to6DOF(self.Imat[il,:,:], self.r[il,:] - r_ref[:3])   
+                        I_hydro[iFirst:iLast, iFirst:iLast] += translateMatrix3to6DOF(self.Imat[il,:,:], self.r[il,:] - r_ref[:3])   
 
         if sum_inertia:
             return A_hydro, I_hydro
@@ -1399,7 +1790,7 @@ class Member:
         
         return F
 
-    def calcCurrentLoads(self, depth, speed=0, heading=0, Zref=0, shearExp_water=0.12, rho=1025, g=9.81, r_ref=np.zeros(3)):
+    def calcCurrentLoads(self, depth, speed=0, heading=0, Zref=0, shearExp_water=0.12, rho=1025, g=9.81, r_ref=None):
         '''method to calculate the "static" current loads on each member and save as a current force
         Uses a simple power law relationship to calculate the current velocity as a function of member node depth
         
@@ -1419,19 +1810,34 @@ class Member:
             Water density [kg/m^3]
         g: float
             Gravitational acceleration [m/s^2]
-        r_ref: size-3 vector
-            Reference point coordinates to compute current loads [m].
+        r_ref : size-3 vector, optional
+            Reference point coordinates to compute matrices about [m].
+            Only used for rigid members. For flexible members, each node is its own reference point.
 
         Returns:
-        D_hydro: 6x1 array
-            Mean current force and moment on the member in global coordinates wrp to r_ref [N, N-m]
+        D_hydro: (self.nDOF, 1) array
+            Mean current force and moment acting on each node of the member wrt r_ref [N, N-m]
         '''
-        D_hydro = np.zeros(6)
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
+
+        D_hydro = np.zeros(self.nDOF)
 
         circ = self.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
 
         # loop through each node of the member
         for il in range(self.ns):
+            # Get ranges of the matrix corresponding to this node
+            if self.type == 'rigid':
+                iFirst = 0
+                iLast  = 6
+            else:   # flexible
+                iFirst = il*6
+                iLast  = iFirst+6
+
+                # This r_ref is useless now, as self.r[il,:] = self.nodeList[il].r[:3], but doing it this way 
+                # because in the future we want to have different discretizations for structural and hydrodynamic
+                r_ref = self.nodeList[il].r[:3]
 
             # only process hydrodynamics if this node is submerged
             if self.r[il,2] < 0:
@@ -1487,7 +1893,7 @@ class Member:
                 # ----- sum forces and add to total mean drag load about PRP ------
                 D = Dq + Dp1 + Dp2 + Dq_End     # sum drag forces at node in member's local orientation frame
 
-                D_hydro += translateForce3to6DOF(D, self.r[il,:] - r_ref)  # sum as forces and moments about PRP
+                D_hydro[iFirst:iLast] += translateForce3to6DOF(D, self.r[il,:] - r_ref)  # sum as forces and moments about PRP
         return D_hydro
 
     def computeWaveKinematics(self, zeta, beta, w, depth, k=None, rho=1025, g=9.81):
@@ -1531,7 +1937,7 @@ class Member:
                     self.u[ih,il,:,:], self.ud[ih,il,:,:], self.pDyn[ih,il,:] = getWaveKin(zeta[ih,:], beta[ih], w, k, depth, self.r[il,:], nw, rho=rho, g=g)
 
 
-    def calcHydroExcitation(self, zeta, beta, w, depth, k=None, rho=1025, g=9.81, r_ref=np.zeros(3)):
+    def calcHydroExcitation(self, zeta, beta, w, depth, k=None, rho=1025, g=9.81, r_ref=None):
         '''
         Compute strip-theory wave excitation force (inertial part of Morison's equation).
         Need to call computeWaveKinematics() first to get the wave kinematics at each node.        
@@ -1539,20 +1945,35 @@ class Member:
 
         Parameters
         ----------
-        r_ref: size-3 vector
-            Reference point coordinates to compute hydrodynamic loads [m].
+        r_ref : size-3 vector, optional
+            Reference point coordinates to compute matrices about [m].
+            Only used for rigid members. For flexible members, each node is its own reference point.
         
         Returns
         ----------
-        self.F_hydro_iner: [nWaves x 6 x nw] complex array. nWaves: number of wave headings; 6: number of dofs; nw: number of frequencies
+        self.F_hydro_iner: [nWaves x self.nDOF x nw] complex array. nWaves: number of wave headings; self.nDOF: number of dofs; nw: number of frequencies
         '''
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
+
         self.computeWaveKinematics(zeta, beta, w, depth, k=k, rho=rho, g=g)
 
         nWaves, _, _, nw = self.ud.shape
-        self.F_hydro_iner = np.zeros([nWaves, 6, nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]        
+        self.F_hydro_iner = np.zeros([nWaves, self.nDOF, nw],dtype=complex) # inertia excitation force/moment complex amplitudes vector [N, N-m]        
 
         # loop through each node of the member
         for il in range(self.ns):
+            # Get ranges of the matrix corresponding to this node
+            if self.type == 'rigid':
+                iFirst = 0
+                iLast  = 6
+            else:   # flexible
+                iFirst = il*6
+                iLast  = iFirst+6
+
+                # This r_ref is useless now, as self.r[il,:] = self.nodeList[il].r[:3], but doing it this way 
+                # because in the future we want to have different discretizations for structural and hydrodynamic
+                r_ref = self.nodeList[il].r[:3]
 
             # only process hydrodynamics if this node is submerged
             if self.r[il,2] < 0:
@@ -1567,11 +1988,11 @@ class Member:
                             F_exc_iner_temp = np.matmul(Imat, self.ud[ih,il,:,i]) + self.pDyn[ih,il,i]*self.a_i[il]*self.q 
                             
                             # add the excitation complex amplitude for this heading and frequency to the global excitation vector
-                            self.F_hydro_iner[ih,:,i] += translateForce3to6DOF(F_exc_iner_temp, self.r[il,:] - r_ref) # (about PRP)
+                            self.F_hydro_iner[ih,iFirst:iLast,i] += translateForce3to6DOF(F_exc_iner_temp, self.r[il,:] - r_ref)
         return self.F_hydro_iner
 
 
-    def calcHydroLinearization(self, w, ih=0, Xi=np.zeros(6), rho=1025, r_ref=np.zeros(3)):
+    def calcHydroLinearization(self, w, ih=0, Xi_nodes=None, rho=1025, r_ref=None):
         '''To be used within the FOWT's dynamics solve iteration method. This calculates the
         amplitude-dependent linearized coefficients, including the system linearized drag damping matrix, 
         of this member.
@@ -1584,35 +2005,54 @@ class Member:
             Wave frequencies [rad/s]
         ih: int
             Index of the wave heading to consider for the drag linearization
-        Xi : size-6 complex array
-            response of the FOWT that this member is attached to - displacement and rotation complex amplitudes [m, rad]
-            TODO: Change this to be the response of the member itself
+        Xi_nodes : (nDOF,) complex array (self.nDOF = 6 * self.nNodes)
+            amplitude of displacement of the STRUCTURAL nodes of this member
         rho: float
             Water density [kg/m^3]
-        r_ref: size-3 vector
-            Reference point coordinates for outputs [m].
+        r_ref : size-3 vector, optional
+            Reference point coordinates to compute matrices about [m].
+            Only used for rigid members. For flexible members, each node is its own reference point.
+            TODO: should we remove this and always compute with respect to member's node, including for the other functions that use r_ref or rRP?
         
         Returns
         ----------
-        B_hydro_drag: 6x6 array
+        B_hydro_drag: nDOF x nDOF array
             Hydrodynamic damping matrix from linearized viscous drag [N-s/m, N-s, N-s-m]
-        F_hydro_drag: 6 x nw complex array
+        F_hydro_drag: nDOF x nw complex array
             Excitation force/moment complex amplitude vector [N, N-m]
 
         This function also updates self.Bmat (size nNodes x 3 x 3) and self.F_exc_drag (size nNodes x 3 x nw)
         '''
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
 
+        # Zero response with size equal to the number of dofs of the member
+        if Xi_nodes is None:
+            Xi_nodes = np.zeros((self.nDOF, len(w)), dtype=complex)
+        
         circ = self.shape=='circular'  # convenience boolian for circular vs. rectangular cross sections
         nw = len(w)
-        B_hydro_drag = np.zeros([6,6])             # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
-        F_hydro_drag = np.zeros([6, nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        B_hydro_drag = np.zeros([self.nDOF,self.nDOF])         # hydrodynamic damping matrix (just linearized viscous drag for now) [N-s/m, N-s, N-s-m]
+        F_hydro_drag = np.zeros([self.nDOF, nw],dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
 
-        # loop through each node of the member
-        for il in range(self.ns):
+        # loop through each hydrodynamic node of the member
+        for il in range(self.ns):            
+            if self.type == 'rigid': 
+                # Indices to fill in the output arrays. Assuming 6-dof nodes. Only one structural node for rigid members.
+                iFirst = 0
+                iLast  = 6
 
-            # get node complex velocity amplitude based on platform motion's and relative position from PRP
-            # node displacement, velocity, and acceleration (each [3 x nw])
-            drnode, vnode, anode = getKinematics(self.r[il,:] - r_ref, Xi, w)
+                # For rigid members, we get the displacement, velocity, and acceleration (each [3 x nw])
+                # of the hydrodynamic nodes based on the response of its single structural node
+                drnode, vnode, _ = getKinematics(self.r[il,:] - self.nodeList[0].r[:3], Xi_nodes, w)
+            else:   
+                iFirst = il*6
+                iLast  = iFirst+6
+
+                # For flexible members, we use the displacement of each structural node
+                drnode = Xi_nodes[iFirst:iFirst+3,:]  # complex displacement amplitude [3 x nw]
+                vnode = drnode * 1j * w[None, :]      # complex velocity amplitude [3 x nw]
+                r_ref = self.nodeList[il].r[:3]
 
             # only process hydrodynamics if this node is submerged
             if self.r[il,2] < 0:
@@ -1673,36 +2113,299 @@ class Member:
                 Bmat_end = Bprime_End*self.qMat                                       #
 
 
-                # ----- sum up side and end damping matrices ------
-                
+                # ----- sum up side and end damping matrices ------                
                 self.Bmat[il,:,:] = Bmat_sides + Bmat_end   # store in Member object to be called later to get drag excitation for each wave heading
-
-                B_hydro_drag += translateMatrix3to6DOF(self.Bmat[il,:,:], self.r[il,:] - r_ref)   # add to global damping matrix for Morison members
+                B_hydro_drag[iFirst:iLast, iFirst:iLast] += translateMatrix3to6DOF(self.Bmat[il,:,:], self.r[il,:] - r_ref)   # add to global damping matrix for Morison members
 
 
                 # ----- calculate wave drag excitation (this may be recalculated later) -----
-
                 for i in range(nw):
-
                     self.F_exc_drag[il,:,i] = np.matmul(self.Bmat[il,:,:], self.u[ih,il,:,i])   # get local 3d drag excitation force complex amplitude for each frequency [3 x nw]
-
-                    F_hydro_drag[:,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)   # add to global excitation vector (frequency dependent)
+                    F_hydro_drag[iFirst:iLast,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)   # add to global excitation vector (frequency dependent)
         
         return B_hydro_drag, F_hydro_drag
 
-    def calcDragExcitation(self, ih, r_ref=np.zeros(3)):
+    def calcDragExcitation(self, ih, r_ref=None):
+        if r_ref is None:
+            r_ref = self.nodeList[0].r[:3]
+
         nw = self.u.shape[3]
-        F_hydro_drag = np.zeros([6, nw], dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
+        F_hydro_drag = np.zeros([self.nDOF, nw], dtype=complex) # excitation force/moment complex amplitudes vector [N, N-m]
         for il in range(self.ns):  # loop through each node of the member
             if self.r[il,2] < 0:   # only process hydrodynamics if this node is submerged
+                # Get ranges of the matrix corresponding to this node
+                if self.type == 'rigid':
+                    iFirst = 0
+                    iLast  = 6
+                else:   # flexible
+                    iFirst = il*6
+                    iLast  = iFirst+6
+                    r_ref = self.nodeList[il].r[:3]
+
+
                 for i in range(nw):                    
                     # get local 3d drag excitation force complex amplitude for each frequency [3 x nw]
                     self.F_exc_drag[il,:,i] = np.matmul(self.Bmat[il,:,:], self.u[ih,il,:,i])   
                     
                     # add to global excitation vector (frequency dependent)
-                    F_hydro_drag[:,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)
+                    F_hydro_drag[iFirst:iLast,i] += translateForce3to6DOF(self.F_exc_drag[il,:,i], self.r[il,:] - r_ref)
         return F_hydro_drag
 
+    def computeStiffnessMatrix_FE(self):
+        '''
+        Calculate the structural stiffnes matrix of the member (Linear Frame Finite-Element model with Timoshenko beam)
+        It is a 6Nnodes x 6Nnodes matrix, where Nnodes is the number of member nodes.
+
+        Each element (subdivision of the member between two nodes) provides a 12x12 matrix in the local reference frame,
+        with axes p1, p2, q. The matrices of each element are assembled to provide the 6Nnodes x 6Nnodes matrix of the member.
+
+        Returns:
+        ----------
+        self.Kf: 6Nnodes x 6Nnodes array
+            Stiffness matrix of the member in the global reference frame [N/m, N-m/rad]
+            Besides returning the stiffness matrix, it is also stored in self.Ke
+        '''
+        self.Kf = np.zeros((self.nDOF, self.nDOF)) # Stiffness matrix of the member
+        if self.type != 'beam':
+            return self.Kf
+        
+        if len(self.nodeList) < 2:
+            raise Exception("Flexible member {self.name} must have at least two nodes to compute the stiffness matrix.")
+        nodeDOF = self.nodeList[0].nDOF # Number of dofs per node
+
+        E  = self.E    # Young's modulus
+        G  = self.G    # Shear modulus
+        nu = E/(2*G)-1 # Poisson's ratio - Assuming isotropic, homogeneous material
+
+        for i in range(len(self.nodeList)-1):
+            L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
+            if L == 0:
+                raise Exception("Element length cannot be zero.")
+            
+            if self.shape == 'circular':
+                Do_A, Di_A  = (self.dorsl_node_ext[i],   self.dorsl_node_int[i])   # External diameter and internal diameter of the element at node A
+                Do_B, Di_B  = (self.dorsl_node_ext[i+1], self.dorsl_node_int[i+1]) # External diameter and internal diameter of the element at node B
+
+                Do      = 0.5 * (Do_A + Do_B)          # Outer diameter of the element
+                Di      = 0.5 * (Di_A + Di_B)          # Inner diameter
+                A       = np.pi * (Do**2 - Di**2) / 4  # Cross-sectional area
+                Jp1     = np.pi * (Do**4 - Di**4) / 64 # Moment of inertia around p1 axis
+                Jp2     = Jp1                          # Moment of inertia around p2 axis                
+                Jt      = Jp2 + Jp1                    # Torsion coefficient, around q axis
+                
+                # Terms for shear correction
+                kp1_num = 6*(1+nu)**2 * (1+(Di/Do)**2)**2 # Terms for shear correction
+                kp1_den = (1+(Di/Do)**2)**2 * (7+14*nu+8*nu**2) + 4 * (Di/Do)**2 * (5+10*nu+4*nu**2)                            
+                kp1 = kp1_num / kp1_den
+                kp2 = kp1
+
+            elif self.shape == 'rectangular':
+                # Lengths of the rectangular cross section. First component is normal to p1, second is normal to p2
+                Wo_A, Wi_A  = (self.dorsl_node_ext[i]  , self.dorsl_node_int[i]  ) # External and internal sides of the element at node A (2-element list)
+                Wo_B, Wi_B  = (self.dorsl_node_ext[i+1], self.dorsl_node_int[i+1]) # External and internal sides of the element at node B
+
+                Wo  = 0.5 * (Wo_A + Wo_B)                    # Outer sides of the element
+                Wi  = 0.5 * (Wi_A + Wi_B)                    # Inner sides
+                A   = (Wo[0]*Wo[1] - Wi[0]*Wi[1])            # Cross-sectional area
+                Jp1 = (Wo[0]**3*Wo[1] - Wi[0]**3*Wi[1]) / 12 # Moment of inertia around p1 axis
+                Jp2 = (Wo[0]*Wo[1]**3 - Wi[0]*Wi[1]**3) / 12 # Moment of inertia around p2 axis
+                                
+                # Expressions for torsion coefficient taken from Young and Budynas, Roark's Formulas for stress and strain
+                # Expressions for shear correction factor taken from Cowper 1966. The shear coefficient in Timoshenko's beam theory
+                if Wi[0] == 0 or Wi[1] == 0: # If solid rectangular section
+                    # Get larger and smaller dimensions
+                    a, b = max(Wo), min(Wo)
+                    Jt = a*b**3/16 * ( 16/3 - 3.36*(b/a)*(1-b**4/a**4/12) )
+
+                    kp1 = 10*(1+nu)/(12+11*nu)
+                    kp2 = kp1
+
+                else: # Expression for thin-walled rectangular sections. Will provide bad estimates for intermediate wall thickness
+                    t0 = (Wo[0]-Wi[0])/2
+                    t1 = (Wo[1]-Wi[1])/2
+                    Jt = 2*t0*t1 * (Wo[0]-t0)**2 * (Wo[1]-t1)**2 / (Wo[0]*t0 + Wo[1]*t1 - t0**2 - t1**2)
+
+                    m = Wi[0]*t1/Wo[1]/t0
+                    n = Wi[0]/Wo[1]
+                    kp1 = 10*(1+nu)*(1+3*m)**2 / ( 12+72*m+150*m**2+90*m**3 + nu*(11+66*m+135*m**2+90*m**3) + 10*n**2*((3+nu)*m+3*m**2))
+
+                    m = Wi[1]*t0/Wo[0]/t1
+                    n = Wi[1]/Wo[0]
+                    kp2 = 10*(1+nu)*(1+3*m)**2 / ( 12+72*m+150*m**2+90*m**3 + nu*(11+66*m+135*m**2+90*m**3) + 10*n**2*((3+nu)*m+3*m**2))
+
+            Ksx = 12*E*Jp2 / (G*kp1*A*L**2)
+            Ksy = 12*E*Jp1 / (G*kp2*A*L**2)
+
+            # # For Euler-Bernoulli beam - Using this to debug for now
+            # Ksx*=0
+            # Ksy*=0
+            
+            # Fill the 12x12 local stiffness matrix of the element
+            # Top left corner - 6x6 matrix of node 1 acting on itself
+            K11 = np.zeros((nodeDOF, nodeDOF))
+            K11[0,0] = 12*E*Jp2/L**3/(1+Ksx)
+            K11[1,1] = 12*E*Jp1/L**3/(1+Ksy)
+            K11[2,2] = E*A/L
+            K11[3,3] = (4+Ksy)*E*Jp1/L/(1+Ksy)
+            K11[4,4] = (4+Ksx)*E*Jp2/L/(1+Ksx)
+            K11[5,5] = G*Jt/L
+            K11[0,4] = 6*E*Jp2/L**2/(1+Ksx)
+            K11[1,3] = -6*E*Jp1/L**2/(1+Ksy)
+
+            # Bottom right corner - 6x6 matrix of node 2 acting on itself. 
+            # It's the same as K11, but off-diagonal terms have opposite sign.
+            K22 = K11.copy() 
+            K22[0,4] *= -1
+            K22[1,3] *= -1
+
+            # Top right corner
+            K12 = np.zeros((nodeDOF, nodeDOF))
+            K12[0,0] = -K11[0,0]
+            K12[1,1] = -K11[1,1]
+            K12[2,2] = -K11[2,2]
+            K12[3,3] = (2-Ksy)*E*Jp1/L/(1+Ksy) # This term uses 2-Ksx instead of 4+Ksx and doesn't have a sign change
+            K12[4,4] = (2-Ksx)*E*Jp2/L/(1+Ksx) # Same
+            K12[5,5] = -K11[5,5]
+            K12[0,4] =  K11[0,4]
+            K12[1,3] =  K11[1,3]
+            K12[4,0] = -K11[0,4]
+            K12[3,1] = -K11[1,3]
+
+            # Fill lower triangle of the matrices (they're symmetric)
+            K11 = K11 + K11.T - np.diag(K11.diagonal())
+            K22 = K22 + K22.T - np.diag(K22.diagonal())
+
+            # Assemble the 12x12 matrix
+            Ke = np.block([
+                [K11, K12],       # Top row: K11 and K12
+                [K12.T, K22]      # Bottom row: K12.T and K22
+            ])
+
+            # Rotation matrix to transform from local to global coordinates
+            # TODO: p1, p2 and q do not account for elastic deformations yet
+            Dc_aux = np.column_stack((self.p1, self.p2, self.q))
+
+            # Make the 12x12 rotation matrix
+            Dc = np.zeros((2*nodeDOF, 2*nodeDOF))
+            Dc[0:3, 0:3]   = Dc_aux
+            Dc[3:6, 3:6]   = Dc_aux
+            Dc[6:9, 6:9]   = Dc_aux
+            Dc[9:12, 9:12] = Dc_aux
+                        
+            # Transform the local stiffness matrix to global coordinates
+            Ke_global = (Dc @ Ke) @ Dc.T
+            self.Kf[i*nodeDOF:(i+2)*nodeDOF, i*nodeDOF:(i+2)*nodeDOF] += Ke_global
+        return self.Kf
+
+    def computeInertiaMatrix_FE(self):
+        '''
+        Calculate the structural inertia matrix of the member (Linear Frame Finite-Element model with Timoshenko beam)
+        It is a 6Nnodes x 6Nnodes matrix, where Nnodes is the number of member nodes.
+        This function is to be used within self.getInertia().
+
+        Each element (subdivision of the member between two nodes) provides a 12x12 matrix in the local reference frame,
+        with axes p1, p2, q. The matrices of each element are assembled to provide the 6Nnodes x 6Nnodes matrix of the member.
+                
+        Returns:
+        ----------
+        Me: 6Nnodes x 6Nnodes array
+            Inertia matrix of the member in the local reference frame [kg*m^2]        
+        '''
+        self.Mf = np.zeros((self.nDOF, self.nDOF)) # Inertia matrix of a flexible member
+
+        # Only works for flexible members
+        if self.type != 'beam':
+            return self.Mf
+
+        if len(self.nodeList) < 2:
+            raise Exception("Flexible member {self.name} must have at least two nodes to compute its flexible inertia matrix.")
+        nodeDOF = self.nodeList[0].nDOF # Number of dofs per node
+
+        for i in range(len(self.nodeList)-1):
+            L = np.linalg.norm(self.nodeList[i+1].r[0:3] - self.nodeList[i].r[0:3])
+            if L == 0:
+                raise Exception("Element length cannot be zero.")
+
+            if self.shape == 'circular':
+                Do_A, Di_A  = (self.dorsl_node_ext[i],   self.dorsl_node_int[i])   # External diameter and internal diameter of the element at node A
+                Do_B, Di_B  = (self.dorsl_node_ext[i+1], self.dorsl_node_int[i+1]) # External diameter and internal diameter of the element at node B
+
+                Do      = 0.5 * (Do_A + Do_B)          # Outer diameter of the element
+                Di      = 0.5 * (Di_A + Di_B)          # Inner diameter
+                A       = np.pi * (Do**2 - Di**2) / 4  # Cross-sectional area
+                Jp1     = np.pi * (Do**4 - Di**4) / 64 # Moment of inertia around p1 axis
+                Jp2     = Jp1                          # Moment of inertia around p2 axis                
+            elif self.shape == 'rectangular':
+                # Lengths of the rectangular cross section. First component is normal to p1, second is normal to p2
+                Wo_A, Wi_A  = (self.dorsl_node_ext[i]  , self.dorsl_node_int[i]  ) # External and internal sides of the element at node A (2-element list)
+                Wo_B, Wi_B  = (self.dorsl_node_ext[i+1], self.dorsl_node_int[i+1]) # External and internal sides of the element at node B
+
+                Wo  = 0.5 * (Wo_A + Wo_B)                    # Outer sides of the element
+                Wi  = 0.5 * (Wi_A + Wi_B)                    # Inner sides
+                A   = (Wo[0]*Wo[1] - Wi[0]*Wi[1])            # Cross-sectional area
+                Jp1 = (Wo[0]**3*Wo[1] - Wi[0]**3*Wi[1]) / 12 # Moment of inertia around p1 axis
+                Jp2 = (Wo[0]*Wo[1]**3 - Wi[0]*Wi[1]**3) / 12 # Moment of inertia around p2 axis            
+            Jz  = Jp2 + Jp1                                  # Polar moment of inertia around z axis
+
+
+            # Fill the 12x12 local stiffness matrix of the element
+            # Top left corner - 6x6 matrix of node 1 acting on itself
+            M11 = np.zeros((nodeDOF, nodeDOF))
+            M11[0,0] =  13*A*L/35 + 6*Jp2/5/L
+            M11[1,1] =  13*A*L/35 + 6*Jp1/5/L
+            M11[2,2] =  A*L/3
+            M11[3,3] =  A*L**3/105 + 2*L*Jp1/15
+            M11[4,4] =  A*L**3/105 + 2*L*Jp2/15
+            M11[5,5] =  Jz*L/3
+            M11[0,4] =  11*A*L**2/210 + Jp2/10
+            M11[1,3] = -11*A*L**2/210 - Jp1/10
+
+            # Bottom right corner - 6x6 matrix of node 2 acting on itself. 
+            # It's the same as K11, but off-diagonal terms have opposite sign.
+            M22 = M11.copy() 
+            M22[0,4] *= -1
+            M22[1,3] *= -1
+
+            # Top right corner
+            M12 = np.zeros((nodeDOF, nodeDOF))            
+            M12[0,0] =  9*A*L/70 - 6*Jp2/5/L
+            M12[1,1] =  9*A*L/70 - 6*Jp1/5/L
+            M12[2,2] =  A*L/6
+            M12[3,3] = -A*L**3/140 - L*Jp1/30
+            M12[4,4] = -A*L**3/140 - L*Jp2/30
+            M12[5,5] =  Jz*L/6
+            M12[0,4] = -13*A*L**2/420 + Jp2/10
+            M12[1,3] =  13*A*L**2/420 - Jp1/10
+            M12[4,0] =  13*A*L**2/420 - Jp2/10
+            M12[3,1] = -13*A*L**2/420 + Jp1/10
+
+            # Fill lower triangle of the matrices (they're symmetric)
+            M11 = M11 + M11.T - np.diag(M11.diagonal())
+            M22 = M22 + M22.T - np.diag(M22.diagonal())
+
+            # Assemble the 12x12 matrix
+            Me = np.block([
+                [M11, M12],
+                [M12.T, M22]
+            ])
+            Me *= self.rho_shell
+
+            # Rotation matrix to transform from local to global coordinates
+            # TODO: p1, p2 and q do not account for elastic deformations yet
+            Dc_aux = np.column_stack((self.p1, self.p2, self.q))
+            
+            # Make the 12x12 rotation matrix
+            Dc = np.zeros((2*nodeDOF, 2*nodeDOF))
+            Dc[0:3, 0:3]   = Dc_aux
+            Dc[3:6, 3:6]   = Dc_aux
+            Dc[6:9, 6:9]   = Dc_aux
+            Dc[9:12, 9:12] = Dc_aux
+                        
+            # Transform the local stiffness matrix to global coordinates
+            Me_global = (Dc @ Me) @ Dc.T
+            self.Mf[i*nodeDOF:(i+2)*nodeDOF, i*nodeDOF:(i+2)*nodeDOF] += Me_global
+
+        return self.Mf
 
     def getSectionProperties(self, station):
         '''Get member cross sectional area and moments of inertia at a user-
@@ -1714,8 +2417,9 @@ class Member:
         return A, I
 
     def plot(self, ax, r_ptfm=[0,0,0], R_ptfm=[], color='k', nodes=0, 
-             station_plot=[], plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2):
+             station_plot=[], plot2d=False, Xuvec=[1,0,0], Yuvec=[0,0,1], zorder=2, plot_frame=False, frame_opts={}):
         '''Draws the member on the passed axes, and optional platform offset and rotation matrix
+        If plot_frame is True, also plots the frame structure (structural nodes and beam elements) using the parameters in  frame_opts.
         
         Parameters
         ----------
@@ -1813,6 +2517,29 @@ class Member:
             if nodes > 0:
                 ax.scatter(self.r[:,0], self.r[:,1], self.r[:,2])
         
+        # plot the frame structure if asked
+        if plot_frame:
+            # Set defaults for frame_opts keys if not present
+            frame_defaults = {
+                'colorMember': 'k',
+                'linewidth': 2,
+                'colorNode': 'default', # Default is to use 'k for end nodes and 'b' for inner nodes
+                'size': 5,
+                'marker': 'o',
+                'markerfacecolor': 'default',
+                'writeID': False
+            }
+            
+            # Use default options if not provided
+            for k, v in frame_defaults.items():
+                frame_opts.setdefault(k, v)
+
+            # Plot the frame structure
+            for i, node in enumerate(self.nodeList):
+                ax = node.plot(ax, color=frame_opts['colorNode'], size=frame_opts['size'], marker=frame_opts['marker'], markerfacecolor=frame_opts['markerfacecolor'], writeID=frame_opts['writeID'])
+                if i < len(self.nodeList)-1:
+                    x1, y1, z1 = node.r[0], node.r[1], node.r[2]
+                    x2, y2, z2 = self.nodeList[i+1].r[0], self.nodeList[i+1].r[1], self.nodeList[i+1].r[2]
+                    ax.plot([x1, x2], [y1, y2], [z1, z2], color=frame_opts['colorMember'], linewidth=frame_opts['linewidth'])
+
         return linebit
-
-

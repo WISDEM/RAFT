@@ -860,7 +860,7 @@ class Rotor:
         _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD [(m/s)^2/rad]
         
         # convert from power spectral density to complex amplitudes (FFT)
-        self.V_w = np.array(np.sqrt(S_rot), dtype=complex)  # Is there a factor of 2 missing here?
+        self.V_w = np.array(np.sqrt(2*S_rot*(self.w[1]-self.w[0])), dtype=complex)
 
         # Do we need to worry about scaling by dot prod of rotor axis and
         # inflow direction?  *np.cos(turbine_tilt)*np.cos(yaw_misalign) <<<
@@ -957,8 +957,8 @@ class Rotor:
             self.c_exc = dT_dU - H_QT*dQ_dU
 
             f2 = (dT_dU - H_QT*dQ_dU) * self.V_w  # excitation force
-            b2 = np.real(  dT_dU - self.k_float*dT_dPi - H_QT*(dQ_dU - self.k_float*dQ_dPi)             )  # damping
-            a2 = np.real( (dT_dU - self.k_float*dT_dPi - H_QT*(dQ_dU - self.k_float*dQ_dPi))/(1j*self.w))  # added mass
+            b2 = np.real(  dT_dU - self.k_float*dT_dPi/self.r3[2] - H_QT*(dQ_dU - self.k_float*dQ_dPi/self.r3[2])             )  # damping
+            a2 = np.real( (dT_dU - self.k_float*dT_dPi/self.r3[2] - H_QT*(dQ_dU - self.k_float*dQ_dPi/self.r3[2]))/(1j*self.w))  # added mass
 
             # without nacelle feedback
             b3 = np.real(  dT_dU - H_QT*dQ_dU             )  # damping

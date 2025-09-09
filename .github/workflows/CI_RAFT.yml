@@ -48,9 +48,7 @@ jobs:
 
             - name: Overwrite MoorPy if on a branch with 'dev' in its name
               run: |
-                  if [[ "${GITHUB_REF}" == *"_dev"* ]]; then
-                    pip install git+https://github.com/NREL/MoorPy@dev
-                  fi
+                  pip install git+https://github.com/NREL/MoorPy@dev
 
             - name: Example run
               run: |

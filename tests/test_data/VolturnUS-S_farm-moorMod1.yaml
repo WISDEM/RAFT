@@ -4,8 +4,8 @@ comments: Used to perform tests on model class functionality.
 
 
 settings:                   # global Settings
-    min_freq     :  0.001   #  [Hz]       lowest frequency to consider, also the frequency bin width 
-    max_freq     :  0.24    #  [Hz]       highest frequency to consider
+    min_freq     :  0.0025  #  [Hz]       lowest frequency to consider, also the frequency bin width 
+    max_freq     :  0.200   #  [Hz]       highest frequency to consider
     XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
     nIter        :  10      # sets how many iterations to perform in Model.solveDynamics()
     

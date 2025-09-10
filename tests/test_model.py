@@ -341,10 +341,15 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
     
     model.analyzeCases()
 
+    computed_values = {
+        'freq_rad': model.results['freq_rad'],
+        'case_metrics': model.results['case_metrics'],
+    }
+
     # Save or read the true values
     if flagSaveValues:
         with open(true_values_file, 'wb') as f:
-            pickle.dump(model.results['case_metrics'], f)
+            pickle.dump(computed_values, f)
         return # If saving, we don't need to check the results
     else:
         with open(true_values_file, 'rb') as f:
@@ -356,9 +361,9 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
         for ifowt in range(model.nFOWT):
             for imetric, metric in enumerate(metrics2check):
                 if metric in model.results['case_metrics'][iCase][ifowt]:
-                    assert_allclose(model.results['case_metrics'][iCase][ifowt][metric], true_values[iCase][ifowt][metric], rtol=1e-05, atol=1e-3)
+                    assert_allclose(model.results['case_metrics'][iCase][ifowt][metric], true_values['case_metrics'][iCase][ifowt][metric], rtol=1e-05, atol=1e-3)
                 elif 'array_mooring' in model.results['case_metrics'][iCase] and metric in model.results['case_metrics'][iCase]['array_mooring']:
-                    assert_allclose(model.results['case_metrics'][iCase]['array_mooring'][metric], true_values[iCase]['array_mooring'][metric], rtol=1e-05, atol=1e-3)
+                    assert_allclose(model.results['case_metrics'][iCase]['array_mooring'][metric], true_values['case_metrics'][iCase]['array_mooring'][metric], rtol=1e-05, atol=1e-3)
     
     if plotPSDs:
         import matplotlib.pyplot as plt
@@ -366,26 +371,27 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
             fig, ax = plt.subplots(3, 3, figsize=(15, 10))
             for iCase in range(nCases):
                 for imetric, metric in enumerate(metrics2check):
+                    w_true = true_values['freq_rad']
                     if metric in model.results['case_metrics'][iCase][ifowt]:
-                        y = model.results['case_metrics'][iCase][ifowt][metric]
-                        y_true = true_values[iCase][ifowt][metric]
+                        y = model.results['case_metrics'][iCase][ifowt][metric]                        
+                        y_true = true_values['case_metrics'][iCase][ifowt][metric]
                     elif 'array_mooring' in model.results['case_metrics'][iCase] and metric in model.results['case_metrics'][iCase]['array_mooring']:
                         y = model.results['case_metrics'][iCase]['array_mooring'][metric]
-                        y_true = true_values[iCase]['array_mooring'][metric]
+                        y_true = true_values['case_metrics'][iCase]['array_mooring'][metric]
 
                     if metric == 'Tmoor_PSD':
                         if iCase == 0:
                             fig2, ax2 = plt.subplots(y.shape[0], 1, figsize=(15, 10))
                         for i in range(y.shape[0]):                            
-                            ax2[i].plot(model.w, y[i, :])
-                            ax2[i].plot(model.w, y_true[i, :], linestyle='--')
+                            ax2[i].plot(model.w/2/np.pi, y[i, :])
+                            ax2[i].plot(w_true/2/np.pi, y_true[i, :], linestyle='--')
                             ax2[i].set_ylabel(f'Line channel {i+1}')
                             ax2[i].set_xlabel('Frequency (Hz)')
                         ax2[0].set_title(f'{metric}')
                     else:
                         # assert_allclose(model.results['case_metrics'][iCase][ifowt][metric], true_values[idxTrueValues][ifowt][metric], rtol=1e-05, atol=1e-5)                        
-                        ax[imetric//3, imetric%3].plot(model.w, y, label=f'Case {iCase+1}')
-                        ax[imetric//3, imetric%3].plot(model.w, y_true, linestyle='--')
+                        ax[imetric//3, imetric%3].plot(model.w/2/np.pi, y, label=f'Case {iCase+1}')
+                        ax[imetric//3, imetric%3].plot(w_true/2/np.pi, y_true, linestyle='--')
                         ax[imetric//3, imetric%3].set_ylabel(metric)
                         ax[imetric//3, imetric%3].set_xlabel('Frequency (Hz)')
         plt.show()
@@ -393,9 +399,9 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
 '''
  To run as a script. Useful for debugging.
 '''
-if __name__ == "__main__":
+if __name__ == "__main__":    
     index = 0
-    
+
     model = create_model(list_files[index])
     test_solveStatics_Wind((index,model))
 

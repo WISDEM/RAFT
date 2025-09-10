@@ -21,8 +21,8 @@ list_files = [
     'VolturnUS-S-pointInertia.yaml',
     'VolturnUS-S_farm.yaml',
     'OC4semi-WAMIT_Coefs.yaml',
-    'VolturnUS-S-moorMod1.yaml',
-    'VolturnUS-S_farm-moorMod2.yaml',
+    'VolturnUS-S-moorMod2.yaml',
+    'VolturnUS-S_farm-moorMod1.yaml',
     'VolturnUS-S-flexible.yaml',
 ]
 

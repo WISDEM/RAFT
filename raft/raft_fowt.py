@@ -797,9 +797,9 @@ class FOWT():
         # solve the mooring system equilibrium of this FOWT's own MoorPy system
         if self.ms:
             self.ms.solveEquilibrium(tol=self.ms_tol)
-            if self.moorMod == 0 or self.moorMod == 2:
+            if self.moorMod == 0 or self.moorMod == 1:
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
-            elif self.moorMod == 1:
+            elif self.moorMod == 2:
                 self.ms.updateSystemDynamicMatrices()
                 _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
 

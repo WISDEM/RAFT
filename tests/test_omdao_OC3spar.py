@@ -32,6 +32,10 @@ class TestSpider(unittest.TestCase):
         opt['modeling']['nfreq'] = 10
         opt['modeling']['n_cases'] = 2
         opt['modeling']['intersection_mesh'] = 0
+        opt['modeling']['floating'] = {}
+        opt['modeling']['floating']['rigid_bodies'] = {}
+        opt['modeling']['floating']['rigid_bodies']['n_bodies'] = 0
+        opt['modeling']['floating']['rigid_bodies']['joint1'] = []
 
         opt['turbine'] = {}
         opt['turbine']['npts'] = 11

@@ -5,14 +5,15 @@ import yaml
 import numpy as np
 import matplotlib.pyplot as plt
 
-from raft.pyIECWind         import pyIECWind_extreme
+from raft.pyIECWind   import pyIECWind_extreme
 from raft.raft_member import Member
+from raft.raft_node   import Node
 
-from scipy.interpolate      import PchipInterpolator
-from scipy.special          import modstruve, iv
+from scipy.interpolate import PchipInterpolator
+from scipy.special     import modstruve, iv
 
 
-from raft.helpers import rotationMatrix, getFromDict, rotateMatrix3, rotateMatrix6, RotFrm2Vect
+from raft.helpers import rotationMatrix, getFromDict, rotateMatrix3, rotateMatrix6, RotFrm2Vect, transformForce, translateMatrix6to6DOF
 
 try:
     from ccblade.ccblade import CCBlade, CCAirfoil
@@ -34,7 +35,7 @@ rpm2radps = 0.1047
 # a class for the rotor structure, aerodynamics, and control in RAFT
 class Rotor:
 
-    def __init__(self, turbine, w, ir):
+    def __init__(self, turbine, w, ir, node_id=0):
         '''
         >>>> add mean offset parameters add move this to runCCBlade<<<<
         ir = the index of the values in the arrays of the input file for multiple rotors
@@ -43,6 +44,7 @@ class Rotor:
         self.w = np.array(w)
         self.nw = len(self.w)
         self.turbine = turbine      # store dictionary for later use
+        self.type = 'rotor'  # type of this member
         
         # self.r_rel is the position of the RNA reference point (which the RNA yaws about) on the FOWT
         if 'rRNA' in turbine: # Temporary if statement. Need to fix getFromDict to handle this
@@ -50,10 +52,10 @@ class Rotor:
         else:
             if turbine['nrotors'] > 1:
                 raise Exception("For designs with more than one rotor, the RNA reference point must be specified for each of them.")
-            self.r_rel = [0, 0, 100.]
+            self.r_rel = np.zeros(3) # Will be assigned proper values ahead
 
-        self.overhang   = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]  # rotor offset in +x before yaw [m]        
-        self.xCG_RNA = getFromDict(turbine, 'xCG_RNA', shape=turbine['nrotors'])[ir]  # RNA CG offset in +x before yaw [m]
+        self.overhang = getFromDict(turbine, 'overhang', shape=turbine['nrotors'])[ir]  # rotor offset in +x before yaw [m]        
+        self.xCG_RNA  = getFromDict(turbine, 'xCG_RNA', shape=turbine['nrotors'])[ir]   # RNA CG offset in +x before yaw [m]
         
         # mass/inertia
         self.mRNA    = getFromDict(turbine, 'mRNA'   , shape=turbine['nrotors'])[ir]
@@ -123,6 +125,11 @@ class Rotor:
         self.r_RRP = np.array(self.r_rel)  # RNA reference point
         self.r_CG  = np.array(self.r_rel)  # RNA CG location
         self.r_hub = np.array(self.r_rel)  # rotor hub coordinates in global [m]
+
+        # Create a node to store the RNA inertia and lump the aerodynamic nodes.
+        # Making a list for consistency with other objects that have lists of nodes (fowt and member), 
+        # and because we might want to have more nodes in the future.    
+        self.nodeList = [Node(node_id, self.r_RRP, self.nw, member=self, end_node=True)] #
 
         # Call setPosition to properly initialize various location parameters
         self.setPosition()
@@ -380,24 +387,23 @@ class Rotor:
         else:
             self.bladeMemberList = []
     
-    
-    def setPosition(self, r6=np.zeros(6), R=None):
+    def setPosition(self, R=None):
         '''Calculate rotor pose based on FOWT pose.
         
         Parameters
         ----------
-        r6 : array, optional
-            Absolute position/orientation of FOWT to which member is attached.
+        R : array, optional
+            Absolute orientation of FOWT to which rotor is attached.
         '''
         
         # store rotation matrix for platform roll, pitch, yaw
         if R:
             self.R_ptfm = np.array(R)
         else:
-            self.R_ptfm = rotationMatrix(*r6[3:])
+            self.R_ptfm = rotationMatrix(*self.nodeList[0].r[3:])
         
         # Store platform heading for use with nacelle yaw
-        self.platform_heading = r6[5]
+        self.platform_heading = self.nodeList[0].r[5]
         
         # Update RNA point locations [m] w.r.t. PRP in global orientations
         self.r_RRP_rel = np.matmul(self.R_ptfm, self.r_rel) # RNA ref point
@@ -412,7 +418,8 @@ class Rotor:
         '''
         
         # Set absolute hub coordinate [m] for use in various aero/hydro calcs
-        self.r3 = r6[:3] + self.r_hub_rel  
+        # Also update the RNA inertia matrix
+        self.r3 = self.nodeList[0].r[:3] + self.r_hub_rel_RRP         
         
     
     def setYaw(self, yaw=None):
@@ -464,8 +471,9 @@ class Rotor:
         self.q = np.matmul(self.R_ptfm, self.q_rel) # Write in the global frame 
 
         # Update RNA point locations [m] w.r.t. PRP in global orientations
-        self.r_CG_rel = self.r_RRP_rel + self.q*self.xCG_RNA # RNA CG location
-        self.r_hub_rel = self.r_RRP_rel + self.q*self.overhang # rotor hub location
+        self.r_hub_rel_RRP = self.q*self.overhang                 # rotor hub location relative to RNA reference point
+        self.r_CG_rel      = self.r_RRP_rel + self.q*self.xCG_RNA # RNA CG location
+        self.r_hub_rel     = self.r_RRP_rel + self.r_hub_rel_RRP  # rotor hub location
         
         return self.yaw
     
@@ -569,7 +577,7 @@ class Rotor:
 
             self.bladeMemberList.append(Member(blademem, len(self.w)))
         
-        self.nodes = np.zeros([int(self.nBlades), len(self.bladeMemberList)+1, 3])      # array to hold xyz positions of each node along a blade for each blade (filled in later)
+        self.bladeNodes = np.zeros([int(self.nBlades), len(self.bladeMemberList)+1, 3])      # array to hold xyz positions of each node along a blade for each blade (filled in later)
 
 
     def getBladeMemberPositions(self, azimuth, r_OG):
@@ -631,7 +639,7 @@ class Rotor:
                 mem.setPosition()
                 
                 # compute hydro added mass and inertial excitation terms relative to hub
-                A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True, rho=rho, g=g)
+                A_hydro_i, I_hydro_i = mem.calcHydroConstants(sum_inertia=True, rho=rho, g=g, r_ref=np.zeros(3))
                 
                 A_hydro += A_hydro_i 
                 I_hydro += I_hydro_i
@@ -688,7 +696,7 @@ class Rotor:
                 cpmin_node = np.interp(aoa[n], self.aoa, cpmin[n,:,0])
 
                 # extract the depth of the node using the node position array
-                clearance = self.nodes[a, n, 2]     # a=which blade, n=which node, 2=z-position=depth
+                clearance = self.bladeNodes[a, n, 2]     # a=which blade, n=which node, 2=z-position=depth
                 
                 # calculate the critial sigma cavitation parameter
                 sigma_crit = (Patm + self.ccblade.rho*9.81*abs(clearance) - Pvap)/(0.5*self.ccblade.rho*vrel[n]**2)
@@ -798,9 +806,7 @@ class Rotor:
     def calcAero(self, case, current=False, display=0):
         '''Calculates stiffness, damping, added mass, and excitation coefficients
         from rotor aerodynamics coupled with turbine controls.
-        Results are w.r.t. the hub coordinate on the nacelle reference frame (may be yawed), 
-        but written in the global reference frame.
-        Currently returning 6 DOF mean loads, but other terms are just hub fore-aft scalars.
+        Results are w.r.t. the rotor node written in the global reference frame.
         '''
         
         # added mass, damping, excitation, mean force arrays to be filled in (6 DOF)
@@ -1010,9 +1016,16 @@ class Rotor:
         if current:
             self.f[0,:] += self.I_hydro[0,0] * 1j*self.w*self.V_w  # <<< this should have a rotation applied
             breakpoint()
-        """        
+        """
+
+        # Transform to be wrt the rotor node
+        self.f0 = transformForce(self.f0, offset=self.r_hub_rel_RRP)  # force at hub in global frame
+        for iw in range(self.nw):
+            self.a[:,:,iw] = translateMatrix6to6DOF(self.a[:,:,iw], self.r_hub_rel_RRP)
+            self.b[:,:,iw] = translateMatrix6to6DOF(self.b[:,:,iw], self.r_hub_rel_RRP)
+            self.f[:,iw] = transformForce(self.f[:,iw], offset=self.r_hub_rel_RRP) 
         
-        return self.f0, self.f, self.a, self.b #  B_aero, C_aero, F_aero0, F_aero
+        return self.f0, self.f, self.a, self.b
         
         
     def plot(self, ax, r_ptfm=np.array([0,0,0]), azimuth=0, color='k', 

@@ -10,113 +10,126 @@ modeling_options:
     xi_start: 0.0
     nIter: 15
     dls_max: 5
-    min_freq_BEM: 0.0159
+    min_freq_BEM: 0.0158999
     plot_designs: false
     runPyHAMS: true
-    BEM_dir: /Users/dzalkind/Tools/WEIS-Main/examples/15_RAFT_Studies/none/BEM
+    BEM_dir: /Users/dzalkind/Tools/WEIS-Main/examples/04_frequency_domain_analysis_design/outputs/04_umaine_semi_raft_opt/openfast_runs/BEM
     model_potential: [false, false, false, false, false, false, false, false, false, false]
-    intersection_mesh: 0
     nfreq: 20
-    n_cases: 98
+    n_cases: 11
+    intersection_mesh: 0
+    floating:
+        joints:
+            n_joints: 11
+            name: [main_keel, main_freeboard, col1_keel, col1_freeboard, col2_keel, col2_freeboard, col3_keel, col3_freeboard, anchor1, anchor2, anchor3]
+            transition: [false, true, false, false, false, false, false, false, false, false, false]
+            cylindrical: [false, false, true, true, true, true, true, true, true, true, true]
+            name2idx: {main_keel: 0, main_freeboard: 1, col1_keel: 2, col1_freeboard: 3, col2_keel: 4, col2_freeboard: 5, col3_keel: 6, col3_freeboard: 7, anchor1: 8, anchor2: 9, anchor3: 10, main_upper_pontoon: 11, main_lower_pontoon: 12, col1_upper_pontoon: 13, col1_lower_pontoon: 14, col1_fairlead: 15, col2_upper_pontoon: 16, col2_lower_pontoon: 17, col2_fairlead: 18, col3_upper_pontoon: 19, col3_lower_pontoon: 20, col3_fairlead: 21}
+            design_variable_data:
+               -  indices: [0, 2, 4, 6]
+                  dimension: 2
+               -  indices: [2, 3, 4, 5, 6, 7]
+                  dimension: 0
+        transition_joint: 1
+        members:
+            n_members: 10
+            name: [main_column, column1, column2, column3, Y_pontoon_upper1, Y_pontoon_upper2, Y_pontoon_upper3, Y_pontoon_lower1, Y_pontoon_lower2, Y_pontoon_lower3]
+            joint1: [main_keel, col1_keel, col2_keel, col3_keel, main_upper_pontoon, main_upper_pontoon, main_upper_pontoon, main_lower_pontoon, main_lower_pontoon, main_lower_pontoon]
+            joint2: [main_freeboard, col1_freeboard, col2_freeboard, col3_freeboard, col1_upper_pontoon, col2_upper_pontoon, col3_upper_pontoon, col1_lower_pontoon, col2_lower_pontoon, col3_lower_pontoon]
+            outer_shape: [circular, circular, circular, circular, circular, circular, circular, rectangular, rectangular, rectangular]
+            n_height: [4, 7, 7, 7, 2, 2, 2, 2, 2, 2]
+            n_geom: [2, 2, 2, 2, 2, 2, 2, 2, 2, 2]
+            n_layers: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+            n_ballasts: [0, 2, 2, 2, 0, 0, 0, 1, 1, 1]
+            n_bulkheads: [2, 4, 4, 4, 2, 2, 2, 2, 2, 2]
+            n_axial_joints: [2, 3, 3, 3, 0, 0, 0, 0, 0, 0]
+            layer_mat_member_main_column: [steel]
+            ballast_flag_member_main_column: []
+            ballast_mat_member_main_column: []
+            axial_joint_name_member_main_column: [main_upper_pontoon, main_lower_pontoon]
+            grid_member_main_column: [0.0, 0.1, 0.987, 1.0]
+            geom_member_main_column: [0.0, 1.0]
+            layer_mat_member_column1: [steel]
+            ballast_flag_member_column1: [false, true]
+            ballast_mat_member_column1: [slurry, '']
+            axial_joint_name_member_column1: [col1_upper_pontoon, col1_lower_pontoon, col1_fairlead]
+            grid_member_column1: [0.0, 0.05, 0.1, 0.1714, 0.2, 0.987, 1.0]
+            geom_member_column1: [0.0, 1.0]
+            layer_mat_member_column2: [steel]
+            ballast_flag_member_column2: [false, true]
+            ballast_mat_member_column2: [slurry, '']
+            axial_joint_name_member_column2: [col2_upper_pontoon, col2_lower_pontoon, col2_fairlead]
+            grid_member_column2: [0.0, 0.05, 0.1, 0.1714, 0.2, 0.987, 1.0]
+            geom_member_column2: [0.0, 1.0]
+            layer_mat_member_column3: [steel]
+            ballast_flag_member_column3: [false, true]
+            ballast_mat_member_column3: [slurry, '']
+            axial_joint_name_member_column3: [col3_upper_pontoon, col3_lower_pontoon, col3_fairlead]
+            grid_member_column3: [0.0, 0.05, 0.1, 0.1714, 0.2, 0.987, 1.0]
+            geom_member_column3: [0.0, 1.0]
+            layer_mat_member_Y_pontoon_upper1: [steel]
+            ballast_flag_member_Y_pontoon_upper1: []
+            ballast_mat_member_Y_pontoon_upper1: []
+            grid_member_Y_pontoon_upper1: [0.0, 1.0]
+            geom_member_Y_pontoon_upper1: [0.0, 1.0]
+            layer_mat_member_Y_pontoon_upper2: [steel]
+            ballast_flag_member_Y_pontoon_upper2: []
+            ballast_mat_member_Y_pontoon_upper2: []
+            grid_member_Y_pontoon_upper2: [0.0, 1.0]
+            geom_member_Y_pontoon_upper2: [0.0, 1.0]
+            layer_mat_member_Y_pontoon_upper3: [steel]
+            ballast_flag_member_Y_pontoon_upper3: []
+            ballast_mat_member_Y_pontoon_upper3: []
+            grid_member_Y_pontoon_upper3: [0.0, 1.0]
+            geom_member_Y_pontoon_upper3: [0.0, 1.0]
+            layer_mat_member_Y_pontoon_lower1: [steel]
+            ballast_flag_member_Y_pontoon_lower1: [true]
+            ballast_mat_member_Y_pontoon_lower1: ['']
+            grid_member_Y_pontoon_lower1: [0.0, 1.0]
+            geom_member_Y_pontoon_lower1: [0.0, 1.0]
+            layer_mat_member_Y_pontoon_lower2: [steel]
+            ballast_flag_member_Y_pontoon_lower2: [true]
+            ballast_mat_member_Y_pontoon_lower2: ['']
+            grid_member_Y_pontoon_lower2: [0.0, 1.0]
+            geom_member_Y_pontoon_lower2: [0.0, 1.0]
+            layer_mat_member_Y_pontoon_lower3: [steel]
+            ballast_flag_member_Y_pontoon_lower3: [true]
+            ballast_mat_member_Y_pontoon_lower3: ['']
+            grid_member_Y_pontoon_lower3: [0.0, 1.0]
+            geom_member_Y_pontoon_lower3: [0.0, 1.0]
+            ballast_types: !!set {slurry: !!null '', variable: !!null ''}
+            linked_members:
+               -  [main_column]
+               -  [column1, column2, column3]
+               -  [Y_pontoon_upper1]
+               -  [Y_pontoon_upper2]
+               -  [Y_pontoon_upper3]
+               -  [Y_pontoon_lower1]
+               -  [Y_pontoon_lower2]
+               -  [Y_pontoon_lower3]
+            name2idx: {main_column: 0, column1: 1, column2: 1, column3: 1, Y_pontoon_upper1: 2, Y_pontoon_upper2: 3, Y_pontoon_upper3: 4, Y_pontoon_lower1: 5, Y_pontoon_lower2: 6, Y_pontoon_lower3: 7}
+            platform_elem_memid: [0, 0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 3, 4, 4, 4, 4, 4, 4, 5, 5, 5, 5, 5, 5, 6, 6, 6, 6, 6, 6, 7, 7, 7, 7, 7, 7, 8, 8, 8, 8, 8, 8, 9, 9, 9, 9, 9, 9]
+        rigid_bodies:
+            n_bodies: 0
+            joint1: []
+        tower:
+            n_ballasts: [0]
+            n_bulkheads: [0]
+            n_axial_joints: [0]
+            n_height: [11]
+            n_layers: [1]
     raft_dlcs:
-       -  [3.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [5.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [7.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [9.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [11.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [13.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [15.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [17.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [19.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [21.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [23.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [25.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [3.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [3.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [5.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [5.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [7.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [7.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [9.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [9.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [11.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [11.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [13.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [13.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [15.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [15.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [17.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [17.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [19.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [19.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [21.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [21.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [23.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [23.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [25.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [25.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [3.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.9, 1.0, 0.0]
-       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [5.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.93, 1.0, 0.0]
-       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [7.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 6.99, 1.0, 0.0]
-       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [9.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.07, 1.0, 0.0]
-       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [11.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.1850000000000005, 1.095, 0.0]
-       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [13.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.34, 1.25, 0.0]
-       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [15.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.545, 1.455, 0.0]
-       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [17.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.800000000000001, 1.715, 0.0]
-       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [19.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.105, 2.04, 0.0]
-       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [21.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.45, 2.42, 0.0]
-       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [23.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 8.82, 2.8449999999999998, 0.0]
-       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [25.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 9.01, 3.07, 0.0]
-       -  [3.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 11.5, 6.3, 0.0]
-       -  [5.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.1, 7.15, 0.0]
-       -  [7.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.7, 8.0, 0.0]
-       -  [9.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.75, 8.05, 0.0]
-       -  [11.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.95, 8.3, 0.0]
-       -  [13.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 13.1, 8.5, 0.0]
-       -  [15.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 13.6, 9.15, 0.0]
-       -  [17.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
-       -  [19.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
-       -  [21.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.8, 0.0]
-       -  [23.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.850000000000001, 0.0]
-       -  [25.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 14.1, 9.9, 0.0]
-       -  [70.0, 0.0, IB_EWM, parked, -8.0, JONSWAP, 14.2, 10.68, 0.0]
-       -  [70.0, 0.0, IB_EWM, parked, 8.0, JONSWAP, 14.2, 10.68, 0.0]
+       -  [10.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 7.12, 1.03, 0.0]
+       -  [10.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.12, 1.03, 0.0]
+       -  [10.0, 0.0, IB_ECD, operating, 0.0, JONSWAP, 7.12, 1.03, 0.0]
+       -  [10.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.12, 1.03, 0.0]
+       -  [10.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.12, 1.03, 0.0]
+       -  [10.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.12, 1.03, 0.0]
+       -  [10.0, 0.0, IB_EWS, operating, 0.0, JONSWAP, 7.12, 1.03, 0.0]
+       -  [10.0, 0.0, IB_NTM, operating, 0.0, JONSWAP, 12.8, 8.1, 0.0]
+       -  [10.0, 0.0, IB_EWM, parked, -8.0, JONSWAP, 14.2, 10.68, 0.0]
+       -  [10.0, 0.0, IB_EWM, parked, 0.0, JONSWAP, 14.2, 10.68, 0.0]
+       -  [10.0, 0.0, IB_EWM, parked, 8.0, JONSWAP, 14.2, 10.68, 0.0]
     raft_dlcs_keys: [wind_speed, wind_heading, turbulence, turbine_status, yaw_misalign, wave_spectrum, wave_period, wave_height, wave_heading]
 turbine_options:
     npts: 11
@@ -156,7 +169,7 @@ member_options:
     platform_member9_potMod: false
     platform_member10_potMod: false
 analysis_options:
-    general: {folder_output: 15_RAFT_Rect, fname_output: refturb_output}
+    general: {folder_output: 04_umaine_semi_raft_opt, fname_output: refturb_output}
     design_variables:
         floating:
             joints:
@@ -174,11 +187,10 @@ analysis_options:
                 groups:
                    -  names: [column1, column2, column3]
                       diameter: {lower_bound: 9.375, upper_bound: 15.625, constant: true}
-                      thickness: {lower_bound: 0.05, upper_bound: 0.25, constant: true}
         rotor_diameter: {flag: false, minimum: 0.0, maximum: 0.0}
         blade:
             aero_shape:
-                twist: {flag: false, inverse: false, n_opt: 30, max_decrease: 0.1, max_increase: 0.1, index_start: 0, index_end: 8}
+                twist: {flag: false, inverse: false, inverse_target: max_efficiency, n_opt: 30, max_decrease: 0.1, max_increase: 0.1, index_start: 0, index_end: 8, cap_twist_root: 0.349}
                 chord: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 af_positions: {flag: false, af_start: 4}
                 rthick: {flag: false, n_opt: 30, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
@@ -186,8 +198,9 @@ analysis_options:
                 c_d: {flag: false, n_opt: 8, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 stall_margin: {flag: false, n_opt: 8, max_decrease: 0.5, max_increase: 1.5, index_start: 0, index_end: 8}
                 z: {flag: false, n_opt: 3, lower_bound: -1.0, upper_bound: 1.0}
-            n_opt_struct: [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
             structure: []
+            n_opt_struct: [30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30, 30]
+            layer_index_opt: []
         control:
             tsr: {flag: false, minimum: 0.0, maximum: 0.0, min_gain: 0.5, max_gain: 1.5}
             flaps:
@@ -231,13 +244,18 @@ analysis_options:
             bedplate_web_thickness: {flag: false, lower_bound: 0.001, upper_bound: 1.0}
             bedplate_flange_thickness: {flag: false, lower_bound: 0.001, upper_bound: 1.0}
             bedplate_flange_width: {flag: false, lower_bound: 0.001, upper_bound: 1.0}
-        tower: &id003
+        tower:
             outer_diameter: {flag: false, lower_bound: 5.0, upper_bound: 5.0}
             layer_thickness: {flag: false, lower_bound: 0.01, upper_bound: 0.01}
             section_height: {flag: false, lower_bound: 5.0, upper_bound: 5.0}
             E: {flag: false, lower_bound: 200000000000.0, upper_bound: 200000000000.0}
             rho: {flag: false, lower_bound: 7800, upper_bound: 7800}
-        monopile: *id003
+        monopile:
+            outer_diameter: {flag: false, lower_bound: 5.0, upper_bound: 5.0}
+            layer_thickness: {flag: false, lower_bound: 0.01, upper_bound: 0.01}
+            section_height: {flag: false, lower_bound: 5.0, upper_bound: 5.0}
+            E: {flag: false, lower_bound: 200000000000.0, upper_bound: 200000000000.0}
+            rho: {flag: false, lower_bound: 7800, upper_bound: 7800}
         jacket:
             foot_head_ratio: {flag: false, lower_bound: 1.5, upper_bound: 1.5}
             r_head: {flag: false, lower_bound: 5.0, upper_bound: 5.0}
@@ -252,6 +270,7 @@ analysis_options:
             line_diameter: {flag: false, lower_bound: 0.0}
             line_mass_density_coeff: {flag: false, lower_bound: 0.0}
             line_stiffness_coeff: {flag: false, lower_bound: 0.0}
+        user: []
         TMDs:
             flag: false
             groups: []
@@ -268,11 +287,11 @@ analysis_options:
             pitch_duty_cycle: {flag: false, max: 5}
         Max_Offset: {flag: true, max: 30.0}
         floating:
-            stress: {flag: true}
-            global_buckling: {flag: true}
-            shell_buckling: {flag: true}
-            operational_heel: &id004 {upper_bound: 0.17453292519943295}
-            survival_heel: *id004
+            stress: {flag: false}
+            global_buckling: {flag: false}
+            shell_buckling: {flag: false}
+            operational_heel: {upper_bound: 0.17453292519943295}
+            survival_heel: {upper_bound: 0.17453292519943295}
             max_surge: {flag: false, upper_bound: 0.1}
             buoyancy: {flag: false}
             fixed_ballast_capacity: {flag: false}
@@ -287,12 +306,12 @@ analysis_options:
             mooring_length: {flag: false}
             anchor_vertical: {flag: false}
             anchor_lateral: {flag: false}
-            surge_period: &id005 {flag: false, lower_bound: 1.0, upper_bound: 1.0}
-            sway_period: *id005
-            heave_period: *id005
-            roll_period: *id005
-            pitch_period: *id005
-            yaw_period: *id005
+            surge_period: {flag: false, lower_bound: 1.0, upper_bound: 1.0}
+            sway_period: {flag: false, lower_bound: 1.0, upper_bound: 1.0}
+            heave_period: {flag: false, lower_bound: 1.0, upper_bound: 1.0}
+            roll_period: {flag: false, lower_bound: 1.0, upper_bound: 1.0}
+            pitch_period: {flag: false, lower_bound: 1.0, upper_bound: 1.0}
+            yaw_period: {flag: false, lower_bound: 1.0, upper_bound: 1.0}
             Max_Offset: {flag: false, max: 20}
         blade:
             strains_spar_cap_ss: {flag: false, max: 0.004, index_start: 0, index_end: 8}
@@ -304,14 +323,17 @@ analysis_options:
             rail_transport: {flag: false, 8_axle: false, 4_axle: false}
             stall: {flag: false, margin: 0.05233}
             chord: {flag: false, max: 4.75}
+            chord_slope: {flag: false}
+            twist_slope: {flag: false}
             root_circle_diameter: {flag: false, max_ratio: 1.0}
             frequency:
                 flap_3P: false
                 edge_3P: false
-                first_flap: &id006 {flag: false, target: 0.0, acceptable_error: 0.01}
-                first_edge: *id006
-                first_torsion: *id006
+                first_flap: {flag: false, target: 0.0, acceptable_error: 0.01}
+                first_edge: {flag: false, target: 0.0, acceptable_error: 0.01}
+                first_torsion: {flag: false, target: 0.0, acceptable_error: 0.01}
             mass: {flag: false, target: 0.0, acceptable_error: 0.0}
+            rated_velocity: {flag: false, target: 0.0, acceptable_error: 0.1}
             moment_coefficient: {flag: false, min: 0.15, max: 0.15}
             match_cl_cd: {flag_cl: false, flag_cd: false, filename: ''}
             match_L_D: {flag_L: false, flag_D: false, filename: ''}
@@ -319,35 +341,48 @@ analysis_options:
             thrust_coeff: {flag: false}
         tower:
             height_constraint: {flag: false, lower_bound: 0.01, upper_bound: 0.01}
-            stress: &id007 {flag: false}
-            global_buckling: &id008 {flag: false}
-            shell_buckling: &id009 {flag: false}
-            slope: &id010 {flag: false}
-            thickness_slope: &id011 {flag: false}
-            d_to_t: &id012 {flag: false, lower_bound: 50.0, upper_bound: 50.0}
-            taper: &id013 {flag: false, lower_bound: 0.5}
+            stress: {flag: false}
+            global_buckling: {flag: false}
+            shell_buckling: {flag: false}
+            slope: {flag: false}
+            thickness_slope: {flag: false}
+            d_to_t: {flag: false, lower_bound: 50.0, upper_bound: 50.0}
+            taper: {flag: false, lower_bound: 0.5}
             frequency: {flag: false}
-            frequency_1: &id014 {flag: false, lower_bound: 0.1, upper_bound: 0.1}
-        monopile: &id015
-            stress: *id007
-            global_buckling: *id008
-            shell_buckling: *id009
-            slope: *id010
-            thickness_slope: *id011
-            d_to_t: *id012
-            taper: *id013
-            frequency_1: *id014
+            frequency_1: {flag: false, lower_bound: 0.1, upper_bound: 0.1}
+            mass: {flag: false, target: 0.0, acceptable_error: 0.0}
+        monopile:
+            stress: {flag: false}
+            global_buckling: {flag: false}
+            shell_buckling: {flag: false}
+            slope: {flag: false}
+            thickness_slope: {flag: false}
+            d_to_t: {flag: false, lower_bound: 50.0, upper_bound: 50.0}
+            taper: {flag: false, lower_bound: 0.5}
+            frequency_1: {flag: false, lower_bound: 0.1, upper_bound: 0.1}
+            mass: {flag: false, target: 0.0, acceptable_error: 0.0}
             pile_depth: {flag: false, lower_bound: 0.0}
             tower_diameter_coupling: {flag: false}
-        jacket: *id015
+        jacket:
+            stress: {flag: false}
+            global_buckling: {flag: false}
+            shell_buckling: {flag: false}
+            slope: {flag: false}
+            thickness_slope: {flag: false}
+            d_to_t: {flag: false, lower_bound: 50.0, upper_bound: 50.0}
+            taper: {flag: false, lower_bound: 0.5}
+            frequency_1: {flag: false, lower_bound: 0.1, upper_bound: 0.1}
+            mass: {flag: false, target: 0.0, acceptable_error: 0.0}
+            pile_depth: {flag: false, lower_bound: 0.0}
+            tower_diameter_coupling: {flag: false}
         hub:
             hub_diameter: {flag: false}
         drivetrain:
-            lss: *id007
-            hss: *id007
-            bedplate: *id007
-            mb1: &id016 {flag: false}
-            mb2: *id016
+            lss: {flag: false}
+            hss: {flag: false}
+            bedplate: {flag: false}
+            mb1: {flag: false}
+            mb2: {flag: false}
             length: {flag: false}
             height: {flag: false}
             access: {flag: false, lower_bound: 2.0}
@@ -362,7 +397,7 @@ analysis_options:
         openfast_failed: {flag: false}
     merit_figure: platform_mass
     driver:
-        optimization: {flag: false, solver: LN_COBYLA, tol: 0.01, max_iter: 2, max_major_iter: 10, max_minor_iter: 100, time_limit: 0, max_function_calls: 100000, step_size: 0.001, form: central, step_calc: None, debug_print: false}
+        optimization: {flag: true, solver: LN_COBYLA, tol: 0.01, max_iter: 1, max_major_iter: 10, max_minor_iter: 100, time_limit: 0, major_step_limit: 2.0, function_precision: 3.7e-11, max_function_calls: 100000, hist_file: None, hotstart_file: None, step_size: 0.001, form: central, step_calc: None, debug_print: false}
         design_of_experiments: {flag: false, run_parallel: true, generator: Uniform, num_samples: 5, seed: 2, levels: 2, criterion: center, iterations: 2, debug_print: false}
         step_size_study:
             flag: false
@@ -378,5 +413,5 @@ analysis_options:
         just_dvs: false
     merit_figure_user: {name: '', ref: 1, max_flag: false}
     inverse_design: {}
-    fname_input_analysis: /Users/dzalkind/Tools/WEIS-Main/examples/15_RAFT_Studies/analysis_options.yaml
-    opt_flag: false
+    fname_input_analysis: /Users/dzalkind/Tools/WEIS-Main/examples/04_frequency_domain_analysis_design/umaine_semi_raft_opt_analysis.yaml
+    opt_flag: true

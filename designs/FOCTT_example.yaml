@@ -1063,7 +1063,7 @@ turbine:
         dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
     
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
-        type      :  1                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [ 0, 0, -33.5]              # [m]    end A coordinates
         rB        :  [ 0, 0, -2.5]          # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
@@ -1089,7 +1089,7 @@ platform:
     members:   # list all members here
         
       - name      :  upper_column             # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                    # [-]    
         rA        :  [ 0, 0, -2.5]              # [m]    end A coordinates
         rB        :  [ 0, 0,  9]              # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
@@ -1111,7 +1111,7 @@ platform:
 
 
       - name      :  mooring_fins             # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                    # [-]    
         rA        :  [ 0, 10, -2.15]              # [m]    end A coordinates
         rB        :  [ 0, -10, -2.15]              # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular

@@ -1063,12 +1063,18 @@ turbine:
         dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
     
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
-        type      :  1                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [ 0, 0,  15]              # [m]    end A coordinates
         rB        :  [ 0, 0, 144.582]          # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
         gamma     :  0.0                       # [deg]   twist angle about the member's z-axis
         
+        # # If you want a flexible tower instead, you can use the following (remember to comment the type above)
+        # # If only the tower is flexible, you don't need to do anything else. If you want a flexible platform as well, then you would need to specify joints
+        # type      :  beam                      # [-]    
+        # E         :  210e12                     # [Pa]   Young's modulus
+        # G         :  80e12                      # [Pa]   shear modulus
+
         # --- outer shell including hydro---
         stations  :  [ 15,  28,  28.001,  41,  41.001,  54,  54.001,  67,  67.001,  80,  80.001,  93,  93.001,  106,  106.001,  119,  119.001,  132,  132.001,  144.582 ]    # [-]    location of stations along axis. Will be normalized such that start value maps to rA and end value to rB
         d         :  [ 10,  9.964,  9.964,  9.967,  9.967,  9.927,  9.927,  9.528,  9.528,  9.149,  9.149,  8.945,  8.945,  8.735,  8.735,  8.405,  8.405,  7.321,  7.321,  6.5 ]    # [m]    diameters if circular or side lengths if rectangular (can be pairs)
@@ -1104,7 +1110,7 @@ platform:
     members:   # list all members here
         
       - name      :  center_column             # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [ 0, 0, -20]              # [m]    end A coordinates
         rB        :  [ 0, 0,  15]              # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
@@ -1126,7 +1132,7 @@ platform:
 
         
       - name      :  outer_column              # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [51.75, 0, -20]           # [m]    end A coordinates
         rB        :  [51.75, 0,  15]           # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
@@ -1152,7 +1158,7 @@ platform:
 
         
       - name      :  pontoon                   # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [  5  , 0, -16.5]         # [m]    end A coordinates
         rB        :  [ 45.5, 0, -16.5]         # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
@@ -1173,7 +1179,7 @@ platform:
         
         
       - name      :  upper_support             # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [  5  , 0, 14.545]        # [m]    end A coordinates
         rB        :  [ 45.5, 0, 14.545]        # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)

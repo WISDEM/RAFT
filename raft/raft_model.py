@@ -211,9 +211,9 @@ class Model():
         
         if self.ms:
             try: 
-                if self.moorMod == 0 or self.moorMod == 2:
+                if self.moorMod == 0 or self.moorMod == 1:
                     C_moor = self.ms.getCoupledStiffness(lines_only=True)
-                elif self.moorMod == 1:
+                elif self.moorMod == 2:
                     self.ms.updateLumpedMassSystem()                    
                     _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
 
@@ -224,9 +224,9 @@ class Model():
         
         if fowt.ms:
             try: 
-                if fowt.moorMod == 0 or fowt.moorMod == 2:
+                if fowt.moorMod == 0 or fowt.moorMod == 1:
                     C_moor = fowt.ms.getCoupledStiffness(lines_only=True)
-                elif fowt.moorMod == 1:
+                elif fowt.moorMod == 2:
                     fowt.ms.updateSystemDynamicMatrices()
                     _, _, _, C_moor = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
 
@@ -468,9 +468,9 @@ class Model():
             if all(f.nDOF == 6 for f in self.fowtList) == False:
                 raise Exception('Currently, array-level mooring eigen analysis only supported for fully rigid FOWTs (6 DOFs).')
 
-            if self.moorMod == 0 or self.moorMod == 2:
+            if self.moorMod == 0 or self.moorMod == 1:
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
-            elif self.moorMod == 1:
+            elif self.moorMod == 2:
                 self.ms.updateSystemDynamicMatrices()
                 _, _, _, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
             C_tot += C_moor
@@ -782,9 +782,9 @@ class Model():
                 if self.nDOF != 6*self.nFOWT:
                     raise ValueError("Shared moorings does not work with flexible/multibody FOWTs yet. Please use rigid FOWTs with 6 DOFs each.")
 
-                if self.moorMod == 0 or self.moorMod == 2:
+                if self.moorMod == 0 or self.moorMod == 1:
                     Kmoor = self.ms.getCoupledStiffnessA(lines_only=True)
-                elif self.moorMod == 1:
+                elif self.moorMod == 2:
                     self.ms.updateSystemDynamicMatrices()
                     _, _, _, Kmoor = self.ms.getCoupledDynamicMatrices(lines_only=True)
 
@@ -805,9 +805,9 @@ class Model():
                 if fowt.ms:
                     if fowt.ms:
                         fowt.ms.solveEquilibrium()
-                        if fowt.moorMod == 0 or fowt.moorMod == 2:
+                        if fowt.moorMod == 0 or fowt.moorMod == 1:
                             Kmoor_fowt = fowt.ms.getCoupledStiffnessA(lines_only=True)
-                        elif fowt.moorMod == 1:
+                        elif fowt.moorMod == 2:
                             fowt.ms.updateSystemDynamicMatrices()
                             _, _, _, Kmoor_fowt = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
                     K_fowt[:6, :6] += translateMatrix6to6DOF(Kmoor_fowt, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3]) # TODO: lumping mooring stiffness into the first 6 DOFs for now
@@ -1018,23 +1018,16 @@ class Model():
             # I think this would be straightforward for lines connecting the fairlead to the anchor, but not sure about cases with buoys
             M_moor, A_moor, B_moor, C_moor = (np.zeros([fowt.nDOF, fowt.nDOF]) for _ in range(4))
             M_moor_6dof, A_moor_6dof, B_moor_6dof, C_moor_6dof = (np.zeros([6, 6]) for _ in range(4)) # Helper matrices
-            if not fowt.ms or fowt.moorMod == 0:
+            if not fowt.ms or fowt.moorMod == 0 or fowt.moorMod == 1:
                 C_moor = fowt.C_moor
-            elif fowt.moorMod == 1:
+            elif fowt.moorMod == 2:
                 fowt.updateMooringDynamicMatrices(XiLast[:6], fowt.S[0,:])
                 M_moor_6dof, A_moor_6dof, B_moor_6dof, C_moor_6dof = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
-
-                # For now, lump at the first 6dofs of the fowt                
-                C_moor = translateMatrix6to6DOF(C_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
-            elif fowt.moorMod == 2:
-                C_moor = fowt.C_moor
-                fowt.updateMooringDynamicMatrices(XiLast[:6], fowt.S[0,:])
-                M_moor_6dof, A_moor_6dof, B_moor_6dof, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
             
-            if fowt.ms:
                 M_moor[:6,:6] = translateMatrix6to6DOF(M_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
                 A_moor[:6,:6] = translateMatrix6to6DOF(A_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
                 B_moor[:6,:6] = translateMatrix6to6DOF(B_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
+                C_moor[:6,:6] = translateMatrix6to6DOF(C_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
 
             # We can compute second-order hydrodynamic forces here if they are calculated using external QTF file.
             # In some cases, they may be very relevant to the motion RMS values, so should be included in the drag linearization process.          
@@ -1073,7 +1066,7 @@ class Model():
                 # Recompute mooring damping matrix as it depends on body motions (linearization of drag lods). The other matrices are kept the same.
                 # Note: Is it worth recomputing the mooring damping matrix at each step? The impact of mooring damping on body dynamics is small, and the motion
                 # RAOs are probably not changing much. Perhaps compute this only once and keep it constant? 
-                if fowt.ms and (fowt.moorMod == 1 or fowt.moorMod == 2):
+                if fowt.ms and fowt.moorMod == 2:
                     fowt.updateMooringDynamicMatrices(XiLast[:6, :], fowt.S[0,:])
                     _, _, B_moor_6dof, _ = fowt.ms.getCoupledDynamicMatrices(lines_only=True)
                     B_moor[:6,:6] = translateMatrix6to6DOF(B_moor_6dof, fowt.ms.bodyList[0].r6[:3] - fowt.nodeList[fowt.reducedDOF[0][0]].r[:3])
@@ -1179,15 +1172,11 @@ class Model():
         # include array-level mooring stiffness
         if self.ms:
             M_moor, A_moor, B_moor, C_moor = (np.zeros([Z_sys.shape[0], Z_sys.shape[1]]) for _ in range(4))
-            if self.moorMod == 0:                
+            if self.moorMod == 0 or self.moorMod == 1:
                 C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
-            elif self.moorMod == 1:                 
-                self.updateMooringDynamicMatrices(XiLast_all, self.fowtList[0].S[0,:])
-                M_moor, A_moor, B_moor, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
             elif self.moorMod == 2:
                 self.updateMooringDynamicMatrices(XiLast_all, self.fowtList[0].S[0,:])
-                C_moor = self.ms.getCoupledStiffnessA(lines_only=True)
-                M_moor, A_moor, B_moor, _ = self.ms.getCoupledDynamicMatrices(lines_only=True)
+                M_moor, A_moor, B_moor, C_moor = self.ms.getCoupledDynamicMatrices(lines_only=True)
 
             for ii in range(self.nw):
                 Z_sys[:,:,ii] += -self.w[ii]**2 *(M_moor+A_moor) + 1j*self.w[ii]*B_moor + C_moor

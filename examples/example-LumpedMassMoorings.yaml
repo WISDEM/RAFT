@@ -1181,5 +1181,5 @@ platform:
 
 mooring:
     water_depth: 200                                  # [m]       uniform water depth
-    moorMod    : 1                                    # 0: quasi-static mooring model with stiffness only; 1: lumped mass model with stiffness, damping, added mass, and inertia; 2: hybrid mode. Stiffness matrix os calculated using the quasi-static approach, while damping, added mass, and inertia are calculated using the lumped mass model.
+    moorMod    : 1                                    # 0: quasi-static mooring model (stiffness only); 1: quasi-static mooring model for body dynamics (stiffness only), post-processing of line tensions using lumped mass (stiffness, inertia and damping); 2: both body dynamics and mooring tensions solved using lumped mass
     file: 'IEA-15-240-RWT-UMaineSemi_MoorDyn.dat'

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "OpenRAFT"
-version = "1.5.0"
+version = "1.5.1"
 description = "RAFT: Response Amplitudes of Floating Turbines"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -39,6 +39,8 @@ classifiers = [  # Optional
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "Programming Language :: Python :: 3.14",
   "Programming Language :: Python :: 3 :: Only",
   
   "Operating System :: OS Independent",

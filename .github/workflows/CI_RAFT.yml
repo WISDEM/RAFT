@@ -46,10 +46,6 @@ jobs:
               run: |
                   pip install -e .
 
-            - name: Overwrite MoorPy if on a branch with 'dev' in its name
-              run: |
-                  pip install git+https://github.com/NREL/MoorPy@dev
-
             - name: Example run
               run: |
                   cd examples

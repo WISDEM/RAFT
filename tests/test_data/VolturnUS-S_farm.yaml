@@ -4,8 +4,8 @@ comments: Used to perform tests on model class functionality.
 
 
 settings:                   # global Settings
-    min_freq     :  0.001   #  [Hz]       lowest frequency to consider, also the frequency bin width 
-    max_freq     :  0.24    #  [Hz]       highest frequency to consider
+    min_freq     :  0.0025   #  [Hz]       lowest frequency to consider, also the frequency bin width 
+    max_freq     :  0.200   #  [Hz]       highest frequency to consider
     XiStart      :   0      # sets initial amplitude of each DOF for all frequencies
     nIter        :  10      # sets how many iterations to perform in Model.solveDynamics()
     
@@ -1077,7 +1077,7 @@ turbine:
         dlsMax       :  5.0     # maximum node splitting section amount; can't be 0
     
         name      :  tower                     # [-]    an identifier (no longer has to be number)       
-        type      :  1                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [ 0, 0,  15]              # [m]    end A coordinates
         rB        :  [ 0, 0, 144.582]          # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
@@ -1103,7 +1103,7 @@ platform:
     members:   # list all members here
         
       - name      :  center_column             # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [ 0, 0, -20]              # [m]    end A coordinates
         rB        :  [ 0, 0,  15]              # [m]    and B coordinates
         shape     :  circ                      # [-]    circular or rectangular
@@ -1125,7 +1125,7 @@ platform:
 
         
       - name      :  outer_column              # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [51.75, 0, -20]           # [m]    end A coordinates
         rB        :  [51.75, 0,  15]           # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
@@ -1151,7 +1151,7 @@ platform:
 
         
       - name      :  pontoon                   # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [  5  , 0, -16.5]         # [m]    end A coordinates
         rB        :  [ 45.5, 0, -16.5]         # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)
@@ -1172,7 +1172,7 @@ platform:
         
         
       - name      :  upper_support             # [-]    an identifier (no longer has to be number)       
-        type      :  2                         # [-]    
+        type      :  rigid                     # [-]    
         rA        :  [  5  , 0, 14.545]        # [m]    end A coordinates
         rB        :  [ 45.5, 0, 14.545]        # [m]    and B coordinates
         heading   :  [ 60, 180, 300]           # [deg]  heading rotation of column about z axis (for repeated members)

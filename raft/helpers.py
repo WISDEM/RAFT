@@ -61,6 +61,89 @@ def FrustumVCV(dA, dB, H, rtn=0):
         return V
     elif rtn==2:
         return hc
+       
+def FrustumMOI(dA, dB, H, p):
+    '''returns the radial and axial moments of inertia of a potentially tapered circular member about the end node.
+    Previously used equations found in a HydroDyn paper, now it uses newly derived ones. Ask Stein for reference if needed'''
+    if H==0:        # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
+        I_rad = 0                                                   # radial MoI about end node [kg-m^2]
+        I_ax = 0                                                    # axial MoI about axial axis [kg-m^2]
+    else:
+        if dA==dB:  # if it's a cylinder
+            r1 = dA/2                                               # bottom radius [m]
+            r2 = dB/2                                               # top radius [m]
+            I_rad = (1/12)*(p*H*np.pi*r1**2)*(3*r1**2 + 4*H**2)     # radial MoI about end node [kg-m^2]
+            I_ax = (1/2)*p*np.pi*H*r1**4                            # axial MoI about axial axis [kg-m^2]
+        else:       # if it's a tapered cylinder (frustum)
+            r1 = dA/2                                               # bottom radius [m]
+            r2 = dB/2                                               # top radius [m]
+            I_rad = (1/20)*p*np.pi*H*(r2**5 - r1**5)/(r2 - r1) + (1/30)*p*np.pi*H**3*(r1**2 + 3*r1*r2 + 6*r2**2) # radial MoI about end node [kg-m^2]
+            I_ax = (1/10)*p*np.pi*H*(r2**5-r1**5)/(r2-r1)           # axial MoI about axial axis [kg-m^2]
+
+    return I_rad, I_ax
+
+def RectangularFrustumMOI(La, Wa, Lb, Wb, H, p):
+    '''returns the moments of inertia about the end node of a cuboid that can be tapered.
+    - Inputs the lengths and widths at the top and bottom of the cuboid, as well as the height and material density.
+    - L is the side length along the local x-direction, W is the side length along the local y-direction.
+    - Does not work for members that are not symmetrical about the axial axis.
+    - Works for cases when it is a perfect cuboid, a truncated pyramid, and a truncated triangular prism
+    - Equations derived by hand, ask Stein for reference if needed'''
+
+    if H==0: # if there's no height, mainly refering to no ballast, there shouldn't be any extra MoI
+        Ixx = 0                                         # MoI around the local x-axis about the end node [kg-m^2]
+        Iyy = 0                                         # MoI around the local y-axis about the end node [kg-m^2]
+        Izz = 0                                         # MoI around the local z-axis about the axial axis [kg-m^2]
+    else:
+        if La==Lb and Wa==Wb: # if it's a cuboid
+            L = La                                      # length of the cuboid (La=Lb) [m]
+            W = Wa                                      # width of the cuboid (Wa=Wb) [m]
+            M = p*L*W*H                                 # mass of the cuboid [kg]
+
+            Ixx = (1/12)*M*(W**2 + 4*H**2)              # MoI around the local x-axis about the end node [kg-m^2]
+            Iyy = (1/12)*M*(L**2 + 4*H**2)              # MoI around the local y-axis about the end node [kg-m^2]
+            Izz = (1/12)*M*(L**2 + W**2)                # MoI around the local z-axis about the axial axis [kg-m^2]
+
+        elif La!=Lb and Wa!=Wb: # if it's a truncated pyramid for both side lengths
+
+            x2 = (1/12)*p* ( (Lb-La)**3*H*(Wb/5 + Wa/20) + (Lb-La)**2*La*H*(3*Wb/4 + Wa/4) + \
+                                (Lb-La)*La**2*H*(Wb + Wa/2) + La**3*H*(Wb/2 + Wa/2) )
+
+            y2 = (1/12)*p* ( (Wb-Wa)**3*H*(Lb/5 + La/20) + (Wb-Wa)**2*Wa*H*(3*Lb/4 + La/4) + \
+                                (Wb-Wa)*Wa**2*H*(Lb + La/2) + Wa**3*H*(Lb/2 + La/2) )
+
+            z2 = p*( Wb*Lb/5 + Wa*Lb/20 + La*Wb/20 + Wa*La*(1/30) ) * H**3
+
+            Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
+            Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
+            Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
+
+        elif La==Lb and Wa!=Wb: # if it's a truncated triangular prism where only the lengths are the same on top and bottom
+            L = La                                      # length of the truncated triangular prism [m]
+
+            x2 = (1/24)*p*(L**3)*H*(Wb+Wa)
+            y2 = (1/48)*p*L*H*( Wb**3 + Wa*Wb**2 + Wa**2*Wb + Wa**3 )
+            z2 = (1/12)*p*L*(H**3)*( 3*Wb + Wa )
+
+            Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
+            Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
+            Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
+
+        elif La!=Lb and Wa==Wb: # if it's a truncated triangular prism where only the widths are the same on top and bottom
+            W = Wa                                      # width of the truncated triangular prism [m]
+
+            x2 = (1/48)*p*W*H*( Lb**3 + La*Lb**2 + La**2*Lb + La**3 )
+            y2 = (1/24)*p*(W**3)*H*(Lb+La)
+            z2 = (1/12)*p*W*(H**3)*( 3*Lb + La )
+
+            Ixx = y2+z2                                 # MoI around the local x-axis about the end node [kg-m^2]
+            Iyy = x2+z2                                 # MoI around the local y-axis about the end node [kg-m^2]
+            Izz = x2+y2                                 # MoI around the local z-axis about the axial axis [kg-m^2]
+
+        else:
+            raise ValueError('You either have inconsistent inputs, or you are trying to calculate the MoI of a member that is not supported')
+
+    return Ixx, Iyy, Izz
 
 
 def getKinematics(r, Xi, ws):
@@ -678,8 +761,11 @@ def JONSWAP(ws, Hs, Tp, Gamma=None):
 
 def getRAO(Xi, zeta):
     '''Calculates the response amplitude operator (RAO).
-    It is simply the reponse (motion, load, anything) for unitary wave amplitude.
-    Xi can have any number of dimensions, but the last dimension must be the same length as zeta.
+    It is simply the reponse (motion, load, anything) for unitary wave amplitude.    
+    
+    Inputs:
+    Xi: Motions amplitudes with any number of dimensions, but the last dimension must be the same length as zeta.
+    zeta: Wave amplitudes. Must be a 1D array. 
     '''
     # Check if zeta is a 1D array
     if len(zeta.shape) != 1:
@@ -697,6 +783,37 @@ def getRAO(Xi, zeta):
     RAO[..., idx] = Xi[..., idx] / zeta[idx]
     return RAO
 
+def getLineEndsRAO(line, ms, w, Xi, S, rBody):
+    '''Compute the RAOs of the ends of a MoorPy line object
+    Inputs
+    line: MoorPy line object
+    ms: MoorPy system object
+    w:  Frequency vector of length nw [rad/s]
+    Xi: List with nFOWTs arrays, each with size 6 x nFreq arrays, corresponding to the motion amplitudes of the fowts in the array [m] and [rad]
+    S: Wave spectrum vector with length nw [m]
+    rBody: List of arrays with the x,y,z position of the bodies in the array [m] - len(rBody) = nFOWTs
+    '''
+    zeta = np.sqrt(2*S*(w[1]-w[0])) # Wave amplitude
+
+    # End A of the line
+    RAO_A = np.zeros([3, len(w)])
+    endA = [point for point in ms.pointList if all(point.r==line.rA)][0] # find the point that correspond to the line's end A
+    for ibody, body in enumerate(ms.bodyList):
+        if endA.number in body.attachedP:
+            fowtRAO = getRAO(Xi[ibody], zeta)
+            RAO_A, _, _ = getKinematics(endA.r - rBody[ibody], fowtRAO, w)
+            break
+                
+    # End B of the line
+    RAO_B = np.zeros([3, len(w)])
+    endB = [point for point in ms.pointList if all(point.r==line.rB)][0] # find the point that correspond to the line's end A
+    for ibody, body in enumerate(ms.bodyList):
+        if endB.number in body.attachedP:
+            fowtRAO = getRAO(Xi[ibody], zeta)
+            RAO_B, _, _ = getKinematics(endB.r - rBody[ibody], fowtRAO, w)
+            break
+
+    return RAO_A, RAO_B
 
 def printMat(mat):
     '''Print a matrix'''
@@ -940,6 +1057,73 @@ def convertIEAturbineYAML2RAFT(fname_turbine):
     return d
     
     
+def getWeightOfPointMass(mass, dR, g=9.81):
+    ''' Returns the 6-component weight load and the (6,6) weight stiffness matrix matrix with respect to the reference point (RP). 
+    This matrix is usually included in the hydrostatic stiffness matrix in naval architecture.
+
+    Parameters
+    ----------
+    mass : float
+        mass associated to the point [kg]
+    dR : array(3,)
+        vector from the reference point (RP) to the center of mass of the point, dR = rCOG - rRP [m]
+    g : float, optional
+        gravitational acceleration [m/s^2]
+    '''
+
+    W = translateForce3to6DOF( np.array([0,0, -g*mass]), dR)
+
+    C  = np.zeros([6,6])
+    C[3, 3] += -mass*g*dR[2]  # Overturning roll moment
+    C[4, 4] += -mass*g*dR[2]  # Overturning pitch moment
+    # C[3, 5] +=  mass*g*dR[0] # Neglecting these components for now
+    # C[4, 5] +=  mass*g*dR[1]
+
+    return W, C
+
+def getMassAndCenterOfBeam(M, r):
+        ''' Returns the mass and center of gravity of a beam member given its mass matrix M and position vector r.
+        The center of gravity is given in the same coordinate system as the position vector r.
+
+        Parameters
+        ----------
+        M : array(nDOF, nDOF)
+            Mass matrix of the beam member, where nDOF is the number of degrees of freedom (6xNnodes for a 3D beam).
+        r : array(nDOF,)
+            Position vector of the nodes of the beam member, (x, y, z, rotation x, rotation y, rotation z) for each node.            
+            Rotations are not used but need the proper vector size to match the dimensions of M
+        '''
+        # Check if M is a 2D array
+        if not isinstance(M, np.ndarray) or M.ndim != 2:
+            raise ValueError("Mass matrix M must be a 2D array.")
+        
+        # Check if M is square
+        if M.shape[0] != M.shape[1]:
+            raise ValueError("Mass matrix M must be square.")
+
+        # Check if r is a 1D array with the same length as M's rows or columns
+        if not isinstance(r, np.ndarray) or r.ndim != 1 or r.shape[0] != M.shape[0]:
+            raise ValueError("Position vector r must be a 1D array with the same dofs as M.")
+        
+        nDOF = M.shape[0]  # Number of degrees of freedom
+
+        # To get the mass and center of gravity, we apply unit translational acceleration in the X, Y, and Z directions to all nodes (beam moving as a rigid body)
+        X_aux, Y_aux, Z_aux = np.zeros((nDOF)), np.zeros((nDOF)), np.zeros((nDOF))
+        X_aux[::6]  = 1
+        Y_aux[1::6] = 1
+        Z_aux[2::6] = 1
+
+        # The mass is simply the sum of any of the product of M by any _aux displacement vector
+        mass   = np.sum((M @ X_aux)*X_aux)
+
+        # For the COG, we first multiply the translation vector the position of each node to act as weights to the weighted average that results in the COG
+        center_X = np.sum(M @ (r * X_aux) * X_aux) / mass  if mass != 0 else 0  # center of mass in the X direction [m]
+        center_Y = np.sum(M @ (r * Y_aux) * Y_aux) / mass  if mass != 0 else 0  # center of mass in the Y direction [m]
+        center_Z = np.sum(M @ (r * Z_aux) * Z_aux) / mass  if mass != 0 else 0  # center of mass in the Z direction [m]
+        center = np.array([center_X, center_Y, center_Z])  # center of mass [m]
+
+        return mass, center
+
 # ----- additional helper functions from Joep van der Spek -----                                 
     
     

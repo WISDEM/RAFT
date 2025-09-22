@@ -1,0 +1,26 @@
+type: input file for RAFT
+name: Horizontal underwater rectangular beam
+comments: Used to perform some tests on member class functionality. This file should contain a single RAFT member.
+
+
+members:   # list all members here
+            
+  - name      :  beam
+    dlsMax    :  40     # very coarse discretization just for testing a beam member
+    type      :  beam
+    potMod    :  False         
+    shape     :  rect
+    rA        :  [  0.000, 0.000, -20]
+    rB        :  [ 40.000, 0.000, -20]
+    stations  :  [0, 1]
+    d         :  [4, 1.0] 
+    t         :  0.01
+    E         :  210e9
+    G         :  80e9
+    Cd        :  0.6  
+    Ca        :  0.85 
+    CdEnd     :  0.6  
+    CaEnd     :  0.7  
+    # not defining rho_shell to flag changes in default values
+
+

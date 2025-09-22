@@ -143,6 +143,11 @@ class RAFT_OMDAO(om.ExplicitComponent):
         self.add_input("mu_air", val=1.81e-5, units="kg/(m*s)", desc="Dynamic viscosity of air")
         self.add_input("shear_exp", val=0.2, desc="Shear exponent of the wind.")
         self.add_input('rated_rotor_speed', val=0.0, units='rpm',  desc='rotor rotation speed at rated')
+
+        for k in range(modeling_opt['floating']['rigid_bodies']['n_bodies']):
+            self.add_input(f"rigid_body_{k}_node", val=np.zeros(3), units="m", desc=f"location of rigid body {k}")
+            self.add_input(f"rigid_body_{k}_mass", val=0.0, units="kg", desc=f"point mass of rigid body {k}")
+            self.add_input(f"rigid_body_{k}_inertia", val=np.zeros(3), units="kg*m**2", desc=f"inertia of rigid body {k}")  
         
         # member inputs
         for i in range(1, nmembers + 1):
@@ -209,8 +214,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 self.add_input(m_name+'CaEnd', val=0.0, desc='End axial added mass coefficient')
             else:
                 self.add_input(m_name+'CdEnd', val=np.zeros(mnpts), desc='End axial drag coefficient')
-                self.add_input(m_name+'CaEnd', val=np.zeros(mnpts), desc='End axial added mass coefficient')
-
+                self.add_input(m_name+'CaEnd', val=np.zeros(mnpts), desc='End axial added mass coefficient')              
+            
             self.add_input(m_name+'rho_shell', val=0.0, units='kg/m**3', desc='Material density')
             # optional
             self.add_input(m_name+'l_fill', val=np.zeros(mnpts_lfill), units='m', desc='Fill heights of ballast in each section')
@@ -426,7 +431,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # Tower
         design['turbine']['tower'] = {}
         design['turbine']['tower']['name'] = 'tower'
-        design['turbine']['tower']['type'] = 1
+        design['turbine']['tower']['type'] = 'rigid'
         design['turbine']['tower']['rA'] = inputs['turbine_tower_rA']
         design['turbine']['tower']['rB'] = inputs['turbine_tower_rB']
         # RAFT always wants rA below rB, this needs to be flipped for MHKs
@@ -505,6 +510,10 @@ class RAFT_OMDAO(om.ExplicitComponent):
         # Platform members
         design['platform'] = {}
         design['platform']['potModMaster'] = int(modeling_opt['potential_model_override'])
+        # potFirstOrder needs to be 1 to read pre-existing WAMIT-like file
+        if design['platform']['potModMaster'] == 3:
+            design['platform']['potFirstOrder'] = 1
+            design['platform']['hydroPath'] = modeling_opt['BEM_dir']
         design['platform']['dlsMax'] = float(modeling_opt['dls_max'])
         design['platform']["intersectMesh"] = intersectMesh
         if intersectMesh==1:
@@ -513,6 +522,20 @@ class RAFT_OMDAO(om.ExplicitComponent):
         else:
             design['platform']['characteristic_length_min'] = 1.0
             design['platform']['characteristic_length_max'] = 3.0
+
+        # Add rigid bodies (add external loads here, too, someday)
+        additional_effects = []
+        for k in range(modeling_opt['floating']['rigid_bodies']['n_bodies']):
+            add_eff = {}
+            add_eff['type']                 = 'point_inertia'
+            add_eff['location']             = inputs[f"rigid_body_{k}_node"]
+            add_eff['mass']                 = float(inputs[f"rigid_body_{k}_mass"][0])
+            add_eff['moments_of_inertia']   = np.r_[inputs[f"rigid_body_{k}_inertia"],0.0,0.0,0.0]  # RAFT expects 6D inertia vector
+            additional_effects.append(add_eff)
+            
+        if additional_effects:
+            design['platform']['additional_effects'] = additional_effects
+        
         # lowest BEM freq needs to be just below RAFT min_freq because of interpolation in RAFT
         if float(modeling_opt['min_freq_BEM']) >= modeling_opt['min_freq']:
             modeling_opt['min_freq_BEM'] = modeling_opt['min_freq'] - 1e-7
@@ -540,7 +563,7 @@ class RAFT_OMDAO(om.ExplicitComponent):
             extensionA = np.linalg.norm(rA_0-rA)
             extensionB = np.linalg.norm(rB_0-rB)
             design['platform']['members'][i]['name'] = m_name
-            design['platform']['members'][i]['type'] = i + 2
+            design['platform']['members'][i]['type'] = 'rigid'
             design['platform']['members'][i]['rA'] = rA
             design['platform']['members'][i]['rB'] = rB
             design['platform']['members'][i]['extensionA'] = extensionA
@@ -826,7 +849,8 @@ class RAFT_OMDAO(om.ExplicitComponent):
                 # use only first rotor/turbine
                 case_metrics = [cm[0] for cm in results['case_metrics'].values()]
                 stat = np.squeeze(np.array([cm[iout] for cm in case_metrics]))
-                outputs['stats_'+iout][case_mask] = stat
+                if np.any(case_mask):
+                    outputs['stats_'+iout][case_mask] = stat
 
         # Other case outputs
         # for n in ['wind_PSD','wave_PSD']:
@@ -844,13 +868,14 @@ class RAFT_OMDAO(om.ExplicitComponent):
         outputs["yaw_period"] = outputs["rigid_body_periods"][5]
 
         # Compute some aggregate outputs manually
-        outputs['Max_Offset'] = np.sqrt(outputs['stats_surge_max'][case_mask]**2 + outputs['stats_sway_max'][case_mask]**2).max()
-        outputs['heave_avg'] = outputs['stats_heave_avg'][case_mask].mean()
-        outputs['Max_PtfmPitch'] = outputs['stats_pitch_max'][case_mask].max()
-        outputs['Std_PtfmPitch'] = outputs['stats_pitch_std'][case_mask].mean()
-        outputs['max_nac_accel'] = outputs['stats_AxRNA_std'][case_mask].max()
-        outputs['rotor_overspeed'] = (outputs['stats_omega_max'][case_mask].max() - inputs['rated_rotor_speed']) / inputs['rated_rotor_speed']
-        outputs['max_tower_base'] = outputs['stats_Mbase_max'][case_mask].max()
+        if np.any(case_mask):
+            outputs['Max_Offset'] = np.sqrt(outputs['stats_surge_max'][case_mask]**2 + outputs['stats_sway_max'][case_mask]**2).max()
+            outputs['heave_avg'] = outputs['stats_heave_avg'][case_mask].mean()
+            outputs['Max_PtfmPitch'] = outputs['stats_pitch_max'][case_mask].max()
+            outputs['Std_PtfmPitch'] = outputs['stats_pitch_std'][case_mask].mean()
+            outputs['max_nac_accel'] = outputs['stats_AxRNA_max'][case_mask].max()
+            outputs['rotor_overspeed'] = (outputs['stats_omega_max'][case_mask].max() - inputs['rated_rotor_speed']) / inputs['rated_rotor_speed']
+            outputs['max_tower_base'] = outputs['stats_Mbase_max'][case_mask].max()
         
         # Combined outputs for OpenFAST
         outputs['platform_displacement'] = model.fowtList[0].V

@@ -249,9 +249,8 @@ def test_calcBEM(index_and_fowt, flagSaveValues=False):
  To run as a script. Useful for debugging and updating true values when needed.
 '''
 if __name__ == "__main__":
+    flagSaveValues = False
     for index in range(len(list_files)):
-        flagSaveValues = False
-
         fowt = create_fowt(list_files[index])
         test_statics((index,fowt), flagSaveValues=flagSaveValues)
         

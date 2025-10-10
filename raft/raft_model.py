@@ -79,7 +79,7 @@ class Model():
                 design['moorings'] = [design['mooring']]
             
             # form dictionary of fowt array data
-            fowtInfo = [dict(zip( design['array']['keys'], row)) for row in design['array']['data']]
+            arrayInfo = [dict(zip( design['array']['keys'], row)) for row in design['array']['data']]
             
             # if array_mooring section exists, create an array-level MoorPy system
             if 'array_mooring' in design:
@@ -94,7 +94,7 @@ class Model():
             
                 # set up a coupled MoorPy body for each FOWT
                 for i in range(self.nFOWT):
-                    self.ms.addBody(-1, [fowtInfo[i]['x_location'], fowtInfo[i]['y_location'], 0,0,0,0])
+                    self.ms.addBody(-1, [arrayInfo[i]['x_location'], arrayInfo[i]['y_location'], 0,0,0,0])
                 # load the MD style input file (this is the only option supported right now)
                 if 'file' in design['array_mooring']:
                     self.ms.load(design['array_mooring']['file'], clear=False)  # add the array level mooring system to the already created bodies
@@ -108,29 +108,29 @@ class Model():
             # go through each turbine in the list and set it up...
             for i in range(self.nFOWT):
             
-                x_ref = fowtInfo[i]['x_location']
-                y_ref = fowtInfo[i]['y_location']
-                headj = fowtInfo[i]['heading_adjust']
+                x_ref = arrayInfo[i]['x_location']
+                y_ref = arrayInfo[i]['y_location']
+                headj = arrayInfo[i]['heading_adjust']
             
                 design_i = {}   # just make a temporary design dictionary for the FOWT (could make this a stored list of all)
                 
                 design_i['site'] = design['site']
                 
-                if fowtInfo[i]['turbineID'] == 0:
+                if arrayInfo[i]['turbineID'] == 0:
                     design_i.pop('turbine', None)  # if no turbine, make sure the entry isn't in the design dictionary
                 else:
-                    design_i['turbine'] = design['turbines'][fowtInfo[i]['turbineID']-1]
+                    design_i['turbine'] = design['turbines'][arrayInfo[i]['turbineID']-1]
                 
-                if fowtInfo[i]['platformID'] == 0:
+                if arrayInfo[i]['platformID'] == 0:
                     design_i['platform'] = None
                     print("Warning: platforms MUST be included for the time being.")
                 else:
-                    design_i['platform'] = design['platforms'][fowtInfo[i]['platformID']-1]
+                    design_i['platform'] = design['platforms'][arrayInfo[i]['platformID']-1]
                     
-                if fowtInfo[i]['mooringID'] == 0:  # no mooring on this FOWT (array-level moorings may be used instead)
+                if arrayInfo[i]['mooringID'] == 0:  # no mooring on this FOWT (array-level moorings may be used instead)
                     design_i.pop('mooring', None)
                 else:
-                    design_i['mooring'] = design['moorings'][fowtInfo[i]['mooringID']-1]
+                    design_i['mooring'] = design['moorings'][arrayInfo[i]['mooringID']-1]
                 
                 if self.ms:
                     mpb = self.ms.bodyList[i]  # reference to the FOWT's body in the array level MoorPy system
@@ -285,8 +285,8 @@ class Model():
         platform_IDs = [0] * len(self.fowtList) # Start all fowts with same ID
         meshDirs = len(self.fowtList)*[meshDir] # Start all fowts with same meshDir
         if 'array' in self.design: # Modify them for arrays of fowts
-            fowtInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
-            for i, fi in enumerate(fowtInfo):
+            arrayInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
+            for i, fi in enumerate(arrayInfo):
                 platform_IDs[i] = fi['platformID']
                 meshDirs[i] = f'{meshDir}_{fi["platformID"]}'
         
@@ -742,7 +742,7 @@ class Model():
                         if type(caseorig['wind_speed']) == list :
                             case['wind_speed'] = caseorig['wind_speed'][i]
                         
-                        fowt.calcTurbineConstants(case, ptfm_pitch=r6[4])  # for turbine forces >>> still need to update to use current fowt pose <<<
+                        fowt.calcTurbineConstants(case, ptfm_pitch=fowt.r6[4])  # for turbine forces >>> still need to update to use current fowt pose <<<
                         fowt.calcStatics() # Recompute statics because turbine heading may have changed due to yaw control
                         fowt.calcHydroConstants()  # prep for drag force and mean drift
 
@@ -1994,8 +1994,8 @@ class Model():
         
         # Update floris interface settings to match RAFT design
         self.fi.set(air_density = self.design["site"]["rho_air"], wind_shear = self.design["site"]["shearExp"])
-        fowtInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
-        self.fi.set(layout_x=[fowtInfo[j]["x_location"] for j in range(0,len(fowtInfo))], layout_y=[fowtInfo[j]["y_location"] for j in range(0,len(fowtInfo))])
+        arrayInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
+        self.fi.set(layout_x=[arrayInfo[j]["x_location"] for j in range(0,len(arrayInfo))], layout_y=[arrayInfo[j]["y_location"] for j in range(0,len(arrayInfo))])
         
         # create new turbine yaml file for each turbine with a unique turbine, platform, mooring, or heading adjustment
         # this is because these effect the pitch of the platform in the power-thrust curve
@@ -2006,10 +2006,10 @@ class Model():
         
         #iterate through lies of turbines
         for i in range(self.nFOWT):
-            turbID = fowtInfo[i]['turbineID']
+            turbID = arrayInfo[i]['turbineID']
             
             #Check if turbine has unique platform, turbine, mooring, or rotation ... if so, calculate new power thrust curve
-            IDList = [fowtInfo[i]['turbineID'], fowtInfo[i]['platformID'], fowtInfo[i]['mooringID'], fowtInfo[i]['heading_adjust']]
+            IDList = [arrayInfo[i]['turbineID'], arrayInfo[i]['platformID'], arrayInfo[i]['mooringID'], arrayInfo[i]['heading_adjust']]
             if IDList in uniqueLists:
                 for j, ulist in enumerate(uniqueLists):
                     if IDList == ulist:
@@ -2072,7 +2072,7 @@ class Model():
         if not hasattr(self, 'fi'):
             raise AttributeError("Need to initialize floris coupling first")
             
-        fowtInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
+        arrayInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
 
         
         #FLORIS inputs the wind direction as direction wind is coming from (where the -X axis is 0)
@@ -2128,12 +2128,12 @@ class Model():
 
             #update floris turbine positions
             if n > 0:
-                xnew = [0.9*(self.fowtList[nfowt].Xi0[0] + fowtInfo[nfowt]["x_location"]) + 0.1*xpositions[-1][nfowt] for nfowt in range(len(self.fowtList))]
-                ynew = [0.9*(self.fowtList[nfowt].Xi0[1]  + fowtInfo[nfowt]["y_location"]) + 0.1*ypositions[-1][nfowt] for nfowt in range(len(self.fowtList))]
+                xnew = [0.9*(self.fowtList[nfowt].Xi0[0] + arrayInfo[nfowt]["x_location"]) + 0.1*xpositions[-1][nfowt] for nfowt in range(len(self.fowtList))]
+                ynew = [0.9*(self.fowtList[nfowt].Xi0[1] + arrayInfo[nfowt]["y_location"]) + 0.1*ypositions[-1][nfowt] for nfowt in range(len(self.fowtList))]
                 self.fi.set(layout_x=xnew, layout_y=ynew)
             else:
-                xnew = [self.fowtList[nfowt].Xi0[0] + fowtInfo[nfowt]["x_location"]  for nfowt in range(len(self.fowtList))]
-                ynew = [self.fowtList[nfowt].Xi0[1]  + fowtInfo[nfowt]["y_location"] for nfowt in range(len(self.fowtList))]
+                xnew = [self.fowtList[nfowt].Xi0[0] + arrayInfo[nfowt]["x_location"] for nfowt in range(len(self.fowtList))]
+                ynew = [self.fowtList[nfowt].Xi0[1] + arrayInfo[nfowt]["y_location"] for nfowt in range(len(self.fowtList))]
                
             self.fi.set(layout_x=xnew, layout_y=ynew)
             self.fi.set(yaw_angles=yaw_angles)

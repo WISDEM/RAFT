@@ -1328,16 +1328,16 @@ class FOWT():
                 for mem in self.memberList: 
                     if mem.potMod:          # >>>>>>>>>>>>>>>> now using for rectnagular member and the dimensions are hardcoded. need to integrate with the .yaml file input
                         if mem.shape == "circular":
-                            pnl.meshMember(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
+                            pnl.meshMember(mem.stations, mem.d, mem.rA0, mem.rB0, dz_max=dz, da_max=da, savedNodes=nodes, savedPanels=panels)
                             # for GDF output
-                            vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA, mem.rB, dz_max=dz, da_max=da)
+                            vertices_i = pnl.meshMemberForGDF(mem.stations, mem.d, mem.rA0, mem.rB0, dz_max=dz, da_max=da)
                             vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
                         elif mem.shape == "rectangular":
                             widths = mem.sl[:, 0]
                             heights = mem.sl[:, 1]
-                            pnl.meshRectangularMember(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh, savedNodes=nodes, savedPanels=panels) #
+                            pnl.meshRectangularMember(mem.stations, widths, heights, mem.rA0, mem.rB0, dz_max=dz, dw_max=da, dh_max=dh, savedNodes=nodes, savedPanels=panels) #
                             # for GDF output
-                            vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA, mem.rB, dz_max=dz, dw_max=da, dh_max=dh)
+                            vertices_i = pnl.meshRectangularMemberForGDF(mem.stations, widths, heights, mem.rA0, mem.rB0, dz_max=dz, dw_max=da, dh_max=dh)
                             vertices = np.vstack([vertices, vertices_i])  # append the member's vertices to the master list
                 if len(panels) == 0:
                     print("WARNING: no panels to mesh.")

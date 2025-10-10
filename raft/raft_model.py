@@ -282,8 +282,23 @@ class Model():
             fowt.setPosition(ref_displacement)    # zero platform offsets
             fowt.calcStatics()
 
+        platform_IDs = [0] * len(self.fowtList) # Start all fowts with same ID
+        meshDirs = len(self.fowtList)*[meshDir] # Start all fowts with same meshDir
+        if 'array' in self.design: # Modify them for arrays of fowts
+            fowtInfo = [dict(zip( self.design['array']['keys'], row)) for row in self.design['array']['data']]
+            for i, fi in enumerate(fowtInfo):
+                platform_IDs[i] = fi['platformID']
+                meshDirs[i] = f'{meshDir}_{fi["platformID"]}'
+        
+        # Run BEM for each different platform type, avoiding to rerun the same platform type again
+        platforms_done = set() # track platform types already run
         for i, fowt in enumerate(self.fowtList):
-            fowt.calcBEM(meshDir=meshDir)
+            # If this fowt is of the same type as a previous fowt, we do not need to rerun pyHAMS
+            if fowt.potMod and (platform_IDs[i] in platforms_done):
+                fowt.potModMaster = 3
+                fowt.hydroPath = [other_fowt.hydroPath for i_other, other_fowt in enumerate(self.fowtList) if platform_IDs[i_other] == platform_IDs[i] and i_other < i][0] # Getting hydroPath of a previous fowt of same type
+            fowt.calcBEM(meshDir=meshDirs[i])
+            platforms_done.add(platform_IDs[i])
         
             
         # loop through each case

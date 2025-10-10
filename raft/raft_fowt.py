@@ -1498,7 +1498,7 @@ class FOWT():
             X_BEM[ih,5,:] = X_BEM_temp[ih,5,:]
             
             for iw in range(self.nw):
-                self.X_BEM[ih, :6, iw] = transformForce(X_BEM[ih,:,iw], offset= -self.nodeList[self.reducedDOF[0][0]].r[:3])
+                self.X_BEM[ih, :6, iw] = transformForce(X_BEM[ih,:,iw], offset= -self.nodeList[self.reducedDOF[0][0]].r0[:3])
 
         # HAMS results error checks  >>> any more we should have? <<<
         if np.isnan(self.A_BEM).any():

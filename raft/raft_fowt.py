@@ -2744,8 +2744,15 @@ class FOWT():
     
     def plot(self, ax, color=None, nodes=0, plot_rotor=True, station_plot=[], 
              airfoils=False, zorder=2, plot_fowt=True, plot_ms=True, 
-             shadow=True, plot_frame=False, mp_args={}, frame_opts={}, plot_joints=False):
+             shadow=True, plot_frame=False, mp_args={}, frame_opts={}, plot_joints=False, axes_around_fowt=None):
         '''plots the FOWT...'''
+
+        # Assign values to axes_around_fowt if not specified by the user
+        if axes_around_fowt is None:
+            if plot_ms:
+                axes_around_fowt=False # Do not zoom in on the FOWT
+            else:
+                axes_around_fowt=True  # Zoom in on the FOWT
 
         R = rotationMatrix(self.r6[3], self.r6[4], self.r6[5])  # note: eventually Rotor could handle orientation internally <<<
 
@@ -2787,8 +2794,8 @@ class FOWT():
                 color = 'green' if joint['type'] == 'ball' else 'red'
                 ax.scatter(joint['r'][0], joint['r'][1], joint['r'][2], color=color, marker='o', facecolors='None')
 
-        # The code below makes the plot look nicer if plotting the FOWT without its mooring system 
-        if not plot_ms:
+        # The code below makes the plot zoom into the FOWT. Useful when plotting the FOWT without its mooring system
+        if axes_around_fowt:
             # Set equal aspect ratio
             ax.set_box_aspect([1, 1, 1])  # Aspect ratio is 1:1:1
 

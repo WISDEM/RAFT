@@ -2530,8 +2530,7 @@ class FOWT():
 
                 # fill in metrics
                 # mean moment from weight and thrust
-                results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) 
-                            + transformForce(self.rotorList[0].nodeList[0].T@self.f_aero0[:,ir], offset=[0,0,-hArm[ir]])[4] )
+                results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + (self.rotorList[0].nodeList[0].T@self.f_aero0[:,ir])[4] )
                 results['Mbase_std'][ir] = dynamic_moment_RMS[ir]
                 results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
                 results['Mbase_max'][ir] = results['Mbase_avg'][ir]+3*results['Mbase_std'][ir]

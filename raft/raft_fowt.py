@@ -1360,7 +1360,7 @@ class FOWT():
                     stations = mem.stations
                     rA = mem.rA_original if hasattr(mem, "rA_original") else mem.rA
                     rB = mem.rB_original if hasattr(mem, "rB_original") else mem.rB
-                    headings = mem.heading if hasattr(mem, "heading") else [0]
+                    heading = mem.heading if hasattr(mem, "heading") else [0]
                     #print("name from raft:", mem.name)
                     #print("rA from raft: ",mem.rA)
                     #print("rB from raft: ", mem.rB)
@@ -1374,7 +1374,7 @@ class FOWT():
                             "rA": rA,
                             "rB": rB,
                             "radius": radius,
-                            "heading": headings,
+                            "heading": heading,
                             "stations": stations,
                             "diameters": diameters,
                             "extensionA": extensionA,
@@ -1392,7 +1392,7 @@ class FOWT():
                             "rB": rB,
                             "widths": widths,
                             "heights": heights,
-                            "heading": headings,
+                            "heading": heading,
                             "stations": stations,
                             "extensionA": extensionA,
                             "extensionB": extensionB

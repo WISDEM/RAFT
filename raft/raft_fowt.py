@@ -1555,6 +1555,8 @@ class FOWT():
                     f_aero0, f_aero, a_aero, b_aero = rot.calcAero(case, current=current)  # get values about hub
                     
                     # Transform quantities to the reduced set of dofs
+                    # TODO: This is different from other parts of the code where I used _fullDOF matrix and then transformed to reduced DOFs.
+                    #       The idea was to use the T.T matrix as a sort of a locator matrix, but not sure how correct this is. Change that later
                     T = rot.nodeList[0].T # transformation matrix from the reduced set of dofs of the FOWT to the 6 dofs of the rotor node
                     self.f_aero0[:,ir] = T.T @ f_aero0  # mean forces and moments
                     for iw in range(self.nw):
@@ -2505,6 +2507,7 @@ class FOWT():
             mem_tower = self.memberList[self.nplatmems+ir]
 
             # For now, using same method as before for rigid towers
+            # TODO: remove this and compute tower base loads based on the reaction loads at the tower-bottom joint
             if mem_tower.type == 'rigid':
                 m_turbine[ir] = self.mtower[ir] + rotor.mRNA  # total masses of each turbine
                 zCG_turbine[ir] = (self.rCG_tow[ir][2]*self.mtower[ir]                 # CoG of each turbine
@@ -2529,8 +2532,7 @@ class FOWT():
                 dynamic_moment_RMS[ir] = getRMS(dynamic_moment[:,ir,:])
 
                 # fill in metrics
-                # mean moment from weight and thrust
-                results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + (self.rotorList[0].nodeList[0].T@self.f_aero0[:,ir])[4] )
+                results['Mbase_avg'][ir] = (m_turbine[ir]*self.g * hArm[ir]*np.sin(self.Xi0[4]) + transformForce(self.rotorList[ir].f0, offset=[0,0,self.rotorList[ir].nodeList[0].r0[2]-hArm[ir]])[4] )
                 results['Mbase_std'][ir] = dynamic_moment_RMS[ir]
                 results['Mbase_PSD'][:,ir] = (getPSD(dynamic_moment[:,ir,:], self.dw))
                 results['Mbase_max'][ir] = results['Mbase_avg'][ir]+3*results['Mbase_std'][ir]

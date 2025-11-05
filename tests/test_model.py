@@ -45,7 +45,7 @@ list_files = [os.path.join(current_dir, test_dir, file) for file in list_files]
 '''
 # Function used to create FOWT instance
 # Not explicitly inside the fixture below so that we can also run this file as a script
-# 
+#
 def create_model(file):
     with open(file) as f:
         design = yaml.load(f, Loader=yaml.FullLoader)
@@ -65,7 +65,7 @@ def create_model(file):
 @pytest.fixture(params=enumerate(list_files))
 def index_and_model(request):
     index, file = request.param
-    model = create_model(file)    
+    model = create_model(file)
     return index, model
 
 '''
@@ -125,9 +125,9 @@ desired_X0 = {
 def solveStatics(index_and_model, test_case_key, rtol=1e-05, atol=1e-10):
     '''
     We test only the mean offsets and linearized mooring properties.
-    '''        
+    '''
     index, model = index_and_model
-    testCase = cases4solveStatics[test_case_key]    
+    testCase = cases4solveStatics[test_case_key]
     model.solveStatics(testCase)
     for i, fowt in enumerate(model.fowtList):
         assert_allclose(fowt.r6, desired_X0[test_case_key][index][6*i:6*(i+1)], rtol=rtol, atol=atol)
@@ -275,7 +275,7 @@ desired_modes = {
                   [-6.21316965e-03, -1.32552092e-03,  2.69272852e-01, -2.30252304e-03, -5.03775015e-03,  5.34681309e-04,  7.05692246e-03, -1.78745500e-03, -9.62912928e-01,  2.06635847e-02,  6.83944327e-02,  1.94739912e-04],
                   [ 5.73877577e-05,  1.73869447e-05,  1.55155496e-05,  7.34971902e-04,  3.91788360e-04, -3.59118324e-05, -2.45527237e-04, -4.91453005e-04, -6.20538865e-05, -1.60713894e-01,  5.82005468e-02,  3.92650678e-04],
                   [ 5.35217661e-05,  2.69720933e-05, -7.92408612e-05,  4.79170446e-03,  3.69617884e-03, -5.29046880e-05, -2.03450513e-04, -6.51449327e-05,  4.25820931e-04,  5.51040523e-02,  1.74216186e-01, -1.49517626e-03],
-                  [ 1.48946042e-03, -4.11837504e-04,  8.78835414e-06, -1.37529855e-05, -3.50704978e-05, -6.31055822e-03, -2.13519130e-03, -5.14879469e-03, -3.15665253e-05,  1.47542156e-03, -4.49606559e-03, -1.20832552e-01]]),                  
+                  [ 1.48946042e-03, -4.11837504e-04,  8.78835414e-06, -1.37529855e-05, -3.50704978e-05, -6.31055822e-03, -2.13519130e-03, -5.14879469e-03, -3.15665253e-05,  1.47542156e-03, -4.49606559e-03, -1.20832552e-01]]),
         np.array([[-9.77741876e-01,  2.09950631e-01,  2.76230850e-03, -2.07854275e-01, -9.75266721e-01,  2.91921676e-01],
                   [ 2.09804600e-01,  9.77711045e-01,  1.40426339e-03, -9.74214916e-01,  2.03478512e-01, -4.06817862e-01],
                   [ 1.42501361e-03, -1.18401614e-03,  9.99995197e-01,  2.06240846e-03,  2.64306495e-03,  2.22321096e-04],
@@ -335,10 +335,10 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
     '''Solve cases listed in the yaml file
     Set flagSaveValues to true to replace the true values file with the values calculated below
     '''
-    index, model = index_and_model    
+    index, model = index_and_model
     true_values_file = list_files[index].replace('.yaml', '_true_analyzeCases.pkl')
     metrics2check = ['wave_PSD', 'surge_PSD', 'sway_PSD', 'heave_PSD', 'roll_PSD', 'pitch_PSD', 'yaw_PSD', 'AxRNA_PSD', 'Mbase_PSD', 'Tmoor_PSD']
-    
+
     model.analyzeCases()
 
     computed_values = {
@@ -364,7 +364,7 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
                     assert_allclose(model.results['case_metrics'][iCase][ifowt][metric], true_values['case_metrics'][iCase][ifowt][metric], rtol=1e-05, atol=1e-3)
                 elif 'array_mooring' in model.results['case_metrics'][iCase] and metric in model.results['case_metrics'][iCase]['array_mooring']:
                     assert_allclose(model.results['case_metrics'][iCase]['array_mooring'][metric], true_values['case_metrics'][iCase]['array_mooring'][metric], rtol=1e-05, atol=1e-3)
-    
+
     if plotPSDs:
         import matplotlib.pyplot as plt
         for ifowt in range(model.nFOWT):
@@ -373,7 +373,7 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
                 for imetric, metric in enumerate(metrics2check):
                     w_true = true_values['freq_rad']
                     if metric in model.results['case_metrics'][iCase][ifowt]:
-                        y = model.results['case_metrics'][iCase][ifowt][metric]                        
+                        y = model.results['case_metrics'][iCase][ifowt][metric]
                         y_true = true_values['case_metrics'][iCase][ifowt][metric]
                     elif 'array_mooring' in model.results['case_metrics'][iCase] and metric in model.results['case_metrics'][iCase]['array_mooring']:
                         y = model.results['case_metrics'][iCase]['array_mooring'][metric]
@@ -382,24 +382,24 @@ def test_analyzeCases(index_and_model, plotPSDs=False, flagSaveValues=False):
                     if metric == 'Tmoor_PSD':
                         if iCase == 0:
                             fig2, ax2 = plt.subplots(y.shape[0], 1, figsize=(15, 10))
-                        for i in range(y.shape[0]):                            
+                        for i in range(y.shape[0]):
                             ax2[i].plot(model.w/2/np.pi, y[i, :])
                             ax2[i].plot(w_true/2/np.pi, y_true[i, :], linestyle='--')
                             ax2[i].set_ylabel(f'Line channel {i+1}')
                             ax2[i].set_xlabel('Frequency (Hz)')
                         ax2[0].set_title(f'{metric}')
                     else:
-                        # assert_allclose(model.results['case_metrics'][iCase][ifowt][metric], true_values[idxTrueValues][ifowt][metric], rtol=1e-05, atol=1e-5)                        
+                        # assert_allclose(model.results['case_metrics'][iCase][ifowt][metric], true_values[idxTrueValues][ifowt][metric], rtol=1e-05, atol=1e-5)
                         ax[imetric//3, imetric%3].plot(model.w/2/np.pi, y, label=f'Case {iCase+1}')
                         ax[imetric//3, imetric%3].plot(w_true/2/np.pi, y_true, linestyle='--')
                         ax[imetric//3, imetric%3].set_ylabel(metric)
                         ax[imetric//3, imetric%3].set_xlabel('Frequency (Hz)')
         plt.show()
-            
+
 '''
  To run as a script. Useful for debugging.
 '''
-if __name__ == "__main__":    
+if __name__ == "__main__":
     index = 0
 
     model = create_model(list_files[index])

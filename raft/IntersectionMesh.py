@@ -34,46 +34,46 @@ def meshMember(geom, headings, rA, rB, radius, member_id=0,
 
     uniform = isinstance(diameters, (int, float)) or (isinstance(diameters, list) and len(diameters) == 1)
 
-    for idx in range(len(headings)):
-        if np.all(diameters==diameters[0]):
-            start = rA_ext
-            end   = rB_ext
+    # for idx in range(len(headings)): # YL 10-15-25: I don't think it's used but might need to double check
+    if np.all(diameters==diameters[0]):
+        start = rA_ext
+        end   = rB_ext
+        axis_segment = [end[i] - start[i] for i in range(3)]
+        cone = geom.add_cylinder(start, axis_segment, diameters[0]/2)
+        label = f"Cylinder_{member_id}"
+        print(f"Meshing {label} | Start: {start} | End: {end} | Radius: {diameters[0]/2}->{diameters[0]/2}")
+
+        geom.add_physical(cone, label=label)
+        cylinders.append(cone)
+    else:
+        for s in range(len(stations) - 1):
+            t0 = (stations[s] - stations[0]) / (stations[-1] - stations[0])
+            t1 = (stations[s + 1] - stations[0]) / (stations[-1] - stations[0])
+
+            if abs(t1 - t0) < 1e-6:
+                continue
+
+            # ⏱ Interpolate segment along extended axis
+            start = [rA_ext[i] + t0 * axis_full[i] for i in range(3)]
+            end   = [rA_ext[i] + t1 * axis_full[i] for i in range(3)]
             axis_segment = [end[i] - start[i] for i in range(3)]
-            cone = geom.add_cylinder(start, axis_segment, diameters[0]/2)
-            label = f"Cylinder_{member_id}_{idx}"
-            print(f"Meshing {label} | Start: {start} | End: {end} | Radius: {diameters[0]/2}->{diameters[0]/2}")
+
+            if uniform or diameters is None:
+                radius_start = radius_end = radius
+            else:
+                radius_start = diameters[s] / 2
+                radius_end = diameters[s + 1] / 2
+
+            label = f"Cylinder_{member_id}_seg{s}"
+            print(f"Meshing {label} | Start: {start} | End: {end} | Radius: {radius_start}->{radius_end}")
+
+            if abs(radius_start - radius_end) < 1e-6:
+                cone = geom.add_cylinder(start, axis_segment, radius_start)
+            else:
+                cone = geom.add_cone(start, axis_segment, radius_start, radius_end)
 
             geom.add_physical(cone, label=label)
             cylinders.append(cone)
-        else:
-            for s in range(len(stations) - 1):
-                t0 = (stations[s] - stations[0]) / (stations[-1] - stations[0])
-                t1 = (stations[s + 1] - stations[0]) / (stations[-1] - stations[0])
-
-                if abs(t1 - t0) < 1e-6:
-                    continue
-
-                # ⏱ Interpolate segment along extended axis
-                start = [rA_ext[i] + t0 * axis_full[i] for i in range(3)]
-                end   = [rA_ext[i] + t1 * axis_full[i] for i in range(3)]
-                axis_segment = [end[i] - start[i] for i in range(3)]
-
-                if uniform or diameters is None:
-                    radius_start = radius_end = radius
-                else:
-                    radius_start = diameters[s] / 2
-                    radius_end = diameters[s + 1] / 2
-
-                label = f"Cylinder_{member_id}_{idx}_seg{s}"
-                print(f"Meshing {label} | Start: {start} | End: {end} | Radius: {radius_start}->{radius_end}")
-
-                if abs(radius_start - radius_end) < 1e-6:
-                    cone = geom.add_cylinder(start, axis_segment, radius_start)
-                else:
-                    cone = geom.add_cone(start, axis_segment, radius_start, radius_end)
-
-                geom.add_physical(cone, label=label)
-                cylinders.append(cone)
 
     return cylinders
 

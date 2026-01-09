@@ -1252,7 +1252,6 @@ class Model():
                 # TODO: compute joint loads based on the system of equations in the full dofs
         
         # rotor excitation
-        '''
         F_rotor = np.zeros([self.nDOF, self.nw], dtype=complex)
         
         for i, fowt in enumerate(self.fowtList):
@@ -1260,7 +1259,6 @@ class Model():
             
         for iw in range(self.nw):
             self.Xi[-1,:,iw] = np.matmul(Zinv[:,:,iw], F_rotor[:,iw])
-        '''
         
         # store all the results in the FOWT object
         for i, fowt in enumerate(self.fowtList):

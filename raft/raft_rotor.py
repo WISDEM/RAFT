@@ -714,16 +714,20 @@ class Rotor:
         return cav_check
 
 
-    def runCCBlade(self, U0, tilt=0, yaw_misalign=0):
+    def runCCBlade(self, U0, tilt=0, yaw_misalign=0, display=0):
         '''This performs a single CCBlade evaluation at specified conditions.
         
-        U0
+        Parameters
+        ----------
+        U0 : float
             Freestream flow speed [m/s].
-        tilt
-            tilt angle due to both shaft tilt and platform tilt [rad]
-        yaw_misalign
-            turbine yaw misalignment angle [rad]
-            
+        tilt : float, optional
+            tilt angle due to both shaft tilt and platform tilt [rad]. Default 0.
+        yaw_misalign : float, optional
+            turbine yaw misalignment angle [rad]. Default 0.
+        display : int, optional
+            Setting for console message output. Default is 0, no output.
+        
         In future could add options to specify rotor speed and blade pitch values
         that override the default scheduled values, for controls applications.
         '''
@@ -763,7 +767,8 @@ class Rotor:
         outputs["CMhub"] = np.array([loads["CQ"][0], loads["CMy"][0], loads["CMz"][0]])
 
         # We might want to supress this print statement? Or add a verbosity option?
-        print(f"Wind speed: {Uhub:.2f} m/s, Omega: {Omega_rpm:.2f} rpm, Cp: {loads['CP'][0]:4.3f}, T: {loads['T'][0]/1e3:.0f} kN")
+        if display > 1: 
+            print(f"Wind speed: {Uhub:.2f} m/s, Omega: {Omega_rpm:.2f} rpm, Cp: {loads['CP'][0]:4.3f}, T: {loads['T'][0]/1e3:.0f} kN")
         
         # save select derivatives
         J={} # Jacobian/derivatives

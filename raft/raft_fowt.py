@@ -33,7 +33,8 @@ except ImportError:
 class FOWT():
     '''This class comprises the frequency domain model of a single floating wind turbine'''
 
-    def __init__(self, design, w, mpb, depth=600, x_ref=0, y_ref=0, heading_adjust=0):
+    def __init__(self, design, w, mpb, depth=600, x_ref=0, y_ref=0, 
+                 heading_adjust=0, display=0):
         '''This initializes the FOWT object which contains everything for a single turbine's frequency-domain dynamics.
         The initializiation sets up the design description.
 
@@ -55,9 +56,11 @@ class FOWT():
             Reference y location of this fowt in the array [m]
         heading_adjust : float
             Rotation to the heading of the platform and mooring system to be applied [deg]
+        display : int, optional
+            Setting for console message output. Default is 0, no output.
         '''
 
-        print("Making FOWT")
+        if display > 0: print("Making FOWT")
        
         # basic setup
         self.nw = len(w)                     # number of frequencies
@@ -78,7 +81,8 @@ class FOWT():
             # make sure the mesh size are positive
             assert self.characteristic_length_min > 0, "characteristic_length_min must be positive"
             assert self.characteristic_length_max > 0, "characteristic_length_max must be positive"
-        print(f"Mesh characteristic lengths: min={self.characteristic_length_min}, max={self.characteristic_length_max}")
+        if display > 1:
+            print(f"Mesh characteristic lengths: min={self.characteristic_length_min}, max={self.characteristic_length_max}")
         
         # position in the array
         self.x_ref = x_ref      # reference x position of the FOWT in the array [m]
@@ -1212,7 +1216,7 @@ class FOWT():
         rCG_all = m_center_sum/m_all          # total CG of all the members        
         self.rCG = rCG_all
         self.rCG_sub = m_sub_sum/self.m_sub   # solve for just the substructure mass and CG                
-  
+        
         # get principal moments of inertia (about CG) 
         # note: these are likely only useful in the unrotated frame, i.e.
         # the first time calcStatics is called.

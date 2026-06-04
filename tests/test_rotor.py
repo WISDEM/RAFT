@@ -151,6 +151,31 @@ def test_calcAero(index_and_rotor, flagSaveValues=False):
                     pickle.dump(output_true_values, f)
     # Do something similar for turbine class
 
+
+def test_calcAero_turbulence_scaling(index_and_rotor):
+    index, rotor = index_and_rotor
+    rotor.setPosition()
+
+    if 'IEA15MW' in list_files[index]:
+        wind_speed = 15
+    elif 'NREL5MW' in list_files[index]:
+        wind_speed = 15
+    else:
+        wind_speed = 12
+
+    case = {
+        'wind_speed': wind_speed,
+        'wind_heading': 0,
+        'turbulence': 0.5,
+        'turbine_status': 'operating',
+        'yaw_misalign': 0,
+    }
+
+    rotor.calcAero(case)
+    _, _, _, S_rot = rotor.IECKaimal(case)
+
+    assert_allclose(rotor.V_w, np.sqrt(2*S_rot*(rotor.w[1]-rotor.w[0])))
+
 '''
  To run as a script. Useful for debugging.
 '''
@@ -159,4 +184,3 @@ if __name__ == "__main__":
 
     rotor = create_rotor(list_files[index])
     test_calcAero((index, rotor), flagSaveValues=False)
-

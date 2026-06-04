@@ -548,7 +548,7 @@ class Rotor:
         for i in range(len(self.blade_r)-1):
             blademem = {}
             blademem['name'] = i
-            blademem['type'] = 3
+            blademem['type'] = 'rigid'
 
             airfoil_zero_heading = np.matmul(np.array([[0, -1, 0],[1, 0, 0],[0, 0, 1]]), self.q_rel) # see comments in bladeAirfoil2Member()
             blademem['rA'] = np.array(airfoil_zero_heading) * (self.blade_r[i] - self.dr/2)
@@ -575,7 +575,7 @@ class Rotor:
             blademem['t'] = 0.01
             blademem['rho_shell'] = 1850
 
-            self.bladeMemberList.append(Member(blademem, len(self.w)))
+            self.bladeMemberList.append(Member(blademem, len(self.w), part_of='blade'))
         
         self.bladeNodes = np.zeros([int(self.nBlades), len(self.bladeMemberList)+1, 3])      # array to hold xyz positions of each node along a blade for each blade (filled in later)
 

@@ -40,7 +40,7 @@ class Member:
 
         self.rA0 = np.array(mi['rA'], dtype=np.double)               # [x,y,z] coordinates of lower node relative to PRP [m]
         self.rB0 = np.array(mi['rB'], dtype=np.double)               # [x,y,z] coordinates of upper node relative to PRP [m]
-        if (self.rA0[2] == 0 or self.rB0[2] == 0) and self.type != 3:
+        if (self.rA0[2] == 0 or self.rB0[2] == 0) and self.part_of != 'blade':
             raise ValueError("RAFT Members cannot start or end on the waterplane")
         if self.rB0[2] < self.rA0[2]:
             pass

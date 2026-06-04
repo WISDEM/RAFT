@@ -213,6 +213,8 @@ class FOWT():
             if 'turbine' in design:
                 if 'tower' in design['turbine']:                    
                     j_member_names += [m['name'] for m in design['turbine']['tower']] # Add all towers to the list of members connected to the joint
+                if 'nacelle' in design['turbine']:                    
+                    j_member_names += [m['name'] for m in design['turbine']['nacelle']]
             self.joint_data.append({'name': 'origin_joint', 'type': 'cantilever', 'location': j_location, 'members': j_member_names})
 
 
@@ -223,6 +225,9 @@ class FOWT():
                 # Check if the member is in the list of tower members, in which case they don't have headings
                 if 'turbine' in design and 'tower' in design['turbine']:
                     if m_name in [m['name'] for m in design['turbine']['tower']]:
+                        continue
+                if 'turbine' in design and 'nacelle' in design['turbine']:
+                    if m_name in [m['name'] for m in design['turbine']['nacelle']]:
                         continue
 
                 # Check if the member is in the list of platform members
@@ -314,6 +319,10 @@ class FOWT():
             
             self.attachMemberToJoint(towerList[ir], towerTopJoint)       # attach the tower to the joint
             self.attachMemberToJoint(self.rotorList[-1], towerTopJoint)  # attach the rotor to the tower top joint
+            
+            #nacelleList = [m for m in self.memberList if m.part_of == 'nacelle']
+            #if len(nacelleList) > ir:
+            #    self.attachMemberToJoint(nacelleList[ir], towerTopJoint)
 
         
         # Define a node to be used as a reference for rigid body motions
@@ -969,11 +978,12 @@ class FOWT():
                         # save these end node positions in the blade member
                         afmem.rA0 = r_new[0,:]
                         afmem.rB0 = r_new[1,:]
+                        afmem.nodeList[0].r[0:3] = r_new[0,:]
 
                         # save the positions of the nodes for each blade
-                        rotor.nodes[j,k,:] = afmem.rA0
+                        rotor.bladeNodes[j,k,:] = afmem.rA0
                         if k==len(rotor.bladeMemberList)-1:     # if it's the last blade member, save it's rB position to the last position in the nodes array
-                            rotor.nodes[j,k+1,:] = afmem.rB0
+                            rotor.bladeNodes[j,k+1,:] = afmem.rB0
 
                         # find the actual orientation vectors of the blade member
                         afmem.setPosition()
@@ -1003,6 +1013,7 @@ class FOWT():
                         # reset original rA and rB values of the airfoil member
                         afmem.rA0 = rA_OG
                         afmem.rB0 = rB_OG
+                        # afmem.nodeList[0].r[0:3] = rA_OG  # keep node at true global position to avoid NaN volumes if hydrostatics called elsewhere
                         afmem.setPosition()
                         
                         # Note: it might be possible to streamline the above using new capabilities in setPosition (but not sure).

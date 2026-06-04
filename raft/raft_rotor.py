@@ -863,7 +863,7 @@ class Rotor:
         
         # ----- Dynamic rotor forces and reaction matrices -----
         # calculate rotor-averaged turbulent wind spectrum
-        _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD [(m/s)^2/rad]
+        _,_,_,S_rot = self.IECKaimal(case, current=current)   # PSD used directly with the model's rad/s spacing
         
         # convert from power spectral density to complex amplitudes (FFT)
         self.V_w = np.array(np.sqrt(2*S_rot*(self.w[1]-self.w[0])), dtype=complex)
